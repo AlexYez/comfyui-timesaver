@@ -3,15 +3,15 @@
 [project]
 name = "comfyui-timesaver"
 description = "ComfyUI nodes from [Timesaver](https://github.com/AlexYez/comfyui-timesaver)."
-version = "1.0.0"
-license = {file = "LICENSE"}
-dependencies = ["",]  # e.g.) ["numpy==1.18.1", ]
+version = "1.0.1"
+license = "LICENSE"
 
 [project.urls]
 Repository = "https://github.com/AlexYez/comfyui-timesaver"
 #  Used by Comfy Registry https://comfyregistry.org
 
 [tool.comfy]
-PublisherId = "jhj0517"
-DisplayName = "ComfyUI-CustomNodes-Template"
+PublisherId = "timesaver"
+DisplayName = "ComfyUI Timesaver Nodes"
 Icon = ""
+79ef3aef-8337-4a30-abc9-14c297e714d9
