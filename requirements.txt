@@ -1,3 +1,2 @@
-#  Update your requirements.
-#  numpy==1.18.1
-
+requests
+tqdm
