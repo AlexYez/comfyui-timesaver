@@ -1,152 +1,213 @@
 #  Package Modules
+import re
 import os
-from typing import Union, BinaryIO, Dict, List, Tuple, Optional
-import time
+import requests
+from tqdm import tqdm
 
-#  ComfyUI Modules
-import folder_paths
-from comfy.utils import ProgressBar
-
-#  Your Modules
-from .modules.calculator import CalculatorModel
-
-
-#  Basic practice to get paths from ComfyUI
-custom_nodes_script_dir = os.path.dirname(os.path.abspath(__file__))
-custom_nodes_model_dir = os.path.join(folder_paths.models_dir, "my-custom-nodes")
-custom_nodes_output_dir = os.path.join(folder_paths.get_output_directory(), "my-custom-nodes")
-
-
-#  These are example nodes that only contains basic functionalities with some comments.
-#  If you need detailed explanation, please refer to : https://docs.comfy.org/essentials/custom_node_walkthrough
-#  First Node:
-class MyModelLoader:
-    #  Define the input parameters of the node here.
+class DownloadFilesNode:
     @classmethod
-    def INPUT_TYPES(s):
-        my_models = ["Model A", "Model B", "Model C"]
-
-        return {
-            #  If the key is "required", the value must be filled.
-            "required": {
-                #  `my_models` is the list, so it will be shown as a dropdown menu in the node. ( So that user can select one of them. )
-                #  You must provide the value in the tuple format. e.g. ("value",) or (3,) or ([1, 2],) etc.
-                "model": (my_models,),
-                "device": (['cuda', 'cpu', 'auto'],),
-            },
-            #  If the key is "optional", the value is optional.
-            "optional": {
-                "compute_type": (['float32', 'float16'],),
-            }
-        }
-
-    #  Define these constants inside the node.
-    #  `RETURN_TYPES` is important, as it limits the parameter types that can be passed to the next node, in `INPUT_TYPES()` above.
-    RETURN_TYPES = ("MY_MODEL",)
-    RETURN_NAMES = ("my_model",)
-    #  `FUNCTION` is the function name that will be called in the node.
-    FUNCTION = "load_model"
-    #  `CATEGORY` is the category name that will be used when user searches the node.
-    CATEGORY = "CustomNodesTemplate"
-
-    #  In the function, use same parameter names as you specified in `INPUT_TYPES()`
-    def load_model(self,
-                   model: str,
-                   device: str,
-                   compute_type: Optional[str] = None,
-                   ) -> Tuple[CalculatorModel]:
-        calculator_model = CalculatorModel()
-        calculator_model.load_model(model, device, compute_type)
-
-        #  You can use `comfy.utils.ProgressBar` to show the progress of the process.
-        #  First, initialize the total amount of the process.
-        total_steps = 5
-        comfy_pbar = ProgressBar(total_steps)
-        #  Then, update the progress.
-        for i in range(1, total_steps):
-            time.sleep(1)
-            comfy_pbar.update(i)  #  Alternatively, you can use `comfy_pbar.update_absolute(value)` to update the progress with absolute value.
-
-        #  Return the model as a tuple.
-        return (calculator_model, )
-
-
-#  Second Node
-class CalculatePlus:
-    @classmethod
-    def INPUT_TYPES(s):
+    def INPUT_TYPES(cls):
         return {
             "required": {
-                "model": ("MY_MODEL", ),
-            },
-            #  Specify the parameters with type and default value.
-            "optional": {
-                "a": ("INT", {"default": 5}),
-                "b": ("INT", {"default": 10}),
-            }
-        }
-
-    RETURN_TYPES = ("INT",)
-    RETURN_NAMES = ("plus_value",)
-    FUNCTION = "plus"
-    CATEGORY = "CustomNodesTemplate"
-
-    def plus(self,
-             model: CalculatorModel,
-             a: Optional[int],
-             b: Optional[int],
-             ) -> Tuple[int]:
-        result = model.plus(a, b)
-        return (result, )
-
-
-
-#  Third Node
-class CalculateMinus:
-    @classmethod
-    def INPUT_TYPES(s):
-        return {
-            "required": {
-                "model": ("MY_MODEL", ),
-                "a": ("INT", ),
-            },
-            "optional": {
-                "b": ("INT", {"default": 10}),
-            }
-        }
-
-    RETURN_TYPES = ("INT",)
-    RETURN_NAMES = ("minus_value",)
-    FUNCTION = "minus"
-    CATEGORY = "CustomNodesTemplate"
-
-    def minus(self,
-             model: CalculatorModel,
-             a: Optional[int],
-             b: Optional[int],
-             ) -> Tuple[int]:
-        result = model.minus(a, b)
-        return (result, )
-
-
-
-#  Output Node
-class ExampleOutputNode:
-    @classmethod
-    def INPUT_TYPES(s):
-        return {
-            "required": {
-                "value": ("INT", ),
+                "file_list": ("STRING", {
+                    "default": "https://example.com/file1.txt /path/to/save\nhttps://example.com/file2.txt /path/to/save",
+                    "multiline": True,
+                    "dynamicPrompts": False,
+                }),
             },
         }
 
-    #  If the node is output node, set this to True.
+    RETURN_TYPES = ()
+    FUNCTION = "download_files"
     OUTPUT_NODE = True
-    RETURN_TYPES = ("INT",)
-    RETURN_NAMES = ("int",)
-    FUNCTION = "result"
-    CATEGORY = "CustomNodesTemplate"
+    CATEGORY = "custom_nodes"
 
-    def result(self,
-               value: int,) -> Tuple[int]:
-        return (value, )
+    def parse_file_list(self, file_list_text):
+        """Parse the file list from the multiline text input."""
+        files = []
+        for line in file_list_text.strip().split('\n'):
+            parts = line.strip().split()
+            if len(parts) == 2:
+                files.append((parts[0], parts[1]))
+        return files
+
+    def download_file(self, url, local_dir):
+        """Download a file from a URL and save it to the specified directory with resume support."""
+        os.makedirs(local_dir, exist_ok=True)  # Create directory if it doesn't exist
+        filename = os.path.basename(url)  # Extract filename from URL
+        local_file_path = os.path.join(local_dir, filename)
+        temp_file_path = local_file_path + ".part"
+        
+        # Get remote file size with retry logic
+        try:
+            response = requests.head(url, allow_redirects=True)  # Allow redirects in case of URL redirection
+            if response.status_code != 200:
+                print(f"Failed to fetch file info for {filename}. Status code: {response.status_code}. Skipping.")
+                return
+            remote_file_size = int(response.headers.get('content-length', 0))
+            if remote_file_size == 0:
+                print(f"Unable to determine file size for {filename}. Skipping.")
+                return
+        except requests.RequestException as e:
+            print(f"Error fetching file info for {filename}: {e}. Skipping.")
+            return
+
+        # Check if file already exists and is fully downloaded
+        if os.path.exists(local_file_path):
+            local_file_size = os.path.getsize(local_file_path)
+            if local_file_size == remote_file_size:
+                print(f"File {filename} already downloaded. Skipping.")
+                return
+        
+        headers = {}
+        resume_byte_pos = 0
+        
+        if os.path.exists(temp_file_path):
+            resume_byte_pos = os.path.getsize(temp_file_path)
+            headers["Range"] = f"bytes={resume_byte_pos}-"
+        
+        print(f"Downloading {filename} to {local_file_path}...")
+        try:
+            response = requests.get(url, stream=True, headers=headers, allow_redirects=True)
+            if response.status_code not in [200, 206]:
+                print(f"Failed to download {filename}. Status code: {response.status_code}. Skipping.")
+                return
+
+            total_size = remote_file_size
+            
+            with open(temp_file_path, 'ab') as file, tqdm(
+                total=total_size, unit='B', unit_scale=True, desc=filename, initial=resume_byte_pos
+            ) as progress_bar:
+                for chunk in response.iter_content(chunk_size=8192):
+                    if chunk:
+                        file.write(chunk)
+                        progress_bar.update(len(chunk))
+            
+            os.rename(temp_file_path, local_file_path)
+            print(f"File saved to {local_file_path}\n")
+        except requests.RequestException as e:
+            print(f"Error downloading {filename}: {e}. Skipping.")
+
+    def download_files(self, file_list):
+        """Download files based on the provided text input."""
+        files_to_download = self.parse_file_list(file_list)
+        for file_url, target_dir in files_to_download:
+            self.download_file(file_url, target_dir)
+        
+        return {}
+    
+class EDLToYouTubeChapters:
+    def __init__(self):
+        pass
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "edl_file_path": ("STRING", {"default": "", "multiline": False}),
+            },
+        }
+
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("youtube_chapters",)
+    FUNCTION = "convert_edl_to_youtube_chapters"
+
+    CATEGORY = "text processing"
+
+    def convert_edl_to_youtube_chapters(self, edl_file_path):
+        # Debugging: Print the input file path
+        print("Input EDL File Path:", edl_file_path)
+
+        # Remove any surrounding quotation marks from the file path
+        edl_file_path = edl_file_path.strip('"')
+
+        # Check if the file exists
+        if not os.path.exists(edl_file_path):
+            raise ValueError(f"File not found: {edl_file_path}")
+
+        # Read the .edl file content
+        with open(edl_file_path, "r", encoding="utf-8") as file:
+            edl_text = file.read()
+
+        # Debugging: Print the input text
+        print("Input EDL Text:\n", edl_text)
+
+        # Split the EDL text into lines
+        lines = edl_text.splitlines()
+
+        # Initialize an empty list to store the chapters
+        chapters = []
+
+        # Regular expression to match the timecode (first line of an event)
+        timecode_pattern = re.compile(
+            r"^\d+\s+\d+\s+V\s+C\s+(\d{2}:\d{2}:\d{2}:\d{2})\s+\d{2}:\d{2}:\d{2}:\d{2}\s+\d{2}:\d{2}:\d{2}:\d{2}\s+\d{2}:\d{2}:\d{2}:\d{2}"
+        )
+
+        # Regular expression to match the title (second line of an event)
+        title_pattern = re.compile(r"\s*\|C:.*?\|M:(.*?)\|D:.*")
+
+        # Define the start timecode offset (01:00:00:00)
+        start_timecode = "01:00:00:00"
+        start_hours, start_minutes, start_seconds, start_frames = map(int, start_timecode.split(':'))
+
+        # Iterate through the lines
+        i = 0
+        while i < len(lines):
+            # Skip blank lines and header lines
+            if not lines[i].strip() or lines[i].startswith(("TITLE:", "FCM:")):
+                print(f"Skipping Line: {lines[i]}")
+                i += 1
+                continue
+
+            # Check if the current line is a timecode line
+            timecode_match = timecode_pattern.match(lines[i])
+            if timecode_match:
+                timecode = timecode_match.group(1)
+                print(f"Matched Timecode Line: {lines[i]}")
+                print(f"Extracted Timecode: {timecode}")
+
+                # Check if the next line is a metadata line
+                if i + 1 < len(lines):
+                    title_match = title_pattern.match(lines[i + 1])
+                    if title_match:
+                        title = title_match.group(1).strip()
+                        print(f"Matched Metadata Line: {lines[i + 1]}")
+                        print(f"Extracted Title: {title}")
+
+                        # Convert the timecode to total seconds
+                        hours, minutes, seconds, frames = map(int, timecode.split(':'))
+                        total_seconds = (
+                            (hours - start_hours) * 3600 +  # Subtract start hours
+                            (minutes - start_minutes) * 60 +  # Subtract start minutes
+                            (seconds - start_seconds)         # Subtract start seconds
+                        )
+
+                        # Convert total seconds to YouTube format (MM:SS or HH:MM:SS)
+                        if total_seconds >= 3600:
+                            # If the video is longer than 1 hour, use HH:MM:SS
+                            youtube_timecode = f"{total_seconds // 3600:02d}:{(total_seconds % 3600) // 60:02d}:{total_seconds % 60:02d}"
+                        else:
+                            # If the video is shorter than 1 hour, use MM:SS
+                            youtube_timecode = f"{total_seconds // 60:02d}:{total_seconds % 60:02d}"
+
+                        # Append the chapter to the list
+                        chapters.append(f"{youtube_timecode} {title}")
+                    else:
+                        print(f"No Title Match for Line: {lines[i + 1]}")
+                else:
+                    print("No Metadata Line Found After Timecode Line")
+
+                # Skip the next line (metadata line) since we've already processed it
+                i += 2
+            else:
+                # Skip lines that don't match the timecode pattern
+                print(f"Skipping Line (No Timecode Match): {lines[i]}")
+                i += 1
+
+        # Join the chapters into a single string with newlines
+        youtube_chapters = "\n".join(chapters)
+
+        # Debugging: Print the output to the console
+        print("YouTube Chapters Output:\n", youtube_chapters)
+
+        return (youtube_chapters,)
