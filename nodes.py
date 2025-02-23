@@ -1,8 +1,12 @@
 #  Package Modules
-import re
 import os
+import re
+import numpy as np
 import requests
+from PIL import Image
+import torch
 from tqdm import tqdm
+import py360convert
 
 class DownloadFilesNode:
     @classmethod
@@ -20,7 +24,7 @@ class DownloadFilesNode:
     RETURN_TYPES = ()
     FUNCTION = "download_files"
     OUTPUT_NODE = True
-    CATEGORY = "custom_nodes"
+    CATEGORY = "Tools"
 
     def parse_file_list(self, file_list_text):
         """Parse the file list from the multiline text input."""
@@ -112,7 +116,7 @@ class EDLToYouTubeChapters:
     RETURN_NAMES = ("youtube_chapters",)
     FUNCTION = "convert_edl_to_youtube_chapters"
 
-    CATEGORY = "text processing"
+    CATEGORY = "Tools"
 
     def convert_edl_to_youtube_chapters(self, edl_file_path):
         # Debugging: Print the input file path
@@ -211,3 +215,98 @@ class EDLToYouTubeChapters:
         print("YouTube Chapters Output:\n", youtube_chapters)
 
         return (youtube_chapters,)
+    
+class EquirectangularToCubemapFaces:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "image": ("IMAGE",),
+                "cube_size": ("INT", {"default": 512, "min": 64, "max": 2048, "step": 64}),
+            },
+        }
+
+    RETURN_TYPES = ("IMAGE", "IMAGE", "IMAGE", "IMAGE", "IMAGE", "IMAGE")
+    RETURN_NAMES = ("front", "right", "back", "left", "top", "bottom")
+    FUNCTION = "convert"
+    CATEGORY = "Tools"
+
+    def convert(self, image, cube_size):
+        # Convert the input tensor to a numpy array
+        image = image.squeeze(0).numpy()  # Remove batch dimension
+        image = (image * 255).astype(np.uint8)  # Convert to 8-bit image
+
+        # Convert equirectangular to cubemap using py360convert
+        cubemap = py360convert.e2c(image, cube_size, cube_format='dict')
+
+        # Convert each face to a tensor
+        front = self.image_to_tensor(cubemap['F'])
+        right = self.image_to_tensor(cubemap['R'])
+        back = self.image_to_tensor(cubemap['B'])
+        left = self.image_to_tensor(cubemap['L'])
+        top = self.image_to_tensor(cubemap['U'])
+        bottom = self.image_to_tensor(cubemap['D'])
+
+        return (front, right, back, left, top, bottom)
+
+    def image_to_tensor(self, image):
+        # Convert numpy array to tensor
+        image = np.array(image).astype(np.float32) / 255.0
+        image = torch.from_numpy(image).unsqueeze(0)  # Add batch dimension
+        return image
+
+class CubemapFacesToEquirectangular:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "front": ("IMAGE",),
+                "right": ("IMAGE",),
+                "back": ("IMAGE",),
+                "left": ("IMAGE",),
+                "top": ("IMAGE",),
+                "bottom": ("IMAGE",),
+                "output_width": ("INT", {"default": 2048, "min": 64, "max": 8192, "step": 64}),
+                "output_height": ("INT", {"default": 1024, "min": 32, "max": 4096, "step": 32}),
+            },
+        }
+
+    RETURN_TYPES = ("IMAGE",)
+    FUNCTION = "convert"
+    CATEGORY = "Tools"
+
+    def convert(self, front, right, back, left, top, bottom, output_width, output_height):
+        # Convert input tensors to numpy arrays
+        front = self.tensor_to_image(front)
+        right = self.tensor_to_image(right)
+        back = self.tensor_to_image(back)
+        left = self.tensor_to_image(left)
+        top = self.tensor_to_image(top)
+        bottom = self.tensor_to_image(bottom)
+
+        # Combine faces into a single numpy array in dice format
+        face_size = front.shape[0]  # Assuming all faces are square and the same size
+        cubemap = np.zeros((face_size * 3, face_size * 4, 3), dtype=np.uint8)
+
+        # Arrange faces in dice format
+        cubemap[face_size:2*face_size, :face_size] = left       # Left
+        cubemap[face_size:2*face_size, face_size:2*face_size] = front  # Front
+        cubemap[face_size:2*face_size, 2*face_size:3*face_size] = right  # Right
+        cubemap[face_size:2*face_size, 3*face_size:4*face_size] = back  # Back
+        cubemap[:face_size, face_size:2*face_size] = top       # Top
+        cubemap[2*face_size:3*face_size, face_size:2*face_size] = bottom  # Bottom
+
+        # Convert cubemap to equirectangular using py360convert
+        equirectangular = py360convert.c2e(cubemap, output_height, output_width, cube_format="dice")
+
+        # Convert the equirectangular image back to a tensor
+        equirectangular = np.array(equirectangular).astype(np.float32) / 255.0
+        equirectangular = torch.from_numpy(equirectangular).unsqueeze(0)  # Add batch dimension
+
+        return (equirectangular,)
+
+    def tensor_to_image(self, tensor):
+        # Convert tensor to numpy array
+        tensor = tensor.squeeze(0).numpy()  # Remove batch dimension
+        tensor = (tensor * 255).astype(np.uint8)  # Convert to 8-bit image
+        return tensor
