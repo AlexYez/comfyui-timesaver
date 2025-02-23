@@ -1,2 +1,6 @@
+numpy
 requests
+pillow
+torch
 tqdm
+py360convert
