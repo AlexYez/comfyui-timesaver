@@ -7,6 +7,8 @@ from PIL import Image
 import torch
 from tqdm import tqdm
 import py360convert
+import zipfile
+import shutil
 
 class DownloadFilesNode:
     @classmethod
@@ -14,7 +16,7 @@ class DownloadFilesNode:
         return {
             "required": {
                 "file_list": ("STRING", {
-                    "default": "https://example.com/file1.txt /path/to/save\nhttps://example.com/file2.txt /path/to/save",
+                    "default": "https://example.com/file1.txt /path/to/save\nhttps://example.com/file2.zip /path/to/save",
                     "multiline": True,
                     "dynamicPrompts": False,
                 }),
@@ -35,6 +37,45 @@ class DownloadFilesNode:
                 files.append((parts[0], parts[1]))
         return files
 
+    def extract_zip_file(self, zip_path, extract_dir):
+        """Extract zip file to specified directory, replacing existing files."""
+        try:
+            # Create extraction directory if it doesn't exist
+            os.makedirs(extract_dir, exist_ok=True)
+            
+            print(f"Extracting {zip_path} to {extract_dir}...")
+            
+            # Open and extract zip file
+            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                # Get list of files in zip
+                zip_files = zip_ref.namelist()
+                
+                # Extract each file
+                for file in zip_files:
+                    # Get the full path where the file will be extracted
+                    extract_path = os.path.join(extract_dir, file)
+                    
+                    # If the file already exists, remove it before extraction
+                    if os.path.exists(extract_path):
+                        if os.path.isdir(extract_path):
+                            shutil.rmtree(extract_path)
+                        else:
+                            os.remove(extract_path)
+                    
+                # Extract all files
+                zip_ref.extractall(extract_dir)
+            
+            print(f"Successfully extracted {zip_path} to {extract_dir}")
+            
+            # Remove the zip file after successful extraction
+            os.remove(zip_path)
+            print(f"Removed zip file: {zip_path}")
+            
+        except zipfile.BadZipFile:
+            print(f"Error: {zip_path} is not a valid zip file")
+        except Exception as e:
+            print(f"Error extracting {zip_path}: {e}")
+
     def download_file(self, url, local_dir):
         """Download a file from a URL and save it to the specified directory with resume support."""
         os.makedirs(local_dir, exist_ok=True)  # Create directory if it doesn't exist
@@ -44,7 +85,7 @@ class DownloadFilesNode:
         
         # Get remote file size with retry logic
         try:
-            response = requests.head(url, allow_redirects=True)  # Allow redirects in case of URL redirection
+            response = requests.head(url, allow_redirects=True)
             if response.status_code != 200:
                 print(f"Failed to fetch file info for {filename}. Status code: {response.status_code}. Skipping.")
                 return
@@ -88,7 +129,14 @@ class DownloadFilesNode:
                         progress_bar.update(len(chunk))
             
             os.rename(temp_file_path, local_file_path)
-            print(f"File saved to {local_file_path}\n")
+            print(f"File saved to {local_file_path}")
+
+            # Check if the downloaded file is a zip file
+            if filename.lower().endswith('.zip'):
+                self.extract_zip_file(local_file_path, local_dir)
+            else:
+                print(f"File is not a zip archive, skipping extraction")
+                
         except requests.RequestException as e:
             print(f"Error downloading {filename}: {e}. Skipping.")
 
