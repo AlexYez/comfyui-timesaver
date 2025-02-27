@@ -8,6 +8,7 @@ NODE_CLASS_MAPPINGS = {
     "DownloadFilesNode": DownloadFilesNode,
     "TS Equirectangular to Cube": EquirectangularToCubemapFaces,
     "TS Cube to Equirectangular": CubemapFacesToEquirectangular,
+    "TS Qwen2.5": Qwen2,
 }
 
 
