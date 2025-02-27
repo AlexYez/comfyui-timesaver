@@ -4,3 +4,8 @@ pillow
 torch
 tqdm
 py360convert
+huggingface_hub
+accelerate
+bitsandbytes
+optimum
+transformers<=4.48.3
