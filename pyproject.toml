@@ -3,7 +3,7 @@
 [project]
 name = "comfyui-timesaver"
 description = "ComfyUI nodes from [Timesaver](https://github.com/AlexYez/comfyui-timesaver)."
-version = "1.0.5"
+version = "1.0.6"
 license = { file = "LICENSE.txt" }
 dependencies = ["numpy", "requests", "pillow", "torch", "tqdm", "py360convert", "huggingface_hub", "transformers<=4.48.3", "bitsandbytes","accelerate", "optimum"]
 
