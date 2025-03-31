@@ -5,7 +5,6 @@ from .nodes import *
 NODE_CLASS_MAPPINGS = {
     "TS Youtube Chapters": EDLToYouTubeChapters,
     "TS Files Downloader": DownloadFilesNode,
-    "DownloadFilesNode": DownloadFilesNode,
     "TS Equirectangular to Cube": EquirectangularToCubemapFaces,
     "TS Cube to Equirectangular": CubemapFacesToEquirectangular,
     "TS Qwen2.5": Qwen2,

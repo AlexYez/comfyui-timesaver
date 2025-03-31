@@ -29,7 +29,7 @@ class DownloadFilesNode:
         return {
             "required": {
                 "file_list": ("STRING", {
-                    "default": "https://example.com/file1.txt /path/to/save\nhttps://example.com/file2.zip /path/to/save",
+                    "default": "https://example.com/file1.txt /path/to/save\nhttps://example.com/file2.txt /path/to/save",
                     "multiline": True,
                     "dynamicPrompts": False,
                 }),
@@ -50,108 +50,83 @@ class DownloadFilesNode:
                 files.append((parts[0], parts[1]))
         return files
 
-    def extract_zip_file(self, zip_path, extract_dir):
-        """Extract zip file to specified directory, replacing existing files."""
-        try:
-            # Create extraction directory if it doesn't exist
-            os.makedirs(extract_dir, exist_ok=True)
-            
-            print(f"Extracting {zip_path} to {extract_dir}...")
-            
-            # Open and extract zip file
-            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-                # Get list of files in zip
-                zip_files = zip_ref.namelist()
-                
-                # Extract each file
-                for file in zip_files:
-                    # Get the full path where the file will be extracted
-                    extract_path = os.path.join(extract_dir, file)
-                    
-                    # If the file already exists, remove it before extraction
-                    if os.path.exists(extract_path):
-                        if os.path.isdir(extract_path):
-                            shutil.rmtree(extract_path)
-                        else:
-                            os.remove(extract_path)
-                    
-                # Extract all files
-                zip_ref.extractall(extract_dir)
-            
-            print(f"Successfully extracted {zip_path} to {extract_dir}")
-            
-            # Remove the zip file after successful extraction
-            os.remove(zip_path)
-            print(f"Removed zip file: {zip_path}")
-            
-        except zipfile.BadZipFile:
-            print(f"Error: {zip_path} is not a valid zip file")
-        except Exception as e:
-            print(f"Error extracting {zip_path}: {e}")
-
     def download_file(self, url, local_dir):
-        """Download a file from a URL and save it to the specified directory with resume support."""
-        os.makedirs(local_dir, exist_ok=True)  # Create directory if it doesn't exist
-        filename = os.path.basename(url)  # Extract filename from URL
+        """Download a file from a URL with optimized handling for poor connections."""
+        os.makedirs(local_dir, exist_ok=True)
+        filename = os.path.basename(url)
         local_file_path = os.path.join(local_dir, filename)
         temp_file_path = local_file_path + ".part"
         
-        # Get remote file size with retry logic
+        # Configure requests with timeout and retry logic
+        session = requests.Session()
+        adapter = requests.adapters.HTTPAdapter(max_retries=3)
+        session.mount("http://", adapter)
+        session.mount("https://", adapter)
+
+        # Get file size with timeout
         try:
-            response = requests.head(url, allow_redirects=True)
+            response = session.head(url, allow_redirects=True, timeout=5)
             if response.status_code != 200:
-                print(f"Failed to fetch file info for {filename}. Status code: {response.status_code}. Skipping.")
+                print(f"Failed to fetch file info for {filename}. Status code: {response.status_code}")
                 return
             remote_file_size = int(response.headers.get('content-length', 0))
             if remote_file_size == 0:
-                print(f"Unable to determine file size for {filename}. Skipping.")
+                print(f"Unable to determine file size for {filename}")
                 return
-        except requests.RequestException as e:
-            print(f"Error fetching file info for {filename}: {e}. Skipping.")
+        except (requests.RequestException, requests.Timeout) as e:
+            print(f"Error fetching file info for {filename}: {e}")
             return
 
-        # Check if file already exists and is fully downloaded
+        # Skip if file is already fully downloaded
         if os.path.exists(local_file_path):
-            local_file_size = os.path.getsize(local_file_path)
-            if local_file_size == remote_file_size:
-                print(f"File {filename} already downloaded. Skipping.")
+            if os.path.getsize(local_file_path) == remote_file_size:
+                print(f"File {filename} already downloaded")
                 return
-        
+
+        # Resume download if partial file exists
         headers = {}
         resume_byte_pos = 0
-        
         if os.path.exists(temp_file_path):
             resume_byte_pos = os.path.getsize(temp_file_path)
             headers["Range"] = f"bytes={resume_byte_pos}-"
-        
+
         print(f"Downloading {filename} to {local_file_path}...")
         try:
-            response = requests.get(url, stream=True, headers=headers, allow_redirects=True)
+            # Stream download with smaller chunk size and timeout
+            response = session.get(
+                url, 
+                stream=True, 
+                headers=headers, 
+                timeout=10,
+                allow_redirects=True
+            )
+            
             if response.status_code not in [200, 206]:
-                print(f"Failed to download {filename}. Status code: {response.status_code}. Skipping.")
+                print(f"Failed to download {filename}. Status code: {response.status_code}")
                 return
 
             total_size = remote_file_size
             
             with open(temp_file_path, 'ab') as file, tqdm(
-                total=total_size, unit='B', unit_scale=True, desc=filename, initial=resume_byte_pos
+                total=total_size, 
+                unit='B', 
+                unit_scale=True, 
+                desc=filename, 
+                initial=resume_byte_pos
             ) as progress_bar:
-                for chunk in response.iter_content(chunk_size=8192):
+                # Smaller chunk size for better handling of slow connections
+                for chunk in response.iter_content(chunk_size=4096):
                     if chunk:
                         file.write(chunk)
                         progress_bar.update(len(chunk))
             
             os.rename(temp_file_path, local_file_path)
             print(f"File saved to {local_file_path}")
-
-            # Check if the downloaded file is a zip file
-            if filename.lower().endswith('.zip'):
-                self.extract_zip_file(local_file_path, local_dir)
-            else:
-                print(f"File is not a zip archive, skipping extraction")
                 
-        except requests.RequestException as e:
-            print(f"Error downloading {filename}: {e}. Skipping.")
+        except (requests.RequestException, requests.Timeout) as e:
+            print(f"Error downloading {filename}: {e}")
+            if os.path.exists(temp_file_path):
+                print("Download can be resumed later")
 
     def download_files(self, file_list):
         """Download files based on the provided text input."""
