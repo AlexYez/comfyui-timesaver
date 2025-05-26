@@ -1,11 +1,29 @@
-numpy
-requests
-pillow
+      
+# Core AI/ML libraries
 torch
-tqdm
-py360convert
+transformers=>4.51
 huggingface_hub
 accelerate
 bitsandbytes
-optimum
-transformers<=4.48.3
+opencv-python
+matplotlib
+imageio
+imageio-ffmpeg
+einops
+easydict
+
+# Image and numerical processing
+numpy
+Pillow
+
+# 360 Image Conversion
+py360convert
+
+# HTTP Requests and Progress Bar
+requests
+urllib3 
+tqdm
+
+# Audio Processing (for Whisper Node)
+torchaudio
+srt # For creating .srt subtitle files
