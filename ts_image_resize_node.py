@@ -12,9 +12,9 @@ class TS_ImageResize:
     def __init__(self):
         pass
 
-    ACTION_TYPE_RESIZE_ONLY = "resize"
-    ACTION_TYPE_CROP_RESIZE = "crop_to_fit"
-    ACTION_TYPE_PAD_RESIZE = "pad_to_fit"
+    # ACTION_TYPE_RESIZE_ONLY = "resize" # Убрано
+    # ACTION_TYPE_CROP_RESIZE = "crop_to_fit" # Убрано
+    # ACTION_TYPE_PAD_RESIZE = "pad_to_fit" # Убрано
 
     UPSCALE_METHODS = ["nearest-exact", "bilinear", "bicubic", "area", "lanczos"]
 
@@ -28,7 +28,7 @@ class TS_ImageResize:
         return {
             "required": {
                 "pixels": ("IMAGE",),
-                "action": ([s.ACTION_TYPE_RESIZE_ONLY, s.ACTION_TYPE_CROP_RESIZE, s.ACTION_TYPE_PAD_RESIZE], {"default": s.ACTION_TYPE_RESIZE_ONLY}),
+                # "action": ([s.ACTION_TYPE_RESIZE_ONLY, s.ACTION_TYPE_CROP_RESIZE, s.ACTION_TYPE_PAD_RESIZE], {"default": s.ACTION_TYPE_RESIZE_ONLY}), # Убрано
                 "target_width": ("INT", {"default": 0, "min": 0, "max": 8192, "step": 64}),
                 "target_height": ("INT", {"default": 0, "min": 0, "max": 8192, "step": 64}),
                 "smaller_side": ("INT", {"default": 0, "min": 0, "max": 8192, "step": 64}),
@@ -41,38 +41,30 @@ class TS_ImageResize:
         }
 
     @classmethod
-    def VALIDATE_INPUTS(s, action, target_width, target_height, smaller_side, larger_side, scale_factor, upscale_method, **_): # Убрал pixels, т.к. он не используется в валидации
+    def VALIDATE_INPUTS(s, target_width, target_height, smaller_side, larger_side, scale_factor, upscale_method, divisible_by, **_):
         if upscale_method == "lanczos" and not TORCHVISION_AVAILABLE:
             return "Lanczos upscale_method requires torchvision to be installed."
+        
+        if divisible_by is not None and divisible_by < 1:
+            return "divisible_by must be 1 or greater."
 
-        # Проверка на None перед сравнением
         sf_active = scale_factor is not None and scale_factor > 0.0
         tw_active = target_width is not None and target_width > 0
-        th_active = target_height is not None and target_height
+        th_active = target_height is not None and target_height > 0
         ss_active = smaller_side is not None and smaller_side > 0
         ls_active = larger_side is not None and larger_side > 0
-
-        num_sizing_methods = sum([
-            sf_active,
-            tw_active or th_active, # Если хотя бы один из target_width/height активен
-            ss_active or ls_active  # Если хотя бы один из smaller_side/larger_side активен
-        ])
         
-        # Логика ниже может быть уточнена: если используется crop/pad, то должен быть хотя бы один метод изменения размера.
-        # Если используется просто resize, то num_sizing_methods может быть 0 (тогда изображение не меняется, только divisible_by)
-        if action == s.ACTION_TYPE_CROP_RESIZE or action == s.ACTION_TYPE_PAD_RESIZE:
-            if num_sizing_methods == 0:
-                 return f"For action '{action}', at least one sizing method (scale_factor, target_width/height, or smaller/larger_side) must be set to a non-zero value."
-        
-        # Дополнительная проверка: не должно быть более одного *активного* метода определения размера
         active_method_count = 0
         if sf_active: active_method_count +=1
-        if tw_active or th_active: active_method_count +=1
-        if ss_active or ls_active: active_method_count +=1
-        
-        if active_method_count > 1:
-            return "More than one sizing method (scale_factor, target_width/height, smaller/larger_side) is active. Please use only one method."
+        if tw_active or th_active: active_method_count +=1 # Считаем как один метод, если хотя бы один из target_width/height активен
+        if ss_active or ls_active: active_method_count +=1 # Аналогично для smaller/larger_side
 
+        if active_method_count > 1:
+            return "More than one sizing method (scale_factor, target_width/height, smaller/larger_side) is active. Please use only one."
+        
+        # if active_method_count == 0 and (divisible_by is None or divisible_by == 1) : # Если нет методов изменения и нет кратности
+        #     return "No resizing operation specified. Set a sizing method or divisible_by > 1."
+            
         return True
 
     def _interp_image(self, image_tensor_nchw, size_wh, method):
@@ -87,152 +79,184 @@ class TS_ImageResize:
                 interp_kwargs["antialias"] = True
             return torch.nn.functional.interpolate(image_tensor_nchw, size=(target_h, target_w), **interp_kwargs)
 
-    def resize(self, pixels, action, target_width, target_height, smaller_side, larger_side, scale_factor, keep_proportion, upscale_method, divisible_by):
+    def resize(self, pixels, target_width, target_height, smaller_side, larger_side, scale_factor, keep_proportion, upscale_method, divisible_by):
         _B, original_H, original_W, _C = pixels.shape
         device = pixels.device
-        current_pixels_content = pixels
+        
+        # --- Шаг 1: Определить "идеальные" целевые размеры (ideal_w, ideal_h) до учета divisible_by ---
+        ideal_w, ideal_h = float(original_W), float(original_H)
 
-        # --- Шаг 1: Определить операционные размеры (op_w, op_h) ---
-        op_w, op_h = float(original_W), float(original_H)
-
-        # Проверка на None и инициализация значениями по умолчанию, если None (для основной логики)
-        # Для VALIDATE_INPUTS None означает "не задано", для resize - если дошло до сюда, значит надо работать с числом
-        # Но хороший тон - проверять, хотя ComfyUI должен передавать default, если не подключено
         _scale_factor = scale_factor if scale_factor is not None else 0.0
         _target_width = target_width if target_width is not None else 0
         _target_height = target_height if target_height is not None else 0
         _smaller_side = smaller_side if smaller_side is not None else 0
         _larger_side = larger_side if larger_side is not None else 0
+        _divisible_by = divisible_by if divisible_by is not None else 1
+        if _divisible_by < 1: _divisible_by = 1
 
 
-        active_methods = []
-        if _scale_factor > 0.0: active_methods.append("scale_factor")
-        if _target_width > 0 or _target_height > 0: active_methods.append("target_dims")
-        if _smaller_side > 0 or _larger_side > 0: active_methods.append("side_dims")
-
-        # Приоритет методов
         chosen_method = None
-        if "scale_factor" in active_methods: chosen_method = "scale_factor"
-        elif "target_dims" in active_methods: chosen_method = "target_dims"
-        elif "side_dims" in active_methods: chosen_method = "side_dims"
-
+        if _scale_factor > 0.0: chosen_method = "scale_factor"
+        elif _target_width > 0 or _target_height > 0: chosen_method = "target_dims"
+        elif _smaller_side > 0 or _larger_side > 0: chosen_method = "side_dims"
 
         if chosen_method == "scale_factor":
-            op_w = original_W * _scale_factor
-            op_h = original_H * _scale_factor
+            ideal_w = original_W * _scale_factor
+            ideal_h = original_H * _scale_factor
         elif chosen_method == "target_dims":
             if keep_proportion:
-                # Если заданы оба, вписываем с сохранением пропорций
                 if _target_width > 0 and _target_height > 0:
-                    ratio_orig = op_w / op_h
+                    ratio_orig = ideal_w / ideal_h
                     ratio_target = float(_target_width) / float(_target_height)
                     if ratio_orig > ratio_target: 
-                        op_w = float(_target_width)
-                        op_h = op_w / ratio_orig
+                        ideal_w = float(_target_width)
+                        ideal_h = ideal_w / ratio_orig
                     else: 
-                        op_h = float(_target_height)
-                        op_w = op_h * ratio_orig
+                        ideal_h = float(_target_height)
+                        ideal_w = ideal_h * ratio_orig
                 elif _target_width > 0:
-                    op_h = op_h * (float(_target_width) / op_w)
-                    op_w = float(_target_width)
+                    ideal_h = ideal_h * (float(_target_width) / ideal_w)
+                    ideal_w = float(_target_width)
                 elif _target_height > 0:
-                    op_w = op_w * (float(_target_height) / op_h)
-                    op_h = float(_target_height)
+                    ideal_w = ideal_w * (float(_target_height) / ideal_h)
+                    ideal_h = float(_target_height)
             else: # keep_proportion == False
-                if _target_width > 0: op_w = float(_target_width)
-                if _target_height > 0: op_h = float(_target_height)
+                if _target_width > 0: ideal_w = float(_target_width)
+                if _target_height > 0: ideal_h = float(_target_height)
         elif chosen_method == "side_dims":
+            # Эта логика всегда сохраняет пропорции
             if _smaller_side > 0:
-                if op_w < op_h: 
-                    op_h = op_h * (float(_smaller_side) / op_w)
-                    op_w = float(_smaller_side)
+                if ideal_w < ideal_h: 
+                    ideal_h = ideal_h * (float(_smaller_side) / ideal_w)
+                    ideal_w = float(_smaller_side)
                 else: 
-                    op_w = op_w * (float(_smaller_side) / op_h)
-                    op_h = float(_smaller_side)
-            elif _larger_side > 0: # smaller_side имеет приоритет, если оба заданы
-                if op_w > op_h: 
-                    op_h = op_h * (float(_larger_side) / op_w)
-                    op_w = float(_larger_side)
+                    ideal_w = ideal_w * (float(_smaller_side) / ideal_h)
+                    ideal_h = float(_smaller_side)
+            elif _larger_side > 0:
+                if ideal_w > ideal_h: 
+                    ideal_h = ideal_h * (float(_larger_side) / ideal_w)
+                    ideal_w = float(_larger_side)
                 else: 
-                    op_w = op_w * (float(_larger_side) / op_h)
-                    op_h = float(_larger_side)
+                    ideal_w = ideal_w * (float(_larger_side) / ideal_h)
+                    ideal_h = float(_larger_side)
         
-        op_w = max(1, round(op_w))
-        op_h = max(1, round(op_h))
+        ideal_w = max(1.0, ideal_w)
+        ideal_h = max(1.0, ideal_h)
 
-        # --- Шаг 2: Применить `action` ---
-        canvas_w_effective, canvas_h_effective = op_w, op_h
-        
-        if action == self.ACTION_TYPE_RESIZE_ONLY:
-            if op_w != original_W or op_h != original_H:
-                pixels_nchw = current_pixels_content.permute(0, 3, 1, 2)
-                current_pixels_content = self._interp_image(pixels_nchw, (op_w, op_h), upscale_method).permute(0, 2, 3, 1).clamp(0.0, 1.0)
-            final_canvas_pixels = current_pixels_content
-
-        elif action == self.ACTION_TYPE_CROP_RESIZE:
-            src_w_float, src_h_float = float(original_W), float(original_H)
-            src_ratio = src_w_float / src_h_float
-            canvas_ratio = float(op_w) / float(op_h)
-            
-            temp_pixels_to_scale = current_pixels_content
-            if abs(src_ratio - canvas_ratio) > 1e-5:
-                crop_x_val, crop_y_val = 0.0, 0.0
-                if src_ratio > canvas_ratio:
-                    new_w_content = src_h_float * canvas_ratio
-                    crop_x_val = src_w_float - new_w_content
-                else:
-                    new_h_content = src_w_float / canvas_ratio
-                    crop_y_val = src_h_float - new_h_content
-                crop_x_half = round(crop_x_val / 2.0)
-                crop_y_half = round(crop_y_val / 2.0)
-                temp_pixels_to_scale = current_pixels_content[:, crop_y_half : original_H - crop_y_half, crop_x_half : original_W - crop_x_half, :]
-            
-            if temp_pixels_to_scale.shape[2] != op_w or temp_pixels_to_scale.shape[1] != op_h:
-                pixels_nchw = temp_pixels_to_scale.permute(0, 3, 1, 2)
-                final_canvas_pixels = self._interp_image(pixels_nchw, (op_w, op_h), upscale_method).permute(0, 2, 3, 1).clamp(0.0, 1.0)
-            else:
-                final_canvas_pixels = temp_pixels_to_scale
-
-        elif action == self.ACTION_TYPE_PAD_RESIZE:
-            src_w_float, src_h_float = float(original_W), float(original_H)
-            scale_ratio_w = float(op_w) / src_w_float
-            scale_ratio_h = float(op_h) / src_h_float
-            fit_scale = min(scale_ratio_w, scale_ratio_h)
-            content_w_scaled = max(1, round(src_w_float * fit_scale))
-            content_h_scaled = max(1, round(src_h_float * fit_scale))
-
-            scaled_content_pixels = current_pixels_content
-            if content_w_scaled != original_W or content_h_scaled != original_H:
-                pixels_nchw = current_pixels_content.permute(0, 3, 1, 2)
-                scaled_content_pixels = self._interp_image(pixels_nchw, (content_w_scaled, content_h_scaled), upscale_method).permute(0, 2, 3, 1).clamp(0.0, 1.0)
-
-            final_canvas_pixels = torch.zeros((_B, op_h, op_w, _C), dtype=pixels.dtype, device=device)
-            pad_x_offset = (op_w - content_w_scaled) // 2
-            pad_y_offset = (op_h - content_h_scaled) // 2
-            final_canvas_pixels[:, pad_y_offset : pad_y_offset + content_h_scaled, pad_x_offset : pad_x_offset + content_w_scaled, :] = scaled_content_pixels
-        else:
-            final_canvas_pixels = current_pixels_content
-
-        # --- Шаг 3: `divisible_by` ---
-        h_before_div, w_before_div = final_canvas_pixels.shape[1:3]
-        _divisible_by = divisible_by if divisible_by is not None else 1
-        
+        # --- Шаг 2: Скорректировать идеальные размеры до кратности divisible_by (округление ВНИЗ) ---
+        # Это будут финальные размеры выходного изображения.
         if _divisible_by > 1:
-            final_H_div = ((h_before_div + _divisible_by - 1) // _divisible_by) * _divisible_by
-            final_W_div = ((w_before_div + _divisible_by - 1) // _divisible_by) * _divisible_by
+            if keep_proportion or chosen_method == "side_dims" or chosen_method == "scale_factor":
+                # При сохранении пропорций или если метод уже подразумевает пропорции,
+                # нужно найти такой масштаб, чтобы обе стороны после округления вниз до кратности _divisible_by
+                # оставались как можно ближе к идеальным пропорциям.
+                # Это сложнее, чем просто округлить каждую сторону.
+                # Простой подход: округлить меньшую из идеальных сторон вниз до кратности,
+                # а вторую вычислить, сохранив идеальные пропорции, и затем ее тоже округлить вниз.
+                # Либо, сначала масштабировать до кратного, а потом кропать.
+                # Выберем путь: вычислить финальные кратные размеры, потом к ним масштабировать с кропом.
 
-            if final_H_div != h_before_div or final_W_div != w_before_div:
-                padded_for_div_pixels = torch.zeros((_B, final_H_div, final_W_div, _C), dtype=final_canvas_pixels.dtype, device=device)
-                pad_h_total = final_H_div - h_before_div
-                pad_w_total = final_W_div - w_before_div
-                pad_top = pad_h_total // 2
-                pad_left = pad_w_total // 2
-                padded_for_div_pixels[:, pad_top : pad_top + h_before_div, pad_left : pad_left + w_before_div, :] = final_canvas_pixels
-                final_output_pixels = padded_for_div_pixels
-            else:
-                final_output_pixels = final_canvas_pixels
+                # Округляем каждую идеальную размерность вниз до ближайшего кратного _divisible_by
+                final_target_w_div = math.floor(ideal_w / _divisible_by) * _divisible_by
+                final_target_h_div = math.floor(ideal_h / _divisible_by) * _divisible_by
+
+                # Важно: если округление дало 0, ставим _divisible_by (минимально возможное)
+                final_target_w_div = max(_divisible_by, final_target_w_div)
+                final_target_h_div = max(_divisible_by, final_target_h_div)
+            else: # keep_proportion == False и метод target_dims
+                final_target_w_div = math.floor(ideal_w / _divisible_by) * _divisible_by if _target_width > 0 else ideal_w
+                final_target_h_div = math.floor(ideal_h / _divisible_by) * _divisible_by if _target_height > 0 else ideal_h
+                final_target_w_div = max(_divisible_by if _target_width > 0 else 1, final_target_w_div)
+                final_target_h_div = max(_divisible_by if _target_height > 0 else 1, final_target_h_div)
         else:
-            final_output_pixels = final_canvas_pixels
+            final_target_w_div = round(ideal_w)
+            final_target_h_div = round(ideal_h)
+        
+        final_target_w_div = max(1, int(final_target_w_div))
+        final_target_h_div = max(1, int(final_target_h_div))
+
+
+        # --- Шаг 3: Масштабирование и кроп (или простое масштабирование) ---
+        current_pixels_nchw = pixels.permute(0, 3, 1, 2)
+
+        if keep_proportion or chosen_method == "side_dims" or chosen_method == "scale_factor":
+            # Масштабируем так, чтобы изображение ПОЛНОСТЬЮ ПОКРЫЛО final_target_w_div x final_target_h_div
+            # с сохранением исходных пропорций. Затем кропаем.
+            
+            src_ratio = float(original_W) / float(original_H)
+            target_canvas_ratio = float(final_target_w_div) / float(final_target_h_div)
+
+            if src_ratio > target_canvas_ratio:
+                # Исходное шире, чем целевой холст -> масштабируем по высоте целевого холста
+                # Ширина будет больше, чем нужно, ее потом обрежем
+                scale_to_h = final_target_h_div
+                scale_to_w = round(scale_to_h * src_ratio)
+            else:
+                # Исходное выше (или той же пропорции), чем целевой холст -> масштабируем по ширине целевого холста
+                # Высота будет больше, чем нужно, ее потом обрежем
+                scale_to_w = final_target_w_div
+                scale_to_h = round(scale_to_w / src_ratio)
+            
+            scale_to_w = max(1, scale_to_w)
+            scale_to_h = max(1, scale_to_h)
+
+            # Если после вычисления масштаба размеры все еще равны оригинальным и целевым,
+            # И при этом целевые размеры не изменились от оригинальных - можно пропустить интерполяцию
+            needs_interp = True
+            if scale_to_w == original_W and scale_to_h == original_H and \
+               final_target_w_div == original_W and final_target_h_div == original_H:
+                 needs_interp = False
+
+            if needs_interp or (scale_to_w != original_W or scale_to_h != original_H):
+                 scaled_pixels_nchw = self._interp_image(current_pixels_nchw, (scale_to_w, scale_to_h), upscale_method)
+            else:
+                 scaled_pixels_nchw = current_pixels_nchw
+
+
+            # Кроп до final_target_w_div, final_target_h_div
+            crop_x_start = (scaled_pixels_nchw.shape[3] - final_target_w_div) // 2
+            crop_y_start = (scaled_pixels_nchw.shape[2] - final_target_h_div) // 2
+            
+            # Защита от выхода за пределы, если что-то пошло не так с расчетами выше
+            crop_x_start = max(0, crop_x_start)
+            crop_y_start = max(0, crop_y_start)
+            
+            # Убедимся, что не пытаемся обрезать больше, чем есть
+            crop_w = min(final_target_w_div, scaled_pixels_nchw.shape[3] - crop_x_start)
+            crop_h = min(final_target_h_div, scaled_pixels_nchw.shape[2] - crop_y_start)
+
+
+            if crop_w != final_target_w_div or crop_h != final_target_h_div:
+                # Если после кропа размеры не совпали с целевыми (что маловероятно при правильных расчетах, но для безопасности)
+                # создаем холст нужного размера и вставляем обрезанное, или просто берем обрезанное.
+                # Это может случиться, если scale_to_w/h оказались МЕНЬШЕ final_target_w/h_div
+                # В этом случае предыдущая логика масштабирования "покрыть холст" не идеальна.
+                # Проще сначала убедиться, что scale_to_w/h >= final_target_w/h_div.
+                # Исправим scale_to_w/h на предыдущем шаге, если они меньше целевых после округления
+                if scale_to_w < final_target_w_div : scale_to_w = final_target_w_div
+                if scale_to_h < final_target_h_div : scale_to_h = final_target_h_div
+                # И ПЕРЕМАСШТАБИРОВАТЬ, если изменились
+                if scaled_pixels_nchw.shape[3] != scale_to_w or scaled_pixels_nchw.shape[2] != scale_to_h:
+                     scaled_pixels_nchw = self._interp_image(current_pixels_nchw, (scale_to_w, scale_to_h), upscale_method)
+                # Пересчитываем кроп
+                crop_x_start = (scale_to_w - final_target_w_div) // 2
+                crop_y_start = (scale_to_h - final_target_h_div) // 2
+                crop_x_start = max(0, crop_x_start)
+                crop_y_start = max(0, crop_y_start)
+                crop_w = final_target_w_div
+                crop_h = final_target_h_div
+
+
+            final_output_pixels_nchw = scaled_pixels_nchw[:, :, crop_y_start : crop_y_start + crop_h, crop_x_start : crop_x_start + crop_w]
+
+        else: # keep_proportion == False (и метод был target_dims)
+            # Простое масштабирование (искажение) до final_target_w_div, final_target_h_div
+            if final_target_w_div != original_W or final_target_h_div != original_H:
+                final_output_pixels_nchw = self._interp_image(current_pixels_nchw, (final_target_w_div, final_target_h_div), upscale_method)
+            else:
+                final_output_pixels_nchw = current_pixels_nchw
+        
+        final_output_pixels = final_output_pixels_nchw.permute(0, 2, 3, 1).clamp(0.0, 1.0)
         
         output_height = final_output_pixels.shape[1]
         output_width = final_output_pixels.shape[2]
