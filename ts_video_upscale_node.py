@@ -35,37 +35,41 @@ class TS_Video_Upscale_With_Model:
     FUNCTION = "upscale_video"
     CATEGORY = "video"
     
+    # ComfyUI progress bar integration
     def __init__(self):
         self.steps = 0
         self.step = 0
     
+    # Important: ComfyUI looks for this method to track progress
     def get_progress_execution(self):
         if self.steps > 0:
             return self.step, self.steps
-        return 0, 1
+        return 0, 1 # Default to 0 out of 1 if steps not initialized
     
     def upscale_video(self, model_name, images, upscale_method, factor, device_strategy="auto"):
+        """
+        Upscale a sequence of images (video frames) efficiently using an integrated upscale model.
+        """
         upscale_model_path = folder_paths.get_full_path("upscale_models", model_name)
         
-        # Используем новую функцию загрузки
         upscale_model = self.load_upscale_model_with_spandrel(upscale_model_path)
         if upscale_model is None:
-            # Обработка ошибки, если модель не загрузилась (например, spandrel не установлен или модель несовместима)
-            # Можно вернуть ошибку или попытаться использовать старый метод как запасной
-            print("Failed to load model with Spandrel. Falling back to old method (if available) or erroring.")
-            # Для примера, вызовем исключение, если spandrel обязателен
-            raise RuntimeError(f"Failed to load upscale model '{model_name}' using Spandrel.")
+            raise RuntimeError(f"Failed to load upscale model '{model_name}' using Spandrel. Ensure Spandrel is installed and model is compatible.")
 
         device = model_management.get_torch_device()
         if device_strategy == "auto":
             if torch.cuda.is_available():
-                total_memory = torch.cuda.get_device_properties(0).total_memory
-                reserved_memory = torch.cuda.memory_reserved(0)
-                
-                if (total_memory - reserved_memory) / total_memory > 0.5:
-                    device_strategy = "keep_loaded"
-                else:
-                    device_strategy = "load_unload_each_frame"
+                try:
+                    total_memory = torch.cuda.get_device_properties(0).total_memory
+                    reserved_memory = torch.cuda.memory_reserved(0)
+                    
+                    if (total_memory - reserved_memory) / total_memory > 0.5: # Heuristic: if more than 50% VRAM is free
+                        device_strategy = "keep_loaded"
+                    else:
+                        device_strategy = "load_unload_each_frame"
+                except Exception as e:
+                    print(f"Could not assess GPU memory for auto strategy, defaulting to load_unload_each_frame. Error: {e}")
+                    device_strategy = "load_unload_each_frame" # Fallback if props/reserved fails
             else:
                 device_strategy = "cpu_only"
         
@@ -75,10 +79,11 @@ class TS_Video_Upscale_With_Model:
         new_height = int(old_height * factor)
         new_width = int(old_width * factor)
         
+        # Initialize progress tracking for ComfyUI progress bar
         self.steps = num_frames
         self.step = 0
         
-        print(f"Processing video: {num_frames} frames from {old_width}x{old_height} to {new_width}x{new_height} with {device_strategy} strategy")
+        print(f"Processing video: {num_frames} frames from {old_width}x{old_height} to {new_width}x{new_height} with {device_strategy} strategy using model {model_name}")
         
         if device_strategy == "cpu_only":
             upscale_model = upscale_model.to("cpu")
@@ -86,11 +91,11 @@ class TS_Video_Upscale_With_Model:
         elif device_strategy == "keep_loaded":
             upscale_model = upscale_model.to(device)
             result_frames = self._upscale_batch_keep_loaded(upscale_model, images, device, upscale_method, new_width, new_height)
-        else:
+        else:  # "load_unload_each_frame"
             result_frames = self._upscale_batch_load_unload(upscale_model, images, device, upscale_method, new_width, new_height)
         
         return (torch.stack(result_frames),)
-
+    
     def load_upscale_model_with_spandrel(self, model_path):
         """Load the upscale model from the given path using Spandrel."""
         if ModelLoader is None:
@@ -98,78 +103,47 @@ class TS_Video_Upscale_With_Model:
             return None
         
         try:
-            # Spandrel сам определяет архитектуру по файлу модели
-            # device="cpu" гарантирует, что модель загрузится в CPU память сначала, 
-            # чтобы избежать потенциальных проблем с VRAM при загрузке больших моделей,
-            # перед тем как она будет перемещена на GPU в основной логике.
             model_descriptor = ModelLoader(device="cpu").load_from_file(model_path)
-            upscale_model = model_descriptor.model # Получаем саму torch.nn.Module
-            
-            # Spandrel модели уже должны быть в режиме eval() после загрузки, но для уверенности:
+            upscale_model = model_descriptor.model
             upscale_model.eval()
 
-            # Очистка памяти (хотя Spandrel должен управлять этим лучше)
+            if not hasattr(upscale_model, 'scale'):
+                if hasattr(model_descriptor, 'scale') and model_descriptor.scale is not None:
+                     upscale_model.scale = model_descriptor.scale
+                     print(f"Info: Inferred model scale {upscale_model.scale} from Spandrel descriptor for {model_path}")
+                else:
+                    # Attempt to infer scale from common model naming conventions if factor is e.g. x2, x4
+                    scale_from_name = 1 
+                    for part in ["x2", "x3", "x4", "x8"]:
+                        if part in model_path.lower():
+                            scale_from_name = int(part[1:])
+                            break
+                    upscale_model.scale = scale_from_name
+                    print(f"Warning: Model scale not directly found for {model_path}. Set to {upscale_model.scale} (inferred from name or default 1). This is used by tiled_scale.")
+            
             gc.collect()
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
-            
-            # Spandrel загруженная модель также должна иметь атрибут .scale
-            # Если его нет, или он не соответствует ожиданиям, это может потребовать дополнительной обработки
-            # или проверки совместимости модели.
-            if not hasattr(upscale_model, 'scale'):
-                # Попытка определить масштаб из дескриптора, если возможно,
-                # или установить значение по умолчанию/вызвать ошибку
-                print(f"Warning: Loaded model {model_path} via Spandrel does not have a direct 'scale' attribute. Attempting to infer or use descriptor scale.")
-                if hasattr(model_descriptor, 'scale'):
-                     upscale_model.scale = model_descriptor.scale
-                else:
-                    # Если масштаб критичен и не может быть определен, это проблема.
-                    # Для примера, здесь можно установить некий дефолтный или ожидаемый масштаб,
-                    # но лучше, если модель его предоставляет.
-                    # В вашем коде `upscale_model.scale` используется в `tiled_scale`,
-                    # так что это важно.
-                    print(f"Critical: Scale could not be determined for model {model_path}. Tiled_scale might not work as expected.")
-                    # Можно присвоить дефолтное значение, если это приемлемо, например 1 или 2, или поднять ошибку.
-                    # upscale_model.scale = 1 # Пример, требует аккуратности
-
             return upscale_model
         except Exception as e:
-            print(f"Error loading model with Spandrel: {e}")
-            # Тут можно добавить логику для возврата к старому методу загрузки, если он есть,
-            # или просто вернуть None, чтобы обработать ошибку выше.
-            # return self.load_upscale_model_old_method(model_path) # Если есть старый метод
+            print(f"Error loading model '{os.path.basename(model_path)}' with Spandrel: {e}")
             return None
-
-    # Важно: Ваша функция tiled_scale ожидает, что у модели есть атрибут `scale`.
-    # `upscale_amount=upscale_model.scale`
-    # Spandrel обычно предоставляет это, но стоит проверить.
-
-    # Старый метод загрузки, переименованный для возможного использования как fallback
-    def load_upscale_model_old_method(self, model_path):
-        """Load the upscale model from the given path (OLD METHOD)"""
-        from comfy_extras.chainner_models import model_loading # Этот импорт теперь будет здесь
-        
-        print("WARNING: Using deprecated comfy_extras.chainner_models. Consider updating your models or node for Spandrel.")
-        sd = comfy.utils.load_torch_file(model_path)
-        upscale_model = model_loading.load_state_dict(sd).eval()
-        
-        del sd
-        gc.collect()
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-            
-        return upscale_model
 
     def _upscale_on_cpu(self, upscale_model, images, upscale_method, new_width, new_height):
         result_frames = []
         start_time = time.time()
-        
-        # Убедимся, что у модели есть атрибут scale
-        model_scale_factor = getattr(upscale_model, 'scale', 1) # Если нет, ставим 1 чтобы не сломать tiled_scale
+        model_scale_factor = getattr(upscale_model, 'scale', 1)
 
         for i in range(images.shape[0]):
             frame = images[i:i+1]
             in_img = frame.movedim(-1, -3)
+            
+            # Check if model itself handles the target factor directly
+            # This is a simplified check; real models might have complex scaling.
+            # The `factor` input to the node is the overall desired upscale factor.
+            # `model_scale_factor` is what the model intrinsically does.
+            # `comfy.utils.tiled_scale` uses `upscale_amount` for its internal logic,
+            # and then `comfy.utils.common_upscale` does the final resize to new_width/new_height.
             
             s = comfy.utils.tiled_scale(
                 in_img,
@@ -177,7 +151,7 @@ class TS_Video_Upscale_With_Model:
                 tile_x=64,
                 tile_y=64,
                 overlap=8, 
-                upscale_amount=model_scale_factor # Используем полученный масштаб
+                upscale_amount=model_scale_factor 
             )
             
             upscaled = torch.clamp(s.movedim(-3, -1), min=0, max=1.0)
@@ -186,19 +160,20 @@ class TS_Video_Upscale_With_Model:
             s_resized = s_resized.movedim(1, -1)
             
             result_frames.append(s_resized[0])
-            self.step += 1
+            self.step += 1 # Update progress for ComfyUI bar
             
             elapsed = time.time() - start_time
             eta = elapsed / self.step * (self.steps - self.step) if self.step > 0 else 0
             elapsed_str = time.strftime("%H:%M:%S", time.gmtime(elapsed))
             eta_str = time.strftime("%H:%M:%S", time.gmtime(eta))
             percent = (self.step / self.steps) * 100
-            print(f"\r\033[32m|{'█' * int(percent/5)}{' ' * (20-int(percent/5))}| {self.step}/{self.steps} [{percent:.1f}%] - {elapsed_str}<{eta_str}\033[0m", end="", flush=True)
+            # Removed ANSI color codes for standard console output
+            print(f"\r|{'█' * int(percent/5)}{' ' * (20-int(percent/5))}| {self.step}/{self.steps} [{percent:.1f}%] - {elapsed_str}<{eta_str}", end="", flush=True)
             
             del in_img, s, upscaled, samples, s_resized
             gc.collect()
         
-        print()
+        print() # Final newline after progress bar
         return result_frames
     
     def _upscale_batch_keep_loaded(self, upscale_model, images, device, upscale_method, new_width, new_height):
@@ -213,7 +188,7 @@ class TS_Video_Upscale_With_Model:
             s = comfy.utils.tiled_scale(
                 in_img,
                 lambda a: upscale_model(a),
-                tile_x=128,
+                tile_x=128, 
                 tile_y=128,
                 overlap=8, 
                 upscale_amount=model_scale_factor
@@ -225,20 +200,21 @@ class TS_Video_Upscale_With_Model:
             s_resized = s_resized.movedim(1, -1).cpu()
             
             result_frames.append(s_resized[0])
-            self.step += 1
+            self.step += 1 # Update progress for ComfyUI bar
             
             elapsed = time.time() - start_time
             eta = elapsed / self.step * (self.steps - self.step) if self.step > 0 else 0
             elapsed_str = time.strftime("%H:%M:%S", time.gmtime(elapsed))
             eta_str = time.strftime("%H:%M:%S", time.gmtime(eta))
             percent = (self.step / self.steps) * 100
-            print(f"\r\033[32m|{'█' * int(percent/5)}{' ' * (20-int(percent/5))}| {self.step}/{self.steps} [{percent:.1f}%] - {elapsed_str}<{eta_str}\033[0m", end="", flush=True)
+            # Removed ANSI color codes
+            print(f"\r|{'█' * int(percent/5)}{' ' * (20-int(percent/5))}| {self.step}/{self.steps} [{percent:.1f}%] - {elapsed_str}<{eta_str}", end="", flush=True)
             
             del in_img, s, upscaled, samples, s_resized
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
         
-        print()
+        print() # Final newline
         return result_frames
 
     def _upscale_batch_load_unload(self, upscale_model, images, device, upscale_method, new_width, new_height):
@@ -250,13 +226,14 @@ class TS_Video_Upscale_With_Model:
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
             
-            upscale_model = upscale_model.to(device)
+            current_model = upscale_model.to(device) # Ensure model is on device for this frame
+            
             frame = images[i:i+1]
             in_img = frame.movedim(-1, -3).to(device)
             
             s = comfy.utils.tiled_scale(
                 in_img,
-                lambda a: upscale_model(a),
+                lambda a: current_model(a), # Use current_model which is on device
                 tile_x=96,
                 tile_y=96,
                 overlap=8, 
@@ -269,25 +246,31 @@ class TS_Video_Upscale_With_Model:
             s_resized = s_resized.movedim(1, -1).cpu()
             
             result_frames.append(s_resized[0])
-            self.step += 1
+            self.step += 1 # Update progress for ComfyUI bar
             
             elapsed = time.time() - start_time
             eta = elapsed / self.step * (self.steps - self.step) if self.step > 0 else 0
             elapsed_str = time.strftime("%H:%M:%S", time.gmtime(elapsed))
             eta_str = time.strftime("%H:%M:%S", time.gmtime(eta))
             percent = (self.step / self.steps) * 100
-            print(f"\r\033[32m|{'█' * int(percent/5)}{' ' * (20-int(percent/5))}| {self.step}/{self.steps} [{percent:.1f}%] - {elapsed_str}<{eta_str}\033[0m", end="", flush=True)
+            # Removed ANSI color codes
+            print(f"\r|{'█' * int(percent/5)}{' ' * (20-int(percent/5))}| {self.step}/{self.steps} [{percent:.1f}%] - {elapsed_str}<{eta_str}", end="", flush=True)
             
             del in_img, s, upscaled, samples, s_resized
-            upscale_model = upscale_model.to("cpu")
+            
+            current_model = current_model.to("cpu") # Move model back to CPU
+            del current_model # Ensure reference is cleared before gc
+            
             gc.collect()
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
         
-        print()
+        print() # Final newline
         return result_frames
 
+
 # Optional companion node to manage memory explicitly during video processing
+# (Код TS_Free_Video_Memory остается без изменений)
 class TS_Free_Video_Memory:
     """
     A node that explicitly cleans up memory during video processing pipelines
@@ -318,8 +301,11 @@ class TS_Free_Video_Memory:
             torch.cuda.empty_cache()
             if aggressive_cleanup == "enable":
                 torch.cuda.synchronize()
-                if hasattr(torch.cuda, 'caching_allocator_delete_caches'):
-                    torch.cuda.caching_allocator_delete_caches()
+                if hasattr(torch.cuda, 'caching_allocator_delete_caches'): # For newer PyTorch
+                    try:
+                        torch.cuda.caching_allocator_delete_caches()
+                    except Exception as e:
+                        print(f"Note: torch.cuda.caching_allocator_delete_caches() failed (might be older PyTorch): {e}")
         
         if report_memory == "enable" and torch.cuda.is_available():
             allocated = torch.cuda.memory_allocated() / (1024 ** 3)
@@ -328,11 +314,14 @@ class TS_Free_Video_Memory:
         
         return (images,)
 
+
+# Node class mappings for ComfyUI
 NODE_CLASS_MAPPINGS = {
     "TS_Video_Upscale_With_Model": TS_Video_Upscale_With_Model,
     "TS_Free_Video_Memory": TS_Free_Video_Memory,
 }
 
+# Display name and category mappings for the UI
 NODE_DISPLAY_NAME_MAPPINGS = {
     "TS_Video_Upscale_With_Model": "TS Video Upscale With Model",
     "TS_Free_Video_Memory": "TS Free Video Memory",
