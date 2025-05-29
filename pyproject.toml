@@ -3,7 +3,7 @@
 [project]
 name = "comfyui-timesaver"
 description = "ComfyUI nodes from [Timesaver](https://github.com/AlexYez/comfyui-timesaver)."
-version = "3.2"
+version = "3.3"
 license = { file = "LICENSE.txt" }
 dependencies = ["numpy", "requests", "pillow", "torch", "tqdm", "py360convert", "huggingface_hub", "transformers=>4.51", "bitsandbytes", "accelerate", "optimum", "urllib3", "torchaudio", "srt", "opencv-python", "matplotlib", "imageio", "imageio-ffmpeg", "einops", "easydict"]
 
