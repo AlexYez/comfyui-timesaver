@@ -41,7 +41,7 @@ class TS_DownloadFilesNode:
                      "description": "Verify the downloaded file size against the server's Content-Length header.",
                  }),
                 "chunk_size_kb": ("INT", {
-                    "default": 8,
+                    "default": 4096,
                     "min": 1,
                     "max": 65536,
                     "step": 1,
