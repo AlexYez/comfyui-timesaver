@@ -14,7 +14,6 @@ try:
 except ImportError: # Fallback for older requests versions if any, though unquote should be there
     from urllib.parse import unquote as requests_unquote
 
-
 # Local imports (ComfyUI specific)
 # import folder_paths
 
@@ -63,19 +62,23 @@ class TS_DownloadFilesNode:
             }
         }
 
-    def _check_internet_connection(self, timeout=5):
-        try:
-            print("[INFO] TS_DownloadNode: Checking internet connection...")
-            # Using a reliable public DNS server for the check
-            requests.head("https://1.1.1.1", timeout=timeout, allow_redirects=True)
-            print("[INFO] TS_DownloadNode: Internet connection check: OK")
-            return True
-        except (requests.ConnectionError, requests.Timeout):
-            print("[ERROR] TS_DownloadNode: Internet connection check: FAILED. No internet connection detected.")
-            return False
-        except requests.RequestException as e:
-            print(f"[WARN] TS_DownloadNode: Internet connection check: Error ({e}). Assuming connection might be unstable.")
-            return True # Proceed with caution
+    def _check_internet_connection(self, timeout=10, retries=3, delay=2):
+        for attempt in range(retries):
+            try:
+                print(f"[INFO] TS_DownloadNode: Checking internet connection to Hugging Face (attempt {attempt+1}/{retries})...")
+                requests.head("https://huggingface.co", timeout=timeout, allow_redirects=True)
+                print("[INFO] TS_DownloadNode: Internet connection check: OK")
+                return True
+            except (requests.ConnectionError, requests.Timeout) as e:
+                print(f"[WARN] TS_DownloadNode: Connection attempt {attempt+1} failed: {e}")
+                if attempt < retries - 1:
+                    time.sleep(delay)
+                else:
+                    print("[ERROR] TS_DownloadNode: All connection attempts failed. No internet connection detected.")
+                    return False
+            except requests.RequestException as e:
+                print(f"[WARN] TS_DownloadNode: Internet connection check: Error ({e}). Assuming connection might be unstable.")
+                return True
 
     def _create_session_with_retries(self, hf_token=None):
         session = requests.Session()
@@ -105,7 +108,7 @@ class TS_DownloadFilesNode:
             if len(parts) == 2:
                 url, target_path = parts[0].strip(), parts[1].strip()
                 if not url.startswith(('http://', 'https://')):
-                    print(f"[WARN] TS_DownloadNode: Skipping line {i+1}: Invalid URL format '{url}'. Must start with http:// or https://.")
+                    print(f"[WARN] TS_DownloadNode: Skipping line {i+1}: Invalid URL format '{url}'. Must start with http:// rattles or https://.")
                     continue
                 if not target_path:
                     print(f"[WARN] TS_DownloadNode: Skipping line {i+1}: Target directory path is empty for URL '{url}'.")

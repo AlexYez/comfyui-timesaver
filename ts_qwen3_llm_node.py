@@ -93,6 +93,7 @@ class TS_Qwen3_Node:
                 "enable_thinking": ("BOOLEAN", {"default": False}),
                 "precision": (["auto", "fp16", "bf16"], {"default": "auto"}),
                 "unload_after_generation": ("BOOLEAN", {"default": False}),
+                "enable": ("BOOLEAN", {"default": True})  # Изменено с bypass на enable
             }
         }
 
@@ -140,7 +141,6 @@ class TS_Qwen3_Node:
             logger.info("Model and tokenizer unloaded successfully.")
         else:
             logger.info("No model/tokenizer was loaded, or already unloaded. Nothing to do.")
-
 
     def _load_model_and_tokenizer(self, model_name_selected, precision_str):
         logger.info(f"Attempting to load model: {model_name_selected} with precision: {precision_str}")
@@ -191,8 +191,14 @@ class TS_Qwen3_Node:
 
     def process(self, model_name, system, prompt, seed, 
                 max_new_tokens, enable_thinking, precision, 
-                unload_after_generation):
+                unload_after_generation, enable):
         
+        if not enable:
+            logger.info(f"Model processing disabled. Returning original prompt: {prompt[:100]}...")
+            if unload_after_generation:
+                self._unload_model_and_tokenizer(reason="model processing disabled and unload_after_generation enabled")
+            return (prompt.strip(),)
+
         current_top_k = 20
         current_min_p = 0.0
 
@@ -251,7 +257,6 @@ class TS_Qwen3_Node:
                 logger.warning("Temperature is very low for thinking mode, which is discouraged as per Qwen documentation.")
             else:
                 logger.warning("Temperature is very low, generation will be mostly greedy.")
-
 
         generation_config_params = {
             "max_new_tokens": max_new_tokens,
@@ -312,11 +317,10 @@ class TS_Qwen3_Node:
             if unload_after_generation: self._unload_model_and_tokenizer(reason="error and unload_after_generation enabled")
             return (f"ERROR: Generation/Decoding failed - {str(e_gen)}",)
 
-        # Проверяем и удаляем кавычки, если строка ими обрамлена
         if final_content_str.startswith('"') and final_content_str.endswith('"'):
             logger.debug("Removing leading and trailing double quotes from the final string.")
             final_content_str = final_content_str[1:-1]
-        elif final_content_str.startswith("'") and final_content_str.endswith("'"): # Также проверим на одинарные кавычки
+        elif final_content_str.startswith("'") and final_content_str.endswith("'"):
             logger.debug("Removing leading and trailing single quotes from the final string.")
             final_content_str = final_content_str[1:-1]
 
