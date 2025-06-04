@@ -21,6 +21,8 @@ from .ts_video_upscale_node import NODE_CLASS_MAPPINGS as video_upscale_class_ma
                                NODE_DISPLAY_NAME_MAPPINGS as video_upscale_display_map
 from .ts_image_resize_node import NODE_CLASS_MAPPINGS as image_resize_class_map, \
                                NODE_DISPLAY_NAME_MAPPINGS as image_resize_display_map
+from .ts_file_path_node import NODE_CLASS_MAPPINGS as file_path_class_map, \
+                               NODE_DISPLAY_NAME_MAPPINGS as file_path_display_map
 
 
 # Инициализируем общие словари маппингов
@@ -39,6 +41,8 @@ all_mappings = [
     (video_depth_class_map, video_depth_display_map),
     (video_upscale_class_map, video_upscale_display_map),
     (image_resize_class_map, image_resize_display_map),
+    (file_path_class_map, file_path_display_map),
+    
 ]
 
 # Объединяем все маппинги
