@@ -9,8 +9,6 @@ from .ts_equirect_to_cube_node import NODE_CLASS_MAPPINGS as equirect_to_cube_cl
                                       NODE_DISPLAY_NAME_MAPPINGS as equirect_to_cube_display_map
 from .ts_cube_to_equirect_node import NODE_CLASS_MAPPINGS as cube_to_equirect_class_map, \
                                       NODE_DISPLAY_NAME_MAPPINGS as cube_to_equirect_display_map
-from .ts_qwen2_llm_node import NODE_CLASS_MAPPINGS as qwen2_llm_class_map, \
-                               NODE_DISPLAY_NAME_MAPPINGS as qwen2_llm_display_map
 from .ts_qwen3_llm_node import NODE_CLASS_MAPPINGS as qwen3_llm_class_map, \
                                NODE_DISPLAY_NAME_MAPPINGS as qwen3_llm_display_map
 from .ts_whisper_node import NODE_CLASS_MAPPINGS as whisper_class_map, \
@@ -35,7 +33,6 @@ all_mappings = [
     (edl_chapters_class_map, edl_chapters_display_map),
     (equirect_to_cube_class_map, equirect_to_cube_display_map),
     (cube_to_equirect_class_map, cube_to_equirect_display_map),
-    (qwen2_llm_class_map, qwen2_llm_display_map),
     (qwen3_llm_class_map, qwen3_llm_display_map),
     (whisper_class_map, whisper_display_map),
     (video_depth_class_map, video_depth_display_map),
