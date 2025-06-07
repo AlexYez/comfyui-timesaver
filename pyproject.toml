@@ -1,17 +1,38 @@
-#  Edit the following fields to match your project
-
 [project]
 name = "comfyui-timesaver"
 description = "ComfyUI nodes from [Timesaver](https://github.com/AlexYez/comfyui-timesaver)."
-version = "3.9"
+version = "4.0"
 license = { file = "LICENSE.txt" }
-dependencies = ["numpy", "requests", "pillow", "torch", "tqdm", "py360convert", "huggingface_hub", "transformers=>4.51", "bitsandbytes", "accelerate", "optimum", "urllib3", "torchaudio", "srt", "opencv-python", "matplotlib", "imageio", "imageio-ffmpeg", "einops", "easydict"]
+dependencies = [
+    "accelerate>=0.21.0",
+    "bitsandbytes>=0.40.0",
+    "easydict>=1.10.0",
+    "einops>=0.4.0",
+    "huggingface_hub>=0.20.0",
+    "imageio>=2.20.0",
+    "imageio-ffmpeg>=0.4.0",
+    "matplotlib>=3.4.0",
+    "numpy>=1.21.0",
+    "opencv-python>=4.5.0",
+    "optimum>=1.9.0",
+    "pillow>=9.0.0",
+    "py360convert>=0.1.0",
+    "requests>=2.28.0",
+    "srt>=3.5.0",
+    "torch>=2.0.0",
+    "torchaudio>=2.0.0",
+    "transformers>=4.51.0",
+    "tqdm>=4.65.0",
+    "urllib3>=1.26.0",
+]
 
 [project.urls]
 Repository = "https://github.com/AlexYez/comfyui-timesaver"
-#  Used by Comfy Registry https://comfyregistry.org
 
 [tool.comfy]
 PublisherId = "timesaver"
 DisplayName = "ComfyUI Timesaver Nodes"
 Icon = ""
+
+# Note: VideoDepthAnything is not available on PyPI. Install manually from its repository.
+# Example: https://github.com/DepthAnything/DepthAnything-V2

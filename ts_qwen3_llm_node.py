@@ -4,6 +4,8 @@ import os
 import logging
 import comfy.model_management
 import folder_paths
+from huggingface_hub import snapshot_download
+import shutil
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -93,7 +95,8 @@ class TS_Qwen3_Node:
                 "enable_thinking": ("BOOLEAN", {"default": False}),
                 "precision": (["auto", "fp16", "bf16"], {"default": "auto"}),
                 "unload_after_generation": ("BOOLEAN", {"default": False}),
-                "enable": ("BOOLEAN", {"default": True})  # Изменено с bypass на enable
+                "enable": ("BOOLEAN", {"default": True}),
+                "force_redownload": ("BOOLEAN", {"default": False})  # Новый параметр
             }
         }
 
@@ -142,8 +145,39 @@ class TS_Qwen3_Node:
         else:
             logger.info("No model/tokenizer was loaded, or already unloaded. Nothing to do.")
 
-    def _load_model_and_tokenizer(self, model_name_selected, precision_str):
-        logger.info(f"Attempting to load model: {model_name_selected} with precision: {precision_str}")
+    def _check_model_integrity(self, local_model_path):
+        """Проверяет целостность локальных файлов модели."""
+        logger.debug(f"Checking model integrity at {local_model_path}")
+        required_files = [
+            "config.json",
+            "tokenizer_config.json",
+            "model.safetensors",  # или pytorch_model.bin для некоторых моделей
+        ]
+        optional_files = ["pytorch_model.bin"]
+        
+        for file_name in required_files:
+            file_path = os.path.join(local_model_path, file_name)
+            if not os.path.exists(file_path) or os.path.getsize(file_path) == 0:
+                logger.warning(f"Required file {file_name} is missing or empty at {local_model_path}")
+                return False
+        
+        # Проверяем, есть ли хотя бы один из файлов модели (safetensors или pytorch_model.bin)
+        model_files = [f for f in optional_files + ["model.safetensors"] if os.path.exists(os.path.join(local_model_path, f))]
+        if not model_files:
+            logger.warning(f"No model weight files (model.safetensors or pytorch_model.bin) found at {local_model_path}")
+            return False
+
+        # Проверяем наличие временных файлов (.part), указывающих на незавершенную загрузку
+        for file_name in os.listdir(local_model_path):
+            if file_name.endswith(".part"):
+                logger.warning(f"Found temporary file {file_name}, indicating incomplete download at {local_model_path}")
+                return False
+        
+        logger.debug(f"Model integrity check passed for {local_model_path}")
+        return True
+
+    def _load_model_and_tokenizer(self, model_name_selected, precision_str, force_redownload):
+        logger.info(f"Attempting to load model: {model_name_selected} with precision: {precision_str}, force_redownload: {force_redownload}")
         
         comfy_base_models_dir = folder_paths.models_dir 
         llm_subfolder = "LLM"
@@ -156,13 +190,35 @@ class TS_Qwen3_Node:
         torch_dtype = self._get_torch_dtype(precision_str)
         attn_implementation = "sdpa"
 
+        # Если включен force_redownload, удаляем существующую папку модели
+        if force_redownload and os.path.exists(local_model_path):
+            logger.info(f"Force redownload enabled. Deleting existing model directory at {local_model_path}")
+            try:
+                shutil.rmtree(local_model_path)
+                logger.info(f"Model directory {local_model_path} deleted successfully.")
+            except Exception as e:
+                logger.error(f"Failed to delete model directory {local_model_path}: {e}", exc_info=True)
+                raise
+
+        # Проверяем целостность модели, если папка существует
+        force_download = False
+        if os.path.exists(local_model_path):
+            if not self._check_model_integrity(local_model_path):
+                logger.info(f"Model at {local_model_path} is incomplete or corrupted. Forcing re-download.")
+                force_download = True
+        else:
+            logger.info(f"Model directory {local_model_path} does not exist. Initiating download.")
+
         try:
-            if not os.path.exists(os.path.join(local_model_path, "config.json")):
-                logger.info(f"Model not found locally at {local_model_path}. Downloading from Hugging Face Hub...")
-                from huggingface_hub import snapshot_download
-                snapshot_download(repo_id=model_name_selected,
-                                  local_dir=local_model_path,
-                                  local_dir_use_symlinks=False)
+            if force_download or not os.path.exists(local_model_path):
+                logger.info(f"Downloading model {model_name_selected} from Hugging Face Hub to {local_model_path}...")
+                snapshot_download(
+                    repo_id=model_name_selected,
+                    local_dir=local_model_path,
+                    local_dir_use_symlinks=False,
+                    resume_download=True,
+                    ignore_patterns=["*.part"],
+                )
                 logger.info(f"Model {model_name_selected} downloaded to {local_model_path}")
             else:
                 logger.info(f"Found model {model_name_selected} locally at {local_model_path}")
@@ -191,7 +247,7 @@ class TS_Qwen3_Node:
 
     def process(self, model_name, system, prompt, seed, 
                 max_new_tokens, enable_thinking, precision, 
-                unload_after_generation, enable):
+                unload_after_generation, enable, force_redownload):
         
         if not enable:
             logger.info(f"Model processing disabled. Returning original prompt: {prompt[:100]}...")
@@ -211,7 +267,7 @@ class TS_Qwen3_Node:
             current_top_p = 0.8
             logger.info("Enable Thinking OFF: Using Temperature=0.7, TopP=0.8, TopK=20, MinP=0.0")
 
-        logger.info(f"Processing request for model: {model_name}, precision: {precision}")
+        logger.info(f"Processing request for model: {model_name}, precision: {precision}, force_redownload: {force_redownload}")
         logger.info(f"System Prompt (first 100 chars): {system[:100] if system else 'N/A'}...")
         logger.info(f"User Prompt (first 100 chars): {prompt[:100]}...")
         logger.info(f"Fixed generation params: seed={seed}, max_tokens={max_new_tokens}, unload_after_gen={unload_after_generation}")
@@ -226,7 +282,7 @@ class TS_Qwen3_Node:
             self._unload_model_and_tokenizer(reason="parameters changed or model not initially loaded")
             
             try:
-                self._load_model_and_tokenizer(model_name, precision)
+                self._load_model_and_tokenizer(model_name, precision, force_redownload)
             except Exception as e:
                 logger.error(f"Failed to load model or tokenizer: {e}", exc_info=True)
                 return (f"ERROR: Could not load model - {str(e)}",)
