@@ -21,7 +21,8 @@ from .ts_image_resize_node import NODE_CLASS_MAPPINGS as image_resize_class_map,
                                NODE_DISPLAY_NAME_MAPPINGS as image_resize_display_map
 from .ts_file_path_node import NODE_CLASS_MAPPINGS as file_path_class_map, \
                                NODE_DISPLAY_NAME_MAPPINGS as file_path_display_map
-
+from .ts_marian_translate_node import NODE_CLASS_MAPPINGS as marian_translate_class_map, \
+                               NODE_DISPLAY_NAME_MAPPINGS as marian_translate_display_map
 
 # Инициализируем общие словари маппингов
 NODE_CLASS_MAPPINGS = {}
@@ -39,6 +40,7 @@ all_mappings = [
     (video_upscale_class_map, video_upscale_display_map),
     (image_resize_class_map, image_resize_display_map),
     (file_path_class_map, file_path_display_map),
+    (marian_translate_class_map, marian_translate_display_map),
     
 ]
 
@@ -47,17 +49,5 @@ for class_map, display_map in all_mappings:
     NODE_CLASS_MAPPINGS.update(class_map)
     NODE_DISPLAY_NAME_MAPPINGS.update(display_map)
 
-# Отладочный вывод при загрузке пакета
-print("---------------------------------------------------------------------------")
-print("TS_CustomNodes: Initializing...")
-print("  Registered NODE_CLASS_MAPPINGS:")
-for name, node_class_obj in NODE_CLASS_MAPPINGS.items():
-    class_name_str = node_class_obj.__name__ if hasattr(node_class_obj, '__name__') else str(node_class_obj)
-    print(f"    - \"{name}\": {class_name_str}")
-print("  Registered NODE_DISPLAY_NAME_MAPPINGS:")
-for name, display_name in NODE_DISPLAY_NAME_MAPPINGS.items():
-    print(f"    - \"{name}\": \"{display_name}\"")
-print("TS_CustomNodes: Initialization complete.")
-print("---------------------------------------------------------------------------")
 
 __all__ = ['NODE_CLASS_MAPPINGS', 'NODE_DISPLAY_NAME_MAPPINGS']
