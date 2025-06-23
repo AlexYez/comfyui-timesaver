@@ -298,5 +298,3 @@ class TSWhisper:
 
 NODE_CLASS_MAPPINGS = { "TSWhisper": TSWhisper }
 NODE_DISPLAY_NAME_MAPPINGS = { "TSWhisper": "TS Whisper" }
-
-logger.info("Нода TS Whisper обновлена (удален flash_attn, код очищен).")

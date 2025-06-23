@@ -1,6 +1,8 @@
 import os
 import torch
 import gc
+import html
+import re
 from transformers import MarianMTModel, MarianTokenizer
 from comfy.sd import load_checkpoint_guess_config
 import folder_paths
@@ -11,12 +13,12 @@ class TS_MarianTranslator:
         self.tokenizer = None
         self.current_model_name = None
         self.supported_languages = {
-            "ru-en": "Helsinki-NLP/opus-mt-ru-en",  # Русский → Английский
-            "en-ru": "Helsinki-NLP/opus-mt-en-ru",  # Английский → Русский
-            "de-en": "Helsinki-NLP/opus-mt-de-en",  # Немецкий → Английский
-            "en-de": "Helsinki-NLP/opus-mt-en-de",  # Английский → Немецкий
-            "fr-en": "Helsinki-NLP/opus-mt-fr-en",  # Французский → Английский
-            "en-fr": "Helsinki-NLP/opus-mt-en-fr",  # Английский → Французский
+            "ru-en": "Helsinki-NLP/opus-mt-ru-en",
+            "en-ru": "Helsinki-NLP/opus-mt-en-ru",
+            "de-en": "Helsinki-NLP/opus-mt-de-en",
+            "en-de": "Helsinki-NLP/opus-mt-en-de",
+            "fr-en": "Helsinki-NLP/opus-mt-fr-en",
+            "en-fr": "Helsinki-NLP/opus-mt-en-fr",
         }
         self.model_dir = os.path.join(folder_paths.models_dir, "MarianMT")
 
@@ -24,7 +26,7 @@ class TS_MarianTranslator:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "text": ("STRING", {"multiline": True, "default": "Привет, как дела?"}),
+                "text": ("STRING", {"multiline": True, "default": ""}),
                 "enabled": ("BOOLEAN", {"default": True, "label_on": "Enabled", "label_off": "Bypass"}),
                 "language_pair": (list(cls().supported_languages.keys()), {"default": "ru-en"}),
                 "unload_after_use": ("BOOLEAN", {"default": False, "label_on": "Yes", "label_off": "No"}),
@@ -67,6 +69,25 @@ class TS_MarianTranslator:
         gc.collect()
         print("[TS_MarianTranslator] Model unloaded from memory")
 
+    def clean_text(self, text):
+        # 1. Декодируем HTML-сущности
+        text = html.unescape(text)
+        
+        # 2. Исправляем специфические проблемы с апострофами
+        text = text.replace("&apos;", "'")
+        text = text.replace("&#39;", "'")
+        
+        # 3. Убираем пробелы вокруг апострофов
+        text = re.sub(r"\s*'\s*", "'", text)
+        
+        # 4. Исправляем притяжательные формы
+        text = re.sub(r"\b(\w+)\s+'s\b", r"\1's", text)
+        
+        # 5. Исправляем сокращения
+        text = re.sub(r"(\w)\s*'\s*(\w)", r"\1'\2", text)
+        
+        return text
+
     def translate(self, text, enabled=True, language_pair="ru-en", unload_after_use=False):
         try:
             if not enabled:
@@ -78,7 +99,7 @@ class TS_MarianTranslator:
 
             model_name = self.supported_languages[language_pair]
             if self.current_model_name != model_name:
-                self.unload_model()  # Выгружаем предыдущую модель перед загрузкой новой
+                self.unload_model()
                 self.model, self.tokenizer = self.load_model(model_name)
                 self.current_model_name = model_name
 
@@ -87,6 +108,9 @@ class TS_MarianTranslator:
                 outputs = self.model.generate(**inputs)
             translated_text = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
 
+            # Применяем очистку текста
+            translated_text = self.clean_text(translated_text)
+
             if unload_after_use:
                 self.unload_model()
 
@@ -94,7 +118,7 @@ class TS_MarianTranslator:
         except Exception as e:
             print(f"[TS_MarianTranslator] Error: {str(e)}")
             self.unload_model()
-            return (text,)  # В случае ошибки возвращаем исходный текст
+            return (text,)
 
 NODE_CLASS_MAPPINGS = {
     "TS_MarianTranslator": TS_MarianTranslator,

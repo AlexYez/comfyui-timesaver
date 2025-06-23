@@ -23,6 +23,10 @@ from .ts_file_path_node import NODE_CLASS_MAPPINGS as file_path_class_map, \
                                NODE_DISPLAY_NAME_MAPPINGS as file_path_display_map
 from .ts_marian_translate_node import NODE_CLASS_MAPPINGS as marian_translate_class_map, \
                                NODE_DISPLAY_NAME_MAPPINGS as marian_translate_display_map
+from .ts_deflicker_node import NODE_CLASS_MAPPINGS as deflicker_class_map, \
+                               NODE_DISPLAY_NAME_MAPPINGS as deflicker_display_map
+from .ts_crop_to_mask_node import NODE_CLASS_MAPPINGS as crop_to_mask_class_map, \
+                               NODE_DISPLAY_NAME_MAPPINGS as crop_to_mask_display_map                                
 
 # Инициализируем общие словари маппингов
 NODE_CLASS_MAPPINGS = {}
@@ -41,6 +45,8 @@ all_mappings = [
     (image_resize_class_map, image_resize_display_map),
     (file_path_class_map, file_path_display_map),
     (marian_translate_class_map, marian_translate_display_map),
+    (deflicker_class_map, deflicker_display_map),
+    (crop_to_mask_class_map, crop_to_mask_display_map),
     
 ]
 
