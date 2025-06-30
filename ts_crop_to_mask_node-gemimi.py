@@ -119,7 +119,7 @@ class TSCropToMask:
                 "max_resolution": ("INT", {"default": 720, "min": 320, "max": 2048, "step": 1, "description": "Max resolution for the smaller side of the crop."}),
                 "fixed_mask_frame_index": ("INT", {"default": 0, "min": 0, "max": 9999, "step": 1, "description": "If > 0, use mask from this 1-indexed frame for all crops. (Overrides interpolation)"}),
                 "interpolation_window_size": ("INT", {"default": 0, "min": 0, "max": 100, "step": 1, "description": "Number of frames for interpolation (0 for none). Affects frames within the batch."}),
-                "force_gpu": ("BOOLEAN", {"default": True, "description": "If true, force processing on GPU if available."}),
+                "force_gpu": ("BOOLEAN", {"default": False, "description": "If true, force processing on GPU if available."}),
             }
         }
     
@@ -405,7 +405,7 @@ class TSRestoreFromCrop:
                 "crop_data": ("CROP_DATA",),
                 "blur": ("INT", {"default": 64, "min": 0, "max": 256, "step": 1}),
                 "blur_type": (["Gaussian", "Box"], {"default": "Gaussian"}),
-                "force_gpu": ("BOOLEAN", {"default": True, "description": "If true, force processing on GPU if available."}),
+                "force_gpu": ("BOOLEAN", {"default": False, "description": "If true, force processing on GPU if available."}),
             }
         }
     

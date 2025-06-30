@@ -27,6 +27,8 @@ tqdm>=4.65.0
 # Utilities
 easydict>=1.10.0  # Optional, for easier configuration handling
 
+kornia
+
 # Note: For torch, you may need to install a specific version based on your hardware and CUDA setup.
 # Example: pip install torch==2.0.0+cu118 torchaudio==2.0.0+cu118 -f https://download.pytorch.org/whl/torch_stable.html
 

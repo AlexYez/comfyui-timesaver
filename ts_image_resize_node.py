@@ -1,5 +1,7 @@
 import torch
 import math
+import numpy as np
+from PIL import Image
 
 try:
     import torchvision.transforms.functional as TF
@@ -12,6 +14,10 @@ class TS_ImageResize:
     def __init__(self):
         pass
 
+    # В PIL.Image.LANCZOS переименовали в Resampling.LANCZOS в Pillow 10.0.0
+    # Проверяем наличие нового имени и используем его, если возможно, для совместимости.
+    LANCZOS = Image.Resampling.LANCZOS if hasattr(Image, 'Resampling') else Image.LANCZOS
+    
     UPSCALE_METHODS = ["nearest-exact", "bilinear", "bicubic", "area", "lanczos"]
 
     RETURN_TYPES = ("IMAGE", "INT", "INT",)
@@ -24,10 +30,10 @@ class TS_ImageResize:
         return {
             "required": {
                 "pixels": ("IMAGE",),
-                "target_width": ("INT", {"default": 0, "min": 0, "max": 8192, "step": 8}), # Изменен step
-                "target_height": ("INT", {"default": 0, "min": 0, "max": 8192, "step": 8}), # Изменен step
-                "smaller_side": ("INT", {"default": 0, "min": 0, "max": 8192, "step": 8}), # Изменен step
-                "larger_side": ("INT", {"default": 0, "min": 0, "max": 8192, "step": 8}),  # Изменен step
+                "target_width": ("INT", {"default": 0, "min": 0, "max": 8192, "step": 8}),
+                "target_height": ("INT", {"default": 0, "min": 0, "max": 8192, "step": 8}),
+                "smaller_side": ("INT", {"default": 0, "min": 0, "max": 8192, "step": 8}),
+                "larger_side": ("INT", {"default": 0, "min": 0, "max": 8192, "step": 8}),
                 "scale_factor": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 10.0, "step": 0.01}),
                 "keep_proportion": ("BOOLEAN", {"default": True}),
                 "upscale_method": (s.UPSCALE_METHODS, {"default": "bicubic"}),
@@ -36,44 +42,44 @@ class TS_ImageResize:
         }
 
     @classmethod
-    def VALIDATE_INPUTS(s, target_width, target_height, smaller_side, larger_side, scale_factor, upscale_method, divisible_by, **_):
-        if upscale_method == "lanczos" and not TORCHVISION_AVAILABLE:
-            return "Lanczos upscale_method requires torchvision to be installed."
-        
-        if divisible_by is not None and divisible_by < 1: # Добавлена проверка divisible_by на None
-            return "divisible_by must be 1 or greater."
-
-        sf_active = scale_factor is not None and scale_factor > 0.0
-        tw_active = target_width is not None and target_width > 0
-        th_active = target_height is not None and target_height > 0
-        ss_active = smaller_side is not None and smaller_side > 0
-        ls_active = larger_side is not None and larger_side > 0
-        
-        active_method_count = 0
-        if sf_active: active_method_count +=1
-        if tw_active or th_active: active_method_count +=1
-        if ss_active or ls_active: active_method_count +=1
-
-        if active_method_count > 1:
-            return "More than one sizing method (scale_factor, target_width/height, smaller/larger_side) is active. Please use only one."
-            
+    def VALIDATE_INPUTS(s, target_width, target_height, smaller_side, larger_side, scale_factor, upscale_method, **_):
+        # Упрощенная валидация, основная логика в самой функции
         return True
 
+    def _pil_resize(self, image_tensor_nchw, size_wh):
+        target_w, target_h = size_wh
+        pil_images = []
+        for i in range(image_tensor_nchw.shape[0]):
+            # Конвертируем тензор в PIL Image
+            img_tensor = image_tensor_nchw[i]
+            img_np = img_tensor.permute(1, 2, 0).cpu().numpy() * 255.0
+            pil_image = Image.fromarray(np.clip(img_np, 0, 255).astype(np.uint8))
+            
+            # Изменяем размер с помощью LANCZOS
+            resized_pil = pil_image.resize((target_w, target_h), self.LANCZOS)
+            pil_images.append(resized_pil)
+            
+        # Конвертируем обратно в тензор
+        output_tensors = []
+        for pil_img in pil_images:
+            img_np = np.array(pil_img).astype(np.float32) / 255.0
+            output_tensors.append(torch.from_numpy(img_np).permute(2, 0, 1))
+            
+        return torch.stack(output_tensors, dim=0).to(image_tensor_nchw.device)
+
     def _interp_image(self, image_tensor_nchw, size_wh, method):
-        target_h, target_w = size_wh[1], size_wh[0]
+        target_w, target_h = size_wh
+        
         if method == "lanczos":
-            if not TORCHVISION_AVAILABLE:
-                raise ImportError("torchvision is required for Lanczos resampling.")
-            return TF.resize(image_tensor_nchw, [target_h, target_w], interpolation=InterpolationMode.LANCZOS, antialias=True)
+            return self._pil_resize(image_tensor_nchw, (target_w, target_h))
         else:
             interp_kwargs = {"mode": method}
-            if method in ["bilinear", "bicubic"]:
+            if TORCHVISION_AVAILABLE and method in ["bilinear", "bicubic"]:
                 interp_kwargs["antialias"] = True
             return torch.nn.functional.interpolate(image_tensor_nchw, size=(target_h, target_w), **interp_kwargs)
 
     def resize(self, pixels, target_width, target_height, smaller_side, larger_side, scale_factor, keep_proportion, upscale_method, divisible_by):
         _B, original_H, original_W, _C = pixels.shape
-        device = pixels.device
         
         ideal_w, ideal_h = float(original_W), float(original_H)
 
@@ -96,11 +102,11 @@ class TS_ImageResize:
         elif chosen_method == "target_dims":
             if keep_proportion:
                 if _target_width > 0 and _target_height > 0:
-                    ratio_orig = ideal_w / ideal_h if ideal_h != 0 else float('inf') # Защита от деления на 0
+                    ratio_orig = ideal_w / ideal_h if ideal_h != 0 else float('inf')
                     ratio_target = float(_target_width) / float(_target_height) if _target_height != 0 else float('inf')
-                    if ideal_h == 0 and _target_height == 0: # Обе высоты 0, берем ширину
+                    if ideal_h == 0 and _target_height == 0:
                          ideal_w = float(_target_width)
-                         ideal_h = 0 # или original_H если _target_width был единственным
+                         ideal_h = 0
                     elif ratio_orig > ratio_target: 
                         ideal_w = float(_target_width)
                         ideal_h = ideal_w / ratio_orig if ratio_orig != 0 else 0
@@ -135,20 +141,13 @@ class TS_ImageResize:
         ideal_w = max(1.0, ideal_w)
         ideal_h = max(1.0, ideal_h)
 
-        # --- Коррекция идеальных размеров до кратности divisible_by (округление ВНИЗ) ---
-        # Это будут финальные размеры выходного изображения.
         if _divisible_by > 1:
-            # Округляем каждую идеальную размерность вниз до ближайшего кратного _divisible_by
-            # Это обеспечивает, что мы не создаем пиксели "из ничего" для достижения кратности,
-            # а работаем в пределах контента, определенного ideal_w/h.
             final_target_w_div = math.floor(ideal_w / _divisible_by) * _divisible_by
             final_target_h_div = math.floor(ideal_h / _divisible_by) * _divisible_by
-
-            # Если округление дало 0 (например, ideal_w < _divisible_by), ставим _divisible_by (минимально возможное кратное)
             final_target_w_div = max(_divisible_by, final_target_w_div)
             final_target_h_div = max(_divisible_by, final_target_h_div)
         else:
-            final_target_w_div = round(ideal_w) # Обычное округление, если кратность не нужна
+            final_target_w_div = round(ideal_w)
             final_target_h_div = round(ideal_h)
         
         final_target_w_div = max(1, int(final_target_w_div))
@@ -164,14 +163,13 @@ class TS_ImageResize:
             scale_to_h = float(final_target_h_div)
 
             if src_ratio > target_canvas_ratio:
-                scale_to_h = final_target_h_div # Масштабируем по высоте холста
-                scale_to_w = round(scale_to_h * src_ratio) # Ширина будет больше или равна целевой
-                if scale_to_w < final_target_w_div : scale_to_w = final_target_w_div # Гарантируем покрытие
+                scale_to_h = final_target_h_div
+                scale_to_w = round(scale_to_h * src_ratio)
+                if scale_to_w < final_target_w_div : scale_to_w = final_target_w_div
             elif src_ratio < target_canvas_ratio:
-                scale_to_w = final_target_w_div # Масштабируем по ширине холста
-                scale_to_h = round(scale_to_w / src_ratio) if src_ratio != 0 else final_target_h_div # Высота будет больше или равна целевой
-                if scale_to_h < final_target_h_div : scale_to_h = final_target_h_div # Гарантируем покрытие
-            # Если пропорции совпали, scale_to_w/h уже равны final_target_w/h_div
+                scale_to_w = final_target_w_div
+                scale_to_h = round(scale_to_w / src_ratio) if src_ratio != 0 else final_target_h_div
+                if scale_to_h < final_target_h_div : scale_to_h = final_target_h_div
 
             scale_to_w = max(1, int(round(scale_to_w)))
             scale_to_h = max(1, int(round(scale_to_h)))
