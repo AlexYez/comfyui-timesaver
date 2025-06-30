@@ -1,7 +1,7 @@
 [project]
 name = "comfyui-timesaver"
 description = "ComfyUI nodes from [Timesaver](https://github.com/AlexYez/comfyui-timesaver)."
-version = "4.3"
+version = "4.4"
 license = { file = "LICENSE.txt" }
 dependencies = [
     "accelerate>=0.21.0",
