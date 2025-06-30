@@ -1,5 +1,3 @@
-# __init__.py for TS_CustomNodes package
-
 # Импортируем маппинги из каждого файла ноды
 from .ts_downloader_node import NODE_CLASS_MAPPINGS as downloader_class_map, \
                                 NODE_DISPLAY_NAME_MAPPINGS as downloader_display_map
@@ -26,7 +24,13 @@ from .ts_marian_translate_node import NODE_CLASS_MAPPINGS as marian_translate_cl
 from .ts_deflicker_node import NODE_CLASS_MAPPINGS as deflicker_class_map, \
                                NODE_DISPLAY_NAME_MAPPINGS as deflicker_display_map
 from .ts_crop_to_mask_node import NODE_CLASS_MAPPINGS as crop_to_mask_class_map, \
-                               NODE_DISPLAY_NAME_MAPPINGS as crop_to_mask_display_map                                
+                               NODE_DISPLAY_NAME_MAPPINGS as crop_to_mask_display_map   
+from .ts_film_grain_node import NODE_CLASS_MAPPINGS as film_grain_class_map, \
+                               NODE_DISPLAY_NAME_MAPPINGS as film_grain_display_map 
+from .ts_film_emulation_node import NODE_CLASS_MAPPINGS as film_emulation_class_map, \
+                               NODE_DISPLAY_NAME_MAPPINGS as film_emulation_display_map                             
+
+
 
 # Инициализируем общие словари маппингов
 NODE_CLASS_MAPPINGS = {}
@@ -47,6 +51,8 @@ all_mappings = [
     (marian_translate_class_map, marian_translate_display_map),
     (deflicker_class_map, deflicker_display_map),
     (crop_to_mask_class_map, crop_to_mask_display_map),
+    (film_grain_class_map, film_grain_display_map),
+    (film_emulation_class_map, film_emulation_display_map)
     
 ]
 
