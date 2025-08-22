@@ -79,7 +79,7 @@ class TS_Qwen3_Node:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "model_name": (["Qwen/Qwen3-1.7B", "Qwen/Qwen3-4B", "Qwen/Qwen3-8B", "Qwen/Qwen3-14B"], {
+                "model_name": (["Qwen/Qwen3-1.7B", "Qwen/Qwen3-4B", "Qwen/Qwen3-8B", "Qwen/Qwen3-14B", "huihui-ai/Huihui-Qwen3-1.7B-abliterated-v2", "huihui-ai/Huihui-Qwen3-4B-Instruct-2507-abliterated"], {
                     "default": "Qwen/Qwen3-1.7B"
                 }),
                 "system": ("STRING", {
@@ -96,7 +96,8 @@ class TS_Qwen3_Node:
                 "precision": (["auto", "fp16", "bf16"], {"default": "auto"}),
                 "unload_after_generation": ("BOOLEAN", {"default": False}),
                 "enable": ("BOOLEAN", {"default": True}),
-                "force_redownload": ("BOOLEAN", {"default": False})  # Новый параметр
+                "force_redownload": ("BOOLEAN", {"default": False}),
+                "hf_token": ("STRING", {"multiline": False, "default": ""}) # <<< НОВОЕ ПОЛЕ ДЛЯ ТОКЕНА
             }
         }
 
@@ -151,9 +152,8 @@ class TS_Qwen3_Node:
         required_files = [
             "config.json",
             "tokenizer_config.json",
-            "model.safetensors",  # или pytorch_model.bin для некоторых моделей
         ]
-        optional_files = ["pytorch_model.bin"]
+        model_weight_files = ["model.safetensors"] + [f"model-0000{i}-of-0000{j}.safetensors" for i in range(1, 10) for j in range(1,10)] # Check for split files
         
         for file_name in required_files:
             file_path = os.path.join(local_model_path, file_name)
@@ -161,13 +161,11 @@ class TS_Qwen3_Node:
                 logger.warning(f"Required file {file_name} is missing or empty at {local_model_path}")
                 return False
         
-        # Проверяем, есть ли хотя бы один из файлов модели (safetensors или pytorch_model.bin)
-        model_files = [f for f in optional_files + ["model.safetensors"] if os.path.exists(os.path.join(local_model_path, f))]
-        if not model_files:
-            logger.warning(f"No model weight files (model.safetensors or pytorch_model.bin) found at {local_model_path}")
-            return False
+        found_weights = any(os.path.exists(os.path.join(local_model_path, f)) for f in model_weight_files)
+        if not found_weights and not os.path.exists(os.path.join(local_model_path, "pytorch_model.bin")):
+             logger.warning(f"No model weight files (like model.safetensors or pytorch_model.bin) found at {local_model_path}")
+             return False
 
-        # Проверяем наличие временных файлов (.part), указывающих на незавершенную загрузку
         for file_name in os.listdir(local_model_path):
             if file_name.endswith(".part"):
                 logger.warning(f"Found temporary file {file_name}, indicating incomplete download at {local_model_path}")
@@ -176,7 +174,7 @@ class TS_Qwen3_Node:
         logger.debug(f"Model integrity check passed for {local_model_path}")
         return True
 
-    def _load_model_and_tokenizer(self, model_name_selected, precision_str, force_redownload):
+    def _load_model_and_tokenizer(self, model_name_selected, precision_str, force_redownload, hf_token): # <<< ДОБАВЛЕН hf_token
         logger.info(f"Attempting to load model: {model_name_selected} with precision: {precision_str}, force_redownload: {force_redownload}")
         
         comfy_base_models_dir = folder_paths.models_dir 
@@ -189,8 +187,16 @@ class TS_Qwen3_Node:
         
         torch_dtype = self._get_torch_dtype(precision_str)
         attn_implementation = "sdpa"
+        
+        # <<< НАЧАЛО БЛОКА ИЗМЕНЕНИЙ ДЛЯ ТОКЕНА
+        # Подготовка токена для использования в API
+        token_arg = hf_token if hf_token and hf_token.strip() else None
+        if token_arg:
+            logger.info("Using provided Hugging Face token for download and model loading.")
+        else:
+            logger.info("No Hugging Face token provided. Using default authentication (if available).")
+        # <<< КОНЕЦ БЛОКА ИЗМЕНЕНИЙ ДЛЯ ТОКЕНА
 
-        # Если включен force_redownload, удаляем существующую папку модели
         if force_redownload and os.path.exists(local_model_path):
             logger.info(f"Force redownload enabled. Deleting existing model directory at {local_model_path}")
             try:
@@ -200,7 +206,6 @@ class TS_Qwen3_Node:
                 logger.error(f"Failed to delete model directory {local_model_path}: {e}", exc_info=True)
                 raise
 
-        # Проверяем целостность модели, если папка существует
         force_download = False
         if os.path.exists(local_model_path):
             if not self._check_model_integrity(local_model_path):
@@ -218,13 +223,14 @@ class TS_Qwen3_Node:
                     local_dir_use_symlinks=False,
                     resume_download=True,
                     ignore_patterns=["*.part"],
+                    token=token_arg # <<< ИСПОЛЬЗОВАНИЕ ТОКЕНА
                 )
                 logger.info(f"Model {model_name_selected} downloaded to {local_model_path}")
             else:
                 logger.info(f"Found model {model_name_selected} locally at {local_model_path}")
 
             logger.info(f"Loading tokenizer for {model_name_selected} from {local_model_path}")
-            self.loaded_tokenizer = AutoTokenizer.from_pretrained(local_model_path)
+            self.loaded_tokenizer = AutoTokenizer.from_pretrained(local_model_path, token=token_arg) # <<< ИСПОЛЬЗОВАНИЕ ТОКЕНА
             logger.info("Tokenizer loaded successfully.")
 
             logger.info(f"Loading model {model_name_selected} from {local_model_path} with dtype: {str(torch_dtype)} and attn_implementation: {attn_implementation}")
@@ -233,7 +239,8 @@ class TS_Qwen3_Node:
                 torch_dtype=torch_dtype,
                 device_map="auto",
                 attn_implementation=attn_implementation,
-                trust_remote_code=True
+                trust_remote_code=True,
+                token=token_arg # <<< ИСПОЛЬЗОВАНИЕ ТОКЕНА
             )
             
             logger.info(f"Model {model_name_selected} loaded. Device map: {self.loaded_model.hf_device_map}, Model device: {self.loaded_model.device}, Effective Dtype: {self.loaded_model.dtype}")
@@ -247,7 +254,7 @@ class TS_Qwen3_Node:
 
     def process(self, model_name, system, prompt, seed, 
                 max_new_tokens, enable_thinking, precision, 
-                unload_after_generation, enable, force_redownload):
+                unload_after_generation, enable, force_redownload, hf_token): # <<< ДОБАВЛЕН hf_token
         
         if not enable:
             logger.info(f"Model processing disabled. Returning original prompt: {prompt[:100]}...")
@@ -282,7 +289,8 @@ class TS_Qwen3_Node:
             self._unload_model_and_tokenizer(reason="parameters changed or model not initially loaded")
             
             try:
-                self._load_model_and_tokenizer(model_name, precision, force_redownload)
+                # <<< ПЕРЕДАЧА ТОКЕНА В МЕТОД ЗАГРУЗКИ
+                self._load_model_and_tokenizer(model_name, precision, force_redownload, hf_token)
             except Exception as e:
                 logger.error(f"Failed to load model or tokenizer: {e}", exc_info=True)
                 return (f"ERROR: Could not load model - {str(e)}",)
