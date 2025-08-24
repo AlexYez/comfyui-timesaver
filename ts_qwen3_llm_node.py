@@ -1,11 +1,11 @@
 import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer, GenerationConfig
+from transformers import AutoModelForCausalLM, AutoTokenizer
 import os
 import logging
 import comfy.model_management
 import folder_paths
-from huggingface_hub import snapshot_download
 import shutil
+from huggingface_hub import snapshot_download
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -35,10 +35,10 @@ Second, using THE ENGLISH TEXT from Stage 1 (which might be the original input i
     *   **Camera View/Angle (Optional but Recommended):** If beneficial, suggest a camera perspective (e.g., "extreme close-up," "wide-angle panoramic view," "low-angle shot," "top-down view," "portrait").
     *   **Artistic Style:**
         *   If the English text implies or explicitly mentions an artistic style (e.g., "impressionist painting," "anime art," "cyberpunk aesthetic," "vintage photograph," "3D render," "pixel art"), incorporate it prominently.
-        *   If no style is specified, aim for a rich, visually appealing style that best suits the subject. Default towards "photorealistic," "digital painting," or "cinematic still" if the context is neutral, but adapt if the subject suggests otherwise (e.g., a mythical creature might suit "fantasy concept art").
+        *   If no style is specified, aim for a rich, visually appealing style that best suits the subject. Default towards "photorealistic," "digital painting," "cinematic still" if the context is neutral, but adapt if the subject suggests otherwise (e.g., a mythical creature might suit "fantasy concept art").
 5.  **Descriptive Keywords & Enhancers:**
     *   Enrich the prompt with strong, descriptive adjectives and evocative verbs.
-    *   Strategically include common image generation keywords and quality enhancers that are contextually appropriate. Examples: "masterpiece," "ultra realistic," "highly detailed," "intricate," "sharp focus," "physically-based rendering (PBR)," "Unreal Engine 5," "trending on ArtStation," "award-winning photography," "volumetric lighting," "depth of field (DOF)," "4K," "8K." Do not use these indiscriminately; they must align with the desired visual output.
+    *   Strategically include common image generation keywords and quality enhancers that are contextually appropriate. Examples: "masterpiece," "ultra realistic," "highly detailed," "intricate," "sharp focus," "physically-based rendering (PBR)," "Unreal Engine 5," "trending on ArtStation," "award-winning photography," "volumetric lighting," "depth of field (DOF)," "4K," "8K." Do not include these indiscriminately; they must align with the desired visual output.
 6.  **Structure & Conciseness:**
     *   The prompt should be a coherent string of comma-separated clauses or descriptive phrases.
     *   While detailed, strive for a balance that provides enough information without being excessively long or redundant.
@@ -51,20 +51,6 @@ Second, using THE ENGLISH TEXT from Stage 1 (which might be the original input i
 *   Do NOT include the original user text.
 *   Do NOT include any intermediate English translation (if one was performed) as a separate part of your output.
 *   Do NOT include any of your own conversational remarks, explanations, or any text other than the generated image prompt itself.
-
-**Example Interaction (Input NOT in English):**
-
-If the user provides (in Russian): "Кот в шляпе волшебника читает древнюю книгу при свете свечи в старой библиотеке."
-
-Your expected output (the image prompt only):
-"A wise black cat wearing a pointed wizard's hat, intensely reading an ancient, leather-bound tome with glowing runes, illuminated by a single flickering candlelight, in a vast, dusty, old library filled with towering bookshelves, cobwebs, magical ambiance, cinematic lighting, highly detailed fur and fabric, sharp focus, masterpiece, fantasy art."
-
-**Example Interaction (Input ALREADY in English):**
-
-If the user provides: "A futuristic robot explores a vibrant alien jungle with glowing plants."
-
-Your expected output (the image prompt only):
-"Futuristic robot explorer, navigating a vibrant, bioluminescent alien jungle, towering exotic trees, strange glowing flora and fauna, mysterious atmosphere, cinematic lighting, highly detailed metallic textures and lush vegetation, sharp focus, science fiction concept art, masterpiece."
 """
 
 class TS_Qwen3_Node:
@@ -73,31 +59,21 @@ class TS_Qwen3_Node:
         self.loaded_tokenizer = None
         self.current_model_name = None
         self.current_precision = None
-        logger.info("TS_Qwen3_Node initialized. Model device will be managed by 'device_map=\"auto\"'.")
+        logger.info("TS_Qwen3_Node initialized. Model will be loaded to the optimal device.")
 
     @classmethod
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "model_name": (["Qwen/Qwen3-1.7B", "Qwen/Qwen3-4B", "Qwen/Qwen3-8B", "Qwen/Qwen3-14B", "huihui-ai/Huihui-Qwen3-1.7B-abliterated-v2", "huihui-ai/Huihui-Qwen3-4B-Instruct-2507-abliterated"], {
-                    "default": "Qwen/Qwen3-1.7B"
-                }),
-                "system": ("STRING", {
-                    "multiline": True,
-                    "default": DEFAULT_SYSTEM_PROMPT_FOR_IMAGE_PROMPT_GENERATION
-                }),
-                "prompt": ("STRING", {
-                    "multiline": True,
-                    "default": "яблоки на столе"
-                }),
-                "seed": ("INT", {"default": 42, "min": 0, "max": 0xffffffffffffffff}),
-                "max_new_tokens": ("INT", {"default": 512, "min": 64, "max": 32768, "step": 64}),
-                "enable_thinking": ("BOOLEAN", {"default": False}),
-                "precision": (["auto", "fp16", "bf16"], {"default": "auto"}),
-                "unload_after_generation": ("BOOLEAN", {"default": False}),
-                "enable": ("BOOLEAN", {"default": True}),
-                "force_redownload": ("BOOLEAN", {"default": False}),
-                "hf_token": ("STRING", {"multiline": False, "default": ""}) # <<< НОВОЕ ПОЛЕ ДЛЯ ТОКЕНА
+                "model_name": (["hfmaster/Qwen3-1-7","hfmaster/Qwen3-4"],{"default":"hfmaster/Qwen3-1-7"}),
+                "system": ("STRING",{"multiline":True,"default":DEFAULT_SYSTEM_PROMPT_FOR_IMAGE_PROMPT_GENERATION}),
+                "prompt": ("STRING",{"multiline":True,"default":"яблоки на столе"}),
+                "seed": ("INT",{"default":42,"min":0,"max":0xffffffffffffffff}),
+                "max_new_tokens": ("INT",{"default":512,"min":64,"max":32768,"step":64}),
+                "precision": (["fp16","bf16"],{"default":"fp16"}),
+                "unload_after_generation": ("BOOLEAN",{"default":False}),
+                "enable": ("BOOLEAN",{"default":True}),
+                "hf_token": ("STRING",{"multiline":False,"default":""}),
             }
         }
 
@@ -107,240 +83,114 @@ class TS_Qwen3_Node:
     CATEGORY = "LLM/TS_Qwen3"
 
     def _get_torch_dtype(self, precision_str):
-        logger.debug(f"Determining torch dtype for precision: {precision_str}")
-        if precision_str == "fp16" and torch.cuda.is_available():
-            return torch.float16
-        elif precision_str == "bf16" and torch.cuda.is_available() and torch.cuda.is_bf16_supported():
+        if precision_str == "bf16" and torch.cuda.is_available() and torch.cuda.is_bf16_supported():
             return torch.bfloat16
-        return "auto"
+        return torch.float16 if torch.cuda.is_available() else "auto"
 
     def _unload_model_and_tokenizer(self, reason=""):
-        log_message = "Unloading model and tokenizer"
-        if reason:
-            log_message += f" (Reason: {reason})"
-        log_message += "..."
-        
-        unloaded = False
-        if hasattr(self, 'loaded_model') and self.loaded_model is not None:
-            logger.info(f"{log_message if not unloaded else 'Continuing to unload...'}")
+        if self.loaded_model is not None:
             del self.loaded_model
             self.loaded_model = None
-            unloaded = True
-        
-        if hasattr(self, 'loaded_tokenizer') and self.loaded_tokenizer is not None:
-            if not unloaded:
-                 logger.info(f"{log_message}")
-            else:
-                 logger.debug("Unloading tokenizer...")
+        if self.loaded_tokenizer is not None:
             del self.loaded_tokenizer
             self.loaded_tokenizer = None
-            unloaded = True
+        self.current_model_name = None
+        self.current_precision = None
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        logger.info(f"Model and tokenizer unloaded. Reason: {reason}")
 
-        if unloaded:
-            self.current_model_name = None
-            self.current_precision = None
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
-                logger.debug("CUDA cache cleared after unloading.")
-            logger.info("Model and tokenizer unloaded successfully.")
-        else:
-            logger.info("No model/tokenizer was loaded, or already unloaded. Nothing to do.")
-
+    # --- ИСПРАВЛЕННАЯ ФУНКЦИЯ ПРОВЕРКИ ЦЕЛОСТНОСТИ ---
+    # Эта версия быстрая, не загружает модель в память и не занимает VRAM.
     def _check_model_integrity(self, local_model_path):
-        """Проверяет целостность локальных файлов модели."""
-        logger.debug(f"Checking model integrity at {local_model_path}")
-        required_files = [
-            "config.json",
-            "tokenizer_config.json",
-        ]
-        model_weight_files = ["model.safetensors"] + [f"model-0000{i}-of-0000{j}.safetensors" for i in range(1, 10) for j in range(1,10)] # Check for split files
-        
-        for file_name in required_files:
-            file_path = os.path.join(local_model_path, file_name)
-            if not os.path.exists(file_path) or os.path.getsize(file_path) == 0:
-                logger.warning(f"Required file {file_name} is missing or empty at {local_model_path}")
-                return False
-        
-        found_weights = any(os.path.exists(os.path.join(local_model_path, f)) for f in model_weight_files)
-        if not found_weights and not os.path.exists(os.path.join(local_model_path, "pytorch_model.bin")):
-             logger.warning(f"No model weight files (like model.safetensors or pytorch_model.bin) found at {local_model_path}")
-             return False
+        if not os.path.exists(local_model_path):
+            return False
+        # Простая и надежная проверка на наличие основного файла конфигурации.
+        config_path = os.path.join(local_model_path, "config.json")
+        return os.path.exists(config_path)
 
-        for file_name in os.listdir(local_model_path):
-            if file_name.endswith(".part"):
-                logger.warning(f"Found temporary file {file_name}, indicating incomplete download at {local_model_path}")
-                return False
-        
-        logger.debug(f"Model integrity check passed for {local_model_path}")
-        return True
+    def _load_model_and_tokenizer(self, model_name_selected, hf_token, precision_str):
+        models_llm_dir = os.path.join(folder_paths.models_dir,"LLM")
+        os.makedirs(models_llm_dir,exist_ok=True)
+        repo_name = model_name_selected.split("/")[-1]
+        local_model_path = os.path.join(models_llm_dir, repo_name)
 
-    def _load_model_and_tokenizer(self, model_name_selected, precision_str, force_redownload, hf_token): # <<< ДОБАВЛЕН hf_token
-        logger.info(f"Attempting to load model: {model_name_selected} with precision: {precision_str}, force_redownload: {force_redownload}")
-        
-        comfy_base_models_dir = folder_paths.models_dir 
-        llm_subfolder = "LLM"
-        models_llm_dir = os.path.join(comfy_base_models_dir, llm_subfolder)
-        os.makedirs(models_llm_dir, exist_ok=True)
-        logger.info(f"Models will be stored in or loaded from: {models_llm_dir}")
+        if not self._check_model_integrity(local_model_path):
+            logger.info(f"Model {repo_name} not found or incomplete. Downloading...")
+            snapshot_download(
+                repo_id=model_name_selected,
+                local_dir=local_model_path,
+                local_dir_use_symlinks=False,
+                resume_download=True,
+                ignore_patterns=["*.part"],
+                token=hf_token if hf_token else None
+            )
 
-        local_model_path = os.path.join(models_llm_dir, model_name_selected.replace("/", "_"))
-        
         torch_dtype = self._get_torch_dtype(precision_str)
-        attn_implementation = "sdpa"
-        
-        # <<< НАЧАЛО БЛОКА ИЗМЕНЕНИЙ ДЛЯ ТОКЕНА
-        # Подготовка токена для использования в API
-        token_arg = hf_token if hf_token and hf_token.strip() else None
-        if token_arg:
-            logger.info("Using provided Hugging Face token for download and model loading.")
-        else:
-            logger.info("No Hugging Face token provided. Using default authentication (if available).")
-        # <<< КОНЕЦ БЛОКА ИЗМЕНЕНИЙ ДЛЯ ТОКЕНА
-
-        if force_redownload and os.path.exists(local_model_path):
-            logger.info(f"Force redownload enabled. Deleting existing model directory at {local_model_path}")
-            try:
-                shutil.rmtree(local_model_path)
-                logger.info(f"Model directory {local_model_path} deleted successfully.")
-            except Exception as e:
-                logger.error(f"Failed to delete model directory {local_model_path}: {e}", exc_info=True)
-                raise
-
-        force_download = False
-        if os.path.exists(local_model_path):
-            if not self._check_model_integrity(local_model_path):
-                logger.info(f"Model at {local_model_path} is incomplete or corrupted. Forcing re-download.")
-                force_download = True
-        else:
-            logger.info(f"Model directory {local_model_path} does not exist. Initiating download.")
 
         try:
-            if force_download or not os.path.exists(local_model_path):
-                logger.info(f"Downloading model {model_name_selected} from Hugging Face Hub to {local_model_path}...")
-                snapshot_download(
-                    repo_id=model_name_selected,
-                    local_dir=local_model_path,
-                    local_dir_use_symlinks=False,
-                    resume_download=True,
-                    ignore_patterns=["*.part"],
-                    token=token_arg # <<< ИСПОЛЬЗОВАНИЕ ТОКЕНА
-                )
-                logger.info(f"Model {model_name_selected} downloaded to {local_model_path}")
-            else:
-                logger.info(f"Found model {model_name_selected} locally at {local_model_path}")
-
-            logger.info(f"Loading tokenizer for {model_name_selected} from {local_model_path}")
-            self.loaded_tokenizer = AutoTokenizer.from_pretrained(local_model_path, token=token_arg) # <<< ИСПОЛЬЗОВАНИЕ ТОКЕНА
-            logger.info("Tokenizer loaded successfully.")
-
-            logger.info(f"Loading model {model_name_selected} from {local_model_path} with dtype: {str(torch_dtype)} and attn_implementation: {attn_implementation}")
+            self.loaded_tokenizer = AutoTokenizer.from_pretrained(local_model_path)
+            # Загружаем модель ОДИН раз с правильным параметром device_map="auto"
             self.loaded_model = AutoModelForCausalLM.from_pretrained(
                 local_model_path,
                 torch_dtype=torch_dtype,
                 device_map="auto",
-                attn_implementation=attn_implementation,
                 trust_remote_code=True,
-                token=token_arg # <<< ИСПОЛЬЗОВАНИЕ ТОКЕНА
+                low_cpu_mem_usage=True
             )
-            
-            logger.info(f"Model {model_name_selected} loaded. Device map: {self.loaded_model.hf_device_map}, Model device: {self.loaded_model.device}, Effective Dtype: {self.loaded_model.dtype}")
-            self.current_model_name = model_name_selected
-            self.current_precision = precision_str
-
+            # Опциональная попытка применить оптимизацию внимания
+            if torch.cuda.is_available():
+                try:
+                    self.loaded_model.to_better_transformer()
+                    logger.info("Enabled BetterTransformer for potential speed improvements.")
+                except Exception:
+                    logger.warning("BetterTransformer not available for this model, continuing without it.")
         except Exception as e:
-            logger.error(f"Error loading model {model_name_selected}: {e}", exc_info=True)
-            self._unload_model_and_tokenizer(reason="error during load")
+            logger.error(f"Error loading model: {e}", exc_info=True)
             raise
 
-    def process(self, model_name, system, prompt, seed, 
-                max_new_tokens, enable_thinking, precision, 
-                unload_after_generation, enable, force_redownload, hf_token): # <<< ДОБАВЛЕН hf_token
-        
+        self.current_model_name = model_name_selected
+        self.current_precision = precision_str
+        logger.info(f"Model '{repo_name}' loaded successfully to device: {self.loaded_model.device}")
+
+    def process(self, model_name, system, prompt, seed, max_new_tokens,
+                precision, unload_after_generation, enable, hf_token):
+
+        enable_thinking = False
+
         if not enable:
-            logger.info(f"Model processing disabled. Returning original prompt: {prompt[:100]}...")
             if unload_after_generation:
-                self._unload_model_and_tokenizer(reason="model processing disabled and unload_after_generation enabled")
-            return (prompt.strip(),)
+                self._unload_model_and_tokenizer(reason="Processing disabled")
+            return (prompt.strip() if prompt else "",)
 
-        current_top_k = 20
-        current_min_p = 0.0
-
-        if enable_thinking:
-            current_temperature = 0.6
-            current_top_p = 0.95
-            logger.info("Enable Thinking ON: Using Temperature=0.6, TopP=0.95, TopK=20, MinP=0.0")
-        else:
-            current_temperature = 0.7
-            current_top_p = 0.8
-            logger.info("Enable Thinking OFF: Using Temperature=0.7, TopP=0.8, TopK=20, MinP=0.0")
-
-        logger.info(f"Processing request for model: {model_name}, precision: {precision}, force_redownload: {force_redownload}")
-        logger.info(f"System Prompt (first 100 chars): {system[:100] if system else 'N/A'}...")
-        logger.info(f"User Prompt (first 100 chars): {prompt[:100]}...")
-        logger.info(f"Fixed generation params: seed={seed}, max_tokens={max_new_tokens}, unload_after_gen={unload_after_generation}")
+        if (self.loaded_model is None or self.loaded_tokenizer is None or
+            self.current_model_name != model_name or self.current_precision != precision):
+            self._unload_model_and_tokenizer(reason="Parameters changed or model not loaded")
+            self._load_model_and_tokenizer(model_name, hf_token, precision)
 
         torch.manual_seed(seed)
         if torch.cuda.is_available():
             torch.cuda.manual_seed_all(seed)
-        logger.debug(f"Seed set to: {seed}")
 
-        if self.loaded_model is None or self.loaded_tokenizer is None or \
-           self.current_model_name != model_name or self.current_precision != precision:
-            self._unload_model_and_tokenizer(reason="parameters changed or model not initially loaded")
-            
-            try:
-                # <<< ПЕРЕДАЧА ТОКЕНА В МЕТОД ЗАГРУЗКИ
-                self._load_model_and_tokenizer(model_name, precision, force_redownload, hf_token)
-            except Exception as e:
-                logger.error(f"Failed to load model or tokenizer: {e}", exc_info=True)
-                return (f"ERROR: Could not load model - {str(e)}",)
-        
-        messages = []
-        if system and system.strip():
-            messages.append({"role": "system", "content": system.strip()})
-        
-        messages.append({"role": "user", "content": prompt.strip() if prompt else ""})
-        logger.debug(f"Formatted messages for chat template: {messages}")
+        messages = [{"role": "system","content":system.strip()},
+                    {"role": "user","content":prompt.strip() if prompt else ""}]
 
-        try:
-            text_input_for_model = self.loaded_tokenizer.apply_chat_template(
-                messages, tokenize=False, add_generation_prompt=True, enable_thinking=enable_thinking
-            )
-            logger.debug(f"Text input for model (first 200 chars): {text_input_for_model[:200]}")
-        except Exception as e:
-            logger.error(f"Error applying chat template: {e}.", exc_info=True)
-            if unload_after_generation: self._unload_model_and_tokenizer(reason="error and unload_after_generation enabled")
-            return (f"ERROR: Tokenizer failed to apply chat template - {str(e)}",)
+        text_input_for_model = self.loaded_tokenizer.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=True, enable_thinking=enable_thinking
+        )
 
         model_inputs = self.loaded_tokenizer([text_input_for_model], return_tensors="pt").to(self.loaded_model.device)
-        logger.debug(f"Model inputs tokenized and moved to device: {self.loaded_model.device}")
-        
-        do_sample = True
-        if current_temperature < 0.01:
-            if enable_thinking:
-                logger.warning("Temperature is very low for thinking mode, which is discouraged as per Qwen documentation.")
-            else:
-                logger.warning("Temperature is very low, generation will be mostly greedy.")
 
         generation_config_params = {
             "max_new_tokens": max_new_tokens,
-            "temperature": current_temperature,
-            "top_p": current_top_p, 
-            "top_k": current_top_k,
-            "min_p": current_min_p,
-            "do_sample": do_sample,
+            "temperature": 0.7,
+            "top_p": 0.8,
+            "top_k": 20,
+            "min_p": 0.0,
+            "do_sample": True,
             "pad_token_id": self.loaded_tokenizer.eos_token_id
         }
-        if generation_config_params["pad_token_id"] is None:
-            if self.loaded_tokenizer.pad_token_id is not None:
-                logger.warning("eos_token_id is None, using pad_token_id for generation.")
-                generation_config_params["pad_token_id"] = self.loaded_tokenizer.pad_token_id
-            else:
-                logger.warning("Neither eos_token_id nor pad_token_id is set. Generation might fail.")
-        
-        logger.info(f"Generating text with effective params: temp={generation_config_params['temperature']}, top_p={generation_config_params['top_p']}, top_k={generation_config_params['top_k']}, min_p={generation_config_params['min_p']}, max_new_tok={generation_config_params['max_new_tokens']}")
-        
-        final_content_str = ""
+
         try:
             generated_ids = self.loaded_model.generate(
                 input_ids=model_inputs["input_ids"],
@@ -348,56 +198,17 @@ class TS_Qwen3_Node:
                 **generation_config_params
             )
             output_ids = generated_ids[0][len(model_inputs.input_ids[0]):].tolist()
-            logger.info("Text generation completed.")
+            final_content_str = self.loaded_tokenizer.decode(output_ids, skip_special_tokens=True).strip()
+        except Exception as e:
+            logger.error(f"Error during generation: {e}", exc_info=True)
+            if unload_after_generation:
+                self._unload_model_and_tokenizer(reason="error during generation")
+            return (f"ERROR: Generation failed - {str(e)}",)
 
-            think_end_token_id = 151668 
-            logger.debug(f"Raw output token IDs (first 20): {output_ids[:20]}")
-
-            split_index = 0 
-            if enable_thinking:
-                try:
-                    found_idx = -1
-                    for i in range(len(output_ids) - 1, -1, -1): 
-                        if output_ids[i] == think_end_token_id: 
-                            found_idx = i
-                            break
-                    if found_idx != -1:
-                        split_index = found_idx + 1 
-                        logger.info(f"Found think_end_token_id ({think_end_token_id}) at index {found_idx} (relative to output_ids). Split index: {split_index}.")
-                        final_content_str = self.loaded_tokenizer.decode(output_ids[split_index:], skip_special_tokens=True).strip()
-                    else:
-                        logger.info(f"Token {think_end_token_id} (think_end_token) not found in output, though enable_thinking was True. Using full output.")
-                        final_content_str = self.loaded_tokenizer.decode(output_ids, skip_special_tokens=True).strip()
-                except Exception as e_parse: 
-                    logger.error(f"Error parsing thinking content: {e_parse}. Using full output.", exc_info=True)
-                    final_content_str = self.loaded_tokenizer.decode(output_ids, skip_special_tokens=True).strip()
-            else: 
-                logger.info("Thinking mode disabled. Decoding full output.")
-                final_content_str = self.loaded_tokenizer.decode(output_ids, skip_special_tokens=True).strip()
-        
-        except Exception as e_gen:
-            logger.error(f"Error during model.generate or decoding: {e_gen}", exc_info=True)
-            if torch.cuda.is_available(): torch.cuda.empty_cache() 
-            if unload_after_generation: self._unload_model_and_tokenizer(reason="error and unload_after_generation enabled")
-            return (f"ERROR: Generation/Decoding failed - {str(e_gen)}",)
-
-        if final_content_str.startswith('"') and final_content_str.endswith('"'):
-            logger.debug("Removing leading and trailing double quotes from the final string.")
-            final_content_str = final_content_str[1:-1]
-        elif final_content_str.startswith("'") and final_content_str.endswith("'"):
-            logger.debug("Removing leading and trailing single quotes from the final string.")
-            final_content_str = final_content_str[1:-1]
-
-        logger.info(f"Final generated text (first 200 chars): {final_content_str[:200]}")
-        
         if unload_after_generation:
-            self._unload_model_and_tokenizer(reason="unload_after_generation enabled")
-        
+            self._unload_model_and_tokenizer(reason="Unload after generation enabled")
+
         return (final_content_str,)
 
-NODE_CLASS_MAPPINGS = {
-    "TS_Qwen3": TS_Qwen3_Node
-}
-NODE_DISPLAY_NAME_MAPPINGS = {
-    "TS_Qwen3": "TS Qwen3"
-}
+NODE_CLASS_MAPPINGS = {"TS_Qwen3": TS_Qwen3_Node}
+NODE_DISPLAY_NAME_MAPPINGS = {"TS_Qwen3": "TS Qwen3"}
