@@ -11,6 +11,8 @@ from .ts_qwen3_llm_node import NODE_CLASS_MAPPINGS as qwen3_llm_class_map, \
                                NODE_DISPLAY_NAME_MAPPINGS as qwen3_llm_display_map
 from .ts_qwen3_llm_offline_node import NODE_CLASS_MAPPINGS as qwen3_llm_offline_class_map, \
                                NODE_DISPLAY_NAME_MAPPINGS as qwen3_llm_offline_display_map
+from .ts_qwen3_llm_gguf_node import NODE_CLASS_MAPPINGS as qwen3_llm_gguf_class_map, \
+                               NODE_DISPLAY_NAME_MAPPINGS as qwen3_llm_gguf_display_map                               
 from .ts_whisper_node import NODE_CLASS_MAPPINGS as whisper_class_map, \
                                NODE_DISPLAY_NAME_MAPPINGS as whisper_display_map
 from .ts_video_depth_node import NODE_CLASS_MAPPINGS as video_depth_class_map, \
@@ -30,9 +32,7 @@ from .ts_crop_to_mask_node import NODE_CLASS_MAPPINGS as crop_to_mask_class_map,
 from .ts_film_grain_node import NODE_CLASS_MAPPINGS as film_grain_class_map, \
                                NODE_DISPLAY_NAME_MAPPINGS as film_grain_display_map 
 from .ts_film_emulation_node import NODE_CLASS_MAPPINGS as film_emulation_class_map, \
-                               NODE_DISPLAY_NAME_MAPPINGS as film_emulation_display_map  
-from .ts_lora_tool_node import NODE_CLASS_MAPPINGS as lora_tool_class_map, \
-                               NODE_DISPLAY_NAME_MAPPINGS as lora_tool_display_map                             
+                               NODE_DISPLAY_NAME_MAPPINGS as film_emulation_display_map                             
 
 
 
@@ -48,6 +48,7 @@ all_mappings = [
     (cube_to_equirect_class_map, cube_to_equirect_display_map),
     (qwen3_llm_class_map, qwen3_llm_display_map),
     (qwen3_llm_offline_class_map, qwen3_llm_offline_display_map),
+    (qwen3_llm_gguf_class_map, qwen3_llm_gguf_display_map),
     (whisper_class_map, whisper_display_map),
     (video_depth_class_map, video_depth_display_map),
     (video_upscale_class_map, video_upscale_display_map),
@@ -58,7 +59,6 @@ all_mappings = [
     (crop_to_mask_class_map, crop_to_mask_display_map),
     (film_grain_class_map, film_grain_display_map),
     (film_emulation_class_map, film_emulation_display_map),
-    (lora_tool_class_map, lora_tool_display_map)
 ]
 
 # Объединяем все маппинги

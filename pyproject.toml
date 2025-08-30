@@ -1,7 +1,7 @@
 [project]
 name = "comfyui-timesaver"
 description = "ComfyUI nodes from [Timesaver](https://github.com/AlexYez/comfyui-timesaver)."
-version = "4.6"
+version = "4.7"
 license = { file = "LICENSE.txt" }
 dependencies = [
     "accelerate>=0.21.0",
@@ -25,6 +25,7 @@ dependencies = [
     "tqdm>=4.65.0",
     "urllib3>=1.26.0",
     "kornia",
+    "llama-cpp-python",
 ]
 
 [project.urls]
