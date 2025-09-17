@@ -8,13 +8,7 @@ from .ts_equirect_to_cube_node import NODE_CLASS_MAPPINGS as equirect_to_cube_cl
 from .ts_cube_to_equirect_node import NODE_CLASS_MAPPINGS as cube_to_equirect_class_map, \
                                       NODE_DISPLAY_NAME_MAPPINGS as cube_to_equirect_display_map
 from .ts_qwen3_llm_node import NODE_CLASS_MAPPINGS as qwen3_llm_class_map, \
-                               NODE_DISPLAY_NAME_MAPPINGS as qwen3_llm_display_map
-from .ts_qwen3_llm_offline_node import NODE_CLASS_MAPPINGS as qwen3_llm_offline_class_map, \
-                               NODE_DISPLAY_NAME_MAPPINGS as qwen3_llm_offline_display_map
-from .ts_qwen3_llm_gguf_node import NODE_CLASS_MAPPINGS as qwen3_llm_gguf_class_map, \
-                               NODE_DISPLAY_NAME_MAPPINGS as qwen3_llm_gguf_display_map      
-from .ts_gemma3n_node import NODE_CLASS_MAPPINGS as gemma3n_class_map, \
-                               NODE_DISPLAY_NAME_MAPPINGS as gemma3n_display_map                         
+                               NODE_DISPLAY_NAME_MAPPINGS as qwen3_llm_display_map                     
 from .ts_whisper_node import NODE_CLASS_MAPPINGS as whisper_class_map, \
                                NODE_DISPLAY_NAME_MAPPINGS as whisper_display_map
 from .ts_video_depth_node import NODE_CLASS_MAPPINGS as video_depth_class_map, \
@@ -34,10 +28,11 @@ from .ts_crop_to_mask_node import NODE_CLASS_MAPPINGS as crop_to_mask_class_map,
 from .ts_film_grain_node import NODE_CLASS_MAPPINGS as film_grain_class_map, \
                                NODE_DISPLAY_NAME_MAPPINGS as film_grain_display_map 
 from .ts_film_emulation_node import NODE_CLASS_MAPPINGS as film_emulation_class_map, \
-                               NODE_DISPLAY_NAME_MAPPINGS as film_emulation_display_map                    
-from .ts_models_tools_node import NODE_CLASS_MAPPINGS as vace_inject_class_map, \
-                               NODE_DISPLAY_NAME_MAPPINGS as vace_inject_display_map 
-
+                               NODE_DISPLAY_NAME_MAPPINGS as film_emulation_display_map                                                 
+from .ts_qwen2_5_vl_node import NODE_CLASS_MAPPINGS as qwen2_5_vl_class_map, \
+                               NODE_DISPLAY_NAME_MAPPINGS as qwen2_5_vl_display_map 
+from .ts_models_tools_node import NODE_CLASS_MAPPINGS as models_tool_class_map, \
+                               NODE_DISPLAY_NAME_MAPPINGS as models_tool_display_map 
 
 # Инициализируем общие словари маппингов
 NODE_CLASS_MAPPINGS = {}
@@ -50,9 +45,6 @@ all_mappings = [
     (equirect_to_cube_class_map, equirect_to_cube_display_map),
     (cube_to_equirect_class_map, cube_to_equirect_display_map),
     (qwen3_llm_class_map, qwen3_llm_display_map),
-    (qwen3_llm_offline_class_map, qwen3_llm_offline_display_map),
-    (qwen3_llm_gguf_class_map, qwen3_llm_gguf_display_map),
-    (gemma3n_class_map, gemma3n_display_map),
     (whisper_class_map, whisper_display_map),
     (video_depth_class_map, video_depth_display_map),
     (video_upscale_class_map, video_upscale_display_map),
@@ -63,7 +55,8 @@ all_mappings = [
     (crop_to_mask_class_map, crop_to_mask_display_map),
     (film_grain_class_map, film_grain_display_map),
     (film_emulation_class_map, film_emulation_display_map),
-    (vace_inject_class_map, vace_inject_display_map),
+    (qwen2_5_vl_class_map, qwen2_5_vl_display_map),
+    (models_tool_class_map, models_tool_display_map),
 ]
 
 # Объединяем все маппинги
