@@ -25,7 +25,7 @@ dependencies = [
     "tqdm>=4.65.0",
     "urllib3>=1.26.0",
     "kornia",
-    "qwen-vl-util>=0.0.8",
+    "qwen-vl-utils>=0.0.8",
 ]
 
 [project.urls]
