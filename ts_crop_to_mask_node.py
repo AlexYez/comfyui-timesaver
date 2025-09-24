@@ -154,6 +154,33 @@ class TSCropToMask:
             print(f"Warning: Mask batch size ({mask.shape[0]}) and image batch size ({batch_size}) mismatch. Falling back to using first mask for all images in the batch.")
             mask = mask[0].unsqueeze(0).repeat(batch_size, 1, 1)
 
+        # --- НАЧАЛО ИЗМЕНЕНИЙ ---
+        # Проверяем, являются ли все маски в батче пустыми или однотонными.
+        all_masks_are_solid = True
+        for i in range(mask.shape[0]):
+            m = mask[i]
+            if m.numel() > 0: # Убеждаемся, что в срезе маски есть элементы
+                # Маска считается однотонной, если все ее значения одинаковы (min равен max)
+                if m.min() != m.max():
+                    all_masks_are_solid = False
+                    break
+        
+        if all_masks_are_solid:
+            print("TSCropToMask: Все входные маски пустые или однотонные. Пропускаем обрезку и возвращаем исходные изображения.")
+            original_height, original_width = images.shape[1], images.shape[2]
+            
+            crop_data = []
+            for i in range(batch_size):
+                crop_data.append({
+                    "original_x": 0, "original_y": 0,
+                    "original_width": original_width, "original_height": original_height,
+                    "crop_x": 0, "crop_y": 0,
+                    "initial_crop_width": original_width, "initial_crop_height": original_height,
+                    "final_crop_width": original_width, "final_crop_height": original_height,
+                })
+            
+            return (images, mask, crop_data, original_width, original_height)
+        # --- КОНЕЦ ИЗМЕНЕНИЙ ---
 
         raw_regions = []
         
@@ -540,6 +567,6 @@ NODE_CLASS_MAPPINGS = {
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "TSCropToMask": "TS Crop To Mask (Interpolated)",
+    "TSCropToMask": "TS Crop To Mask",
     "TSRestoreFromCrop": "TS Restore From Crop",
 }
