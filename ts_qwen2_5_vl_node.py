@@ -128,7 +128,7 @@ class TS_Qwen2_5_VL_Node:
             
         return {
             "required": {
-                "model_name": ("STRING", {"default": "huihui-ai/Qwen2.5-VL-3B-Instruct-abliterated", "multiline": False}),
+                "model_name": ("STRING", {"default": "hfmaster/Qwen2-5-VL-3B", "multiline": False}),
                 "system_preset": (preset_options, {"default": "Image Edit Command Translation"}),
                 "prompt": ("STRING", {"multiline": True, "default": "сделай куртку красной кожаной"}),
                 # Generation Parameters
