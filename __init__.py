@@ -26,13 +26,17 @@ from .ts_deflicker_node import NODE_CLASS_MAPPINGS as deflicker_class_map, \
 from .ts_crop_to_mask_node import NODE_CLASS_MAPPINGS as crop_to_mask_class_map, \
                                NODE_DISPLAY_NAME_MAPPINGS as crop_to_mask_display_map   
 from .ts_film_grain_node import NODE_CLASS_MAPPINGS as film_grain_class_map, \
-                               NODE_DISPLAY_NAME_MAPPINGS as film_grain_display_map 
-from .ts_film_emulation_node import NODE_CLASS_MAPPINGS as film_emulation_class_map, \
-                               NODE_DISPLAY_NAME_MAPPINGS as film_emulation_display_map                                                 
+                               NODE_DISPLAY_NAME_MAPPINGS as film_grain_display_map                                               
 from .ts_qwen2_5_vl_node import NODE_CLASS_MAPPINGS as qwen2_5_vl_class_map, \
-                               NODE_DISPLAY_NAME_MAPPINGS as qwen2_5_vl_display_map 
+                               NODE_DISPLAY_NAME_MAPPINGS as qwen2_5_vl_display_map
+from .ts_qwen3_vl_node import NODE_CLASS_MAPPINGS as qwen3_vl_class_map, \
+                               NODE_DISPLAY_NAME_MAPPINGS as qwen3_vl_display_map
+from .ts_bgrm_node import NODE_CLASS_MAPPINGS as bgrm_class_map, \
+                               NODE_DISPLAY_NAME_MAPPINGS as brgm_display_map 
 from .ts_models_tools_node import NODE_CLASS_MAPPINGS as models_tool_class_map, \
-                               NODE_DISPLAY_NAME_MAPPINGS as models_tool_display_map 
+                               NODE_DISPLAY_NAME_MAPPINGS as models_tool_display_map
+from .ts_color_node import NODE_CLASS_MAPPINGS as color_class_map, \
+                               NODE_DISPLAY_NAME_MAPPINGS as color_display_map 
 
 # Инициализируем общие словари маппингов
 NODE_CLASS_MAPPINGS = {}
@@ -54,9 +58,11 @@ all_mappings = [
     (deflicker_class_map, deflicker_display_map),
     (crop_to_mask_class_map, crop_to_mask_display_map),
     (film_grain_class_map, film_grain_display_map),
-    (film_emulation_class_map, film_emulation_display_map),
     (qwen2_5_vl_class_map, qwen2_5_vl_display_map),
+    (qwen3_vl_class_map, qwen3_vl_display_map),
+    (bgrm_class_map, brgm_display_map),
     (models_tool_class_map, models_tool_display_map),
+    (color_class_map, color_display_map),
 ]
 
 # Объединяем все маппинги
