@@ -405,14 +405,183 @@ class TS_QwenCanvas:
 
         return (out_img, target_w, target_h)
 
+class TSAutoTileSize:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                # Выпадающий список для выбора общего количества тайлов
+                "tile_count": ([4, 8, 16],),
+                "padding": ("INT", {"default": 64, "min": 0, "max": 512, "step": 8}),
+                "divide_by": ("INT", {"default": 8, "min": 1, "max": 512, "step": 1}),
+            },
+            "optional": {
+                "image": ("IMAGE",),
+                "width": ("INT", {"default": 512, "min": 64, "max": 8192, "step": 8}),
+                "height": ("INT", {"default": 512, "min": 64, "max": 8192, "step": 8}),
+            }
+        }
+
+    RETURN_TYPES = ("INT", "INT")
+    RETURN_NAMES = ("tile_width", "tile_height")
+
+    FUNCTION = "calculate_grid"
+
+    CATEGORY = "utils/Tile Size"
+
+    def find_best_grid(self, total_tiles, image_aspect_ratio):
+        """
+        Находит наилучшую пару множителей (сетку),
+        соотношение сторон которой наиболее близко к соотношению сторон изображения.
+        """
+        if total_tiles <= 0:
+            return 1, 1
+
+        factors = []
+        # Находим все пары множителей для числа total_tiles
+        for i in range(1, int(math.sqrt(total_tiles)) + 1):
+            if total_tiles % i == 0:
+                factors.append((total_tiles // i, i))
+                if i * i != total_tiles:
+                    factors.append((i, total_tiles // i))
+
+        best_pair = (1, total_tiles) # Значение по умолчанию
+        min_diff = float('inf')
+
+        # Ищем пару с наименьшей разницей в соотношении сторон
+        for x, y in factors:
+            grid_aspect_ratio = x / y
+            diff = abs(grid_aspect_ratio - image_aspect_ratio)
+            if diff < min_diff:
+                min_diff = diff
+                best_pair = (x, y)
+        
+        return best_pair
+
+    def calculate_grid(self, tile_count, padding, divide_by, image=None, width=512, height=512):
+        # Шаг 1: Определяем исходные размеры изображения
+        if image is not None:
+            _, img_height, img_width, _ = image.shape
+        else:
+            img_width, img_height = width, height
+
+        # Шаг 2: Находим наилучшую сетку (tiles_x, tiles_y)
+        # Вычисляем соотношение сторон изображения, избегая деления на ноль.
+        image_aspect_ratio = img_width / img_height if img_height != 0 else 1.0
+        
+        # Используем вспомогательную функцию для подбора оптимальной сетки
+        tiles_x, tiles_y = self.find_best_grid(tile_count, image_aspect_ratio)
+
+        # Шаг 3: Рассчитываем размер одного тайла с учетом перекрытия
+        tile_w = (img_width + (tiles_x - 1) * padding) / tiles_x
+        tile_h = (img_height + (tiles_y - 1) * padding) / tiles_y
+
+        # Шаг 4: Округляем до ближайшего числа, кратного `divide_by`
+        tile_width = round(tile_w / divide_by) * divide_by
+        tile_height = round(tile_h / divide_by) * divide_by
+
+        return (tile_width, tile_height)
+
+
+class TS_WAN_SafeResize:
+    WAN_RESOLUTIONS = {
+        "high quality": {
+            "16:9": (1280, 720),
+            "9:16": (720, 1280),
+            "1:1": (720, 720),
+        },
+        "standard quality": {
+            "16:9": (832, 480),
+            "9:16": (480, 832),
+            "1:1": (480, 480),
+        },
+        "low quality": {
+            "16:9": (426, 240),
+            "9:16": (240, 426),
+            "1:1": (240, 240),
+        },
+    }
+
+    @staticmethod
+    def detect_aspect_ratio(width, height):
+        aspect = width / height
+        if aspect > 1.3:
+            return "16:9"
+        elif aspect < 0.8:
+            return "9:16"
+        else:
+            return "1:1"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "image": ("IMAGE",),
+                "quality": (
+                    ["Fast quality", "Standard quality", "High quality"],
+                    {"default": "standard quality"},
+                ),
+            },
+            "optional": {
+                "interconnection_in": ("STRING",),
+            },
+        }
+
+    RETURN_TYPES = ("IMAGE", "INT", "INT", "STRING")
+    RETURN_NAMES = ("image", "width", "height", "interconnection_out")
+    FUNCTION = "safe_resize"
+    CATEGORY = "image/resize"
+
+    def safe_resize(self, image, quality, interconnection_in=None):
+        # Если вход interconnection подключен — используем его качество
+        if interconnection_in is not None and interconnection_in in self.WAN_RESOLUTIONS:
+            quality = interconnection_in
+
+        b, h, w, c = image.shape
+        assert c in [3, 4], f"Expected 3 or 4 channels, got {c}"
+
+        aspect_key = self.detect_aspect_ratio(w, h)
+        target_w, target_h = self.WAN_RESOLUTIONS[quality][aspect_key]
+
+        output_images = []
+
+        for i in range(b):
+            img_np = (image[i].cpu().numpy() * 255).astype(np.uint8)
+            pil_img = Image.fromarray(img_np)
+
+            # --- Масштабирование ---
+            scale = max(target_w / w, target_h / h)
+            new_w = int(w * scale)
+            new_h = int(h * scale)
+            resized = pil_img.resize((new_w, new_h), resample=Image.LANCZOS)
+
+            # --- Центрирование и кроп ---
+            left = (new_w - target_w) // 2
+            top = (new_h - target_h) // 2
+            right = left + target_w
+            bottom = top + target_h
+            cropped = resized.crop((left, top, right, bottom))
+
+            img_out = torch.from_numpy(np.array(cropped)).float() / 255.0
+            output_images.append(img_out.unsqueeze(0))
+
+        output = torch.cat(output_images, dim=0)
+
+        # Возвращаем: изображение, ширину, высоту и текущее значение качества
+        return (output, target_w, target_h, quality)
+
 
 NODE_CLASS_MAPPINGS = {
     "TS_ImageResize": TS_ImageResize,
     "TS_QwenSafeResize": TS_QwenSafeResize,
-    "TS_QwenCanvas": TS_QwenCanvas
+    "TS_QwenCanvas": TS_QwenCanvas,
+    "TSAutoTileSize": TSAutoTileSize,
+    "TS_WAN_SafeResize": TS_WAN_SafeResize
 }
 NODE_DISPLAY_NAME_MAPPINGS = {
     "TS_ImageResize": "TS Image Resize",
     "TS_QwenSafeResize": "TS Qwen Safe Resize",
-    "TS_QwenCanvas": "TS Qwen Canvas"
+    "TS_QwenCanvas": "TS Qwen Canvas",
+    "TSAutoTileSize": "TS Auto Tile Size",
+    "TS_WAN_SafeResize": "TS WAN Safe Resize"
 }
