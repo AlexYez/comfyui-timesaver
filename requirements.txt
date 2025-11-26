@@ -1,6 +1,6 @@
 # Core AI/ML libraries
 torch>=2.0.0
-transformers>=4.51.0
+transformers>=4.57.1
 huggingface_hub>=0.20.0
 accelerate>=0.21.0  # For optimized model loading and training
 bitsandbytes>=0.40.0  # For 8-bit and 4-bit quantization
@@ -29,6 +29,7 @@ easydict>=1.10.0  # Optional, for easier configuration handling
 
 kornia
 qwen-vl-utils>=0.0.8
+tiktoken
 
 # Note: For torch, you may need to install a specific version based on your hardware and CUDA setup.
 # Example: pip install torch==2.0.0+cu118 torchaudio==2.0.0+cu118 -f https://download.pytorch.org/whl/torch_stable.html

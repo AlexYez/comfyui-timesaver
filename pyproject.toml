@@ -1,7 +1,7 @@
 [project]
 name = "comfyui-timesaver"
 description = "ComfyUI nodes from [Timesaver](https://github.com/AlexYez/comfyui-timesaver)."
-version = "5.4"
+version = "5.5"
 license = { file = "LICENSE.txt" }
 dependencies = [
     "accelerate>=0.21.0",
@@ -21,10 +21,11 @@ dependencies = [
     "srt>=3.5.0",
     "torch>=2.0.0",
     "torchaudio>=2.0.0",
-    "transformers>=4.51.0",
+    "transformers>=4.57.1",
     "tqdm>=4.65.0",
     "urllib3>=1.26.0",
     "kornia",
+    "tiktoken",
     "qwen-vl-utils>=0.0.8",
 ]
 
