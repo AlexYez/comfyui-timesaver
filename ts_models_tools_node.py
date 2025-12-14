@@ -4,6 +4,7 @@ import glob
 import gc
 import torch
 from comfy.model_patcher import ModelPatcher
+import comfy.model_patcher
 from safetensors.torch import save_file, load_file
 from safetensors import safe_open
 from collections import OrderedDict
@@ -89,15 +90,58 @@ class TS_ModelConverterAdvancedNode:
     # --------------------------
     # Filtering tensors
     # --------------------------
+    # def should_convert_to_fp8(self, tensor_name: str) -> bool:
+    #         if not tensor_name.endswith(".weight"):
+    #             return False
+    #         if not "blocks." in tensor_name:
+    #             return False
+    #         if "cross_attn" in tensor_name or "ffn" in tensor_name or "self_attn" in tensor_name:
+    #             if ".norm_k.weight" in tensor_name or ".norm_q.weight" in tensor_name or ".norm.weight" in tensor_name:
+    #                 return False
+    #             return True
+    #         return False
+
+
+
     def should_convert_to_fp8(self, tensor_name: str) -> bool:
+        # 1. Базовая проверка: работаем только с весами (.weight)
         if not tensor_name.endswith(".weight"):
             return False
-        if not "blocks." in tensor_name:
+
+        # 2. Исключаем FP32 параметры (согласно скану)
+        if "scale_weight" in tensor_name: # Они везде float32
             return False
-        if "cross_attn" in tensor_name or "ffn" in tensor_name or "self_attn" in tensor_name:
-            if ".norm_k.weight" in tensor_name or ".norm_q.weight" in tensor_name or ".norm.weight" in tensor_name:
-                return False
+        if "patch_embedding" in tensor_name: # float32
+            return False
+
+        # 3. Исключаем FP16 параметры (согласно скану)
+        # "norm" покроет: norm3, norm_q, norm_k
+        if "norm" in tensor_name: 
+            return False
+        if "modulation" in tensor_name: # float16
+            return False
+
+        # 4. Логика для Блоков (основная часть модели)
+        if "blocks." in tensor_name:
+            # Так как мы выше уже исключили 'norm' и 'modulation',
+            # всё оставшееся внутри блоков (attn q/k/v/o и ffn) должно быть FP8.
+            # Дополнительная проверка на всякий случай:
+            if "cross_attn" in tensor_name or "ffn" in tensor_name or "self_attn" in tensor_name:
+                return True
+            # Если вдруг внутри блока есть что-то еще, что мы не учли, лучше вернуть False
+            return False
+
+        # 5. Внешние слои (опционально, для полного соответствия эталону)
+        # В вашем скане эти слои тоже FP8. 
+        # Если вы хотите сэкономить максимум памяти, оставьте True.
+        # Если хотите безопасный режим (только блоки), закомментируйте эти строки.
+        
+        if "head.head.weight" in tensor_name:
             return True
+            
+        if "text_embedding" in tensor_name or "time_embedding" in tensor_name or "time_projection" in tensor_name:
+            return True
+
         return False
 
     # --------------------------
@@ -230,6 +274,90 @@ class TS_ModelConverterAdvancedNode:
             logs.append("--- DONE ---")
 
             return ("\n".join(logs),)
+        
+class ModelScanner:
+    def __init__(self):
+        pass
+
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "model": ("MODEL",),
+            },
+            "optional": {
+                "summary_only": ("BOOLEAN", {"default": False, "label_on": "Summary Only", "label_off": "Full Detail"}),
+            }
+        }
+
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("model_info",)
+    FUNCTION = "scan_model"
+    CATEGORY = "utils/model_analysis"
+
+    def scan_model(self, model, summary_only=False):
+        # В ComfyUI модель обычно обернута в ModelPatcher
+        # Нам нужно добраться до реальной torch.nn.Module
+        
+        real_model = None
+        
+        if isinstance(model, comfy.model_patcher.ModelPatcher):
+            real_model = model.model
+        else:
+            real_model = model
+
+        # Буфер для сбора информации
+        output_lines = []
+        stats = {}
+        total_params = 0
+
+        output_lines.append("=== MODEL SCAN REPORT ===")
+        output_lines.append(f"Type: {type(real_model).__name__}")
+        output_lines.append("-" * 60)
+
+        if not summary_only:
+            output_lines.append(f"{'Layer Name':<50} | {'Shape':<20} | {'Dtype':<10} | {'Device':<6}")
+            output_lines.append("-" * 90)
+
+        # Перебираем все параметры модели
+        # Используем named_parameters, чтобы получить веса
+        try:
+            # Некоторые модели ComfyUI хранят веса в diffusion_model
+            iterator = real_model.named_parameters()
+            if hasattr(real_model, "diffusion_model"):
+                 output_lines.append("Note: Scanning internal diffusion_model")
+                 iterator = real_model.diffusion_model.named_parameters()
+
+            for name, param in iterator:
+                # Получаем характеристики
+                shape_str = str(tuple(param.shape))
+                dtype_str = str(param.dtype).replace("torch.", "")
+                device_str = str(param.device).split(":")[0] # cpu или cuda
+                num_params = param.numel()
+
+                # Сбор статистики
+                total_params += num_params
+                if dtype_str not in stats:
+                    stats[dtype_str] = 0
+                stats[dtype_str] += num_params
+
+                # Форматирование строки для детального отчета
+                if not summary_only:
+                    output_lines.append(f"{name:<50} | {shape_str:<20} | {dtype_str:<10} | {device_str:<6}")
+
+        except Exception as e:
+            return (f"Error scanning model: {str(e)}",)
+
+        output_lines.append("-" * 60)
+        output_lines.append("=== SUMMARY STATISTICS ===")
+        output_lines.append(f"Total Parameters: {total_params:,}")
+        output_lines.append("Distribution by Data Type:")
+        
+        for dtype, count in stats.items():
+            percent = (count / total_params) * 100
+            output_lines.append(f" - {dtype}: {count:,} params ({percent:.2f}%)")
+
+        return ("\n".join(output_lines),)
 
 
 # ==========================
@@ -237,9 +365,11 @@ class TS_ModelConverterAdvancedNode:
 # ==========================
 NODE_CLASS_MAPPINGS = {
     "TS_ModelConverter": TS_ModelConverterNode,
-    "TS_ModelConverterAdvanced": TS_ModelConverterAdvancedNode
+    "TS_ModelConverterAdvanced": TS_ModelConverterAdvancedNode,
+    "ModelScanner": ModelScanner
 }
 NODE_DISPLAY_NAME_MAPPINGS = {
     "TS_ModelConverter": "TS Model Converter",
-    "TS_ModelConverterAdvanced": "TS Model Converter Advanced"
+    "TS_ModelConverterAdvanced": "TS Model Converter Advanced",
+    "ModelScanner": "🔍 Model Layer Scanner"
 }
