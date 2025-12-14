@@ -1,6 +1,4 @@
 import torch
-# --- ВАЖНО: Импортируем конкретный класс модели ---
-from transformers import AutoProcessor, BitsAndBytesConfig, Qwen3VLForConditionalGeneration
 import os
 import logging
 import comfy.model_management
@@ -11,12 +9,28 @@ import numpy as np
 import gc
 import json
 import importlib.metadata
+from contextlib import contextmanager
 
 # ===============================================
 # Логирование и проверка версий
 # ===============================================
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("TS_Qwen3_VL")
+
+# --- Импорт класса модели с фоллбэком ---
+try:
+    from transformers import AutoProcessor, BitsAndBytesConfig, Qwen3VLForConditionalGeneration
+    MODEL_CLASS = Qwen3VLForConditionalGeneration
+    logger.info("Imported Qwen3VLForConditionalGeneration successfully.")
+except ImportError:
+    try:
+        from transformers import Qwen2VLForConditionalGeneration
+        MODEL_CLASS = Qwen2VLForConditionalGeneration
+        logger.warning("Qwen3VLForConditionalGeneration not found. Using Qwen2VLForConditionalGeneration instead.")
+    except ImportError:
+        from transformers import AutoModelForCausalLM
+        MODEL_CLASS = AutoModelForCausalLM
+        logger.warning("Specific QwenVL classes not found. Using AutoModelForCausalLM (might not work for VL tasks properly).")
 
 def check_and_log_versions():
     dependencies = {
@@ -63,6 +77,32 @@ except ImportError:
     TIKTOKEN_AVAILABLE = False
 
 # ===============================================
+# Утилиты
+# ===============================================
+@contextmanager
+def temporary_env_vars(env_vars):
+    """
+    Временно устанавливает переменные окружения и возвращает их обратно после выхода.
+    """
+    original_vars = {key: os.environ.get(key) for key in env_vars.keys()}
+    
+    # Установка новых значений
+    for key, value in env_vars.items():
+        if value is not None and value.strip() != "":
+            os.environ[key] = value
+
+    try:
+        yield
+    finally:
+        # Восстановление старых значений
+        for key, original_value in original_vars.items():
+            if original_value is None:
+                if key in os.environ:
+                    del os.environ[key]
+            else:
+                os.environ[key] = original_value
+
+# ===============================================
 # Глобальный менеджер моделей
 # ===============================================
 class QwenModelManager:
@@ -98,14 +138,18 @@ MODEL_MANAGER = QwenModelManager()
 # ===============================================
 def load_presets(json_path):
     try:
-        with open(json_path, 'r', encoding='utf-8') as f: 
-            return json.load(f)
+        if os.path.exists(json_path):
+            with open(json_path, 'r', encoding='utf-8') as f: 
+                return json.load(f)
+        else:
+            return {}
     except Exception as e:
         logger.error(f"Error loading presets file ({json_path}): {e}")
         return {"Error": {"system_prompt": f"Could not load {os.path.basename(json_path)}", "gen_params": {}}}
 
 presets_path = os.path.join(os.path.dirname(__file__), "qwen_3_vl_presets.json")
 PRESET_CONFIGS = load_presets(presets_path)
+preset_keys = list(PRESET_CONFIGS.keys()) if PRESET_CONFIGS else []
 
 # ===============================================
 # Нода TS_Qwen3_VL
@@ -116,15 +160,16 @@ class TS_Qwen3_VL_Node:
 
     @classmethod
     def INPUT_TYPES(cls):
-        preset_options = list(PRESET_CONFIGS.keys()) + ["Your instruction"]
+        preset_options = preset_keys + ["Your instruction"]
         precision_options = ["fp16", "bf16", "fp32"]
         if BITSANDBYTES_AVAILABLE:
             precision_options.extend(["int8", "int4"])
+        
         return {
             "required": {
                 "model_name": ("STRING", {"default": "hfmaster/Qwen3-VL-2B"}),
-                "system_preset": (preset_options, {"default": "Image Edit Command Translation"}),
-                "prompt": ("STRING", {"multiline": True, "default": "сделай куртку красной кожаной"}),
+                "system_preset": (preset_options, {"default": preset_options[0] if preset_options else "Your instruction"}),
+                "prompt": ("STRING", {"multiline": True, "default": ""}),
                 "seed": ("INT", {"default": 42, "min": 0, "max": 0xffffffffffffffff}),
                 "max_new_tokens": ("INT", {"default": 512, "min": 64, "max": 4096, "step": 64}),
                 "precision": (precision_options, {"default": "fp16"}),
@@ -139,7 +184,10 @@ class TS_Qwen3_VL_Node:
             "optional": { 
                 "image": ("IMAGE",), 
                 "video": ("IMAGE",), 
-                "custom_system_prompt": ("STRING", {"multiline": True, "forceInput": True}), 
+                "custom_system_prompt": ("STRING", {"multiline": True, "forceInput": True}),
+                # ИЗМЕНЕНИЕ: Подсказка о множественных зеркалах
+                "hf_endpoint": ("STRING", {"default": "hf-mirror.com, huggingface.co", "multiline": False}),
+                "proxy": ("STRING", {"default": "", "multiline": False, "placeholder": "http://user:pass@host:port"}),
             }
         }
 
@@ -156,12 +204,18 @@ class TS_Qwen3_VL_Node:
     def _check_model_integrity(self, path):
         config = os.path.join(path, "config.json")
         index = os.path.join(path, "model.safetensors.index.json") or os.path.join(path, "pytorch_model.bin.index.json")
-        return os.path.exists(config) and os.path.exists(index)
+        safetensors = os.path.join(path, "model.safetensors")
+        bin_model = os.path.join(path, "pytorch_model.bin")
+        
+        has_index = os.path.exists(index)
+        has_model_file = os.path.exists(safetensors) or os.path.exists(bin_model)
+        
+        return os.path.exists(config) and (has_index or has_model_file)
 
     # ===============================================
-    # Загрузка модели
+    # Загрузка модели с поддержкой нескольких зеркал
     # ===============================================
-    def _load_model(self, model_id, model_name, precision, use_flash_attention, offline_mode, hf_token):
+    def _load_model(self, model_id, model_name, precision, use_flash_attention, offline_mode, hf_token, hf_endpoint_str, proxy):
         cached_model = MODEL_MANAGER.get_model(model_id)
         if cached_model:
             logger.info(f"Loading model '{model_id}' from cache.")
@@ -172,16 +226,57 @@ class TS_Qwen3_VL_Node:
         repo_name = model_name.split("/")[-1]
         local_path = os.path.join(models_dir, repo_name)
 
+        # 1. Сначала обрабатываем Offline режим
         if offline_mode:
             if not self._check_model_integrity(local_path):
                 raise FileNotFoundError(f"Offline mode: Model not found at {local_path}.")
         else:
+            # 2. Если модели нет или она неполная, пытаемся скачать
             if not self._check_model_integrity(local_path):
-                logger.info(f"Downloading model '{model_name}'...")
-                token_arg = hf_token.strip() if hf_token and hf_token.strip() else None
-                snapshot_download(repo_id=model_name, local_dir=local_path, token=token_arg)
-                logger.info("Download complete.")
+                
+                # Парсим список зеркал
+                endpoints = [e.strip() for e in hf_endpoint_str.split(',') if e.strip()]
+                if not endpoints:
+                    # Если пользователь стер все, используем дефолт
+                    endpoints = ["https://huggingface.co"]
 
+                token_arg = hf_token.strip() if hf_token and hf_token.strip() else None
+                download_success = False
+                last_exception = None
+
+                # 3. Перебираем зеркала
+                for i, endpoint_raw in enumerate(endpoints):
+                    # Нормализация URL
+                    if not endpoint_raw.startswith("http://") and not endpoint_raw.startswith("https://"):
+                        current_endpoint = "https://" + endpoint_raw
+                    else:
+                        current_endpoint = endpoint_raw
+
+                    logger.info(f"Attempting download from mirror [{i+1}/{len(endpoints)}]: {current_endpoint}")
+                    
+                    # Подготовка переменных для конкретной попытки
+                    env_vars_to_set = {"HF_ENDPOINT": current_endpoint}
+                    if proxy:
+                        env_vars_to_set["HTTP_PROXY"] = proxy
+                        env_vars_to_set["HTTPS_PROXY"] = proxy
+
+                    try:
+                        with temporary_env_vars(env_vars_to_set):
+                            snapshot_download(repo_id=model_name, local_dir=local_path, token=token_arg)
+                        
+                        logger.info(f"Download complete successfully from {current_endpoint}.")
+                        download_success = True
+                        break # Выходим из цикла, если скачали
+                    except Exception as e:
+                        logger.warning(f"Failed to download from {current_endpoint}. Error: {e}")
+                        last_exception = e
+                        # Идем к следующему зеркалу в цикле
+                
+                if not download_success:
+                    logger.error("All mirrors failed.")
+                    raise RuntimeError(f"Could not download model from any provided mirrors. Last error: {last_exception}")
+
+        # 4. Загрузка в память (здесь код стандартный)
         device = comfy.model_management.get_torch_device()
         load_kwargs = {}
 
@@ -201,22 +296,16 @@ class TS_Qwen3_VL_Node:
         if use_flash_attention and FLASH_ATTN_AVAILABLE and precision in ["fp16", "bf16"]:
             load_kwargs["attn_implementation"] = "flash_attention_2"
 
+        logger.info(f"Loading processor from {local_path}")
         processor = AutoProcessor.from_pretrained(local_path, trust_remote_code=True)
         
-        # --- ГЛАВНОЕ ИСПРАВЛЕНИЕ: Используем явный класс Qwen3VLForConditionalGeneration ---
-        # вместо AutoModelForCausalLM, который не может определить конфиг.
-        model_class = Qwen3VLForConditionalGeneration
-        
-        logger.info(f"Loading model using class: {model_class.__name__}")
+        logger.info(f"Loading model using class: {MODEL_CLASS.__name__}")
 
         if precision in ["int4", "int8"]:
-            # Для квантизации device_map="auto" работает лучше всего
             load_kwargs["device_map"] = "auto"
-            model = model_class.from_pretrained(local_path, trust_remote_code=True, **load_kwargs)
+            model = MODEL_CLASS.from_pretrained(local_path, trust_remote_code=True, **load_kwargs)
         else:
-            # Для полной точности: грузим в RAM (low_cpu_mem), потом переносим на GPU
-            # Это позволяет ComfyUI управлять памятью
-            model = model_class.from_pretrained(local_path, trust_remote_code=True, low_cpu_mem_usage=True, **load_kwargs)
+            model = MODEL_CLASS.from_pretrained(local_path, trust_remote_code=True, low_cpu_mem_usage=True, **load_kwargs)
             model.to(device)
 
         MODEL_MANAGER.set_model(model_id, model, processor)
@@ -258,7 +347,8 @@ class TS_Qwen3_VL_Node:
     # ===============================================
     def process(self, model_name, system_preset, prompt, seed, max_new_tokens,
                 precision, use_flash_attention_2, offline_mode, unload_after_generation, enable,
-                hf_token, max_image_size, video_max_frames, image=None, video=None, custom_system_prompt=None):
+                hf_token, max_image_size, video_max_frames, image=None, video=None, custom_system_prompt=None, 
+                hf_endpoint="hf-mirror.com, huggingface.co", proxy=None):
 
         logger.info("--- Starting TS_Qwen3_VL process ---")
         all_processed_images = []
@@ -272,8 +362,9 @@ class TS_Qwen3_VL_Node:
             return (f"ERROR: {precision} requires bitsandbytes.", None)
 
         model_id = f"{model_name}_{precision}_{use_flash_attention_2}"
+        
         try:
-            model, processor = self._load_model(model_id, model_name, precision, use_flash_attention_2, offline_mode, hf_token)
+            model, processor = self._load_model(model_id, model_name, precision, use_flash_attention_2, offline_mode, hf_token, hf_endpoint, proxy)
 
             preset_config = PRESET_CONFIGS.get(system_preset)
             if system_preset == "Your instruction" and custom_system_prompt:
@@ -284,11 +375,11 @@ class TS_Qwen3_VL_Node:
                 system_prompt, gen_params = "", {}
 
             torch.manual_seed(seed)
-            if torch.cuda.is_available(): torch.cuda.manual_seed_all(seed)
+            if torch.cuda.is_available(): 
+                torch.cuda.manual_seed_all(seed)
 
             user_content = [{"type": "text", "text": prompt.strip() if prompt else ""}]
 
-            # Обработка изображений (batch)
             if image is not None:
                 pil_list = self.tensor_to_pil_list(image)
                 for i, img in enumerate(pil_list):
@@ -296,7 +387,6 @@ class TS_Qwen3_VL_Node:
                     all_processed_images.append(processed_img)
                     user_content.insert(i, {"type": "image", "image": processed_img})
 
-            # Обработка видео
             if video is not None:
                 video_frames = self.tensor_to_pil_list(video)
                 total_frames = len(video_frames)
@@ -330,8 +420,10 @@ class TS_Qwen3_VL_Node:
             final_content_str = generated_text
 
         except Exception as e:
+            logger.error(f"Generation error: {e}", exc_info=True)
             final_content_str = f"ERROR: {e}"
-            if unload_after_generation and model_id in MODEL_MANAGER.cache: MODEL_MANAGER.unload_model(model_id)
+            if unload_after_generation and model_id in MODEL_MANAGER.cache: 
+                MODEL_MANAGER.unload_model(model_id)
             return (final_content_str, self.pil_to_tensor(all_processed_images))
 
         if unload_after_generation:
