@@ -186,7 +186,7 @@ class TS_Qwen3_VL_Node:
                 "video": ("IMAGE",), 
                 "custom_system_prompt": ("STRING", {"multiline": True, "forceInput": True}),
                 # ИЗМЕНЕНИЕ: Подсказка о множественных зеркалах
-                "hf_endpoint": ("STRING", {"default": "hf-mirror.com, huggingface.co", "multiline": False}),
+                "hf_endpoint": ("STRING", {"default": "huggingface.co, hf-mirror.com", "multiline": False}),
                 "proxy": ("STRING", {"default": "", "multiline": False, "placeholder": "http://user:pass@host:port"}),
             }
         }
