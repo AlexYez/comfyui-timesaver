@@ -120,6 +120,10 @@ class TSCropToMask:
                 "fixed_mask_frame_index": ("INT", {"default": 0, "min": 0, "max": 9999, "step": 1, "description": "If > 0, use mask from this 1-indexed frame for all crops. (Overrides interpolation)"}),
                 "interpolation_window_size": ("INT", {"default": 0, "min": 0, "max": 100, "step": 1, "description": "Number of frames for interpolation (0 for none). Affects frames within the batch."}),
                 "force_gpu": ("BOOLEAN", {"default": True, "description": "If true, force processing on GPU if available."}),
+                # Добавление параметров в конец для совместимости
+                "fixed_crop_size": ("BOOLEAN", {"default": False}),
+                "fixed_width": ("INT", {"default": 1024, "min": 64, "max": 4096, "step": 8}),
+                "fixed_height": ("INT", {"default": 1024, "min": 64, "max": 4096, "step": 8}),
             }
         }
     
@@ -128,7 +132,7 @@ class TSCropToMask:
     FUNCTION = "crop"
     CATEGORY = "image/processing"
 
-    def crop(self, images, mask, padding, divide_by, max_resolution, fixed_mask_frame_index, interpolation_window_size, force_gpu):
+    def crop(self, images, mask, padding, divide_by, max_resolution, fixed_mask_frame_index, interpolation_window_size, force_gpu, fixed_crop_size=False, fixed_width=1024, fixed_height=1024):
         # Определение целевого устройства
         target_device = comfy.model_management.get_torch_device() if force_gpu and torch.cuda.is_available() else torch.device("cpu")
         print(f"TSCropToMask: Using device {target_device}")
@@ -141,6 +145,7 @@ class TSCropToMask:
             mask = mask.unsqueeze(0)
         
         batch_size = images.shape[0]
+        original_img_h, original_img_w = images.shape[1], images.shape[2]
         
         if mask.shape[0] == batch_size:
             pass
@@ -154,272 +159,156 @@ class TSCropToMask:
             print(f"Warning: Mask batch size ({mask.shape[0]}) and image batch size ({batch_size}) mismatch. Falling back to using first mask for all images in the batch.")
             mask = mask[0].unsqueeze(0).repeat(batch_size, 1, 1)
 
-        # --- НАЧАЛО ИЗМЕНЕНИЙ ---
         # Проверяем, являются ли все маски в батче пустыми или однотонными.
         all_masks_are_solid = True
         for i in range(mask.shape[0]):
             m = mask[i]
             if m.numel() > 0: # Убеждаемся, что в срезе маски есть элементы
-                # Маска считается однотонной, если все ее значения одинаковы (min равен max)
                 if m.min() != m.max():
                     all_masks_are_solid = False
                     break
         
         if all_masks_are_solid:
             print("TSCropToMask: Все входные маски пустые или однотонные. Пропускаем обрезку и возвращаем исходные изображения.")
-            original_height, original_width = images.shape[1], images.shape[2]
-            
             crop_data = []
             for i in range(batch_size):
                 crop_data.append({
                     "original_x": 0, "original_y": 0,
-                    "original_width": original_width, "original_height": original_height,
+                    "original_width": original_img_w, "original_height": original_img_h,
                     "crop_x": 0, "crop_y": 0,
-                    "initial_crop_width": original_width, "initial_crop_height": original_height,
-                    "final_crop_width": original_width, "final_crop_height": original_height,
+                    "initial_crop_width": original_img_w, "initial_crop_height": original_img_h,
+                    "final_crop_width": original_img_w, "final_crop_height": original_img_h,
                 })
-            
-            return (images, mask, crop_data, original_width, original_height)
-        # --- КОНЕЦ ИЗМЕНЕНИЙ ---
+            return (images, mask, crop_data, original_img_w, original_img_h)
 
         raw_regions = []
-        
         if fixed_mask_frame_index > 0:
             mask_idx_to_use = min(fixed_mask_frame_index - 1, mask.shape[0] - 1)
             fixed_m = mask[mask_idx_to_use]
-            
             nonzero = torch.nonzero(fixed_m, as_tuple=False)
             if len(nonzero) == 0:
-                y_min, x_min = 0, 0
-                y_max, x_max = fixed_m.shape
+                y_min, x_min, y_max, x_max = 0, 0, original_img_h, original_img_w
             else:
                 y_min, x_min = nonzero.min(dim=0).values
                 y_max, x_max = nonzero.max(dim=0).values
-                y_min, x_min = y_min.item(), x_min.item()
-                y_max, x_max = y_max.item() + 1, x_max.item() + 1
+                y_min, x_min, y_max, x_max = y_min.item(), x_min.item(), y_max.item() + 1, x_max.item() + 1
             
-            y_min = max(0, y_min - padding)
-            x_min = max(0, x_min - padding)
-            y_max = min(fixed_m.shape[0], y_max + padding)
-            x_max = min(fixed_m.shape[1], x_max + padding)
-            
-            width = x_max - x_min
-            height = y_max - y_min
-
+            y_min, x_min = max(0, y_min - padding), max(0, x_min - padding)
+            y_max, x_max = min(original_img_h, y_max + padding), min(original_img_w, x_max + padding)
             for i in range(batch_size):
-                raw_regions.append({
-                    "x_min": x_min,
-                    "y_min": y_min,
-                    "width": width,
-                    "height": height
-                })
+                raw_regions.append({"x_min": x_min, "y_min": y_min, "width": x_max - x_min, "height": y_max - y_min})
         else:
             for i in range(batch_size):
                 m = mask[i]
                 nonzero = torch.nonzero(m, as_tuple=False)
-                
                 if len(nonzero) == 0:
-                    y_min, x_min = 0, 0
-                    y_max, x_max = m.shape
+                    y_min, x_min, y_max, x_max = 0, 0, original_img_h, original_img_w
                 else:
                     y_min, x_min = nonzero.min(dim=0).values
                     y_max, x_max = nonzero.max(dim=0).values
-                    y_min, x_min = y_min.item(), x_min.item()
-                    y_max, x_max = y_max.item() + 1, x_max.item() + 1
+                    y_min, x_min, y_max, x_max = y_min.item(), x_min.item(), y_max.item() + 1, x_max.item() + 1
                 
-                y_min = max(0, y_min - padding)
-                x_min = max(0, x_min - padding)
-                y_max = min(m.shape[0], y_max + padding)
-                x_max = min(m.shape[1], x_max + padding)
-                
-                width = x_max - x_min
-                height = y_max - y_min
-                
-                raw_regions.append({
-                    "x_min": x_min,
-                    "y_min": y_min,
-                    "width": width,
-                    "height": height
-                })
+                y_min, x_min = max(0, y_min - padding), max(0, x_min - padding)
+                y_max, x_max = min(original_img_h, y_max + padding), min(original_img_w, x_max + padding)
+                raw_regions.append({"x_min": x_min, "y_min": y_min, "width": x_max - x_min, "height": y_max - y_min})
         
         smoothed_regions = []
         if fixed_mask_frame_index == 0 and interpolation_window_size > 0:
             for i in range(batch_size):
-                window_start = max(0, i - interpolation_window_size // 2)
-                window_end = min(batch_size, i + interpolation_window_size // 2 + 1)
-                
-                window_x_mins = [r["x_min"] for r in raw_regions[window_start:window_end]]
-                window_y_mins = [r["y_min"] for r in raw_regions[window_start:window_end]]
-                window_widths = [r["width"] for r in raw_regions[window_start:window_end]]
-                window_heights = [r["height"] for r in raw_regions[window_start:window_end]]
-
-                avg_x_min = sum(window_x_mins) / len(window_x_mins)
-                avg_y_min = sum(window_y_mins) / len(window_y_mins)
-                avg_width = sum(window_widths) / len(window_widths)
-                avg_height = sum(window_heights) / len(window_heights)
-
-                blended_x_min = round(avg_x_min)
-                blended_y_min = round(avg_y_min)
-                blended_width = round(avg_width)
-                blended_height = round(avg_height)
-
-                blended_width = max(1, blended_width)
-                blended_height = max(1, blended_height)
-
-                smoothed_regions.append({
-                    "x_min": int(blended_x_min),
-                    "y_min": int(blended_y_min),
-                    "width": int(blended_width),
-                    "height": int(blended_height)
-                })
+                window_start, window_end = max(0, i - interpolation_window_size // 2), min(batch_size, i + interpolation_window_size // 2 + 1)
+                win = raw_regions[window_start:window_end]
+                avg_x = sum(r["x_min"] for r in win) / len(win)
+                avg_y = sum(r["y_min"] for r in win) / len(win)
+                avg_w = sum(r["width"] for r in win) / len(win)
+                avg_h = sum(r["height"] for r in win) / len(win)
+                smoothed_regions.append({"x_min": int(round(avg_x)), "y_min": int(round(avg_y)), "width": int(round(max(1, avg_w))), "height": int(round(max(1, avg_h)))})
         else:
             smoothed_regions = raw_regions
+
+        # --- Логика Fixed Crop Size (сохранение пропорций) ---
+        if fixed_crop_size:
+            target_aspect = fixed_width / fixed_height
+            for r in smoothed_regions:
+                cur_w, cur_h = r["width"], r["height"]
+                cur_aspect = cur_w / cur_h
+                if cur_aspect > target_aspect:
+                    new_h = cur_w / target_aspect
+                    r["y_min"] = int(r["y_min"] - (new_h - cur_h) / 2)
+                    r["height"] = int(new_h)
+                else:
+                    new_w = cur_h * target_aspect
+                    r["x_min"] = int(r["x_min"] - (new_w - cur_w) / 2)
+                    r["width"] = int(new_w)
+                
+                # Зажим в границы оригинального изображения
+                r["x_min"] = max(0, min(r["x_min"], original_img_w - 1))
+                r["y_min"] = max(0, min(r["y_min"], original_img_h - 1))
+                r["width"] = int(min(r["width"], original_img_w - r["x_min"]))
+                r["height"] = int(min(r["height"], original_img_h - r["y_min"]))
 
         final_regions = []
         for r in smoothed_regions:
             target_width = ((r["width"] + divide_by - 1) // divide_by) * divide_by
             target_height = ((r["height"] + divide_by - 1) // divide_by) * divide_by
             final_regions.append({
-                "x_min": r["x_min"],
-                "y_min": r["y_min"],
-                "width": r["width"],
-                "height": r["height"],
-                "target_width": target_width, 
-                "target_height": target_height
+                "x_min": r["x_min"], "y_min": r["y_min"],
+                "width": r["width"], "height": r["height"],
+                "target_width": target_width, "target_height": target_height
             })
 
         max_target_width = max(r["target_width"] for r in final_regions)
         max_target_height = max(r["target_height"] for r in final_regions)
         
-        # Step 3: Perform cropping with uniform size
-        cropped_images = []
-        cropped_masks = []
-        crop_data = [] 
-        
+        cropped_images, cropped_masks, crop_data = [], [], []
         for i in range(batch_size):
             img = images[i]
-            current_image_mask_for_crop = mask[min(i, mask.shape[0]-1)] 
-            
             r = final_regions[i]
+            center_x, center_y = r["x_min"] + r["width"] // 2, r["y_min"] + r["height"] // 2
+            crop_x, crop_y = center_x - max_target_width // 2, center_y - max_target_height // 2
+            crop_x = max(0, min(crop_x, original_img_w - max_target_width))
+            crop_y = max(0, min(crop_y, original_img_h - max_target_height))
 
-            center_x = r["x_min"] + r["width"] // 2
-            center_y = r["y_min"] + r["height"] // 2
-            
-            crop_x = center_x - max_target_width // 2
-            crop_y = center_y - max_target_height // 2
+            if original_img_w < max_target_width: crop_x = max(0, (original_img_w - max_target_width) // 2)
+            if original_img_h < max_target_height: crop_y = max(0, (original_img_h - max_target_height) // 2)
 
-            crop_x = max(0, min(crop_x, img.shape[1] - max_target_width))
-            crop_y = max(0, min(crop_y, img.shape[0] - max_target_height))
-
-            if img.shape[1] < max_target_width:
-                crop_x = (img.shape[1] - max_target_width) // 2
-                crop_x = max(0, crop_x)
-            if img.shape[0] < max_target_height:
-                crop_y = (img.shape[0] - max_target_height) // 2
-                crop_y = max(0, crop_y)
-
-            crop_x_end = crop_x + max_target_width
-            crop_y_end = crop_y + max_target_height
-
+            crop_x_end, crop_y_end = crop_x + max_target_width, crop_y + max_target_height
             cropped_img = img[crop_y:crop_y_end, crop_x:crop_x_end, :]
-            cropped_msk = current_image_mask_for_crop[crop_y:crop_y_end, crop_x:crop_x_end]
+            cropped_msk = mask[min(i, mask.shape[0]-1)][crop_y:crop_y_end, crop_x:crop_x_end]
             
             if cropped_img.shape[0] < max_target_height or cropped_img.shape[1] < max_target_width:
-                pad_bottom = max_target_height - cropped_img.shape[0]
-                pad_right = max_target_width - cropped_img.shape[1]
-                
-                cropped_img = torch.nn.functional.pad(
-                    cropped_img.unsqueeze(0).permute(0, 3, 1, 2),
-                    (0, pad_right, 0, pad_bottom),
-                    mode='constant',
-                    value=0
-                ).permute(0, 2, 3, 1).squeeze(0)
-                
-                cropped_msk = torch.nn.functional.pad(
-                    cropped_msk.unsqueeze(0).unsqueeze(0),
-                    (0, pad_right, 0, pad_bottom),
-                    mode='constant',
-                    value=0
-                ).squeeze(0).squeeze(0)
+                pb, pr = max_target_height - cropped_img.shape[0], max_target_width - cropped_img.shape[1]
+                cropped_img = F.pad(cropped_img.unsqueeze(0).permute(0, 3, 1, 2), (0, pr, 0, pb), value=0).permute(0, 2, 3, 1).squeeze(0)
+                cropped_msk = F.pad(cropped_msk.unsqueeze(0).unsqueeze(0), (0, pr, 0, pb), value=0).squeeze(0).squeeze(0)
             
             cropped_images.append(cropped_img)
             cropped_masks.append(cropped_msk)
-            
-            initial_crop_width = max_target_width
-            initial_crop_height = max_target_height
-
             crop_data.append({
-                "original_x": r["x_min"],
-                "original_y": r["y_min"],
-                "original_width": r["width"],
-                "original_height": r["height"],
-                "crop_x": crop_x,
-                "crop_y": crop_y,
-                "initial_crop_width": initial_crop_width,
-                "initial_crop_height": initial_crop_height,
-                "final_crop_width": initial_crop_width, 
-                "final_crop_height": initial_crop_height
+                "original_x": r["x_min"], "original_y": r["y_min"],
+                "original_width": r["width"], "original_height": r["height"],
+                "crop_x": crop_x, "crop_y": crop_y,
+                "initial_crop_width": max_target_width, "initial_crop_height": max_target_height,
+                "final_crop_width": max_target_width, "final_crop_height": max_target_height
             })
         
-        cropped_images = torch.stack(cropped_images)
-        cropped_masks = torch.stack(cropped_masks)
+        cropped_images, cropped_masks = torch.stack(cropped_images), torch.stack(cropped_masks)
         
-        # Step 4: Apply resolution scaling based on max_resolution (for the smaller side) and divide_by
-        current_width, current_height = max_target_width, max_target_height
-        
-        min_dim_current = min(current_width, current_height)
-        
-        new_width, new_height = current_width, current_height
-
-        if min_dim_current > max_resolution:
-            scale_ratio = max_resolution / min_dim_current
-            
-            new_width = int(current_width * scale_ratio)
-            new_height = int(current_height * scale_ratio)
-
-            new_width = (new_width // divide_by) * divide_by
-            new_height = (new_height // divide_by) * divide_by
-            
-            new_width = max(divide_by, new_width)
-            new_height = max(divide_by, new_height)
-
-            if new_width != current_width or new_height != current_height:
-                cropped_images = cropped_images.permute(0, 3, 1, 2)
-                cropped_images = F.interpolate(
-                    cropped_images,
-                    size=(new_height, new_width),
-                    mode='bilinear',
-                    align_corners=False
-                )
-                cropped_images = cropped_images.permute(0, 2, 3, 1)
-                
-                cropped_masks = cropped_masks.unsqueeze(1)
-                cropped_masks = F.interpolate(
-                    cropped_masks,
-                    size=(new_height, new_width),
-                    mode='nearest'
-                )
-                cropped_masks = cropped_masks.squeeze(1)
-                
-                for data_item in crop_data:
-                    data_item["final_crop_width"] = new_width
-                    data_item["final_crop_height"] = new_height
-            else:
-                for data_item in crop_data:
-                    data_item["final_crop_width"] = new_width
-                    data_item["final_crop_height"] = new_height
+        curr_w, curr_h = max_target_width, max_target_height
+        if fixed_crop_size:
+            new_width, new_height = fixed_width, fixed_height
         else:
-            for data_item in crop_data:
-                data_item["final_crop_width"] = current_width
-                data_item["final_crop_height"] = current_height
+            min_dim = min(curr_w, curr_h)
+            new_width, new_height = curr_w, curr_h
+            if min_dim > max_resolution:
+                scale = max_resolution / min_dim
+                new_width = max(divide_by, (int(curr_w * scale) // divide_by) * divide_by)
+                new_height = max(divide_by, (int(curr_h * scale) // divide_by) * divide_by)
 
-        return (
-            cropped_images, 
-            cropped_masks, 
-            crop_data,
-            new_width,
-            new_height
-        )
+        if new_width != curr_w or new_height != curr_h:
+            cropped_images = F.interpolate(cropped_images.permute(0, 3, 1, 2), size=(new_height, new_width), mode='bilinear', align_corners=False).permute(0, 2, 3, 1)
+            cropped_masks = F.interpolate(cropped_masks.unsqueeze(1), size=(new_height, new_width), mode='nearest').squeeze(1)
+            for d in crop_data: d["final_crop_width"], d["final_crop_height"] = new_width, new_height
+        
+        return (cropped_images, cropped_masks, crop_data, new_width, new_height)
 
 
 class TSRestoreFromCrop:
@@ -432,7 +321,7 @@ class TSRestoreFromCrop:
                 "crop_data": ("CROP_DATA",),
                 "blur": ("INT", {"default": 64, "min": 0, "max": 256, "step": 1}),
                 "blur_type": (["Gaussian", "Box"], {"default": "Gaussian"}),
-                "force_gpu": ("BOOLEAN", {"default": True, "description": "If true, force processing on GPU if available."}),
+                "force_gpu": ("BOOLEAN", {"default": True}),
             }
         }
     
@@ -441,120 +330,74 @@ class TSRestoreFromCrop:
     CATEGORY = "image/processing"
 
     def restore(self, original_images, cropped_images, crop_data, blur, blur_type, force_gpu):
-        # Определение целевого устройства
         target_device = comfy.model_management.get_torch_device() if force_gpu and torch.cuda.is_available() else torch.device("cpu")
         print(f"TSRestoreFromCrop: Using device {target_device}")
-
-        # Перемещение входных тензоров на целевое устройство
-        original_images = original_images.to(target_device)
-        cropped_images = cropped_images.to(target_device)
-        
-        current_device = target_device
-
+        original_images, cropped_images = original_images.to(target_device), cropped_images.to(target_device)
         restored_images = []
-        batch_size = original_images.shape[0]
         
-        for i in range(batch_size):
+        orig_img_h, orig_img_w = original_images.shape[1], original_images.shape[2]
+
+        for i in range(original_images.shape[0]):
             orig_img = original_images[i].clone()
-            cropped_img = cropped_images[i]
-            data = crop_data[i]
+            c_img, data = cropped_images[i], crop_data[i]
             
-            # Масштабируем cropped_img обратно до размеров, которые были ДО масштабирования max_resolution.
-            if cropped_img.shape[0] != data["initial_crop_height"] or cropped_img.shape[1] != data["initial_crop_width"]:
-                cropped_img = cropped_img.permute(2, 0, 1).unsqueeze(0)
-                cropped_img = F.interpolate(
-                    cropped_img,
-                    size=(data["initial_crop_height"], data["initial_crop_width"]),
-                    mode='bilinear',
-                    align_corners=False
-                )
-                cropped_img = cropped_img.squeeze(0).permute(1, 2, 0)
+            if c_img.shape[0] != data["initial_crop_height"] or c_img.shape[1] != data["initial_crop_width"]:
+                c_img = F.interpolate(c_img.permute(2, 0, 1).unsqueeze(0), size=(data["initial_crop_height"], data["initial_crop_width"]), mode='bilinear', align_corners=False).squeeze(0).permute(1, 2, 0)
             
-            paste_x_in_crop = data["original_x"] - data["crop_x"]
-            paste_y_in_crop = data["original_y"] - data["crop_y"]
+            p_x, p_y = data["original_x"], data["original_y"]
+            p_w, p_h = data["original_width"], data["original_height"]
+            
+            paste_x_in_crop = p_x - data["crop_x"]
+            paste_y_in_crop = p_y - data["crop_y"]
 
-            paste_width = data["original_width"]
-            paste_height = data["original_height"]
-
-            cropped_img_h, cropped_img_w, _ = cropped_img.shape
+            temp_canvas = torch.zeros((p_h, p_w, 3), device=target_device, dtype=c_img.dtype)
+            src_y_s, src_x_s = max(0, paste_y_in_crop), max(0, paste_x_in_crop)
+            src_y_e, src_x_e = min(c_img.shape[0], paste_y_in_crop + p_h), min(c_img.shape[1], paste_x_in_crop + p_w)
+            dst_y_s, dst_x_s = max(0, -paste_y_in_crop), max(0, -paste_x_in_crop)
             
-            temp_canvas = torch.zeros((paste_height, paste_width, 3), device=current_device, dtype=cropped_img.dtype)
-            
-            src_y_start = max(0, paste_y_in_crop)
-            src_x_start = max(0, paste_x_in_crop)
-            src_y_end = min(cropped_img_h, paste_y_in_crop + paste_height)
-            src_x_end = min(cropped_img_w, paste_x_in_crop + paste_width)
-            
-            dest_y_start = max(0, -paste_y_in_crop)
-            dest_x_start = max(0, -paste_x_in_crop)
-            
-            # ИСПРАВЛЕНИЕ: Исправлена опечатка в индексации sliced_cropped_img
-            if src_y_end > src_y_start and src_x_end > src_x_start:
-                temp_canvas[
-                    dest_y_start : dest_y_start + (src_y_end - src_y_start),
-                    dest_x_start : dest_x_start + (src_x_end - src_x_start),
-                    :
-                ] = cropped_img[src_y_start:src_y_end, src_x_start:src_x_end, :] # Исправлено
+            if src_y_e > src_y_s and src_x_e > src_x_s:
+                temp_canvas[dst_y_s : dst_y_s + (src_y_e - src_y_s), dst_x_s : dst_x_s + (src_x_e - src_x_s), :] = c_img[src_y_s:src_y_e, src_x_s:src_x_e, :]
             
             region_to_paste = temp_canvas 
-            
-            if region_to_paste.shape[0] != paste_height or region_to_paste.shape[1] != paste_width:
-                print(f"Warning: region_to_paste size mismatch after re-cropping. Expected ({paste_height}, {paste_width}), got ({region_to_paste.shape[0]}, {region_to_paste.shape[1]}). Resizing...")
-                region_to_paste = region_to_paste.permute(2,0,1).unsqueeze(0)
-                region_to_paste = F.interpolate(
-                    region_to_paste,
-                    size=(paste_height, paste_width),
-                    mode='bilinear',
-                    align_corners=False
-                ).squeeze(0).permute(1,2,0)
-            
-            # --- Логика смешивания (блендинга) ---
-            if blur > 0:
-                base_mask_for_blending = torch.ones((paste_height, paste_width), 
-                                                    device=current_device, dtype=torch.float32)
 
-                shrink_amount = blur 
-                
-                shrunk_mask_canvas = torch.zeros_like(base_mask_for_blending, device=current_device)
-                
-                inner_y_start = max(0, shrink_amount)
-                inner_x_start = max(0, shrink_amount)
-                inner_y_end = max(inner_y_start, min(paste_height, paste_height - shrink_amount))
-                inner_x_end = max(inner_x_start, min(paste_width, paste_width - shrink_amount))
+            y_start_orig, y_end_orig = max(0, p_y), min(orig_img_h, p_y + p_h)
+            x_start_orig, x_end_orig = max(0, p_x), min(orig_img_w, p_x + p_w)
 
-                if inner_y_end > inner_y_start and inner_x_end > inner_x_start:
-                    shrunk_mask_canvas[inner_y_start:inner_y_end, inner_x_start:inner_x_end] = 1.0
-                
-                if blur_type == "Gaussian":
-                    blurred_mask = gaussian_blur_mask(shrunk_mask_canvas.unsqueeze(0), blur, current_device).squeeze(0)
-                elif blur_type == "Box":
-                    blurred_mask = box_blur_mask(shrunk_mask_canvas.unsqueeze(0), blur, current_device).squeeze(0)
+            if y_end_orig > y_start_orig and x_end_orig > x_start_orig:
+                local_y_s, local_y_e = y_start_orig - p_y, y_end_orig - p_y
+                local_x_s, local_x_e = x_start_orig - p_x, x_end_orig - p_x
+                final_paste_region = region_to_paste[local_y_s:local_y_e, local_x_s:local_x_e, :]
+
+                if blur > 0:
+                    # --- УМНАЯ МАСКА С УЧЕТОМ ГРАНИЦ ИЗОБРАЖЕНИЯ ---
+                    # Если область кропа примыкает к краю кадра ближе чем на blur, 
+                    # мы не сужаем маску с этой стороны.
+                    
+                    left_edge = 0 if p_x <= blur else blur
+                    top_edge = 0 if p_y <= blur else blur
+                    right_edge = 0 if (p_x + p_w) >= (orig_img_w - blur) else blur
+                    bottom_edge = 0 if (p_y + p_h) >= (orig_img_h - blur) else blur
+
+                    shrunk_mask_canvas = torch.zeros((p_h, p_w), device=target_device)
+                    
+                    # Сужаем только те стороны, которые НЕ у края кадра
+                    m_y_s, m_x_s = top_edge, left_edge
+                    m_y_e, m_x_e = max(m_y_s, p_h - bottom_edge), max(m_x_s, p_w - right_edge)
+                    
+                    if m_y_e > m_y_s and m_x_e > m_x_s:
+                        shrunk_mask_canvas[m_y_s:m_y_e, m_x_s:m_x_e] = 1.0
+                    
+                    if blur_type == "Gaussian":
+                        blurred_mask = gaussian_blur_mask(shrunk_mask_canvas.unsqueeze(0), blur, target_device).squeeze(0)
+                    else:
+                        blurred_mask = box_blur_mask(shrunk_mask_canvas.unsqueeze(0), blur, target_device).squeeze(0)
+                    
+                    sliced_mask = blurred_mask[local_y_s:local_y_e, local_x_s:local_x_e].unsqueeze(-1)
+                    original_part = orig_img[y_start_orig:y_end_orig, x_start_orig:x_end_orig, :]
+                    
+                    orig_img[y_start_orig:y_end_orig, x_start_orig:x_end_orig, :] = (final_paste_region * sliced_mask) + (original_part * (1.0 - sliced_mask))
                 else:
-                    print(f"Warning: Unknown blur_type '{blur_type}'. No blur applied for this frame.")
-                    blurred_mask = shrunk_mask_canvas
-                
-                original_region_for_blend = orig_img[
-                    data["original_y"] : data["original_y"] + data["original_height"],
-                    data["original_x"] : data["original_x"] + data["original_width"],
-                    :
-                ]
-                
-                blurred_mask_expanded = blurred_mask.unsqueeze(-1)
-                
-                blended_region = (region_to_paste * blurred_mask_expanded) + \
-                                 (original_region_for_blend * (1.0 - blurred_mask_expanded))
-                
-                orig_img[
-                    data["original_y"] : data["original_y"] + data["original_height"],
-                    data["original_x"] : data["original_x"] + data["original_width"],
-                    :
-                ] = blended_region
-            else: # blur равно 0, просто жесткая вставка
-                orig_img[
-                    data["original_y"] : data["original_y"] + data["original_height"],
-                    data["original_x"] : data["original_x"] + data["original_width"],
-                    :
-                ] = region_to_paste
+                    orig_img[y_start_orig:y_end_orig, x_start_orig:x_end_orig, :] = final_paste_region
             
             restored_images.append(orig_img)
         
