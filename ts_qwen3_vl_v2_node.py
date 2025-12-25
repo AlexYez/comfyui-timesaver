@@ -16,16 +16,21 @@ from transformers import (
 )
 
 # ===============================================
-# 1. Логирование и настройки
+# 1. Глобальные настройки
 # ===============================================
+# Включаем TF32 для ускорения на RTX 3000/4000/5000.
+# На старых картах (RTX 2000) это игнорируется и не вызывает ошибок.
+torch.backends.cuda.matmul.allow_tf32 = True
+torch.backends.cudnn.allow_tf32 = True
+
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-logger = logging.getLogger("TS_Qwen_3VL_FP8")
+logger = logging.getLogger("TS_Qwen_3VL_V2")
 
 if "llm_models" not in folder_paths.folder_names_and_paths:
     folder_paths.folder_names_and_paths["llm_models"] = ([os.path.join(folder_paths.models_dir, "LLM")], {".safetensors"})
 
 # ===============================================
-# 2. Менеджер моделей (Singleton)
+# 2. Менеджер моделей
 # ===============================================
 class QwenModelManager:
     _instance = None
@@ -50,7 +55,6 @@ class QwenModelManager:
             del self.cache[key]
             gc.collect()
             torch.cuda.empty_cache()
-            mm.soft_empty_cache()
             logger.info(f"Model unloaded: {key}")
 
 MODEL_MANAGER = QwenModelManager()
@@ -76,7 +80,7 @@ preset_keys = list(PRESET_CONFIGS.keys()) if PRESET_CONFIGS else []
 # ===============================================
 # 4. Основной Класс Ноды
 # ===============================================
-class TS_Qwen_3VL_FP8:
+class TS_Qwen_3VL_V2:
     def __init__(self):
         pass
 
@@ -91,7 +95,6 @@ class TS_Qwen_3VL_FP8:
                 "prompt": ("STRING", {"multiline": True, "default": "Describe this image."}),
                 "seed": ("INT", {"default": 42, "min": 0, "max": 0xffffffffffffffff}),
                 "max_new_tokens": ("INT", {"default": 512, "min": 64, "max": 8192, "step": 64}),
-                # Добавлен параметр enable
                 "enable": ("BOOLEAN", {"default": True}),
                 "unload_after_generation": ("BOOLEAN", {"default": False}),
                 "max_image_size": ("INT", {"default": 1280, "min": 256, "max": 4096, "step": 32}),
@@ -195,15 +198,7 @@ class TS_Qwen_3VL_FP8:
         if matched_config_dir:
             return matched_config_dir
         else:
-            raise FileNotFoundError(f"No config found matching hidden_size={model_hidden_size} in 'configs/'. Download config from HF.")
-
-    # --- Очистка памяти ---
-    def _free_vram(self):
-        logger.info("ComfyUI Memory Management: Requesting model unload...")
-        mm.unload_all_models()
-        mm.soft_empty_cache()
-        gc.collect()
-        torch.cuda.empty_cache()
+            raise FileNotFoundError(f"No config found matching hidden_size={model_hidden_size} in 'configs/'.")
 
     # --- Загрузка Модели ---
     def _load_model(self, model_name):
@@ -214,32 +209,39 @@ class TS_Qwen_3VL_FP8:
         except Exception as e:
             raise RuntimeError(f"Config detection failed: {e}")
 
-        cache_key = f"{model_name}_auto_final"
+        cache_key = f"{model_name}_v2_optimized"
         cached = MODEL_MANAGER.get(cache_key)
         if cached:
             return cached
 
-        # Освобождаем память перед загрузкой
-        self._free_vram()
-
+        # Получаем устройство
         device = mm.get_torch_device()
         logger.info(f"Loading Config from: {config_dir}")
 
         config = AutoConfig.from_pretrained(config_dir, trust_remote_code=True, local_files_only=True)
+        
+        # SDPA (Scaled Dot Product Attention) - быстро и нативно в Torch 2.x
+        config._attn_implementation = "sdpa"
+        
         processor = AutoProcessor.from_pretrained(config_dir, trust_remote_code=True, local_files_only=True)
 
         logger.info("Initializing model on GPU (Float16)...")
         
+        # Попытка инициализации
         try:
             with torch.device(device):
+                # Float16 работает везде (RTX 2000-5000)
                 model = AutoModelForVision2Seq.from_config(config, trust_remote_code=True)
-                model.to(torch.float16)
+                model.to(torch.float16) 
         except RuntimeError as e:
-            if "out of memory" in str(e).lower() or "allocation" in str(e).lower():
-                logger.warning("OOM Detected! Retrying with aggressive cleanup...")
+            if "out of memory" in str(e).lower():
+                logger.warning("OOM detected. Performing soft cleanup and retrying...")
+                # Мягкая очистка кэша, не убивая другие ноды ComfyUI
+                mm.soft_empty_cache() 
                 gc.collect()
                 torch.cuda.empty_cache()
-                mm.soft_empty_cache()
+                
+                # Retry
                 with torch.device(device):
                     model = AutoModelForVision2Seq.from_config(config, trust_remote_code=True)
                     model.to(torch.float16)
@@ -250,9 +252,11 @@ class TS_Qwen_3VL_FP8:
         state_dict = load_file(ckpt_path)
         
         missing, unexpected = model.load_state_dict(state_dict, strict=False)
-        if missing: logger.info(f"Missing keys: {len(missing)}")
+        if missing: logger.info(f"Missing keys (expected for FP8): {len(missing)}")
         
         model.eval()
+        
+        # Очистка RAM
         del state_dict
         gc.collect()
         
@@ -263,34 +267,21 @@ class TS_Qwen_3VL_FP8:
     def process(self, model_name, system_preset, prompt, seed, max_new_tokens, enable, 
                 unload_after_generation, max_image_size, video_max_frames, image=None, video=None, custom_system_prompt=None):
         
-        logger.info(f"--- Starting Process (Enable={enable}) ---")
-
-        # === 1. Обработка отключения (Bypass) ===
         if not enable:
-            logger.info("Node disabled. Passing inputs through.")
-            # Собираем входные картинки и видео в один список для возврата
             inputs_to_pass = []
             if image is not None: inputs_to_pass.append(image)
             if video is not None: inputs_to_pass.append(video)
-            
-            if inputs_to_pass:
-                # Объединяем тензоры по батчу
-                ret_image = torch.cat(inputs_to_pass, dim=0)
-            else:
-                # Пустой тензор (черный квадрат 64x64), если ничего нет
-                ret_image = torch.zeros((1, 64, 64, 3), dtype=torch.float32)
-            
+            ret_image = torch.cat(inputs_to_pass, dim=0) if inputs_to_pass else torch.zeros((1, 64, 64, 3), dtype=torch.float32)
             return (prompt, ret_image)
 
-        # === 2. Основная работа ===
+        logger.info(f"--- Starting Generation V2 ---")
+        
         try:
             model, processor = self._load_model(model_name)
         except Exception as e:
-            logger.error(f"Error: {e}")
-            self._free_vram()
+            logger.error(f"Load Error: {e}")
             return (f"Error: {e}", None)
 
-        # Пресеты
         preset_data = PRESET_CONFIGS.get(system_preset)
         if system_preset == "Your instruction" and custom_system_prompt:
             sys_prompt_text = custom_system_prompt
@@ -304,7 +295,6 @@ class TS_Qwen_3VL_FP8:
 
         if "temperature" not in gen_params: gen_params["temperature"] = 0.7
 
-        # Контент
         all_processed_pil = []
         user_content = []
 
@@ -356,15 +346,17 @@ class TS_Qwen_3VL_FP8:
             torch.cuda.manual_seed_all(seed)
 
         gen_params["max_new_tokens"] = max_new_tokens
-        temp = gen_params.get("temperature", 0.7)
-        if temp > 0:
+        gen_params["use_cache"] = True 
+        
+        if gen_params.get("temperature", 0) > 0:
             gen_params["do_sample"] = True
         else:
             gen_params["do_sample"] = False
             
-        logger.info(f"Generating with params: {gen_params}")
+        logger.info(f"Generating...")
 
-        with torch.no_grad():
+        # Inference Mode для ускорения инференса
+        with torch.inference_mode():
             generated_ids = model.generate(
                 **inputs,
                 **gen_params
@@ -379,13 +371,13 @@ class TS_Qwen_3VL_FP8:
         )[0]
 
         if unload_after_generation:
-            MODEL_MANAGER.unload(f"{model_name}_auto_final")
+            MODEL_MANAGER.unload(f"{model_name}_v2_optimized")
 
         return (output_text, self.pil_to_tensor(all_processed_pil))
 
 NODE_CLASS_MAPPINGS = {
-    "TS_Qwen_3VL_FP8": TS_Qwen_3VL_FP8
+    "TS_Qwen_3VL_V2": TS_Qwen_3VL_V2
 }
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "TS_Qwen_3VL_FP8": "TS Qwen 3 VL FP8"
+    "TS_Qwen_3VL_V2": "TS Qwen 3 VL V2"
 }
