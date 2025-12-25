@@ -39,8 +39,8 @@ from .ts_color_node import NODE_CLASS_MAPPINGS as color_class_map, \
                                NODE_DISPLAY_NAME_MAPPINGS as color_display_map
 from .ts_text_tools_node import NODE_CLASS_MAPPINGS as text_tools_class_map, \
                                NODE_DISPLAY_NAME_MAPPINGS as text_tools_display_map
-from .ts_qwen3_vl_fp8_node import NODE_CLASS_MAPPINGS as qwen3_vl_fp8_class_map, \
-                               NODE_DISPLAY_NAME_MAPPINGS as qwen3_vl_fp8_display_map
+from .ts_qwen3_vl_v2_node import NODE_CLASS_MAPPINGS as qwen3_vl_v2_class_map, \
+                               NODE_DISPLAY_NAME_MAPPINGS as qwen3_vl_v2_display_map
 
 # Инициализируем общие словари маппингов
 NODE_CLASS_MAPPINGS = {}
@@ -68,7 +68,7 @@ all_mappings = [
     (models_tool_class_map, models_tool_display_map),
     (color_class_map, color_display_map),
     (text_tools_class_map, text_tools_display_map),
-    (qwen3_vl_fp8_class_map, qwen3_vl_fp8_display_map),
+    (qwen3_vl_v2_class_map, qwen3_vl_v2_display_map),
 ]
 
 # Объединяем все маппинги
