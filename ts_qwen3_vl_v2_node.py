@@ -18,8 +18,6 @@ from transformers import (
 # ===============================================
 # 1. Глобальные настройки
 # ===============================================
-# Включаем TF32 для ускорения на RTX 3000/4000/5000.
-# На старых картах (RTX 2000) это игнорируется и не вызывает ошибок.
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
 
@@ -30,7 +28,38 @@ if "llm_models" not in folder_paths.folder_names_and_paths:
     folder_paths.folder_names_and_paths["llm_models"] = ([os.path.join(folder_paths.models_dir, "LLM")], {".safetensors"})
 
 # ===============================================
-# 2. Менеджер моделей
+# 2. Обертка (Wrapper)
+# Решает конфликт 'property device has no setter'
+# ===============================================
+class QwenComfyWrapper(torch.nn.Module):
+    def __init__(self, model):
+        super().__init__()
+        self.model = model
+
+    @property
+    def device(self):
+        return self.model.device
+
+    @device.setter
+    def device(self, value):
+        # ComfyUI пытается записать устройство, мы игнорируем это, 
+        # так как transformers управляет этим сам.
+        pass
+
+    def generate(self, *args, **kwargs):
+        return self.model.generate(*args, **kwargs)
+
+    def forward(self, *args, **kwargs):
+        return self.model(*args, **kwargs)
+    
+    def __getattr__(self, name):
+        try:
+            return super().__getattr__(name)
+        except AttributeError:
+            return getattr(self.model, name)
+
+# ===============================================
+# 3. Менеджер моделей
 # ===============================================
 class QwenModelManager:
     _instance = None
@@ -55,12 +84,13 @@ class QwenModelManager:
             del self.cache[key]
             gc.collect()
             torch.cuda.empty_cache()
+            mm.soft_empty_cache()
             logger.info(f"Model unloaded: {key}")
 
 MODEL_MANAGER = QwenModelManager()
 
 # ===============================================
-# 3. Пресеты
+# 4. Пресеты
 # ===============================================
 current_dir = os.path.dirname(os.path.abspath(__file__))
 
@@ -78,7 +108,7 @@ PRESET_CONFIGS = load_presets(presets_path)
 preset_keys = list(PRESET_CONFIGS.keys()) if PRESET_CONFIGS else []
 
 # ===============================================
-# 4. Основной Класс Ноды
+# 5. Основной Класс Ноды
 # ===============================================
 class TS_Qwen_3VL_V2:
     def __init__(self):
@@ -140,7 +170,6 @@ class TS_Qwen_3VL_V2:
         l, t = (w - tw) / 2, (h - th) / 2
         return image.crop((l, t, l + tw, t + th))
 
-    # --- АВТО-ОПРЕДЕЛЕНИЕ КОНФИГА ---
     def _detect_config(self, ckpt_path):
         configs_dir = os.path.join(current_dir, "configs")
         if not os.path.exists(configs_dir):
@@ -200,6 +229,17 @@ class TS_Qwen_3VL_V2:
         else:
             raise FileNotFoundError(f"No config found matching hidden_size={model_hidden_size} in 'configs/'.")
 
+    # --- Подготовка памяти ---
+    def _prepare_memory(self):
+        # Это "вежливый" способ попросить ComfyUI освободить память
+        # mm.unload_all_models() - самый надежный вариант для тяжелых LLM.
+        # Если его не использовать, ComfyUI будет держать Stable Diffusion в памяти, и для Qwen места не хватит.
+        logger.info("Memory: Offloading other models to ensure VRAM space...")
+        mm.unload_all_models()
+        mm.soft_empty_cache()
+        gc.collect()
+        torch.cuda.empty_cache()
+
     # --- Загрузка Модели ---
     def _load_model(self, model_name):
         ckpt_path = folder_paths.get_full_path("llm_models", model_name)
@@ -209,39 +249,33 @@ class TS_Qwen_3VL_V2:
         except Exception as e:
             raise RuntimeError(f"Config detection failed: {e}")
 
-        cache_key = f"{model_name}_v2_optimized"
+        cache_key = f"{model_name}_v2_final"
         cached = MODEL_MANAGER.get(cache_key)
         if cached:
             return cached
 
-        # Получаем устройство
+        # Чистим память перед новой загрузкой
+        self._prepare_memory()
+
         device = mm.get_torch_device()
         logger.info(f"Loading Config from: {config_dir}")
 
         config = AutoConfig.from_pretrained(config_dir, trust_remote_code=True, local_files_only=True)
-        
-        # SDPA (Scaled Dot Product Attention) - быстро и нативно в Torch 2.x
         config._attn_implementation = "sdpa"
         
         processor = AutoProcessor.from_pretrained(config_dir, trust_remote_code=True, local_files_only=True)
 
         logger.info("Initializing model on GPU (Float16)...")
         
-        # Попытка инициализации
         try:
             with torch.device(device):
-                # Float16 работает везде (RTX 2000-5000)
                 model = AutoModelForVision2Seq.from_config(config, trust_remote_code=True)
-                model.to(torch.float16) 
+                model.to(torch.float16)
         except RuntimeError as e:
             if "out of memory" in str(e).lower():
-                logger.warning("OOM detected. Performing soft cleanup and retrying...")
-                # Мягкая очистка кэша, не убивая другие ноды ComfyUI
-                mm.soft_empty_cache() 
+                logger.warning("OOM! Attempting emergency cleanup...")
                 gc.collect()
                 torch.cuda.empty_cache()
-                
-                # Retry
                 with torch.device(device):
                     model = AutoModelForVision2Seq.from_config(config, trust_remote_code=True)
                     model.to(torch.float16)
@@ -252,16 +286,18 @@ class TS_Qwen_3VL_V2:
         state_dict = load_file(ckpt_path)
         
         missing, unexpected = model.load_state_dict(state_dict, strict=False)
-        if missing: logger.info(f"Missing keys (expected for FP8): {len(missing)}")
+        if missing: logger.info(f"Missing keys: {len(missing)}")
         
         model.eval()
         
-        # Очистка RAM
+        # Оборачиваем, чтобы ComfyUI не ругался на .device
+        wrapper = QwenComfyWrapper(model)
+        
         del state_dict
         gc.collect()
         
-        MODEL_MANAGER.set(cache_key, model, processor)
-        return model, processor
+        MODEL_MANAGER.set(cache_key, wrapper, processor)
+        return wrapper, processor
 
     # --- Process ---
     def process(self, model_name, system_preset, prompt, seed, max_new_tokens, enable, 
@@ -274,7 +310,7 @@ class TS_Qwen_3VL_V2:
             ret_image = torch.cat(inputs_to_pass, dim=0) if inputs_to_pass else torch.zeros((1, 64, 64, 3), dtype=torch.float32)
             return (prompt, ret_image)
 
-        logger.info(f"--- Starting Generation V2 ---")
+        logger.info(f"--- Starting Generation V2 (GPU Guaranteed) ---")
         
         try:
             model, processor = self._load_model(model_name)
@@ -339,6 +375,7 @@ class TS_Qwen_3VL_V2:
             **image_args
         )
         
+        # Гарантируем перенос на GPU (берем устройство из модели)
         inputs = inputs.to(model.device)
 
         torch.manual_seed(seed)
@@ -353,9 +390,8 @@ class TS_Qwen_3VL_V2:
         else:
             gen_params["do_sample"] = False
             
-        logger.info(f"Generating...")
+        logger.info(f"Generating on {model.device}...")
 
-        # Inference Mode для ускорения инференса
         with torch.inference_mode():
             generated_ids = model.generate(
                 **inputs,
@@ -371,7 +407,7 @@ class TS_Qwen_3VL_V2:
         )[0]
 
         if unload_after_generation:
-            MODEL_MANAGER.unload(f"{model_name}_v2_optimized")
+            MODEL_MANAGER.unload(f"{model_name}_v2_final")
 
         return (output_text, self.pil_to_tensor(all_processed_pil))
 
