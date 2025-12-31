@@ -5,6 +5,7 @@ import traceback
 import re
 import socket
 import zipfile
+from urllib.parse import urlparse # Added for domain extraction
 
 # Third-party imports
 import requests
@@ -27,11 +28,11 @@ class TS_DownloadFilesNode:
     """
     A ComfyUI node to download files.
     Features: 
-    - Auto-Unzip (Safe Overwrite)
-    - UI Progress Bar & TQDM
-    - Resume & Retries
-    - Dropbox / Mirrors / Proxies support
-    - Smart Size Detection
+    - Offline Mode (Target-based check)
+    - Enable/Disable Toggle
+    - Auto-Unzip
+    - UI Progress Bar
+    - Resume / Mirrors / Proxies
     """
     RETURN_TYPES = ()
     FUNCTION = "execute_downloads"
@@ -40,7 +41,6 @@ class TS_DownloadFilesNode:
 
     @classmethod
     def INPUT_TYPES(cls):
-        # ВАЖНО: Порядок полей сохранен.
         return {
             "required": {
                 "file_list": ("STRING", {
@@ -86,10 +86,13 @@ class TS_DownloadFilesNode:
                     "multiline": False,
                     "description": "ModelScope Access Token."
                 }),
-                # Новый параметр в конце
                 "unzip_after_download": ("BOOLEAN", {
                      "default": False,
-                     "description": "If true, unzips .zip file to target_dir (merges/overwrites) and deletes archive.",
+                     "description": "If true, unzips .zip file to target_dir and deletes archive.",
+                 }),
+                "enable": ("BOOLEAN", {
+                     "default": True,
+                     "description": "Enable or disable this node.",
                  }),
             }
         }
@@ -97,8 +100,8 @@ class TS_DownloadFilesNode:
     def _create_session_with_retries(self, proxy_url=None):
         session = requests.Session()
         retries = Retry(
-            total=5,
-            backoff_factor=1,
+            total=3, # Reduced retries for faster checks
+            backoff_factor=0.5,
             status_forcelist=[429, 500, 502, 503, 504],
             allowed_methods=frozenset(['HEAD', 'GET'])
         )
@@ -118,16 +121,58 @@ class TS_DownloadFilesNode:
             }
         return session
 
-    def _check_internet_connection(self, proxy=None, timeout=5):
-        proxies = {"http": proxy, "https": proxy} if proxy else None
-        targets = ["https://8.8.8.8", "https://1.1.1.1", "https://www.modelscope.cn"]
-        for url in targets:
+    def _replace_hf_domain(self, url, target_domain):
+        if not target_domain or target_domain.strip() == "huggingface.co":
+            return url
+        clean_domain = target_domain.replace("https://", "").replace("http://", "").strip("/")
+        pattern = r"(https?://)(www\.)?huggingface\.co"
+        if re.search(pattern, url):
+            return re.sub(pattern, f"\\1{clean_domain}", url)
+        return url
+
+    def _check_connectivity_to_targets(self, file_list_parsed, session, hf_domain_str):
+        """
+        Checks connectivity ONLY to the domains listed in the file_list.
+        Returns True if at least one target is reachable.
+        """
+        # 1. Select best mirror first (just pick first one for the check logic)
+        active_mirror = "huggingface.co"
+        if hf_domain_str:
+            domains = [d.strip() for d in hf_domain_str.split(',') if d.strip()]
+            if domains: active_mirror = domains[0]
+
+        # 2. Extract unique base URLs from the file list
+        unique_bases = set()
+        for item in file_list_parsed:
+            url = item['url']
+            # Apply mirror logic to check the ACTUAL target, not the theoretical one
+            final_url = self._replace_hf_domain(url, active_mirror)
             try:
-                requests.head(url, timeout=timeout, proxies=proxies)
-                return True
-            except requests.RequestException:
+                parsed = urlparse(final_url)
+                base_url = f"{parsed.scheme}://{parsed.netloc}"
+                unique_bases.add(base_url)
+            except Exception:
                 continue
-        return False
+
+        if not unique_bases:
+            return True # No URLs to check, assume OK to proceed (or fail later)
+
+        print(f"[INFO] Checking connectivity to targets: {list(unique_bases)} ...")
+        
+        # 3. Check them
+        is_online = False
+        for base_url in unique_bases:
+            try:
+                # Fast timeout: 2 seconds connect, 2 seconds read
+                session.head(base_url, timeout=(2, 2), allow_redirects=True)
+                print(f"[INFO] Target '{base_url}' is REACHABLE.")
+                is_online = True
+                break # If at least one is up, we proceed
+            except requests.RequestException:
+                print(f"[WARN] Target '{base_url}' is UNREACHABLE.")
+                continue
+        
+        return is_online
 
     def _select_best_mirror(self, session, domain_list_str):
         if not domain_list_str: return "huggingface.co"
@@ -135,14 +180,13 @@ class TS_DownloadFilesNode:
         if not domains: return "huggingface.co"
         if len(domains) == 1: return domains[0]
 
-        print(f"[INFO] Checking mirrors: {domains}")
+        # Simplified check for mirrors (we already checked connectivity in general)
         for domain in domains:
             clean_domain = domain.replace("https://", "").replace("http://", "").strip("/")
             test_url = f"https://{clean_domain}"
             try:
-                response = session.head(test_url, timeout=3, allow_redirects=True)
+                response = session.head(test_url, timeout=2, allow_redirects=True)
                 if response.status_code < 500:
-                    print(f"[INFO] Mirror '{clean_domain}' is ACTIVE.")
                     return clean_domain
             except requests.RequestException:
                 continue
@@ -158,15 +202,6 @@ class TS_DownloadFilesNode:
             if ms_token and ms_token.strip():
                 headers["Authorization"] = f"Bearer {ms_token.strip()}"
         return headers
-
-    def _replace_hf_domain(self, url, target_domain):
-        if not target_domain or target_domain.strip() == "huggingface.co":
-            return url
-        clean_domain = target_domain.replace("https://", "").replace("http://", "").strip("/")
-        pattern = r"(https?://)(www\.)?huggingface\.co"
-        if re.search(pattern, url):
-            return re.sub(pattern, f"\\1{clean_domain}", url)
-        return url
 
     def _process_dropbox_url(self, url):
         if "dropbox.com" in url:
@@ -190,8 +225,6 @@ class TS_DownloadFilesNode:
                     continue
                 target_path = os.path.abspath(os.path.expanduser(target_path))
                 files.append({'url': url, 'target_dir': target_path})
-            else:
-                print(f"[WARN] TS_DownloadNode: Line {i+1}: Invalid format.")
         return files
 
     def _get_filename_from_headers(self, response):
@@ -204,28 +237,17 @@ class TS_DownloadFilesNode:
         return None
 
     def _extract_zip(self, zip_path, extract_to):
-        """Extracts a zip file with error handling for permissions."""
         print(f"[INFO] Auto-Unzip: Extracting '{os.path.basename(zip_path)}' to '{extract_to}'...")
         try:
             with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-                # zipfile.extractall overwrites existing files safely
                 zip_ref.extractall(extract_to)
-            
             print(f"[OK] Extraction complete. Deleting archive.")
             try:
                 os.remove(zip_path)
-            except OSError as e:
-                print(f"[WARN] Could not delete archive '{zip_path}' after extraction: {e}")
+            except OSError: pass
             return True
-        
-        except zipfile.BadZipFile:
-            print(f"[ERROR] Extraction failed: The file is corrupted or not a valid zip.")
-            return False
-        except PermissionError:
-            print(f"[ERROR] Extraction failed: Permission denied. Some files in '{extract_to}' might be in use (loaded model?).")
-            return False
         except Exception as e:
-            print(f"[ERROR] Extraction unexpected error: {e}")
+            print(f"[ERROR] Extraction failed: {e}")
             return False
 
     def _download_single_file(self, session, url, target_dir, skip_existing, verify_size, chunk_size_bytes, hf_domain_active, hf_token, ms_token, unzip_after_download):
@@ -236,7 +258,7 @@ class TS_DownloadFilesNode:
             os.makedirs(target_dir, exist_ok=True)
             domain_headers = self._get_headers_for_url(processed_url, hf_token, ms_token)
             
-            # --- Phase 1: HEAD ---
+            # Phase 1: HEAD
             filename_from_url = os.path.basename(requests_unquote(url.split('?')[0].split('#')[0]))
             final_filename = None
 
@@ -263,27 +285,20 @@ class TS_DownloadFilesNode:
 
             print(f"[INFO] File: '{final_filename}' | Size: {remote_file_size if remote_file_size > 0 else 'Unknown'}")
 
-            # --- Phase 2: Check Existing (Early) ---
+            # Phase 2: Check Existing (Early)
             if remote_file_size > 0:
                 if skip_existing and os.path.exists(local_file_path):
                     if verify_size:
                         if os.path.getsize(local_file_path) == remote_file_size:
                             print(f"[OK] Verified existing file. Skipping.")
-                            # Check unzip if user requests it even for existing files
                             if unzip_after_download and local_file_path.lower().endswith('.zip'):
                                 self._extract_zip(local_file_path, target_dir)
                             return True
-                        else:
-                            print(f"[WARN] Size mismatch. Redownloading.")
                     else:
                         print(f"[OK] File exists. Skipping.")
                         return True
-            else:
-                 if skip_existing and os.path.exists(local_file_path) and not verify_size:
-                     print(f"[WARN] Size unknown, skipping.")
-                     return True
             
-            # --- Phase 3: Resume Logic ---
+            # Phase 3: Resume
             resume_byte_pos = 0
             file_mode = 'wb'
             if can_resume and os.path.exists(temp_file_path) and remote_file_size > 0:
@@ -298,83 +313,59 @@ class TS_DownloadFilesNode:
             elif os.path.exists(temp_file_path):
                 os.remove(temp_file_path)
 
-            # --- Phase 4: Download ---
-            perform_network_download = True
-            if file_mode == 'ab' and resume_byte_pos == remote_file_size and remote_file_size > 0:
-                perform_network_download = False
+            # Phase 4: Download
+            req_headers = domain_headers.copy()
+            if resume_byte_pos > 0 and file_mode == 'ab':
+                req_headers["Range"] = f"bytes={resume_byte_pos}-"
+
+            response_get = session.get(final_direct_url, stream=True, headers=req_headers, timeout=(15, 300), allow_redirects=True)
+            if resume_byte_pos > 0 and file_mode == 'ab' and response_get.status_code == 200:
+                resume_byte_pos = 0; file_mode = 'wb'
+                if os.path.exists(temp_file_path): os.remove(temp_file_path)
             
-            if perform_network_download:
-                req_headers = domain_headers.copy()
-                if resume_byte_pos > 0 and file_mode == 'ab':
-                    req_headers["Range"] = f"bytes={resume_byte_pos}-"
-
-                response_get = session.get(final_direct_url, stream=True, headers=req_headers, timeout=(15, 300), allow_redirects=True)
-                
-                if resume_byte_pos > 0 and file_mode == 'ab' and response_get.status_code == 200:
-                    print(f"[WARN] Server rejected resume. Restarting.")
-                    resume_byte_pos = 0; file_mode = 'wb'
-                    if os.path.exists(temp_file_path): os.remove(temp_file_path)
-                
-                response_get.raise_for_status()
-                
-                # Late size check
-                total_size = remote_file_size if remote_file_size > 0 else int(response_get.headers.get('content-length', 0))
-                
-                if remote_file_size == -1 and total_size > 0:
-                    print(f"[INFO] Size detected via GET: {total_size} bytes.")
-                    if skip_existing and os.path.exists(local_file_path):
-                        if verify_size:
-                            if os.path.getsize(local_file_path) == total_size:
-                                print(f"[OK] File verified (Late Check). Skipping.")
-                                response_get.close()
-                                if unzip_after_download and local_file_path.lower().endswith('.zip'):
-                                    self._extract_zip(local_file_path, target_dir)
-                                return True
-
-                comfy_pbar = None
-                if ProgressBar and total_size > 0:
-                    comfy_pbar = ProgressBar(total_size)
-                
-                downloaded_since_update = 0
-                ui_update_threshold = 1 * 1024 * 1024 
-
-                with open(temp_file_path, file_mode) as f, tqdm(
-                    total=total_size if total_size > 0 else None,
-                    unit='B', unit_scale=True, desc=f"DL: {final_filename}",
-                    initial=resume_byte_pos if file_mode == 'ab' else 0,
-                    mininterval=1.0, ncols=100, unit_divisor=1024
-                ) as pbar:
-                    if comfy_pbar and resume_byte_pos > 0: comfy_pbar.update(resume_byte_pos)
-
-                    for chunk in response_get.iter_content(chunk_size=chunk_size_bytes):
-                        if chunk:
-                            f.write(chunk)
-                            chunk_len = len(chunk)
-                            pbar.update(chunk_len)
-                            if comfy_pbar:
-                                downloaded_since_update += chunk_len
-                                if downloaded_since_update >= ui_update_threshold:
-                                    comfy_pbar.update(downloaded_since_update)
-                                    downloaded_since_update = 0
-                    if comfy_pbar and downloaded_since_update > 0: comfy_pbar.update(downloaded_since_update)
-
-            # --- Phase 5: Finalize ---
-            if not os.path.exists(temp_file_path):
-                if os.path.exists(local_file_path) and verify_size and (remote_file_size > 0 or total_size > 0):
-                     target_size = remote_file_size if remote_file_size > 0 else total_size
-                     if os.path.getsize(local_file_path) == target_size:
-                         return True
-                return False
-
-            final_expected_size = remote_file_size if remote_file_size > 0 else (total_size if 'total_size' in locals() else -1)
-            if verify_size and final_expected_size > 0:
-                 if os.path.getsize(temp_file_path) != final_expected_size:
-                     print(f"[ERROR] Incomplete download."); return False
+            response_get.raise_for_status()
             
-            if os.path.exists(local_file_path):
-                try: os.remove(local_file_path)
-                except OSError: pass 
+            total_size = remote_file_size if remote_file_size > 0 else int(response_get.headers.get('content-length', 0))
             
+            # Late Size Check
+            if remote_file_size == -1 and total_size > 0:
+                print(f"[INFO] Size detected via GET: {total_size} bytes.")
+                if skip_existing and os.path.exists(local_file_path):
+                    if verify_size:
+                        if os.path.getsize(local_file_path) == total_size:
+                            print(f"[OK] File verified (Late Check). Skipping.")
+                            response_get.close()
+                            if unzip_after_download and local_file_path.lower().endswith('.zip'):
+                                self._extract_zip(local_file_path, target_dir)
+                            return True
+
+            comfy_pbar = None
+            if ProgressBar and total_size > 0:
+                comfy_pbar = ProgressBar(total_size)
+            
+            downloaded_since_update = 0
+            ui_update_threshold = 1 * 1024 * 1024 
+
+            with open(temp_file_path, file_mode) as f, tqdm(
+                total=total_size if total_size > 0 else None,
+                unit='B', unit_scale=True, desc=f"DL: {final_filename}",
+                initial=resume_byte_pos if file_mode == 'ab' else 0,
+                mininterval=1.0, ncols=100, unit_divisor=1024
+            ) as pbar:
+                if comfy_pbar and resume_byte_pos > 0: comfy_pbar.update(resume_byte_pos)
+                for chunk in response_get.iter_content(chunk_size=chunk_size_bytes):
+                    if chunk:
+                        f.write(chunk)
+                        chunk_len = len(chunk)
+                        pbar.update(chunk_len)
+                        if comfy_pbar:
+                            downloaded_since_update += chunk_len
+                            if downloaded_since_update >= ui_update_threshold:
+                                comfy_pbar.update(downloaded_since_update)
+                                downloaded_since_update = 0
+                if comfy_pbar and downloaded_since_update > 0: comfy_pbar.update(downloaded_since_update)
+
+            # Phase 5: Finalize
             os.rename(temp_file_path, local_file_path)
             print(f"[OK] Saved: {local_file_path}")
 
@@ -386,20 +377,32 @@ class TS_DownloadFilesNode:
         except Exception as e:
             print(f"[ERROR] Download failed: {e}"); return False
 
-    def execute_downloads(self, file_list: str, skip_existing: bool = True, verify_size: bool = True, chunk_size_kb: int = 4096, hf_token: str = "", hf_domain: str = "huggingface.co, hf-mirror.com", proxy_url: str = "", modelscope_token: str = "", unzip_after_download: bool = False):
-        print(f"\n--- TS_DownloadNode v2.10 Started ---")
+    def execute_downloads(self, file_list: str, skip_existing: bool = True, verify_size: bool = True, chunk_size_kb: int = 4096, hf_token: str = "", hf_domain: str = "huggingface.co, hf-mirror.com", proxy_url: str = "", modelscope_token: str = "", unzip_after_download: bool = False, enable: bool = True):
+        
+        if not enable:
+            print(f"\n--- TS_DownloadNode v2.12 Skipped (Disabled) ---")
+            return ()
+            
+        print(f"\n--- TS_DownloadNode v2.12 Started ---")
         chunk_size_bytes = max(1024, chunk_size_kb * 1024) 
 
-        if not self._check_internet_connection(proxy=proxy_url if proxy_url else None):
-            print("[ERROR] No internet connection detected.")
-        
+        # 1. Parse files first
         files_to_download = self._parse_file_list(file_list)
         if not files_to_download: return ()
 
+        # 2. Setup session
         session = self._create_session_with_retries(proxy_url)
+
+        # 3. Check connectivity ONLY to targets found in file_list
+        if not self._check_connectivity_to_targets(files_to_download, session, hf_domain):
+            print("[WARN] All target servers are unreachable. Switching to OFFLINE MODE. Execution finished.")
+            return ()
+
+        # 4. Determine Active Mirror (if applicable)
         active_mirror = self._select_best_mirror(session, hf_domain)
         print(f"[INFO] Using HF Mirror: '{active_mirror}'")
         
+        # 5. Start Downloads
         success = 0; failed = 0
         for file_info in files_to_download:
             if self._download_single_file(session, file_info['url'], file_info['target_dir'], skip_existing, verify_size, chunk_size_bytes, active_mirror, hf_token, modelscope_token, unzip_after_download):
