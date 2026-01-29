@@ -358,6 +358,160 @@ class ModelScanner:
             output_lines.append(f" - {dtype}: {count:,} params ({percent:.2f}%)")
 
         return ("\n".join(output_lines),)
+    
+
+class TS_WanContextWindowScript:
+    @classmethod
+    def INPUT_TYPES(s):
+        return {
+            "required": {
+                "model": ("MODEL",),
+                "context_length": ("INT", {"default": 81, "min": 17, "max": 241, "step": 4}),
+                "overlap": ("INT", {"default": 16, "min": 4, "max": 60, "step": 4}),
+                # True для High Noise (начало), False для Low Noise (конец)
+                "anchor_first_frame": ("BOOLEAN", {"default": True, "label": "Anchor First Frame (ON for High Noise, OFF for Low)"}),
+            }
+        }
+
+    RETURN_TYPES = ("MODEL",)
+    FUNCTION = "patch_model"
+    CATEGORY = "Wan 2.2"
+
+    def patch_model(self, model, context_length, overlap, anchor_first_frame):
+        m = model.clone()
+
+        def context_scheduler_wrapper(model_function, params):
+            input_x = params["input"]
+            timestep = params["timestep"]
+            c = params["c"]
+            
+            # --- ОПРЕДЕЛЕНИЕ РАЗМЕРНОСТИ (FIX для ошибки "too many values") ---
+            # Wan может подавать [Batch, Channels, Frames, Height, Width] (5D)
+            # Или [Frames, Channels, Height, Width] (4D)
+            
+            if input_x.ndim == 5:
+                # 5D случай: (Batch, C, Time, H, W)
+                B_batch, C, T, H, W = input_x.shape
+                total_frames = T
+                time_dim = 2 # Ось времени - это индекс 2
+            elif input_x.ndim == 4:
+                # 4D случай: (Time, C, H, W)
+                T, C, H, W = input_x.shape
+                total_frames = T
+                time_dim = 0 # Ось времени - это индекс 0
+            else:
+                raise ValueError(f"WanContextWindow: Unsupported input shape {input_x.shape}")
+
+            # Если видео короче окна, пропускаем без изменений
+            if total_frames <= context_length:
+                return model_function(input_x, timestep, **c)
+
+            output = torch.zeros_like(input_x)
+            
+            # Маска для усреднения (учитываем размерности)
+            if time_dim == 2:
+                count_mask = torch.zeros((1, 1, total_frames, 1, 1), device=input_x.device)
+            else:
+                count_mask = torch.zeros((total_frames, 1, 1, 1), device=input_x.device)
+            
+            stride = context_length - overlap
+            
+            # Генерация окон
+            windows = []
+            start_idx = 0
+            while start_idx < total_frames:
+                end_idx = min(start_idx + context_length, total_frames)
+                if (end_idx - start_idx) < context_length and total_frames > context_length:
+                    start_idx = max(0, total_frames - context_length)
+                    end_idx = total_frames
+                windows.append((start_idx, end_idx))
+                if end_idx == total_frames:
+                    break
+                start_idx += stride
+
+            # Хелпер для нарезки тензоров по оси времени
+            def slice_tensor(tensor, start, end, dim):
+                if dim == 0:
+                    return tensor[start:end]
+                elif dim == 2:
+                    return tensor[:, :, start:end, :, :]
+                return tensor
+
+            # Хелпер для вставки (add) результата
+            def add_slice(dest, source, start, end, dim):
+                if dim == 0:
+                    dest[start:end] += source
+                elif dim == 2:
+                    dest[:, :, start:end, :, :] += source
+
+            for i, (start, end) in enumerate(windows):
+                # Нарезаем входной латент
+                chunk_input = slice_tensor(input_x, start, end, time_dim).clone()
+                
+                # --- ЛОГИКА ANCHOR FRAME ---
+                if anchor_first_frame and start > 0:
+                    if time_dim == 0:
+                        # Берем 0-й кадр всего видео
+                        chunk_input[0] = input_x[0]
+                    elif time_dim == 2:
+                        # Берем 0-й кадр по оси времени (индекс 2)
+                        chunk_input[:, :, 0, :, :] = input_x[:, :, 0, :, :]
+
+                # Обработка timestep (если это тензор длины T)
+                chunk_ts = timestep
+                if isinstance(timestep, torch.Tensor) and timestep.shape[0] == total_frames:
+                    chunk_ts = timestep[start:end]
+
+                # Обработка conditioning
+                chunk_c = {}
+                for k, v in c.items():
+                    if isinstance(v, torch.Tensor) and v.shape[0] == total_frames:
+                        chunk_c[k] = v[start:end]
+                    else:
+                        chunk_c[k] = v
+                
+                # Запуск модели на чанке
+                chunk_out = model_function(chunk_input, chunk_ts, **chunk_c)
+                
+                # --- БЛЕНДИНГ (Linear Fade) ---
+                window_len = end - start
+                
+                # Создаем веса правильной формы
+                if time_dim == 0:
+                    weights = torch.ones((window_len, 1, 1, 1), device=input_x.device)
+                    # Fade In
+                    if start > 0:
+                        fade_len = min(overlap, window_len)
+                        weights[:fade_len] = torch.linspace(0, 1, fade_len, device=input_x.device).view(-1, 1, 1, 1)
+                    # Fade Out
+                    if end < total_frames:
+                        fade_len = min(overlap, window_len)
+                        weights[-fade_len:] = torch.linspace(1, 0, fade_len, device=input_x.device).view(-1, 1, 1, 1)
+                        
+                    count_mask[start:end] += weights
+                    
+                elif time_dim == 2:
+                    weights = torch.ones((1, 1, window_len, 1, 1), device=input_x.device)
+                    # Fade In
+                    if start > 0:
+                        fade_len = min(overlap, window_len)
+                        w_vals = torch.linspace(0, 1, fade_len, device=input_x.device).view(1, 1, -1, 1, 1)
+                        weights[:, :, :fade_len, :, :] = w_vals
+                    # Fade Out
+                    if end < total_frames:
+                        fade_len = min(overlap, window_len)
+                        w_vals = torch.linspace(1, 0, fade_len, device=input_x.device).view(1, 1, -1, 1, 1)
+                        weights[:, :, -fade_len:, :, :] = w_vals
+                    
+                    count_mask[:, :, start:end, :, :] += weights
+
+                # Складываем результат
+                add_slice(output, chunk_out * weights, start, end, time_dim)
+            
+            return output / (count_mask + 1e-6)
+
+        m.set_model_unet_function_wrapper(context_scheduler_wrapper)
+        return (m,)
 
 
 # ==========================
@@ -366,10 +520,12 @@ class ModelScanner:
 NODE_CLASS_MAPPINGS = {
     "TS_ModelConverter": TS_ModelConverterNode,
     "TS_ModelConverterAdvanced": TS_ModelConverterAdvancedNode,
-    "ModelScanner": ModelScanner
+    "ModelScanner": ModelScanner,
+    "TS_WanContextWindowScript": TS_WanContextWindowScript
 }
 NODE_DISPLAY_NAME_MAPPINGS = {
     "TS_ModelConverter": "TS Model Converter",
     "TS_ModelConverterAdvanced": "TS Model Converter Advanced",
-    "ModelScanner": "🔍 Model Layer Scanner"
+    "ModelScanner": "🔍 Model Layer Scanner",
+    "TS_WanContextWindowScript": "TS Wan Context Window"
 }

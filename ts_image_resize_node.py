@@ -503,6 +503,12 @@ class TS_WAN_SafeResize:
         },
     }
 
+    QUALITY_MAP = {
+        "Fast quality": "low quality",
+        "Standard quality": "standard quality",
+        "High quality": "high quality",
+    }
+
     @staticmethod
     def detect_aspect_ratio(width, height):
         aspect = width / height
@@ -520,7 +526,7 @@ class TS_WAN_SafeResize:
                 "image": ("IMAGE",),
                 "quality": (
                     ["Fast quality", "Standard quality", "High quality"],
-                    {"default": "standard quality"},
+                    {"default": "Standard quality"},
                 ),
             },
             "optional": {
@@ -534,15 +540,17 @@ class TS_WAN_SafeResize:
     CATEGORY = "image/resize"
 
     def safe_resize(self, image, quality, interconnection_in=None):
-        # Если вход interconnection подключен — используем его качество
-        if interconnection_in is not None and interconnection_in in self.WAN_RESOLUTIONS:
-            quality = interconnection_in
+        # Приоритет interconnection
+        if interconnection_in in self.WAN_RESOLUTIONS:
+            internal_quality = interconnection_in
+        else:
+            internal_quality = self.QUALITY_MAP[quality]
 
         b, h, w, c = image.shape
         assert c in [3, 4], f"Expected 3 or 4 channels, got {c}"
 
         aspect_key = self.detect_aspect_ratio(w, h)
-        target_w, target_h = self.WAN_RESOLUTIONS[quality][aspect_key]
+        target_w, target_h = self.WAN_RESOLUTIONS[internal_quality][aspect_key]
 
         output_images = []
 
@@ -550,26 +558,21 @@ class TS_WAN_SafeResize:
             img_np = (image[i].cpu().numpy() * 255).astype(np.uint8)
             pil_img = Image.fromarray(img_np)
 
-            # --- Масштабирование ---
             scale = max(target_w / w, target_h / h)
             new_w = int(w * scale)
             new_h = int(h * scale)
             resized = pil_img.resize((new_w, new_h), resample=Image.LANCZOS)
 
-            # --- Центрирование и кроп ---
             left = (new_w - target_w) // 2
             top = (new_h - target_h) // 2
-            right = left + target_w
-            bottom = top + target_h
-            cropped = resized.crop((left, top, right, bottom))
+            cropped = resized.crop((left, top, left + target_w, top + target_h))
 
             img_out = torch.from_numpy(np.array(cropped)).float() / 255.0
             output_images.append(img_out.unsqueeze(0))
 
         output = torch.cat(output_images, dim=0)
 
-        # Возвращаем: изображение, ширину, высоту и текущее значение качества
-        return (output, target_w, target_h, quality)
+        return (output, target_w, target_h, internal_quality)
 
 
 NODE_CLASS_MAPPINGS = {
