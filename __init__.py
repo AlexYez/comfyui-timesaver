@@ -1,80 +1,57 @@
-# Импортируем маппинги из каждого файла ноды
-from .ts_downloader_node import NODE_CLASS_MAPPINGS as downloader_class_map, \
-                                NODE_DISPLAY_NAME_MAPPINGS as downloader_display_map
-from .ts_edl_chapters_node import NODE_CLASS_MAPPINGS as edl_chapters_class_map, \
-                                  NODE_DISPLAY_NAME_MAPPINGS as edl_chapters_display_map
-from .ts_equirect_to_cube_node import NODE_CLASS_MAPPINGS as equirect_to_cube_class_map, \
-                                      NODE_DISPLAY_NAME_MAPPINGS as equirect_to_cube_display_map
-from .ts_cube_to_equirect_node import NODE_CLASS_MAPPINGS as cube_to_equirect_class_map, \
-                                      NODE_DISPLAY_NAME_MAPPINGS as cube_to_equirect_display_map
-from .ts_qwen3_llm_node import NODE_CLASS_MAPPINGS as qwen3_llm_class_map, \
-                               NODE_DISPLAY_NAME_MAPPINGS as qwen3_llm_display_map                     
-from .ts_whisper_node import NODE_CLASS_MAPPINGS as whisper_class_map, \
-                               NODE_DISPLAY_NAME_MAPPINGS as whisper_display_map
-from .ts_video_depth_node import NODE_CLASS_MAPPINGS as video_depth_class_map, \
-                               NODE_DISPLAY_NAME_MAPPINGS as video_depth_display_map
-from .ts_video_upscale_node import NODE_CLASS_MAPPINGS as video_upscale_class_map, \
-                               NODE_DISPLAY_NAME_MAPPINGS as video_upscale_display_map
-from .ts_image_resize_node import NODE_CLASS_MAPPINGS as image_resize_class_map, \
-                               NODE_DISPLAY_NAME_MAPPINGS as image_resize_display_map
-from .ts_file_path_node import NODE_CLASS_MAPPINGS as file_path_class_map, \
-                               NODE_DISPLAY_NAME_MAPPINGS as file_path_display_map
-from .ts_marian_translate_node import NODE_CLASS_MAPPINGS as marian_translate_class_map, \
-                               NODE_DISPLAY_NAME_MAPPINGS as marian_translate_display_map
-from .ts_deflicker_node import NODE_CLASS_MAPPINGS as deflicker_class_map, \
-                               NODE_DISPLAY_NAME_MAPPINGS as deflicker_display_map
-from .ts_crop_to_mask_node import NODE_CLASS_MAPPINGS as crop_to_mask_class_map, \
-                               NODE_DISPLAY_NAME_MAPPINGS as crop_to_mask_display_map   
-from .ts_film_grain_node import NODE_CLASS_MAPPINGS as film_grain_class_map, \
-                               NODE_DISPLAY_NAME_MAPPINGS as film_grain_display_map                                               
-from .ts_qwen2_5_vl_node import NODE_CLASS_MAPPINGS as qwen2_5_vl_class_map, \
-                               NODE_DISPLAY_NAME_MAPPINGS as qwen2_5_vl_display_map
-from .ts_qwen3_vl_node import NODE_CLASS_MAPPINGS as qwen3_vl_class_map, \
-                               NODE_DISPLAY_NAME_MAPPINGS as qwen3_vl_display_map
-from .ts_bgrm_node import NODE_CLASS_MAPPINGS as bgrm_class_map, \
-                               NODE_DISPLAY_NAME_MAPPINGS as brgm_display_map 
-from .ts_models_tools_node import NODE_CLASS_MAPPINGS as models_tool_class_map, \
-                               NODE_DISPLAY_NAME_MAPPINGS as models_tool_display_map
-from .ts_color_node import NODE_CLASS_MAPPINGS as color_class_map, \
-                               NODE_DISPLAY_NAME_MAPPINGS as color_display_map
-from .ts_text_tools_node import NODE_CLASS_MAPPINGS as text_tools_class_map, \
-                               NODE_DISPLAY_NAME_MAPPINGS as text_tools_display_map
-from .ts_qwen3_vl_v2_node import NODE_CLASS_MAPPINGS as qwen3_vl_v2_class_map, \
-                               NODE_DISPLAY_NAME_MAPPINGS as qwen3_vl_v2_display_map
+import importlib
+import os
+import logging
+import traceback
 
-# Инициализируем общие словари маппингов
+# Настройка логгера
+logger = logging.getLogger("TimesaverVFX_Pack")
+
 NODE_CLASS_MAPPINGS = {}
 NODE_DISPLAY_NAME_MAPPINGS = {}
 
-# Список всех импортированных маппингов для удобного объединения
-all_mappings = [
-    (downloader_class_map, downloader_display_map),
-    (edl_chapters_class_map, edl_chapters_display_map),
-    (equirect_to_cube_class_map, equirect_to_cube_display_map),
-    (cube_to_equirect_class_map, cube_to_equirect_display_map),
-    (qwen3_llm_class_map, qwen3_llm_display_map),
-    (whisper_class_map, whisper_display_map),
-    (video_depth_class_map, video_depth_display_map),
-    (video_upscale_class_map, video_upscale_display_map),
-    (image_resize_class_map, image_resize_display_map),
-    (file_path_class_map, file_path_display_map),
-    (marian_translate_class_map, marian_translate_display_map),
-    (deflicker_class_map, deflicker_display_map),
-    (crop_to_mask_class_map, crop_to_mask_display_map),
-    (film_grain_class_map, film_grain_display_map),
-    (qwen2_5_vl_class_map, qwen2_5_vl_display_map),
-    (qwen3_vl_class_map, qwen3_vl_display_map),
-    (bgrm_class_map, brgm_display_map),
-    (models_tool_class_map, models_tool_display_map),
-    (color_class_map, color_display_map),
-    (text_tools_class_map, text_tools_display_map),
-    (qwen3_vl_v2_class_map, qwen3_vl_v2_display_map),
-]
+# Получаем путь к текущей папке
+current_dir = os.path.dirname(__file__)
 
-# Объединяем все маппинги
-for class_map, display_map in all_mappings:
-    NODE_CLASS_MAPPINGS.update(class_map)
-    NODE_DISPLAY_NAME_MAPPINGS.update(display_map)
+# Получаем список всех .py файлов в этой папке
+files = [f for f in os.listdir(current_dir) if f.endswith(".py") and f != "__init__.py"]
 
+# Проходим по каждому файлу
+for file in files:
+    # Имя модуля без .py (например, "ts_qwen3_vl_node")
+    module_name = file[:-3]
+    
+    try:
+        # Динамически импортируем модуль
+        # "package=__name__" означает, что мы ищем внутри текущего пакета (относительный импорт)
+        module = importlib.import_module(f".{module_name}", package=__name__)
 
-__all__ = ['NODE_CLASS_MAPPINGS', 'NODE_DISPLAY_NAME_MAPPINGS']
+        # Проверяем, есть ли в модуле нужные словари для ComfyUI
+        if hasattr(module, "NODE_CLASS_MAPPINGS"):
+            # Если словарь есть и он не пустой - добавляем его в общий список
+            mappings = getattr(module, "NODE_CLASS_MAPPINGS")
+            if mappings:
+                NODE_CLASS_MAPPINGS.update(mappings)
+                
+                # Также ищем отображаемые имена
+                if hasattr(module, "NODE_DISPLAY_NAME_MAPPINGS"):
+                    display_names = getattr(module, "NODE_DISPLAY_NAME_MAPPINGS")
+                    NODE_DISPLAY_NAME_MAPPINGS.update(display_names)
+                
+                # logger.info(f"Loaded: {module_name}")
+
+    except ImportError as e:
+        # Специфическая обработка для опциональных нод (например, GGUF)
+        # Если библиотеки нет, мы просто пропускаем файл без паники
+        error_msg = str(e)
+        if "llama_cpp" in error_msg:
+             logger.warning(f"⚠️ Skipped {module_name}: llama-cpp-python not found.")
+        else:
+             logger.warning(f"⚠️ Failed to import {module_name}: {e}")
+             
+    except Exception as e:
+        # Если произошла другая ошибка (синтаксис и т.д.)
+        logger.error(f"❌ Error loading {module_name}: {e}")
+        # traceback.print_exc() # Раскомментируйте для отладки
+
+# Экспорт для ComfyUI
+__all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS"]
