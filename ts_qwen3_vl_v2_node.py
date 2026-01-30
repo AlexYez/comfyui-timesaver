@@ -24,12 +24,20 @@ torch.backends.cudnn.allow_tf32 = True
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("TS_Qwen_3VL_V2")
 
-if "llm_models" not in folder_paths.folder_names_and_paths:
-    folder_paths.folder_names_and_paths["llm_models"] = ([os.path.join(folder_paths.models_dir, "LLM")], {".safetensors"})
+# === ИСПРАВЛЕННАЯ РЕГИСТРАЦИЯ ПУТЕЙ ===
+llm_root = os.path.join(folder_paths.models_dir, "LLM")
+
+# Проверяем, зарегистрирован ли уже путь (например, нодой GGUF)
+if "llm_models" in folder_paths.folder_names_and_paths:
+    # Если путь есть, берем текущие настройки и ДОБАВЛЯЕМ .safetensors
+    base_paths, base_exts = folder_paths.folder_names_and_paths["llm_models"]
+    folder_paths.folder_names_and_paths["llm_models"] = (base_paths, base_exts | {".safetensors"})
+else:
+    # Если пути нет, создаем новый
+    folder_paths.folder_names_and_paths["llm_models"] = ([llm_root], {".safetensors"})
 
 # ===============================================
 # 2. Обертка (Wrapper)
-# Решает конфликт 'property device has no setter'
 # ===============================================
 class QwenComfyWrapper(torch.nn.Module):
     def __init__(self, model):
@@ -42,8 +50,6 @@ class QwenComfyWrapper(torch.nn.Module):
 
     @device.setter
     def device(self, value):
-        # ComfyUI пытается записать устройство, мы игнорируем это, 
-        # так как transformers управляет этим сам.
         pass
 
     def generate(self, *args, **kwargs):
@@ -118,9 +124,16 @@ class TS_Qwen_3VL_V2:
     def INPUT_TYPES(cls):
         preset_options = preset_keys + ["Your instruction"]
         
+        # === ИСПРАВЛЕННАЯ ФИЛЬТРАЦИЯ ФАЙЛОВ ===
+        # Получаем все файлы (и .gguf, и .safetensors)
+        all_files = folder_paths.get_filename_list("llm_models")
+        
+        # Оставляем только .safetensors для этой ноды
+        safetensors_files = [f for f in all_files if f.lower().endswith(".safetensors")]
+        
         return {
             "required": {
-                "model_name": (folder_paths.get_filename_list("llm_models"),),
+                "model_name": (sorted(safetensors_files),),
                 "system_preset": (preset_options, {"default": preset_options[0] if preset_options else "Your instruction"}),
                 "prompt": ("STRING", {"multiline": True, "default": "Describe this image."}),
                 "seed": ("INT", {"default": 42, "min": 0, "max": 0xffffffffffffffff}),
@@ -231,9 +244,6 @@ class TS_Qwen_3VL_V2:
 
     # --- Подготовка памяти ---
     def _prepare_memory(self):
-        # Это "вежливый" способ попросить ComfyUI освободить память
-        # mm.unload_all_models() - самый надежный вариант для тяжелых LLM.
-        # Если его не использовать, ComfyUI будет держать Stable Diffusion в памяти, и для Qwen места не хватит.
         logger.info("Memory: Offloading other models to ensure VRAM space...")
         mm.unload_all_models()
         mm.soft_empty_cache()
@@ -254,7 +264,6 @@ class TS_Qwen_3VL_V2:
         if cached:
             return cached
 
-        # Чистим память перед новой загрузкой
         self._prepare_memory()
 
         device = mm.get_torch_device()
@@ -290,7 +299,6 @@ class TS_Qwen_3VL_V2:
         
         model.eval()
         
-        # Оборачиваем, чтобы ComfyUI не ругался на .device
         wrapper = QwenComfyWrapper(model)
         
         del state_dict
@@ -375,7 +383,6 @@ class TS_Qwen_3VL_V2:
             **image_args
         )
         
-        # Гарантируем перенос на GPU (берем устройство из модели)
         inputs = inputs.to(model.device)
 
         torch.manual_seed(seed)
