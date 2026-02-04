@@ -16,25 +16,17 @@ from transformers import (
 )
 
 # ===============================================
-# 1. Глобальные настройки
+# 1. Глобальные настройки (Безопасные)
 # ===============================================
+# TF32 ускоряет работу на RTX 30xx+, не ломает старые карты
 torch.backends.cuda.matmul.allow_tf32 = True
 torch.backends.cudnn.allow_tf32 = True
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("TS_Qwen_3VL_V2")
 
-# === ИСПРАВЛЕННАЯ РЕГИСТРАЦИЯ ПУТЕЙ ===
-llm_root = os.path.join(folder_paths.models_dir, "LLM")
-
-# Проверяем, зарегистрирован ли уже путь (например, нодой GGUF)
-if "llm_models" in folder_paths.folder_names_and_paths:
-    # Если путь есть, берем текущие настройки и ДОБАВЛЯЕМ .safetensors
-    base_paths, base_exts = folder_paths.folder_names_and_paths["llm_models"]
-    folder_paths.folder_names_and_paths["llm_models"] = (base_paths, base_exts | {".safetensors"})
-else:
-    # Если пути нет, создаем новый
-    folder_paths.folder_names_and_paths["llm_models"] = ([llm_root], {".safetensors"})
+# Мы больше НЕ трогаем folder_paths.folder_names_and_paths глобально!
+# Поиск файлов перенесен внутрь INPUT_TYPES
 
 # ===============================================
 # 2. Обертка (Wrapper)
@@ -124,16 +116,26 @@ class TS_Qwen_3VL_V2:
     def INPUT_TYPES(cls):
         preset_options = preset_keys + ["Your instruction"]
         
-        # === ИСПРАВЛЕННАЯ ФИЛЬТРАЦИЯ ФАЙЛОВ ===
-        # Получаем все файлы (и .gguf, и .safetensors)
-        all_files = folder_paths.get_filename_list("llm_models")
+        # --- ИЗОЛИРОВАННЫЙ ПОИСК ФАЙЛОВ ---
+        # Мы ищем файлы сами, не полагаясь на реестр ComfyUI, 
+        # чтобы не конфликтовать с другими нодами.
         
-        # Оставляем только .safetensors для этой ноды
-        safetensors_files = [f for f in all_files if f.lower().endswith(".safetensors")]
+        llm_root = os.path.join(folder_paths.models_dir, "LLM")
+        safetensors_files = []
+        
+        if os.path.exists(llm_root):
+            for root, dirs, files in os.walk(llm_root):
+                for file in files:
+                    if file.lower().endswith(".safetensors"):
+                        # Создаем относительный путь для списка
+                        rel_path = os.path.relpath(os.path.join(root, file), llm_root)
+                        safetensors_files.append(rel_path)
+        
+        safetensors_files.sort()
         
         return {
             "required": {
-                "model_name": (sorted(safetensors_files),),
+                "model_name": (safetensors_files,),
                 "system_preset": (preset_options, {"default": preset_options[0] if preset_options else "Your instruction"}),
                 "prompt": ("STRING", {"multiline": True, "default": "Describe this image."}),
                 "seed": ("INT", {"default": 42, "min": 0, "max": 0xffffffffffffffff}),
@@ -252,7 +254,9 @@ class TS_Qwen_3VL_V2:
 
     # --- Загрузка Модели ---
     def _load_model(self, model_name):
-        ckpt_path = folder_paths.get_full_path("llm_models", model_name)
+        # Используем локальный путь для загрузки
+        llm_root = os.path.join(folder_paths.models_dir, "LLM")
+        ckpt_path = os.path.join(llm_root, model_name)
         
         try:
             config_dir = self._detect_config(ckpt_path)
