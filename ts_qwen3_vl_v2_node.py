@@ -25,9 +25,6 @@ torch.backends.cudnn.allow_tf32 = True
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("TS_Qwen_3VL_V2")
 
-# Мы больше НЕ трогаем folder_paths.folder_names_and_paths глобально!
-# Поиск файлов перенесен внутрь INPUT_TYPES
-
 # ===============================================
 # 2. Обертка (Wrapper)
 # ===============================================
@@ -83,7 +80,7 @@ class QwenModelManager:
             gc.collect()
             torch.cuda.empty_cache()
             mm.soft_empty_cache()
-            logger.info(f"Model unloaded: {key}")
+            logger.info(f"[TS Manager] Model unloaded: {key}")
 
 MODEL_MANAGER = QwenModelManager()
 
@@ -117,9 +114,6 @@ class TS_Qwen_3VL_V2:
         preset_options = preset_keys + ["Your instruction"]
         
         # --- ИЗОЛИРОВАННЫЙ ПОИСК ФАЙЛОВ ---
-        # Мы ищем файлы сами, не полагаясь на реестр ComfyUI, 
-        # чтобы не конфликтовать с другими нодами.
-        
         llm_root = os.path.join(folder_paths.models_dir, "LLM")
         safetensors_files = []
         
@@ -127,7 +121,6 @@ class TS_Qwen_3VL_V2:
             for root, dirs, files in os.walk(llm_root):
                 for file in files:
                     if file.lower().endswith(".safetensors"):
-                        # Создаем относительный путь для списка
                         rel_path = os.path.relpath(os.path.join(root, file), llm_root)
                         safetensors_files.append(rel_path)
         
@@ -185,6 +178,22 @@ class TS_Qwen_3VL_V2:
         l, t = (w - tw) / 2, (h - th) / 2
         return image.crop((l, t, l + tw, t + th))
 
+    # --- Определение типа данных (Smart Precision) ---
+    def _get_optimal_dtype(self):
+        """Автоматически выбирает лучший формат данных для текущей GPU."""
+        if not torch.cuda.is_available():
+            logger.warning("[TS Qwen] CUDA not found, falling back to float32")
+            return torch.float32
+        
+        # Для RTX 30xx, 40xx, 50xx (Ampere и новее)
+        if torch.cuda.is_bf16_supported():
+            logger.info("[TS Qwen] Detected Ampere+ GPU. Using BFloat16 mode for maximum performance.")
+            return torch.bfloat16
+        
+        # Для RTX 20xx (Turing), GTX 10xx (Pascal)
+        logger.info("[TS Qwen] Detected older GPU (Turing/Pascal). Falling back to Float16 compatibility mode.")
+        return torch.float16
+
     def _detect_config(self, ckpt_path):
         configs_dir = os.path.join(current_dir, "configs")
         if not os.path.exists(configs_dir):
@@ -205,13 +214,13 @@ class TS_Qwen_3VL_V2:
                             model_hidden_size = shape[1]
                         break
         except Exception as e:
-            logger.error(f"Failed to read model header: {e}")
+            logger.error(f"[TS Qwen] Failed to read model header: {e}")
             raise RuntimeError(f"Could not read safetensors header.")
 
         if model_hidden_size is None:
              raise RuntimeError("Could not determine hidden_size from .safetensors file.")
 
-        logger.info(f"Model fingerprint: hidden_size={model_hidden_size}")
+        logger.info(f"[TS Qwen] Model fingerprint: hidden_size={model_hidden_size}")
 
         matched_config_dir = None
         subfolders = [f.path for f in os.scandir(configs_dir) if f.is_dir()]
@@ -234,7 +243,7 @@ class TS_Qwen_3VL_V2:
 
                         if conf_hidden == model_hidden_size:
                             matched_config_dir = folder
-                            logger.info(f"✔ Found matching config in: {os.path.basename(folder)}")
+                            logger.info(f"[TS Qwen] ✔ Found matching config in: {os.path.basename(folder)}")
                             break
                 except Exception as e:
                     logger.warning(f"Error parsing config in {folder}: {e}")
@@ -246,7 +255,7 @@ class TS_Qwen_3VL_V2:
 
     # --- Подготовка памяти ---
     def _prepare_memory(self):
-        logger.info("Memory: Offloading other models to ensure VRAM space...")
+        logger.info("[TS Qwen] Memory: Offloading other models to ensure VRAM space...")
         mm.unload_all_models()
         mm.soft_empty_cache()
         gc.collect()
@@ -254,7 +263,6 @@ class TS_Qwen_3VL_V2:
 
     # --- Загрузка Модели ---
     def _load_model(self, model_name):
-        # Используем локальный путь для загрузки
         llm_root = os.path.join(folder_paths.models_dir, "LLM")
         ckpt_path = os.path.join(llm_root, model_name)
         
@@ -263,7 +271,10 @@ class TS_Qwen_3VL_V2:
         except Exception as e:
             raise RuntimeError(f"Config detection failed: {e}")
 
-        cache_key = f"{model_name}_v2_final"
+        # Определяем оптимальный dtype (BF16 vs FP16)
+        compute_dtype = self._get_optimal_dtype()
+        cache_key = f"{model_name}_v2_final_{compute_dtype}"
+        
         cached = MODEL_MANAGER.get(cache_key)
         if cached:
             return cached
@@ -271,35 +282,43 @@ class TS_Qwen_3VL_V2:
         self._prepare_memory()
 
         device = mm.get_torch_device()
-        logger.info(f"Loading Config from: {config_dir}")
+        logger.info(f"[TS Qwen] Loading Config from: {config_dir}")
 
         config = AutoConfig.from_pretrained(config_dir, trust_remote_code=True, local_files_only=True)
         config._attn_implementation = "sdpa"
         
         processor = AutoProcessor.from_pretrained(config_dir, trust_remote_code=True, local_files_only=True)
 
-        logger.info("Initializing model on GPU (Float16)...")
+        logger.info(f"[TS Qwen] Initializing model on GPU using {compute_dtype}...")
         
         try:
             with torch.device(device):
-                model = AutoModelForVision2Seq.from_config(config, trust_remote_code=True)
-                model.to(torch.float16)
+                # Важно: passing torch_dtype здесь позволяет создать "скелет" модели в правильном формате (BF16 или FP16)
+                model = AutoModelForVision2Seq.from_config(
+                    config, 
+                    trust_remote_code=True, 
+                    torch_dtype=compute_dtype
+                )
         except RuntimeError as e:
             if "out of memory" in str(e).lower():
-                logger.warning("OOM! Attempting emergency cleanup...")
+                logger.warning("[TS Qwen] OOM during init! Attempting emergency cleanup...")
                 gc.collect()
                 torch.cuda.empty_cache()
                 with torch.device(device):
-                    model = AutoModelForVision2Seq.from_config(config, trust_remote_code=True)
-                    model.to(torch.float16)
+                    model = AutoModelForVision2Seq.from_config(
+                        config, 
+                        trust_remote_code=True, 
+                        torch_dtype=compute_dtype
+                    )
             else:
                 raise e
 
-        logger.info("Loading weights...")
+        logger.info("[TS Qwen] Loading weights and converting on-the-fly...")
         state_dict = load_file(ckpt_path)
         
+        # load_state_dict автоматически кастит веса из файла в тип модели (compute_dtype)
         missing, unexpected = model.load_state_dict(state_dict, strict=False)
-        if missing: logger.info(f"Missing keys: {len(missing)}")
+        if missing: logger.info(f"[TS Qwen] Missing keys (usually fine for fine-tunes): {len(missing)}")
         
         model.eval()
         
@@ -322,7 +341,7 @@ class TS_Qwen_3VL_V2:
             ret_image = torch.cat(inputs_to_pass, dim=0) if inputs_to_pass else torch.zeros((1, 64, 64, 3), dtype=torch.float32)
             return (prompt, ret_image)
 
-        logger.info(f"--- Starting Generation V2 (GPU Guaranteed) ---")
+        logger.info(f"--- Starting Generation V3.0 (Smart Precision) ---")
         
         try:
             model, processor = self._load_model(model_name)
@@ -401,7 +420,7 @@ class TS_Qwen_3VL_V2:
         else:
             gen_params["do_sample"] = False
             
-        logger.info(f"Generating on {model.device}...")
+        logger.info(f"Generating on {model.device} with dtype {model.model.dtype}...")
 
         with torch.inference_mode():
             generated_ids = model.generate(
@@ -418,7 +437,9 @@ class TS_Qwen_3VL_V2:
         )[0]
 
         if unload_after_generation:
-            MODEL_MANAGER.unload(f"{model_name}_v2_final")
+            # Сбрасываем кэш с учетом текущего типа данных
+            current_dtype = self._get_optimal_dtype()
+            MODEL_MANAGER.unload(f"{model_name}_v2_final_{current_dtype}")
 
         return (output_text, self.pil_to_tensor(all_processed_pil))
 
