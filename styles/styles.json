@@ -1,0 +1,236 @@
+{
+  "version": "1.0.0",
+  "styles": [
+    {
+      "id": "photorealistic",
+      "name": "Photorealistic",
+      "prompt": "an ultra-realistic photograph with natural lighting, sharp focus, and fine details",
+      "preview": "img/Photorealistic.png",
+      "description": "Highly detailed, life-like image."
+    },
+    {
+      "id": "cinematic-photo",
+      "name": "Cinematic (Photo)",
+      "prompt": "dramatic cinematic lighting and composition, high contrast, 35mm film aesthetic",
+      "preview": "img/Cinematic-Portrait.png",
+      "description": "Movie-like photographic look."
+    },
+    {
+      "id": "anime",
+      "name": "Anime",
+      "prompt": "anime-style cel-shaded illustration with bold outlines and vibrant colors",
+      "preview": "img/Anime.png",
+      "description": "Japanese animation and cartoon aesthetic."
+    },
+    {
+      "id": "impressionist-painting",
+      "name": "Impressionist Painting",
+      "prompt": "impressionist oil painting with loose brush strokes and pastel color palette",
+      "preview": "img/Oil-Painting.png",
+      "description": "19th-century impressionist art style."
+    },
+    {
+      "id": "watercolor-painting",
+      "name": "Watercolor Painting",
+      "prompt": "watercolor painting with soft washes of color and textured paper background",
+      "preview": "img/Watercolor.png",
+      "description": "Delicate watercolor look."
+    },
+    {
+      "id": "digital-concept-art",
+      "name": "Digital Concept Art",
+      "prompt": "digital painting concept art style, smooth gradients, painterly details",
+      "preview": "img/Concept-Art.png",
+      "description": "Modern digital illustration style."
+    },
+    {
+      "id": "comic-cartoon-illustration",
+      "name": "Comic / Cartoon Illustration",
+      "prompt": "comic book style illustration with thick black outlines and flat vibrant colors",
+      "preview": "img/Clean-Illustration.png",
+      "description": "Graphic cartoon appearance."
+    },
+    {
+      "id": "minimalist-design",
+      "name": "Minimalist Design",
+      "prompt": "minimalist flat design with simple shapes and clean composition",
+      "preview": "img/Minimalist.png",
+      "description": "Sleek, low-detail graphic style."
+    },
+    {
+      "id": "fantasy-art",
+      "name": "Fantasy Art",
+      "prompt": "epic fantasy illustration with magical lighting and ethereal atmosphere",
+      "preview": "img/Fantasy-Art.png",
+      "description": "Mythic or fairy-tale scene."
+    },
+    {
+      "id": "cyberpunk-futuristic",
+      "name": "Cyberpunk / Futuristic",
+      "prompt": "cyberpunk neon cityscape at night, futuristic technology, vibrant neon lights",
+      "preview": "img/Cyberpunk.png",
+      "description": "High-tech, moody sci-fi city scene."
+    },
+    {
+      "id": "sci-fi-futuristic-tech",
+      "name": "Sci-Fi / Futuristic Tech",
+      "prompt": "sci-fi theme with advanced technology and alien world, cool blue tones",
+      "preview": "img/Sci-Fi.png",
+      "description": "Space or advanced-tech motifs."
+    },
+    {
+      "id": "pixel-art-8bit",
+      "name": "Pixel Art (8-bit)",
+      "prompt": "pixel art style, low-resolution 8-bit graphics, simple blocky pixels",
+      "preview": "img/Pixel-Art.png",
+      "description": "Retro video-game look."
+    },
+    {
+      "id": "low-poly-3d",
+      "name": "Low-Poly 3D",
+      "prompt": "low-poly 3D render style, simple geometric shapes and flat colors",
+      "preview": "img/Low-Poly-3D.png",
+      "description": "Stylized early-3D appearance."
+    },
+    {
+      "id": "line-art-sketch",
+      "name": "Line Art / Sketch",
+      "prompt": "black-and-white line art drawing with clean vector lines",
+      "preview": "img/Line-Art.png",
+      "description": "Pen or ink sketch look."
+    },
+    {
+      "id": "analog-vintage-photo",
+      "name": "Analog/Vintage Photo",
+      "prompt": "vintage film photograph style, Kodak Portra 400 with natural grain and warm color tone",
+      "preview": "img/Analog-Photography.png",
+      "description": "Old-film or retro photo appearance."
+    },
+    {
+      "id": "cubism",
+      "name": "Cubism",
+      "prompt": "cubist style with fragmented geometric forms, multiple perspectives, abstract structure",
+      "preview": "img/Cubism.png",
+      "description": "Fragmented geometry with multiple viewpoints."
+    },
+    {
+      "id": "pop-surrealism",
+      "name": "Pop Surrealism",
+      "prompt": "pop surrealism style, playful uncanny visuals, bold colors, whimsical surreal elements",
+      "preview": "img/Pop-Surrealism.png",
+      "description": "Playful uncanny visuals and bold colors."
+    },
+    {
+      "id": "art-deco-revival",
+      "name": "Art Deco Revival",
+      "prompt": "art deco revival style with bold geometry, symmetry, rich colors, metallic accents",
+      "preview": "img/Art-Deco-Revival.png",
+      "description": "Bold geometry with metallic accents."
+    },
+    {
+      "id": "psychedelic-art",
+      "name": "Psychedelic Art",
+      "prompt": "psychedelic art with vibrant swirling colors, trippy patterns, altered perception",
+      "preview": "img/Psychedelic-Art.png",
+      "description": "Vibrant swirling colors and trippy patterns."
+    },
+    {
+      "id": "glitch-art",
+      "name": "Glitch Art",
+      "prompt": "glitch art with digital distortion, pixel glitches, scan lines, data corruption",
+      "preview": "img/Glitch-Art.png",
+      "description": "Digital distortion and glitch artifacts."
+    },
+    {
+      "id": "retro-futurism",
+      "name": "Retro Futurism",
+      "prompt": "retro futurism with vintage sci-fi aesthetics, neon grids, optimistic future vibe",
+      "preview": "img/Retro-Futurism.png",
+      "description": "Vintage sci-fi with neon optimism."
+    },
+    {
+      "id": "vaporwave",
+      "name": "Vaporwave",
+      "prompt": "vaporwave style, pastel neon colors, retro digital nostalgia, 80s-90s internet aesthetic",
+      "preview": "img/Vaporwave.png",
+      "description": "Pastel neon retro digital nostalgia."
+    },
+    {
+      "id": "art-nouveau",
+      "name": "Art Nouveau",
+      "prompt": "art nouveau style with flowing organic lines, decorative patterns, elegant curves",
+      "preview": "img/Art-Nouveau.png",
+      "description": "Flowing organic lines and decorative curves."
+    },
+    {
+      "id": "expressionism",
+      "name": "Expressionism",
+      "prompt": "expressionism with bold exaggerated colors, emotional intensity, expressive forms",
+      "preview": "img/Expressionism.png",
+      "description": "Bold colors and emotional intensity."
+    },
+    {
+      "id": "pointillism",
+      "name": "Pointillism",
+      "prompt": "pointillism with image built from small color dots, textured painterly surface",
+      "preview": "img/Pointillism.png",
+      "description": "Small color dots forming a textured image."
+    },
+    {
+      "id": "pop-art",
+      "name": "Pop Art",
+      "prompt": "pop art with bright flat colors, graphic outlines, commercial art energy",
+      "preview": "img/Pop-Art.png",
+      "description": "Bright flat colors with graphic outlines."
+    },
+    {
+      "id": "mixed-media-collage",
+      "name": "Mixed-Media Collage",
+      "prompt": "mixed-media collage with layered textures, torn paper look, combined visual materials",
+      "preview": "img/Mixed-Media-Collage.png",
+      "description": "Layered textures with torn paper look."
+    },
+    {
+      "id": "y2k-chrome-aesthetic",
+      "name": "Y2K Chrome Aesthetic",
+      "prompt": "Y2K chrome aesthetic with metallic glossy surfaces, early-2000s digital futurism",
+      "preview": "img/Y2K-Chrome-Aesthetic.png",
+      "description": "Metallic glossy Y2K digital futurism."
+    },
+    {
+      "id": "digital-painting",
+      "name": "Digital Painting",
+      "prompt": "digital painting with smooth painterly brushwork, soft blended transitions, refined details, artistic shading",
+      "preview": "img/Digital-Painting.png",
+      "description": "Smooth painterly brushwork with refined details."
+    },
+    {
+      "id": "flat-design",
+      "name": "Flat Design",
+      "prompt": "flat design with solid color areas, minimal shading, clean vector-like shapes, modern graphic clarity",
+      "preview": "img/Flat-Design.png",
+      "description": "Clean vector-like shapes with solid color areas."
+    },
+    {
+      "id": "stylized-realism",
+      "name": "Stylized Realism",
+      "prompt": "stylized realism with controlled realism, enhanced facial structure, subtle exaggeration, clean artistic polish",
+      "preview": "img/Stylized-Realism.png",
+      "description": "Controlled realism with subtle exaggeration."
+    },
+    {
+      "id": "matte-painting",
+      "name": "Matte Painting",
+      "prompt": "matte painting with cinematic painterly realism, soft atmospheric gradients, controlled lighting, depth and scale",
+      "preview": "img/Matte-Painting.png",
+      "description": "Cinematic painterly realism with depth."
+    },
+    {
+      "id": "fashion-editorial",
+      "name": "Fashion Editorial",
+      "prompt": "fashion editorial with high-end editorial aesthetic, professional studio lighting, polished skin tones, luxury magazine look",
+      "preview": "img/Fashion-Editorial.png",
+      "description": "High-end editorial aesthetic with studio lighting."
+    }
+  ]
+}

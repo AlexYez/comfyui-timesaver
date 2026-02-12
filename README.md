@@ -1,198 +1,354 @@
 # ComfyUI Timesaver Nodes
 
-[English](README.md) | [Русский](README.ru.md)
+[English](README.md) | [Russian](README.ru.md)
 
-These custom nodes for ComfyUI extend the platform's capabilities with tools for image and video processing, text generation, audio transcription, and file management. Designed to integrate seamlessly into ComfyUI workflows, they cater to a variety of creative and technical needs.
+A focused, code-accurate reference for the nodes that have screenshots in `docs/img`. Each section below documents the node's purpose, inputs, outputs, and behavior based on the actual node code.
 
-Repository: [https://github.com/AlexYez/comfyui-timesaver](https://github.com/AlexYez/comfyui-timesaver)
+Repository: https://github.com/AlexYez/comfyui-timesaver
 
 ## Installation
 
-To install these custom nodes, follow these steps:
+1. Clone the repo or download the node files.
+2. Copy the folder into `ComfyUI/custom_nodes/comfyui-timesaver`.
+3. Restart ComfyUI.
 
-1. Clone the repository or download the node files.
-2. Place the node files in the `custom_nodes` directory of your ComfyUI installation.
-3. Restart ComfyUI to load the new nodes.
+## Nodes with screenshots
 
-## Node Descriptions
+- [TS Files Downloader (Ultimate)](#ts-files-downloader-ultimate)
+- [TS Film Emulation](#ts-film-emulation)
+- [TS Image Resize](#ts-image-resize)
+- [TS Qwen 3 VL](#ts-qwen-3-vl)
+- [TS Style Prompt Selector](#ts-style-prompt-selector)
+- [TS Video Depth](#ts-video-depth)
+- [TS Whisper](#ts-whisper)
+- [TS YouTube Chapters](#ts-youtube-chapters)
 
-### TS_CubemapFacesToEquirectangularNode
+## TS Files Downloader (Ultimate)
 
-- **Purpose**: Converts six cubemap face images (front, right, back, left, top, bottom) into a single equirectangular image using the py360convert library.
-- **Inputs**:
-  - `front`: Image (front face)
-  - `right`: Image (right face)
-  - `back`: Image (back face)
-  - `left`: Image (left face)
-  - `top`: Image (top face)
-  - `bottom`: Image (bottom face)
-  - `output_width`: Integer (default: 2048, min: 64, max: 8192, step: 64)
-  - `output_height`: Integer (default: 1024, min: 32, max: 4096, step: 32)
-- **Outputs**:
-  - `IMAGE`: Equirectangular image
-- **Usage**: Ideal for transforming cubemap projections into equirectangular format for 360-degree visualization or further processing.
+![TS Files Downloader (Ultimate)](docs/img/TS-Files-Downloader.png)
 
-### TS_EDLToYouTubeChaptersNode
+Bulk downloader with resume support, mirrors, proxies, and optional auto-unzip. This is an output node that writes files to disk.
 
-- **Purpose**: Converts an Edit Decision List (EDL) file into a YouTube chapters string by extracting timecodes and titles.
-- **Inputs**:
-  - `edl_file_path`: String (path to the EDL file)
-- **Outputs**:
-  - `STRING`: YouTube chapters string (e.g., "00:00 Intro\n03:15 Part 1")
-- **Usage**: Simplifies video editing workflows by generating YouTube chapter markers from EDL files.
+**Node info**
+- Internal id: `TS Files Downloader`
+- Category: `Tools/TS_IO`
+- Function: `execute_downloads`
+- Output node: Yes (side effects only)
 
-### TS_FilePathLoader
+**Required inputs**
 
-- **Purpose**: Retrieves file paths from a specified folder, supporting image and video formats like .mp4 and .mov.
-- **Inputs**:
-  - `folder_path`: String (path to the folder)
-  - `index`: Integer (default: 0, min: 0, step: 1)
-- **Outputs**:
-  - `STRING`: Full file path
-  - `STRING`: File name without extension
-- **Usage**: Enables easy file selection and loading within ComfyUI for processing workflows.
+| Name | Type | Default | Details |
+| --- | --- | --- | --- |
+| file_list | STRING (multiline) | Example list (see below) | One item per line: `URL /target/dir`. Lines starting with `#` are ignored. |
+| skip_existing | BOOLEAN | `True` | Skip download if the target file exists; when `verify_size` is on, the size must match. |
+| verify_size | BOOLEAN | `True` | Validate file size against `Content-Length` when available. |
+| chunk_size_kb | INT | `4096` | Download chunk size in KB (4096 = 4 MB). |
 
-### TS_Qwen3_Node
+**Optional inputs**
 
-- **Purpose**: Leverages the Qwen3 language model to generate text, optimized for creating detailed image prompts from user input.
-- **Inputs**:
-  - `model_name`: String (options: "Qwen/Qwen3-1.7B", "Qwen/Qwen3-4B", etc., default: "Qwen/Qwen3-1.7B")
-  - `system`: String (system prompt, multiline, default: predefined prompt for image generation)
-  - `prompt`: String (user prompt, multiline, default: "apples on the table")
-  - `seed`: Integer (default: 42, min: 0, max: 2^64-1)
-  - `max_new_tokens`: Integer (default: 512, min: 64, max: 32768, step: 64)
-  - `enable_thinking`: Boolean (default: False)
-  - `precision`: String (options: "auto", "fp16", "bf16", default: "auto")
-  - `unload_after_generation`: Boolean (default: False)
-  - `enable`: Boolean (default: True)
-  - `force_redownload`: Boolean (default: False)
-- **Outputs**:
-  - `STRING`: Generated text
-- **Usage**: Enhances creative projects by producing descriptive prompts for AI image generation models.
+| Name | Type | Default | Details |
+| --- | --- | --- | --- |
+| hf_token | STRING | `""` | Hugging Face token (starts with `hf_`). |
+| hf_domain | STRING | `huggingface.co, hf-mirror.com` | Comma-separated HF mirrors used for availability checks and downloads. |
+| proxy_url | STRING | `""` | Proxy URL, e.g. `http://127.0.0.1:7890`. |
+| modelscope_token | STRING | `""` | ModelScope access token. |
+| unzip_after_download | BOOLEAN | `False` | Auto-extract `.zip` files to the target directory and delete the archive. |
+| enable | BOOLEAN | `True` | Disable to skip all downloads. |
 
-### TS_Video_Upscale_With_Model
+**Outputs**
+- None. This node performs downloads as a side effect.
 
-- **Purpose**: Upscales video frames using a specified model, with memory-efficient strategies and Spandrel integration.
-- **Inputs**:
-  - `model_name`: String (from upscale_models list)
-  - `images`: IMAGE (video frames)
-  - `upscale_method`: String (options: "nearest-exact", "bilinear", etc.)
-  - `factor`: Float (default: 2.0, min: 0.1, max: 8.0, step: 0.1)
-  - `device_strategy`: String (options: "auto", "load_unload_each_frame", etc., default: "auto")
-- **Outputs**:
-  - `IMAGE`: Upscaled video frames
-- **Usage**: Improves video quality with flexible device management options for GPU/CPU processing.
+**Example file_list**
 
-### TS_VideoDepth
+```
+https://www.dropbox.com/sh/example_folder?dl=0 /path/to/models
+https://huggingface.co/stabilityai/sdxl-turbo/resolve/main/sd_xl_turbo_1.0_fp16.safetensors /path/to/checkpoints
+```
 
-- **Purpose**: Generates depth maps for video frames using the VideoDepthAnything model, with customizable post-processing.
-- **Inputs**:
-  - `images`: IMAGE (video frames)
-  - `model_filename`: String (options: "video_depth_anything_vits.pth", etc., default: "video_depth_anything_vitl.pth")
-  - `input_size`: Integer (default: 518, min: 64, max: 4096, step: 2)
-  - `max_res`: Integer (default: 1280, min: -1, max: 8192, step: 1)
-  - `precision`: String (options: "fp16", "fp32", default: "fp16")
-  - `colormap`: String (options: "gray", "inferno", etc., default: "gray")
-  - `dithering_strength`: Float (default: 0.005, min: 0.0, max: 0.016, step: 0.0001)
-  - `apply_median_blur`: Boolean (default: True)
-  - `upscale_algorithm`: String (options: "Lanczos4", "Cubic", etc., default: "Lanczos4")
-- **Outputs**:
-  - `IMAGE`: Depth map images
-- **Usage**: Adds depth information to videos, useful for 3D effects or reconstructions.
+**Behavior notes**
+- Connectivity check runs against the domains extracted from `file_list`; if none are reachable, the node exits early.
+- HF mirror selection uses the first reachable entry in `hf_domain`.
+- Resumable downloads use `.part` files and HTTP range requests when supported.
+- Dropbox links are converted to direct-download form.
+- Filenames are taken from `Content-Disposition` when available, otherwise from the URL.
 
-### TS_EquirectangularToCubemapFacesNode
+## TS Film Emulation
 
-- **Purpose**: Converts an equirectangular image into six cubemap face images using py360convert.
-- **Inputs**:
-  - `image`: IMAGE (equirectangular image)
-  - `cube_size`: Integer (default: 512, min: 64, max: 4096, step: 64)
-- **Outputs**:
-  - `IMAGE`: Front face
-  - `IMAGE`: Right face
-  - `IMAGE`: Back face
-  - `IMAGE`: Left face
-  - `IMAGE`: Top face
-  - `IMAGE`: Bottom face
-- **Usage**: Facilitates conversion to cubemap format for specific rendering or VR applications.
+![TS Film Emulation](docs/img/TS-Film-Emulation.png)
 
-### TSWhisper
+Film look node with built-in presets or external `.cube` LUTs, plus contrast curve, warmth, fade, and grain.
 
-- **Purpose**: Transcribes or translates audio using the Whisper model, with SRT file generation support.
-- **Inputs**:
-  - `audio`: AUDIO
-  - `output_filename_prefix`: String (default: "transcribed_audio")
-  - `task`: String (options: "transcribe", "translate_to_english", default: "transcribe")
-  - `source_language`: String (options: "auto", "en", etc., default: "auto")
-  - `save_srt_file`: Boolean (default: True)
-  - `precision`: String (options: "fp32", "fp16", etc., default: "fp16")
-  - `attn_implementation`: String (options: "eager", "sdpa", default: varies)
-  - `plain_text_format`: String (options: "single_block", "newline_per_segment", default: "single_block")
-  - `manual_chunk_length_s`: Float (default: 28.0, min: 5.0, max: 30.0, step: 1.0)
-  - `manual_chunk_overlap_s`: Float (default: 4.0, min: 0.0, max: 10.0, step: 0.5)
-  - `output_dir`: String (optional, default: ComfyUI output directory)
-- **Outputs**:
-  - `STRING`: SRT content
-  - `STRING`: Plain text transcription
-- **Usage**: Automates audio transcription and subtitle creation for multimedia projects.
+**Node info**
+- Internal id: `TS_Film_Emulation`
+- Category: `Image/Color`
+- Function: `process`
 
-### TS_ImageResize
+**Required inputs**
 
-- **Purpose**: Resizes images with flexible options for dimensions, scaling, and proportion control.
-- **Inputs**:
-  - `pixels`: IMAGE
-  - `target_width`: Integer (default: 0, min: 0, max: 8192, step: 8)
-  - `target_height`: Integer (default: 0, min: 0, max: 8192, step: 8)
-  - `smaller_side`: Integer (default: 0, min: 0, max: 8192, step: 8)
-  - `larger_side`: Integer (default: 0, min: 0, max: 8192, step: 8)
-  - `scale_factor`: Float (default: 0.0, min: 0.0, max: 10.0, step: 0.01)
-  - `keep_proportion`: Boolean (default: True)
-  - `upscale_method`: String (options: "nearest-exact", "bilinear", etc., default: "bicubic")
-  - `divisible_by`: Integer (default: 1, min: 1, max: 256, step: 1)
-- **Outputs**:
-  - `IMAGE`: Resized image
-  - `INT`: New width
-  - `INT`: New height
-- **Usage**: Adapts image sizes for compatibility with various models or display requirements.
+| Name | Type | Default | Details |
+| --- | --- | --- | --- |
+| image | IMAGE | N/A | Input image tensor. |
+| enable | BOOLEAN | `True` | Toggle the whole effect. |
+| film_preset | LIST | `External LUT` (first option) | Options: External LUT, Kodak Vision3 250D, Kodak Portra 400, Fuji Eterna 250T, Agfa Vista 200, Ilford HP5, Kodak Gold 200, Fuji Superia 400. |
+| lut_choice | LIST | `None` (first option) | List is scanned from `luts/` and includes `None` plus `.cube` files. |
+| lut_strength | FLOAT | `1.0` | Blend strength for the external LUT. |
+| gamma_correction | BOOLEAN | `True` | Apply sRGB to linear conversion around LUT processing. |
+| film_strength | FLOAT | `1.0` | Blend strength for built-in film presets. |
+| contrast_curve | FLOAT | `1.0` | Contrast curve around mid-tones. |
+| warmth | FLOAT | `0.0` | Warm/cool bias (red up, blue down). |
+| grain_intensity | FLOAT | `0.02` | Grain intensity. |
+| grain_size | FLOAT | `0.5` | Grain scale (larger = bigger grain). |
+| fade | FLOAT | `0.0` | Lift toward mid-gray for a faded look. |
+| shadow_saturation | FLOAT | `0.8` | Saturation factor in shadows. |
+| highlight_saturation | FLOAT | `0.85` | Saturation factor in highlights. |
 
-### TS_DownloadFilesNode
+**Outputs**
+- IMAGE: processed image.
 
-- **Purpose**: Downloads files from URLs with resume support, retries, and size verification, optionally using a Hugging Face token.
-- **Inputs**:
-  - `file_list`: String (multiline, format: "URL /path/to/save_directory")
-  - `skip_existing`: Boolean (default: True)
-  - `verify_size`: Boolean (default: True)
-  - `chunk_size_kb`: Integer (default: 4096, min: 1, max: 65536, step: 1)
-  - `hf_token`: String (optional, default: "")
-- **Outputs**: None (downloads files to specified directories)
-- **Usage**: Streamlines fetching of external resources like models or datasets for ComfyUI workflows.
+**Behavior notes**
+- If `enable` is off, the input image is returned unchanged.
+- Built-in film presets are blended with the original using `film_strength`.
+- Contrast curve, warmth, fade, and shadow/highlight saturation are applied before LUTs.
+- External LUTs are loaded from `luts/<lut_choice>` and can use gamma correction.
+- Grain is added after color operations; `grain_size` controls noise scale.
 
-## Dependencies
+## TS Image Resize
 
-- `py360convert`
-- `torch`
-- `numpy`
-- `transformers`
-- `huggingface_hub`
-- `spandrel` (for TS_Video_Upscale_With_Model)
-- `VideoDepthAnything` (for TS_VideoDepth)
-- `torchaudio` (for TSWhisper)
-- `srt` (for TSWhisper)
-- `requests`
-- `tqdm`
-- `torchvision` (optional, for TS_ImageResize with Lanczos)
+![TS Image Resize](docs/img/TS-Image-Resize.png)
 
-Install these libraries in your environment to ensure full functionality.
+Flexible image resize node: explicit size, side-based scaling, scale factor, or megapixels, with optional mask support.
 
-## Troubleshooting
+**Node info**
+- Internal id: `TS_ImageResize`
+- Category: `image`
+- Function: `resize`
 
-- **Model Loading Errors**: Verify model files are downloaded and accessible. Check paths and permissions.
-- **Memory Issues**: For video or large image processing, ensure sufficient GPU memory. Adjust device strategies if needed.
-- **Dependency Conflicts**: Confirm compatibility between dependencies, Python version, and ComfyUI.
+**Required inputs**
 
-## Contributing
+| Name | Type | Default | Details |
+| --- | --- | --- | --- |
+| pixels | IMAGE | N/A | Input image tensor. |
+| target_width | INT | `0` | Target width in pixels (0 = ignore). |
+| target_height | INT | `0` | Target height in pixels (0 = ignore). |
+| smaller_side | INT | `0` | Target size for the smaller side (0 = ignore). |
+| larger_side | INT | `0` | Target size for the larger side (0 = ignore). |
+| scale_factor | FLOAT | `0.0` | Scale factor (0 = ignore). |
+| keep_proportion | BOOLEAN | `True` | Keep aspect ratio when using target sizes. |
+| upscale_method | LIST | `bicubic` | Methods: nearest-exact, bilinear, bicubic, area, lanczos. |
+| divisible_by | INT | `1` | Snap final size to a multiple of this value. |
+| megapixels | FLOAT | `1.0` | Target megapixels (used when no other sizing input is set). |
+| dont_enlarge | BOOLEAN | `False` | Prevents upscaling beyond the original resolution. |
 
-Contributions are welcome! Submit issues or pull requests on the GitHub repository.
+**Optional inputs**
 
-## License
+| Name | Type | Default | Details |
+| --- | --- | --- | --- |
+| mask | MASK | N/A | Optional mask resized alongside the image. |
 
-These custom nodes are released under the [MIT License](LICENSE).
+**Outputs**
+
+| Name | Type | Details |
+| --- | --- | --- |
+| IMAGE | IMAGE | Resized image. |
+| width | INT | Final width in pixels. |
+| height | INT | Final height in pixels. |
+| MASK | MASK | Resized mask if provided, otherwise the original mask. |
+
+**Behavior notes**
+- Sizing priority: `scale_factor` -> `target_width/target_height` -> `smaller_side/larger_side` -> `megapixels`.
+- With `keep_proportion` on and both target dimensions set, the image is scaled to cover the target and center-cropped.
+- With `keep_proportion` off and both target dimensions set, the image is stretched to the exact size.
+- `divisible_by` is applied only in proportional modes (it is ignored in explicit target-size modes).
+- Masks are resized with `nearest-exact` to preserve edges.
+
+## TS Qwen 3 VL
+
+![TS Qwen 3 VL](docs/img/TS-Qwen3-VL.png)
+
+Vision-language node for Qwen 3 VL with presets, caching, optional offline mode, and support for images and video frames.
+
+**Node info**
+- Internal id: `TS_Qwen3_VL`
+- Category: `LLM/TS_Qwen`
+- Function: `process`
+
+**Required inputs**
+
+| Name | Type | Default | Details |
+| --- | --- | --- | --- |
+| model_name | STRING | `hfmaster/Qwen3-VL-2B` | Hugging Face model repo id. |
+| system_preset | LIST | First preset or `Your instruction` | Presets loaded from `qwen_3_vl_presets.json` plus `Your instruction`. |
+| prompt | STRING (multiline) | `""` | User prompt text. |
+| seed | INT | `42` | Random seed for generation. |
+| max_new_tokens | INT | `512` | Maximum tokens to generate. |
+| precision | LIST | `fp16` | Options: fp16, bf16, fp32; int8/int4 appear when bitsandbytes is available. |
+| use_flash_attention_2 | BOOLEAN | `True` if available | Enables Flash Attention 2 when the library is present. |
+| offline_mode | BOOLEAN | `False` | Use local model only; no downloads. |
+| unload_after_generation | BOOLEAN | `False` | Unload the model from cache after generation. |
+| enable | BOOLEAN | `True` | Disable to skip inference. |
+| hf_token | STRING | `""` | Hugging Face token for private repos. |
+| max_image_size | INT | `1024` | Max side length before resizing and center-cropping. |
+| video_max_frames | INT | `48` | Maximum number of video frames to process. |
+
+**Optional inputs**
+
+| Name | Type | Default | Details |
+| --- | --- | --- | --- |
+| image | IMAGE | N/A | Optional image input. |
+| video | IMAGE | N/A | Optional video frames (IMAGE tensor sequence). |
+| custom_system_prompt | STRING (multiline) | N/A | Used only when `system_preset` is `Your instruction`. |
+| hf_endpoint | STRING | `huggingface.co, hf-mirror.com` | Comma-separated mirrors used for downloads. |
+| proxy | STRING | `""` | HTTP/HTTPS proxy for downloads. |
+
+**Outputs**
+
+| Name | Type | Details |
+| --- | --- | --- |
+| generated_text | STRING | Model output text (or error string). |
+| processed_image | IMAGE | Images/frames after resizing and cropping used for the model. |
+
+**Behavior notes**
+- Models are cached globally and stored under `models/LLM/<repo_name>`.
+- `offline_mode` requires a complete local model (config + weights), otherwise an error is raised.
+- Images are resized down to `max_image_size` and center-cropped to multiples of 32.
+- Video inputs are uniformly sampled down to `video_max_frames` before processing.
+- If `enable` is off, the node returns the prompt and processed images without running inference.
+
+## TS Style Prompt Selector
+
+![TS Style Prompt Selector](docs/img/TS-Style-Prompt-Selector.png)
+
+Selects a prompt string from `styles/styles.json` by id or name.
+
+**Node info**
+- Internal id: `TS_StylePromptSelector`
+- Category: `TS/Prompt`
+- Function: `get_prompt`
+
+**Required inputs**
+
+| Name | Type | Default | Details |
+| --- | --- | --- | --- |
+| style_id | STRING | `photorealistic` | Style id or name from `styles/styles.json`. |
+
+**Outputs**
+
+| Name | Type | Details |
+| --- | --- | --- |
+| prompt | STRING | Prompt text for the selected style. |
+
+**Behavior notes**
+- Styles are loaded from `styles/styles.json` (expects a `styles` list).
+- Matches either `id` or `name` fields.
+- If the style is not found, the node returns a single space.
+- The pack also exposes `/ts_styles` and `/ts_styles/preview` endpoints for UI support.
+
+## TS Video Depth
+
+![TS Video Depth](docs/img/TS-Video-Depth.png)
+
+Generates depth maps for video frames using VideoDepthAnything with optional colormap, dithering, and blur.
+
+**Node info**
+- Internal id: `TS_VideoDepthNode`
+- Category: `Tools/Video`
+- Function: `execute_process_unified`
+
+**Required inputs**
+
+| Name | Type | Default | Details |
+| --- | --- | --- | --- |
+| images | IMAGE | N/A | Input frames (IMAGE tensor sequence). |
+| model_filename | LIST | `video_depth_anything_vitl.pth` | Model weight file: vits (small) or vitl (large). |
+| input_size | INT | `518` | Inference input size (auto-adjusted to a multiple of 14). |
+| max_res | INT | `1280` | If > 0, downscales frames whose max side exceeds this value. |
+| precision | LIST | `fp16` | Inference precision (fp16 or fp32). |
+| colormap | LIST | `gray` | gray, inferno, viridis, plasma, magma, cividis. |
+| dithering_strength | FLOAT | `0.005` | Adds subtle noise before color mapping. |
+| apply_median_blur | BOOLEAN | `True` | Applies median blur on the depth map. |
+| upscale_algorithm | LIST | `Lanczos4` | Upscale method: Lanczos4, Cubic, or Linear. |
+
+**Outputs**
+- IMAGE: RGB depth map sequence.
+
+**Behavior notes**
+- If model files are missing, they are downloaded to `models/videodepthanything`.
+- `input_size` is forced down to a multiple of 14 when needed.
+- `max_res` reduces memory usage by resizing frames before inference.
+- Depth is normalized, then mapped to the chosen colormap with optional dithering and blur.
+- The output is upscaled back to the original resolution using `upscale_algorithm`.
+
+## TS Whisper
+
+![TS Whisper](docs/img/TS-Whisper.png)
+
+Audio transcription or translation using Whisper Large v3 with SRT output and plain text.
+
+**Node info**
+- Internal id: `TSWhisper`
+- Category: `AudioTranscription/TSNodes`
+- Function: `generate_srt_and_text`
+
+**Required inputs**
+
+| Name | Type | Default | Details |
+| --- | --- | --- | --- |
+| audio | AUDIO | N/A | Input audio (waveform + sample_rate). |
+| output_filename_prefix | STRING | `transcribed_audio` | Prefix for saved SRT files. |
+| task | LIST | `transcribe` | transcribe or translate_to_english. |
+| source_language | LIST | `auto` | auto, en, ru, fr, de, es, it, ja, ko, zh, uk, pl. |
+| save_srt_file | BOOLEAN | `True` | Save SRT to disk. |
+| precision | LIST | `fp16` when available | fp32, fp16, and bf16 (if CUDA bf16 is supported). |
+| attn_implementation | LIST | `sdpa` when available | eager or sdpa (if PyTorch SDPA is available). |
+| plain_text_format | LIST | `single_block` | single_block or newline_per_segment. |
+| manual_chunk_length_s | FLOAT | `28.0` | Manual chunk length in seconds (<= 30). |
+| manual_chunk_overlap_s | FLOAT | `4.0` | Overlap between chunks in seconds. |
+
+**Optional inputs**
+
+| Name | Type | Default | Details |
+| --- | --- | --- | --- |
+| output_dir | STRING | ComfyUI output dir | Base output directory for SRT files. |
+
+**Outputs**
+
+| Name | Type | Details |
+| --- | --- | --- |
+| srt_content_string | STRING | Full SRT content. |
+| plain_text_string | STRING | Transcript as plain text. |
+
+**Behavior notes**
+- Uses `openai/whisper-large-v3` and caches it under `models/whisper`.
+- Audio is resampled to 16 kHz before transcription.
+- Manual chunking is used for long audio with the specified overlap.
+- When `save_srt_file` is on, files are saved to `<output_dir>/subtitles/<prefix>_YYYYMMDD_HHMMSS.srt`.
+- Text output format depends on `plain_text_format`.
+
+## TS YouTube Chapters
+
+![TS YouTube Chapters](docs/img/TS-YouTube-Chapters.png)
+
+Converts an EDL file into YouTube chapter timestamps.
+
+**Node info**
+- Internal id: `TS Youtube Chapters`
+- Category: `Tools/TS_Video`
+- Function: `convert_edl_to_youtube_chapters`
+
+**Required inputs**
+
+| Name | Type | Default | Details |
+| --- | --- | --- | --- |
+| edl_file_path | STRING | `""` | Path to the EDL file. |
+
+**Outputs**
+
+| Name | Type | Details |
+| --- | --- | --- |
+| youtube_chapters | STRING | Chapter list, one entry per line. |
+
+**Behavior notes**
+- Reads the EDL file as UTF-8 and expects standard EDL timecode lines.
+- Chapter titles are parsed from the next line's `|M:...|` field.
+- Uses a standard EDL start offset of `01:00:00:00`.
+- Outputs `mm:ss Title` or `hh:mm:ss Title` when the timeline exceeds one hour.
