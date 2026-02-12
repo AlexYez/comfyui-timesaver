@@ -5,6 +5,8 @@ import logging
 # Настройка логгера
 logger = logging.getLogger("TimesaverVFX_Pack")
 
+WEB_DIRECTORY = "./js"
+
 NODE_CLASS_MAPPINGS = {}
 NODE_DISPLAY_NAME_MAPPINGS = {}
 
