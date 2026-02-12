@@ -1,136 +1,340 @@
+from typing import Optional
+
 import torch
-import torch.nn.functional as F
-import sys
-import traceback
+import comfy.utils
 
-class TS_SmartImageBatch:
-    """
-    TS Smart Image Batch Node
-    Intelligently batches two images. 
-    - Takes image1 (required) and image2 (optional).
-    - If image2 is missing or invalid, passes image1.
-    - If image2 exists, matches its dimensions (H, W) to image1 and creates a batch.
-    """
 
-    def __init__(self):
-        self.device = torch.device("cpu") # Default, will update based on input
-
+class TS_ImageBatchToImageList:
     @classmethod
-    def INPUT_TYPES(s):
+    def INPUT_TYPES(cls):
         return {
             "required": {
-                "image1": ("IMAGE",),
-            },
-            "optional": {
-                "image2": ("IMAGE",),
+                "image": ("IMAGE",),
             }
         }
 
     RETURN_TYPES = ("IMAGE",)
-    RETURN_NAMES = ("image",)
-    FUNCTION = "smart_batch"
-    CATEGORY = "TS Nodes/Image"
-    OUTPUT_NODE = False
+    RETURN_NAMES = ("images",)
+    OUTPUT_IS_LIST = (True,)
+    FUNCTION = "execute"
+    CATEGORY = "TS/Image Tools"
 
-    def log_step(self, message, is_error=False):
-        """
-        Custom logging with ANSI colors for better visibility in ComfyUI console.
-        """
-        prefix = "\033[96m[TS_SmartImageBatch]\033[0m" # Cyan
-        if is_error:
-            prefix = "\033[91m[TS_SmartImageBatch ERROR]\033[0m" # Red
-        
-        print(f"{prefix} {message}")
+    @staticmethod
+    def _log(message: str) -> None:
+        print(f"[TS Image Batch to Image List] {message}")
 
-    def ensure_tensor(self, data):
-        """Validates if data is a torch Tensor."""
-        return isinstance(data, torch.Tensor)
+    @classmethod
+    def _log_tensor(cls, label: str, tensor: Optional[torch.Tensor]) -> None:
+        if tensor is None:
+            cls._log(f"{label}: None")
+            return
+        if not isinstance(tensor, torch.Tensor):
+            cls._log(f"{label}: invalid type={type(tensor)}")
+            return
+        cls._log(
+            f"{label} shape={tuple(tensor.shape)} dtype={tensor.dtype} device={tensor.device}"
+        )
 
-    def smart_batch(self, image1, image2=None):
+    def execute(self, image: torch.Tensor):
+        self._log_tensor("Input", image)
+
+        if image is None:
+            self._log("Input is None, returning empty list.")
+            return ([],)
+
+        if not isinstance(image, torch.Tensor):
+            raise ValueError(f"Expected IMAGE tensor, got {type(image)}")
+
+        if image.ndim == 3:
+            image = image.unsqueeze(0)
+            self._log_tensor("Input normalized", image)
+
+        if image.ndim != 4:
+            raise ValueError(f"Expected IMAGE with 4 dims [B,H,W,C], got {image.ndim}")
+
+        images = [image[i : i + 1, ...] for i in range(image.shape[0])]
+
+        if images:
+            self._log(f"Output list length={len(images)}")
+            self._log_tensor("Output[0]", images[0])
+
+        return (images,)
+
+    @classmethod
+    def IS_CHANGED(cls, image: torch.Tensor) -> str:
+        if image is None or not isinstance(image, torch.Tensor):
+            return "none"
         try:
-            self.log_step("Execution started.")
-            
-            # 1. Validate Primary Input
-            if not self.ensure_tensor(image1):
-                raise ValueError(f"image1 must be a torch.Tensor, got {type(image1)}")
+            return f"{tuple(image.shape)}_{image.dtype}_{float(image.mean())}"
+        except Exception:
+            return f"{tuple(image.shape)}_{image.dtype}"
 
-            self.log_step(f"Input image1 shape: {image1.shape} | Device: {image1.device} | Dtype: {image1.dtype}")
 
-            # 2. Check Secondary Input (Optional)
-            # Conditions to ignore image2: None, not a tensor, or empty tensor
-            if image2 is None:
-                self.log_step("image2 is None. Passing through image1.")
-                return (image1,)
-            
-            if not self.ensure_tensor(image2):
-                self.log_step(f"image2 received but is not a Tensor ({type(image2)}). Ignoring and passing image1.")
-                return (image1,)
+class TS_ImageListToImageBatch:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "images": ("IMAGE",),
+            }
+        }
 
-            if image2.numel() == 0:
-                 self.log_step("image2 is an empty tensor. Passing through image1.")
-                 return (image1,)
+    INPUT_IS_LIST = True
+    RETURN_TYPES = ("IMAGE",)
+    RETURN_NAMES = ("image",)
+    FUNCTION = "execute"
+    CATEGORY = "TS/Image Tools"
 
-            self.log_step(f"Input image2 shape: {image2.shape} | Device: {image2.device}")
+    @staticmethod
+    def _log(message: str) -> None:
+        print(f"[TS Image List to Image Batch] {message}")
 
-            # 3. Smart Processing & Batching
-            # ComfyUI Image Tensor Format: [Batch, Height, Width, Channels] (BHWC)
-            
-            target_h = image1.shape[1]
-            target_w = image1.shape[2]
-            target_c = image1.shape[3]
-            
-            processed_image2 = image2
+    @classmethod
+    def _log_tensor(cls, label: str, tensor: Optional[torch.Tensor]) -> None:
+        if tensor is None:
+            cls._log(f"{label}: None")
+            return
+        if not isinstance(tensor, torch.Tensor):
+            cls._log(f"{label}: invalid type={type(tensor)}")
+            return
+        cls._log(
+            f"{label} shape={tuple(tensor.shape)} dtype={tensor.dtype} device={tensor.device}"
+        )
 
-            # Check Channels match
-            if image2.shape[3] != target_c:
-                self.log_step(f"Channel mismatch! Img1: {target_c}, Img2: {image2.shape[3]}. Cannot batch safely.", is_error=True)
-                # Fallback to returning image1 to prevent crash, or could implement channel conversion. 
-                # For safety/strictness, we return image1.
-                return (image1,)
+    @staticmethod
+    def _ensure_bhwc(image: torch.Tensor) -> torch.Tensor:
+        if image.ndim == 3:
+            return image.unsqueeze(0)
+        if image.ndim != 4:
+            raise ValueError(f"Expected IMAGE with 3 or 4 dims, got {image.ndim}")
+        return image
 
-            # Check Spatial Dimensions (H, W)
-            if image2.shape[1] != target_h or image2.shape[2] != target_w:
-                self.log_step(f"Dimension mismatch detected. Resizing image2 to match image1 ({target_w}x{target_h})...")
-                
-                # Permute to BCHW for PyTorch Interpolation
-                # image2: [B, H, W, C] -> [B, C, H, W]
-                img2_bchw = image2.permute(0, 3, 1, 2)
-                
-                # Resize using bilinear interpolation
-                img2_resized = F.interpolate(
-                    img2_bchw, 
-                    size=(target_h, target_w), 
-                    mode="bilinear", 
-                    align_corners=False
+    def execute(self, images):
+        if images is None:
+            self._log("Input list is None.")
+            return ()
+
+        if not isinstance(images, list):
+            images = [images]
+
+        self._log(f"Input list length={len(images)}")
+
+        if len(images) == 0:
+            self._log("Input list is empty.")
+            return ()
+
+        valid_images = [img for img in images if img is not None]
+        if len(valid_images) == 0:
+            self._log("All input images are None.")
+            return ()
+
+        normalized = []
+        for idx, img in enumerate(valid_images):
+            if not isinstance(img, torch.Tensor):
+                raise ValueError(f"Image {idx} is not a torch.Tensor: {type(img)}")
+            norm = self._ensure_bhwc(img)
+            normalized.append(norm)
+
+        base = normalized[0]
+        target_h, target_w = base.shape[1], base.shape[2]
+        target_c = min(img.shape[3] for img in normalized)
+        target_dtype = base.dtype
+        target_device = base.device
+
+        self._log_tensor("Input[0]", base)
+        self._log(f"Target size={target_w}x{target_h} channels={target_c}")
+
+        resized = []
+        for idx, img in enumerate(normalized):
+            if img.device != target_device:
+                self._log(f"Image {idx} moved to {target_device}")
+                img = img.to(target_device)
+            if img.dtype != target_dtype:
+                img = img.to(target_dtype)
+            if img.shape[1] != target_h or img.shape[2] != target_w:
+                self._log(
+                    f"Image {idx} resized from {img.shape[2]}x{img.shape[1]} to {target_w}x{target_h}"
                 )
-                
-                # Permute back to BHWC
-                # [B, C, H, W] -> [B, H, W, C]
-                processed_image2 = img2_resized.permute(0, 2, 3, 1)
-                self.log_step(f"image2 resized to: {processed_image2.shape}")
+                img = comfy.utils.common_upscale(
+                    img.movedim(-1, 1), target_w, target_h, "lanczos", "center"
+                ).movedim(1, -1)
+            if img.shape[3] != target_c:
+                self._log(f"Image {idx} channels trimmed to {target_c}")
+                img = img[..., :target_c]
+            resized.append(img)
 
-            # 4. Concatenation
-            # Ensure devices match
-            if processed_image2.device != image1.device:
-                processed_image2 = processed_image2.to(image1.device)
+        batch = torch.cat(resized, dim=0)
+        self._log_tensor("Output", batch)
+        return (batch,)
 
-            output_image = torch.cat((image1, processed_image2), dim=0)
-            
-            self.log_step(f"Batching complete. Final Output Shape: {output_image.shape}")
-            
-            return (output_image,)
+    @classmethod
+    def IS_CHANGED(cls, images) -> str:
+        if images is None:
+            return "none"
+        if not isinstance(images, list):
+            images = [images]
+        if len(images) == 0:
+            return "empty"
+        shapes = []
+        for img in images:
+            if isinstance(img, torch.Tensor):
+                shapes.append(tuple(img.shape))
+        try:
+            sums = []
+            for img in images:
+                if isinstance(img, torch.Tensor):
+                    sums.append(float(img.mean()))
+            return f"{shapes}_{sums}"
+        except Exception:
+            return f"{shapes}"
 
-        except Exception as e:
-            self.log_step(f"CRITICAL ERROR: {str(e)}", is_error=True)
-            traceback.print_exc()
-            # Emergency fallback: return input to not break the workflow graph completely
-            return (image1,)
 
-# Registration
+class TS_GetImageMegapixels:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "image": ("IMAGE",),
+            }
+        }
+
+    RETURN_TYPES = ("FLOAT",)
+    RETURN_NAMES = ("megapixels",)
+    FUNCTION = "execute"
+    CATEGORY = "TS/Image Tools"
+
+    @staticmethod
+    def _log(message: str) -> None:
+        print(f"[TS Get Image Megapixels] {message}")
+
+    @classmethod
+    def _log_tensor(cls, label: str, tensor: Optional[torch.Tensor]) -> None:
+        if tensor is None:
+            cls._log(f"{label}: None")
+            return
+        if not isinstance(tensor, torch.Tensor):
+            cls._log(f"{label}: invalid type={type(tensor)}")
+            return
+        cls._log(
+            f"{label} shape={tuple(tensor.shape)} dtype={tensor.dtype} device={tensor.device}"
+        )
+
+    def execute(self, image: torch.Tensor):
+        self._log_tensor("Input", image)
+
+        if image is None:
+            self._log("Input is None.")
+            return (0.0,)
+
+        if not isinstance(image, torch.Tensor):
+            raise ValueError(f"Expected IMAGE tensor, got {type(image)}")
+
+        if image.ndim == 3:
+            image = image.unsqueeze(0)
+            self._log_tensor("Input normalized", image)
+
+        if image.ndim != 4:
+            raise ValueError(f"Expected IMAGE with 4 dims [B,H,W,C], got {image.ndim}")
+
+        height = int(image.shape[1])
+        width = int(image.shape[2])
+        megapixels = float(width * height) / 1_000_000.0
+
+        self._log(f"Computed megapixels={megapixels}")
+        return (megapixels,)
+
+    @classmethod
+    def IS_CHANGED(cls, image: torch.Tensor) -> str:
+        if image is None or not isinstance(image, torch.Tensor):
+            return "none"
+        try:
+            return f"{tuple(image.shape)}_{image.dtype}_{float(image.mean())}"
+        except Exception:
+            return f"{tuple(image.shape)}_{image.dtype}"
+
+
+class TS_GetImageSizeSide:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "image": ("IMAGE",),
+                "large_side": (
+                    "BOOLEAN",
+                    {
+                        "default": True,
+                        "label_on": "Large Side",
+                        "label_off": "Small Side",
+                    },
+                ),
+            }
+        }
+
+    RETURN_TYPES = ("INT",)
+    RETURN_NAMES = ("size",)
+    FUNCTION = "execute"
+    CATEGORY = "TS/Image Tools"
+
+    @staticmethod
+    def _log(message: str) -> None:
+        print(f"[TS Get Image Size Side] {message}")
+
+    @classmethod
+    def _log_tensor(cls, label: str, tensor: Optional[torch.Tensor]) -> None:
+        if tensor is None:
+            cls._log(f"{label}: None")
+            return
+        if not isinstance(tensor, torch.Tensor):
+            cls._log(f"{label}: invalid type={type(tensor)}")
+            return
+        cls._log(
+            f"{label} shape={tuple(tensor.shape)} dtype={tensor.dtype} device={tensor.device}"
+        )
+
+    def execute(self, image: torch.Tensor, large_side: bool):
+        self._log_tensor("Input", image)
+
+        if image is None:
+            self._log("Input is None.")
+            return (0,)
+
+        if not isinstance(image, torch.Tensor):
+            raise ValueError(f"Expected IMAGE tensor, got {type(image)}")
+
+        if image.ndim == 3:
+            image = image.unsqueeze(0)
+            self._log_tensor("Input normalized", image)
+
+        if image.ndim != 4:
+            raise ValueError(f"Expected IMAGE with 4 dims [B,H,W,C], got {image.ndim}")
+
+        height = int(image.shape[1])
+        width = int(image.shape[2])
+        size = max(height, width) if large_side else min(height, width)
+
+        self._log(f"Computed size={size} (large_side={large_side})")
+        return (size,)
+
+    @classmethod
+    def IS_CHANGED(cls, image: torch.Tensor, large_side: bool) -> str:
+        if image is None or not isinstance(image, torch.Tensor):
+            return f"none_{large_side}"
+        try:
+            return f"{tuple(image.shape)}_{image.dtype}_{float(image.mean())}_{large_side}"
+        except Exception:
+            return f"{tuple(image.shape)}_{image.dtype}_{large_side}"
+
+
 NODE_CLASS_MAPPINGS = {
-    "TS_SmartImageBatch": TS_SmartImageBatch
+    "TS_ImageBatchToImageList": TS_ImageBatchToImageList,
+    "TS_ImageListToImageBatch": TS_ImageListToImageBatch,
+    "TS_GetImageMegapixels": TS_GetImageMegapixels,
+    "TS_GetImageSizeSide": TS_GetImageSizeSide,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "TS_SmartImageBatch": "TS Smart Image Batch"
+    "TS_ImageBatchToImageList": "TS Image Batch to Image List",
+    "TS_ImageListToImageBatch": "TS Image List to Image Batch",
+    "TS_GetImageMegapixels": "TS Get Image Megapixels",
+    "TS_GetImageSizeSide": "TS Get Image Size",
 }

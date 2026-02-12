@@ -1,10 +1,12 @@
 # Core AI/ML libraries
 torch>=2.0.0
+torchvision>=0.15.0
+torchaudio>=2.0.0
 transformers>=4.57.1
 huggingface_hub>=0.20.0
 accelerate>=0.21.0  # For optimized model loading and training
 bitsandbytes>=0.40.0  # For 8-bit and 4-bit quantization
-torchaudio>=2.0.0
+safetensors>=0.4.2
 srt>=3.5.0  # For creating .srt subtitle files
 
 # Image and numerical processing
@@ -15,6 +17,7 @@ imageio-ffmpeg>=0.4.0
 numpy>=1.21.0
 Pillow>=9.0.0
 einops>=0.4.0  # For tensor manipulations
+spandrel
 
 # 360 Image Conversion
 py360convert>=0.1.0
@@ -30,7 +33,6 @@ easydict>=1.10.0  # Optional, for easier configuration handling
 kornia
 qwen-vl-utils>=0.0.8
 tiktoken
-qwen-vl-utils>=0.0.8
 # llama-cpp-python @ git+https://github.com/JamePeng/llama-cpp-python.git
 
 
