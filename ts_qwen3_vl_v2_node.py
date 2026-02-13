@@ -1,13 +1,15 @@
 ﻿import torch
 import os
 import logging
-import comfy.model_management as mm
-import folder_paths
 import gc
 import json
 import numpy as np
-import time
 from PIL import Image
+from contextlib import contextmanager
+
+# ComfyUI Imports
+import comfy.model_management as mm
+import folder_paths
 from safetensors.torch import load_file
 from safetensors import safe_open
 from transformers import (
@@ -17,142 +19,116 @@ from transformers import (
 )
 
 # ===============================================
-# 1. Глобальные настройки (безопасные)
+# 1. Локальные настройки и Логгер
 # ===============================================
-def _get_logger():
-    return logging.getLogger("TS_Qwen_3VL_V2")
+logger = logging.getLogger("TS_Qwen_3VL_V2")
+if not logger.handlers:
+    logger.addHandler(logging.NullHandler())
+if logger.level == logging.NOTSET:
+    logger.setLevel(logging.INFO)
+
+@contextmanager
+def _temporary_tf32(enabled=True):
+    # Разрешаем TF32 для ускорения на Ampere+ картах
+    prev_matmul = torch.backends.cuda.matmul.allow_tf32
+    prev_cudnn = torch.backends.cudnn.allow_tf32
+    torch.backends.cuda.matmul.allow_tf32 = enabled
+    torch.backends.cudnn.allow_tf32 = enabled
+    try:
+        yield
+    finally:
+        torch.backends.cuda.matmul.allow_tf32 = prev_matmul
+        torch.backends.cudnn.allow_tf32 = prev_cudnn
 
 # ===============================================
-# 2. Обертка (Wrapper)
+# 2. Обертка модели (Wrapper)
 # ===============================================
-class QwenComfyWrapper(torch.nn.Module):
-    def __init__(self, model):
+class TS_QwenWrapper(torch.nn.Module):
+    def __init__(self, model, processor):
         super().__init__()
         self.model = model
+        self.processor = processor
 
     @property
     def device(self):
         return self.model.device
 
-    @device.setter
-    def device(self, value):
-        pass
-
     def generate(self, *args, **kwargs):
         return self.model.generate(*args, **kwargs)
 
-    def forward(self, *args, **kwargs):
-        return self.model(*args, **kwargs)
-    
-    def __getattr__(self, name):
-        try:
-            return super().__getattr__(name)
-        except AttributeError:
-            return getattr(self.model, name)
-
 # ===============================================
-# 3. Менеджер моделей
+# 3. Менеджер моделей (Singleton)
 # ===============================================
-class QwenModelManager:
-    def __init__(self):
-        self.cache = {}
-        self.cache_order = []
+class TS_QwenModelManager:
+    _instance = None
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super(TS_QwenModelManager, cls).__new__(cls)
+            cls._instance.cache = {}
+            cls._instance.current_key = None
+        return cls._instance
 
     def get(self, key):
         return self.cache.get(key)
 
-    def set(self, key, model, processor):
-        self.cache[key] = (model, processor)
-        if key not in self.cache_order:
-            self.cache_order.append(key)
+    def set(self, key, wrapper):
+        if self.current_key and self.current_key != key:
+            self.unload(self.current_key)
+        self.cache[key] = wrapper
+        self.current_key = key
 
     def unload(self, key):
         if key in self.cache:
             del self.cache[key]
-            if key in self.cache_order:
-                self.cache_order.remove(key)
-            gc.collect()
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
             mm.soft_empty_cache()
-            _get_logger().info(f"[TS Manager] Model unloaded: {key}")
+            gc.collect()
+            torch.cuda.empty_cache()
+            logger.info(f"[TS Manager] Model unloaded: {key}")
 
-    def unload_all(self):
-        for key in list(self.cache.keys()):
-            self.unload(key)
-
-# ===============================================
-# 4. Пресеты
-# ===============================================
+MODEL_MANAGER = TS_QwenModelManager()
 
 # ===============================================
-# 5. Основной класс ноды
+# 4. Утилиты
+# ===============================================
+current_dir = os.path.dirname(os.path.abspath(__file__))
+presets_path = os.path.join(current_dir, "qwen_3_vl_presets.json")
+
+def load_presets(json_path):
+    try:
+        if os.path.exists(json_path):
+            with open(json_path, 'r', encoding='utf-8') as f: 
+                return json.load(f)
+        return {}
+    except Exception:
+        return {}
+
+PRESET_CONFIGS = load_presets(presets_path)
+preset_keys = list(PRESET_CONFIGS.keys()) if PRESET_CONFIGS else []
+
+# ===============================================
+# 5. Основной Узел (Node)
 # ===============================================
 class TS_Qwen_3VL_V2:
-    _manager = None
-    _current_dir = os.path.dirname(os.path.abspath(__file__))
-    _presets_cache = None
-    _presets_mtime = None
-    _preset_keys_cache = None
-    _models_cache = None
-    _models_cache_mtime = None
-    _optimal_dtype_cache = None
-
     def __init__(self):
-        if self.__class__._manager is None:
-            self.__class__._manager = QwenModelManager()
-        self._logger = _get_logger()
-
-    @classmethod
-    def _get_presets(cls):
-        presets_path = os.path.join(cls._current_dir, "qwen_3_vl_presets.json")
-        mtime = os.path.getmtime(presets_path) if os.path.exists(presets_path) else None
-        if cls._presets_cache is None or cls._presets_mtime != mtime:
-            data = {}
-            if mtime is not None:
-                try:
-                    with open(presets_path, "r", encoding="utf-8") as f:
-                        data = json.load(f)
-                        if not isinstance(data, dict):
-                            data = {}
-                except Exception as e:
-                    _get_logger().warning(f"[TS Qwen] Failed to load presets: {e}")
-                    data = {}
-            cls._presets_cache = data
-            cls._preset_keys_cache = list(data.keys())
-            cls._presets_mtime = mtime
-        return cls._presets_cache, cls._preset_keys_cache
-
-    @classmethod
-    def _get_safetensors_list(cls):
-        llm_root = os.path.join(folder_paths.models_dir, "LLM")
-        stamp = os.path.getmtime(llm_root) if os.path.exists(llm_root) else None
-        if cls._models_cache is None or cls._models_cache_mtime != stamp:
-            safetensors_files = []
-            if stamp is not None:
-                for root, _, files in os.walk(llm_root):
-                    for file in files:
-                        if file.lower().endswith(".safetensors"):
-                            rel_path = os.path.relpath(os.path.join(root, file), llm_root)
-                            safetensors_files.append(rel_path)
-            safetensors_files.sort()
-            cls._models_cache = safetensors_files
-            cls._models_cache_mtime = stamp
-        return cls._models_cache or []
-
-    @classmethod
-    def IS_CHANGED(cls, **kwargs):
-        cls._get_presets()
-        cls._get_safetensors_list()
-        return (cls._presets_mtime, cls._models_cache_mtime)
+        pass
 
     @classmethod
     def INPUT_TYPES(cls):
-        _, preset_keys = cls._get_presets()
         preset_options = preset_keys + ["Your instruction"]
-        safetensors_files = cls._get_safetensors_list()
         
-        # --- Локальный кэш списка моделей ---
+        # --- Изолированный поиск Safetensors ---
+        llm_root = os.path.join(folder_paths.models_dir, "LLM")
+        safetensors_files = []
+        
+        if os.path.exists(llm_root):
+            for root, dirs, files in os.walk(llm_root):
+                for file in files:
+                    if file.lower().endswith(".safetensors"):
+                        rel_path = os.path.relpath(os.path.join(root, file), llm_root)
+                        safetensors_files.append(rel_path)
+        
+        safetensors_files.sort()
+        
         return {
             "required": {
                 "model_name": (safetensors_files,),
@@ -162,12 +138,12 @@ class TS_Qwen_3VL_V2:
                 "max_new_tokens": ("INT", {"default": 512, "min": 64, "max": 8192, "step": 64}),
                 "enable": ("BOOLEAN", {"default": True}),
                 "unload_after_generation": ("BOOLEAN", {"default": False}),
-                "max_image_size": ("INT", {"default": 1280, "min": 256, "max": 4096, "step": 32}),
+                "max_image_size": ("INT", {"default": 1024, "min": 256, "max": 4096, "step": 32}),
                 "video_max_frames": ("INT", {"default": 16, "min": 4, "max": 256, "step": 4}),
             },
             "optional": {
                 "image": ("IMAGE",),
-                "video": ("IMAGE",),
+                "video": ("IMAGE",), # Вход для видео-тензоров (batch of frames)
                 "custom_system_prompt": ("STRING", {"multiline": True, "forceInput": True}),
             }
         }
@@ -177,65 +153,43 @@ class TS_Qwen_3VL_V2:
     FUNCTION = "process"
     CATEGORY = "TS/LLM"
 
-    # --- Утилиты ---
+    # --- Хелперы обработки изображений ---
     def tensor_to_pil_list(self, tensor):
-        if tensor is None:
-            return []
+        if tensor is None: return []
         images = []
-        tensor = tensor.detach().cpu()
         for i in range(tensor.shape[0]):
-            arr = np.clip(tensor[i].numpy(), 0.0, 1.0) * 255.0
-            img = Image.fromarray(arr.astype(np.uint8))
+            # Конвертация: [H, W, C] -> PIL
+            img_np = (tensor[i].cpu().numpy() * 255.0).clip(0, 255).astype(np.uint8)
+            img = Image.fromarray(img_np)
             images.append(img)
         return images
 
     def pil_to_tensor(self, pil_list):
-        if not pil_list:
-            return torch.zeros((1, 64, 64, 3), dtype=torch.float32)
+        if not pil_list: return torch.zeros((1, 64, 64, 3), dtype=torch.float32)
         tensors = []
         for img in pil_list:
-            if img.mode != "RGB":
-                img = img.convert("RGB")
-            t = torch.from_numpy(np.asarray(img, dtype=np.float32) / 255.0).unsqueeze(0)
+            t = torch.from_numpy(np.array(img).astype(np.float32) / 255.0).unsqueeze(0)
             tensors.append(t)
         return torch.cat(tensors, dim=0)
 
-    def resize_and_crop_image(self, image, max_size, multiple_of=32):
+    def resize_for_vision(self, image, max_size):
+        # Qwen2-VL Processor делает ресайз сам, но предварительный даунскейл 
+        # экономит память CPU при подготовке inputs
         w, h = image.size
         if max(w, h) > max_size:
             ratio = max_size / max(w, h)
-            image = image.resize((int(w * ratio), int(h * ratio)), Image.LANCZOS)
-        w, h = image.size
-        tw, th = w - (w % multiple_of), h - (h % multiple_of)
-        if tw == 0 or th == 0: return image
-        l, t = (w - tw) / 2, (h - th) / 2
-        return image.crop((l, t, l + tw, t + th))
+            new_size = (int(w * ratio), int(h * ratio))
+            image = image.resize(new_size, Image.LANCZOS)
+        return image
 
-    # --- Определение типа данных (Smart Precision) ---
-    def _get_optimal_dtype(self):
-        """Auto-select the best dtype for the current device."""
-        if self.__class__._optimal_dtype_cache is not None:
-            return self.__class__._optimal_dtype_cache
-
-        if not torch.cuda.is_available():
-            self._logger.warning("[TS Qwen] CUDA not found, falling back to float32")
-            dtype = torch.float32
-        elif torch.cuda.is_bf16_supported():
-            self._logger.info("[TS Qwen] Detected Ampere+ GPU. Using BFloat16 mode for maximum performance.")
-            dtype = torch.bfloat16
-        else:
-            self._logger.info("[TS Qwen] Detected older GPU (Turing/Pascal). Falling back to Float16 compatibility mode.")
-            dtype = torch.float16
-
-        self.__class__._optimal_dtype_cache = dtype
-        return dtype
-
+    # --- Детекция конфига ---
     def _detect_config(self, ckpt_path):
-        configs_dir = os.path.join(self._current_dir, "configs")
+        configs_dir = os.path.join(current_dir, "configs")
         if not os.path.exists(configs_dir):
             raise FileNotFoundError(f"Configs folder not found at {configs_dir}")
 
         model_hidden_size = None
+        # Читаем header safetensors для определения архитектуры
         try:
             with safe_open(ckpt_path, framework="pt", device="cpu") as f:
                 for key in f.keys():
@@ -250,290 +204,229 @@ class TS_Qwen_3VL_V2:
                             model_hidden_size = shape[1]
                         break
         except Exception as e:
-            self._logger.error(f"[TS Qwen] Failed to read model header: {e}")
+            logger.error(f"Failed to read model header: {e}")
             raise RuntimeError(f"Could not read safetensors header.")
 
         if model_hidden_size is None:
              raise RuntimeError("Could not determine hidden_size from .safetensors file.")
 
-        self._logger.info(f"[TS Qwen] Model fingerprint: hidden_size={model_hidden_size}")
+        logger.info(f"[TS] Model fingerprint: hidden_size={model_hidden_size}")
 
-        matched_config_dir = None
+        # Ищем подходящий конфиг
         subfolders = [f.path for f in os.scandir(configs_dir) if f.is_dir()]
-        
         for folder in subfolders:
             config_file = os.path.join(folder, "config.json")
             if os.path.exists(config_file):
                 try:
                     with open(config_file, 'r', encoding='utf-8') as cf:
                         conf_data = json.load(cf)
+                        # Пытаемся найти hidden_size в разных местах конфига
                         conf_hidden = conf_data.get("hidden_size")
                         if conf_hidden is None:
-                            text_config = conf_data.get("text_config")
-                            if text_config and isinstance(text_config, dict):
-                                conf_hidden = text_config.get("hidden_size")
+                            conf_hidden = conf_data.get("text_config", {}).get("hidden_size")
                         if conf_hidden is None:
-                            llm_config = conf_data.get("llm_config")
-                            if llm_config and isinstance(llm_config, dict):
-                                conf_hidden = llm_config.get("hidden_size")
+                            conf_hidden = conf_data.get("llm_config", {}).get("hidden_size")
 
                         if conf_hidden == model_hidden_size:
-                            matched_config_dir = folder
-                            self._logger.info(f"[TS Qwen] Found matching config in: {os.path.basename(folder)}")
-                            break
-                except Exception as e:
-                    self._logger.warning(f"Error parsing config in {folder}: {e}")
+                            logger.info(f"[TS] Config match found: {os.path.basename(folder)}")
+                            return folder
+                except Exception:
+                    continue
 
-        if matched_config_dir:
-            return matched_config_dir
-        else:
-            raise FileNotFoundError(f"No config found matching hidden_size={model_hidden_size} in 'configs/'.")
-
-    # --- Подготовка памяти ---
-    def _prepare_memory(self):
-        self._logger.info("[TS Qwen] Memory: Soft cleanup before model load...")
-        mm.soft_empty_cache()
-        gc.collect()
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-
-    def _build_model_from_config(self, config, compute_dtype):
-        start = time.time()
-        used_meta = False
-        try:
-            from accelerate import init_empty_weights
-            self._logger.info("[TS Qwen] Using accelerate.init_empty_weights for fast init.")
-            with init_empty_weights():
-                model = AutoModelForVision2Seq.from_config(
-                    config,
-                    trust_remote_code=True,
-                    torch_dtype=compute_dtype
-                )
-            used_meta = True
-        except ImportError:
-            model = AutoModelForVision2Seq.from_config(
-                config,
-                trust_remote_code=True,
-                torch_dtype=compute_dtype
-            )
-        except Exception as e:
-            self._logger.warning(f"[TS Qwen] Fast init failed, falling back. ({e})")
-            model = AutoModelForVision2Seq.from_config(
-                config,
-                trust_remote_code=True,
-                torch_dtype=compute_dtype
-            )
-        if any(p.is_meta for p in model.parameters()):
-            used_meta = True
-        self._logger.info(f"[TS Qwen] Model init done in {time.time() - start:.2f}s")
-        return model, used_meta
+        raise FileNotFoundError(f"No config found matching hidden_size={model_hidden_size}")
 
     # --- Загрузка модели ---
     def _load_model(self, model_name):
+        cache_key = f"{model_name}_TS_V2"
+        cached_wrapper = MODEL_MANAGER.get(cache_key)
+        if cached_wrapper:
+            return cached_wrapper
+
+        # Чистка памяти
+        mm.unload_all_models()
+        mm.soft_empty_cache()
+        gc.collect()
+        torch.cuda.empty_cache()
+
         llm_root = os.path.join(folder_paths.models_dir, "LLM")
         ckpt_path = os.path.join(llm_root, model_name)
         
-        try:
-            config_dir = self._detect_config(ckpt_path)
-        except Exception as e:
-            raise RuntimeError(f"Config detection failed: {e}")
+        config_dir = self._detect_config(ckpt_path)
+        
+        logger.info(f"[TS] Loading model from {model_name}...")
+        
+        # Конфигурация
+        config = AutoConfig.from_pretrained(config_dir, local_files_only=True)
+        config._attn_implementation = "sdpa" # Flash Attention 2 support if available via sdpa
+        
+        processor = AutoProcessor.from_pretrained(config_dir, local_files_only=True)
 
-        # Определяем оптимальный dtype (BF16 vs FP16)
-        compute_dtype = self._get_optimal_dtype()
+        # Выбор типа данных
+        dtype = torch.float16
+        if torch.cuda.is_available() and torch.cuda.is_bf16_supported():
+            dtype = torch.bfloat16
+        
         device = mm.get_torch_device()
-        if not isinstance(device, torch.device):
-            device = torch.device(device)
-        if torch.cuda.is_available() and device.type != "cuda":
-            self._logger.warning(f"[TS Qwen] CUDA available but device is {device}. Forcing CUDA.")
-            device = torch.device("cuda")
-        cache_key = f"{model_name}|{device}|{compute_dtype}"
 
-        cached = self.__class__._manager.get(cache_key)
-        if cached:
-            cached_model, cached_processor = cached
-            if torch.cuda.is_available() and cached_model.device.type != "cuda":
-                self._logger.warning("[TS Qwen] Cached model is on CPU. Reloading on CUDA.")
-                self.__class__._manager.unload(cache_key)
-            else:
-                return cached
+        with torch.device(device):
+            # Инициализируем скелет модели сразу на GPU и в нужном dtype
+            model = AutoModelForVision2Seq.from_config(config)
+            model.to(dtype)
 
-        self._prepare_memory()
-
-        self._logger.info(f"[TS Qwen] Loading Config from: {config_dir}")
-
-        config = AutoConfig.from_pretrained(config_dir, trust_remote_code=True, local_files_only=True)
-        if hasattr(config, "attn_implementation"):
-            config.attn_implementation = "sdpa"
+        # Загрузка весов
+        logger.info("[TS] Loading Safetensors weights...")
+        state_dict = load_file(ckpt_path)
         
-        processor = AutoProcessor.from_pretrained(config_dir, trust_remote_code=True, local_files_only=True)
-
-        self._logger.info(f"[TS Qwen] Initializing model using {compute_dtype}...")
-
-        try:
-            model, used_meta = self._build_model_from_config(config, compute_dtype)
-        except RuntimeError as e:
-            if "out of memory" in str(e).lower():
-                self._logger.warning("[TS Qwen] OOM during init! Attempting soft cleanup...")
-                self._prepare_memory()
-                model, used_meta = self._build_model_from_config(config, compute_dtype)
-            else:
-                raise e
-        if used_meta:
-            if hasattr(model, "to_empty"):
-                model = model.to_empty(device=device)
-            else:
-                raise RuntimeError("Meta model requires to_empty(), but it is not available.")
-
-        self._logger.info("[TS Qwen] Loading weights and converting on-the-fly...")
-        weights_start = time.time()
-        state_dict = load_file(ckpt_path, device="cpu")
-        self._logger.info(f"[TS Qwen] Weights loaded in {time.time() - weights_start:.2f}s")
-        
-        # load_state_dict автоматически кастит веса из файла в тип модели (compute_dtype)
+        # Обработка несовпадений ключей (часто бывает при конвертации)
         missing, unexpected = model.load_state_dict(state_dict, strict=False)
         if missing:
-            self._logger.info(f"[TS Qwen] Missing keys (usually fine for fine-tunes): {len(missing)}")
-        if unexpected:
-            self._logger.info(f"[TS Qwen] Unexpected keys: {len(unexpected)}")
-
-        if not used_meta:
-            try:
-                to_start = time.time()
-                model.to(device)
-                self._logger.info(f"[TS Qwen] Model moved to {device} in {time.time() - to_start:.2f}s")
-            except RuntimeError as e:
-                if "out of memory" in str(e).lower():
-                    self._logger.warning("[TS Qwen] OOM during model.to(device).")
-                raise e
-        if torch.cuda.is_available() and device.type == "cuda" and model.device.type != "cuda":
-            raise RuntimeError("Model failed to move to CUDA device.")
-
-        model.eval()
-
-        wrapper = QwenComfyWrapper(model)
+            logger.warning(f"[TS] Missing keys: {len(missing)}")
         
+        model.eval()
         del state_dict
         gc.collect()
-        
-        self.__class__._manager.set(cache_key, wrapper, processor)
-        return wrapper, processor
+        torch.cuda.empty_cache()
 
-    # --- Process ---
+        wrapper = TS_QwenWrapper(model, processor)
+        MODEL_MANAGER.set(cache_key, wrapper)
+        return wrapper
+
+    # --- Основной процесс ---
     def process(self, model_name, system_preset, prompt, seed, max_new_tokens, enable, 
                 unload_after_generation, max_image_size, video_max_frames, image=None, video=None, custom_system_prompt=None):
         
         if not enable:
-            inputs_to_pass = []
-            if image is not None: inputs_to_pass.append(image)
-            if video is not None: inputs_to_pass.append(video)
-            ret_image = torch.cat(inputs_to_pass, dim=0) if inputs_to_pass else torch.zeros((1, 64, 64, 3), dtype=torch.float32)
-            return (prompt, ret_image)
+            return (prompt, torch.zeros((1, 64, 64, 3)))
 
-        self._logger.info(f"--- Starting Generation V3.0 (Smart Precision) ---")
-        if image is not None:
-            self._logger.info(f"[TS Qwen] image shape: {tuple(image.shape)}")
-        if video is not None:
-            self._logger.info(f"[TS Qwen] video shape: {tuple(video.shape)}")
-        
+        # 1. Загрузка
         try:
-            model, processor = self._load_model(model_name)
+            wrapper = self._load_model(model_name)
+            model = wrapper.model
+            processor = wrapper.processor
         except Exception as e:
-            self._logger.error(f"Load Error: {e}")
-            return (f"Error: {e}", torch.zeros((1, 64, 64, 3), dtype=torch.float32))
+            logger.error(f"Load Error: {e}")
+            return (f"Error loading model: {e}", None)
 
-        preset_configs, _ = self._get_presets()
-        preset_data = preset_configs.get(system_preset)
+        # 2. Подготовка системного промта
+        preset_data = PRESET_CONFIGS.get(system_preset)
         if system_preset == "Your instruction" and custom_system_prompt:
             sys_prompt_text = custom_system_prompt
             gen_params = {"temperature": 0.7, "top_p": 0.8, "repetition_penalty": 1.05}
         elif preset_data:
             sys_prompt_text = preset_data.get("system_prompt", "You are a helpful assistant.")
-            gen_params = dict(preset_data.get("gen_params", {}))
+            gen_params = preset_data.get("gen_params", {})
         else:
             sys_prompt_text = "You are a helpful assistant."
             gen_params = {"temperature": 0.7}
+        
+        # 3. Подготовка контента (Images & Video)
+        content_list = []
+        process_images_list = [] # Для передачи в processor(images=...)
+        process_videos_list = [] # Для передачи в processor(videos=...)
+        
+        debug_previews = []
 
-        if "temperature" not in gen_params:
-            gen_params["temperature"] = 0.7
-
-        all_processed_pil = []
-        user_content = []
-
+        # -- Обработка Изображений --
         if image is not None:
-            pil_list = self.tensor_to_pil_list(image)
-            for img in pil_list:
-                proc_img = self.resize_and_crop_image(img, max_image_size)
-                all_processed_pil.append(proc_img)
-                user_content.append({"type": "image", "image": proc_img})
+            pil_images = self.tensor_to_pil_list(image)
+            for img in pil_images:
+                img_resized = self.resize_for_vision(img, max_image_size)
+                # Добавляем плейсхолдер в контент сообщения
+                content_list.append({"type": "image", "image": img_resized})
+                # Добавляем в список для процессора
+                process_images_list.append(img_resized)
+                debug_previews.append(img_resized)
 
+        # -- Обработка Видео --
         if video is not None:
-            video_frames = self.tensor_to_pil_list(video)
-            total_frames = len(video_frames)
+            video_frames_pil = self.tensor_to_pil_list(video)
+            
+            # Семплинг кадров
+            total_frames = len(video_frames_pil)
             if total_frames > video_max_frames:
                 indices = np.linspace(0, total_frames - 1, video_max_frames, dtype=int)
-                video_frames = [video_frames[i] for i in indices]
+                video_frames_pil = [video_frames_pil[i] for i in indices]
             
-            for frame in video_frames:
-                proc_frame = self.resize_and_crop_image(frame, max_image_size)
-                all_processed_pil.append(proc_frame)
-                user_content.append({"type": "image", "image": proc_frame})
+            # Ресайз каждого кадра
+            video_frames_resized = [self.resize_for_vision(f, max_image_size) for f in video_frames_pil]
+            
+            # Qwen2-VL требует структуру для видео
+            content_list.append({"type": "video", "video": video_frames_resized})
+            
+            # В processor videos передается как список списков кадров (list of list of PIL)
+            process_videos_list.append(video_frames_resized)
+            
+            # Для превью возьмем первый кадр видео
+            if video_frames_resized:
+                debug_previews.append(video_frames_resized[0])
 
-        user_content.append({"type": "text", "text": prompt})
+        # -- Добавляем текст --
+        content_list.append({"type": "text", "text": prompt})
 
+        # 4. Формирование Chat Template
         messages = [
-            {"role": "system", "content": sys_prompt_text},
-            {"role": "user", "content": user_content}
+            {"role": "system", "content": [{"type": "text", "text": sys_prompt_text}]},
+            {"role": "user", "content": content_list}
         ]
 
-        text = processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+        # Генерируем текстовый промт с правильными токенами (<|vision_start|>, etc.)
+        text_prompt = processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+
+        # 5. Токенизация и подготовка Inputs
+        # ВАЖНО: передаем images и videos отдельно, чтобы processor корректно сопоставил их с токенами
+        processor_args = {
+            "text": [text_prompt],
+            "padding": True,
+            "return_tensors": "pt"
+        }
         
-        image_args = {}
-        if all_processed_pil:
-            image_args = {"images": all_processed_pil, "padding": True}
-
-        inputs = processor(
-            text=[text],
-            return_tensors="pt",
-            **image_args
-        )
+        if process_images_list:
+            processor_args["images"] = process_images_list
         
-        inputs = inputs.to(model.device)
+        if process_videos_list:
+            processor_args["videos"] = process_videos_list
 
-        torch.manual_seed(seed)
-        if torch.cuda.is_available():
-            torch.cuda.manual_seed_all(seed)
+        logger.info("[TS] Processing inputs (CPU)...")
+        inputs = processor(**processor_args)
+        
+        # 6. Перенос на GPU
+        device = model.device
+        inputs = inputs.to(device)
+        logger.info(f"[TS] Inputs moved to {device}")
 
+        # 7. Генерация
         gen_params["max_new_tokens"] = max_new_tokens
-        gen_params["use_cache"] = True 
+        gen_params["do_sample"] = gen_params.get("temperature", 0.7) > 0
         
-        if gen_params.get("temperature", 0) > 0:
-            gen_params["do_sample"] = True
-        else:
-            gen_params["do_sample"] = False
-            
-        self._logger.info(f"Generating on {model.device} with dtype {model.model.dtype}...")
+        logger.info("[TS] Generating...")
+        
+        try:
+            with _temporary_tf32(True):
+                torch.manual_seed(seed)
+                if torch.cuda.is_available():
+                    torch.cuda.manual_seed(seed)
 
-        with torch.inference_mode():
-            generated_ids = model.generate(
-                **inputs,
-                **gen_params
-            )
+                with torch.inference_mode():
+                    generated_ids = model.generate(**inputs, **gen_params)
+        except RuntimeError as e:
+            # Отлов ошибок размерности
+            if "match" in str(e).lower():
+                logger.error("Dimension mismatch error. Check if the model config matches the safetensors file.")
+            raise e
 
+        # 8. Декодирование
         generated_ids_trimmed = [
             out_ids[len(in_ids):] for in_ids, out_ids in zip(inputs.input_ids, generated_ids)
         ]
-        
         output_text = processor.batch_decode(
             generated_ids_trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False
         )[0]
 
+        # 9. Финализация
         if unload_after_generation:
-            # Сбрасываем кэш с учетом текущего типа данных
-            current_dtype = self._get_optimal_dtype()
-            device = mm.get_torch_device()
-            self.__class__._manager.unload(f"{model_name}|{device}|{current_dtype}")
+            MODEL_MANAGER.unload(f"{model_name}_TS_V2")
 
-        return (output_text, self.pil_to_tensor(all_processed_pil))
+        return (output_text, self.pil_to_tensor(debug_previews))
 
 NODE_CLASS_MAPPINGS = {
     "TS_Qwen_3VL_V2": TS_Qwen_3VL_V2
@@ -541,7 +434,3 @@ NODE_CLASS_MAPPINGS = {
 NODE_DISPLAY_NAME_MAPPINGS = {
     "TS_Qwen_3VL_V2": "TS Qwen 3 VL V2"
 }
-
-
-
-
