@@ -1,6 +1,5 @@
 ﻿import os
 import datetime
-import re
 import logging
 import xml.etree.ElementTree as ET
 
@@ -151,89 +150,6 @@ class TSWhisper:
             return True
         message = str(exc).lower()
         return "out of memory" in message or "allocation" in message
-
-    def _normalize_text(self, text):
-        if text is None:
-            return ""
-        lowered = str(text).lower()
-        lowered = lowered.replace("ё", "е")
-        cleaned = re.sub(r"[^\w\s]", " ", lowered, flags=re.UNICODE)
-        return re.sub(r"\s+", " ", cleaned).strip()
-
-    def _tokenize_text(self, text):
-        normalized = self._normalize_text(text)
-        return normalized.split() if normalized else []
-
-    def _find_phrase_indices(self, text_list, phrase_tokens_list):
-        if not text_list or not phrase_tokens_list:
-            return set()
-        tokens_with_idx = []
-        for idx, text in enumerate(text_list):
-            for tok in self._tokenize_text(text):
-                tokens_with_idx.append((tok, idx))
-
-        remove_indices = set()
-        total_tokens = len(tokens_with_idx)
-        for phrase_tokens in phrase_tokens_list:
-            if not phrase_tokens:
-                continue
-            phrase_len = len(phrase_tokens)
-            if phrase_len > total_tokens:
-                continue
-            for i in range(0, total_tokens - phrase_len + 1):
-                match = True
-                for j in range(phrase_len):
-                    if tokens_with_idx[i + j][0] != phrase_tokens[j]:
-                        match = False
-                        break
-                if match:
-                    for j in range(phrase_len):
-                        remove_indices.add(tokens_with_idx[i + j][1])
-        return remove_indices
-
-    def _remove_unwanted_phrases(self, segments, text_segments):
-        banned_phrases = [
-            "субтитры создавал dimatorzok",
-            "Субтитры делал DimaTorzok",
-            "редактор субтитров а.семкин корректор а.егорова",
-        ]
-        phrase_tokens_list = [self._tokenize_text(p) for p in banned_phrases if p]
-
-        filtered_segments = segments
-        filtered_text_segments = text_segments
-
-        if segments:
-            segment_texts = [seg.get("text", "") for seg in segments]
-            remove_segment_indices = self._find_phrase_indices(
-                segment_texts, phrase_tokens_list
-            )
-            if remove_segment_indices:
-                filtered_segments = [
-                    seg
-                    for idx, seg in enumerate(segments)
-                    if idx not in remove_segment_indices
-                ]
-
-        if text_segments:
-            remove_text_indices = self._find_phrase_indices(
-                text_segments, phrase_tokens_list
-            )
-            if remove_text_indices:
-                filtered_text_segments = [
-                    text
-                    for idx, text in enumerate(text_segments)
-                    if idx not in remove_text_indices
-                ]
-
-        if segments is not filtered_segments or text_segments is not filtered_text_segments:
-            removed_segments = 0 if segments is None else len(segments) - len(filtered_segments)
-            removed_text = 0 if text_segments is None else len(text_segments) - len(filtered_text_segments)
-            if removed_segments or removed_text:
-                self._log_info(
-                    f"Removed unwanted phrases: segments={removed_segments}, text_chunks={removed_text}"
-                )
-
-        return filtered_segments, filtered_text_segments
 
     def _parse_temperature_fallbacks(self, value):
         if value is None:
@@ -1025,10 +941,6 @@ class TSWhisper:
                     manual_chunk_length_s=manual_chunk_length_s,
                     manual_chunk_overlap_s=manual_chunk_overlap_s,
                 )
-
-            merged_segments, all_text_segments = self._remove_unwanted_phrases(
-                merged_segments, all_text_segments
-            )
 
             subtitles = []
             if merged_segments:
