@@ -33,6 +33,7 @@ easydict>=1.10.0  # Optional, for easier configuration handling
 kornia
 qwen-vl-utils>=0.0.8
 tiktoken
+demucs
 # llama-cpp-python @ git+https://github.com/JamePeng/llama-cpp-python.git
 
 

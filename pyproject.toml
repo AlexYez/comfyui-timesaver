@@ -1,7 +1,7 @@
 [project]
 name = "comfyui-timesaver"
 description = "ComfyUI nodes from [Timesaver](https://github.com/AlexYez/comfyui-timesaver)."
-version = "7.1"
+version = "7.2"
 license = { file = "LICENSE.txt" }
 dependencies = [
     "accelerate>=0.21.0",
@@ -26,7 +26,8 @@ dependencies = [
     "urllib3>=1.26.0",
     "kornia",
     "tiktoken",
-    "qwen-vl-utils>=0.0.8"
+    "qwen-vl-utils>=0.0.8",
+    "demucs"
 ]
 
 [project.urls]
