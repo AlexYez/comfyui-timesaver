@@ -35,7 +35,7 @@ class TS_Qwen3_VL_V3:
         self._logger = logging.getLogger("TS_Qwen3_VL_V3")
         self._cache = {}
         self._cache_order = []
-        self._cache_max_items = 1  # Reduced to 1 to prevent OOM when switching models
+        self._cache_max_items = 2
         self._snapshot_endpoint_supported = None
         self._log_versions()
 
@@ -107,9 +107,13 @@ class TS_Qwen3_VL_V3:
         hf_endpoint="huggingface.co, hf-mirror.com"
     ):
         self._logger.info("[TS Qwen3 VL V3] Start")
+        if image is not None:
+            self._logger.info(f"[TS Qwen3 VL V3] image shape: {tuple(image.shape)}")
+        if video is not None:
+            self._logger.info(f"[TS Qwen3 VL V3] video shape: {tuple(video.shape)}")
+
         processed_images = []
 
-        # 1. Bypass check
         if not enable:
             self._logger.info("[TS Qwen3 VL V3] Processing mode: bypass (CPU)")
             if image is not None:
@@ -117,22 +121,15 @@ class TS_Qwen3_VL_V3:
             if video is not None:
                 processed_images.extend(self._tensor_to_pil_list(video))
             out_tensor = self._pil_to_tensor(processed_images)
+            self._logger.info(f"[TS Qwen3 VL V3] output image shape: {tuple(out_tensor.shape)}")
             return (prompt.strip() if prompt else "", out_tensor)
 
-        # 2. Resolve Parameters
         resolved_model_id = self._resolve_model_id(model_name, custom_model_id)
         resolved_precision = self._resolve_precision(precision, resolved_model_id)
         resolved_attention = self._resolve_attention(attention_mode, resolved_precision)
-        
-        # 3. Memory Management Pre-Check
-        # Calculate expected usage and free up ComfyUI memory if needed BEFORE loading
-        estimated_vram = self._estimate_vram_usage(resolved_model_id, resolved_precision)
-        self._ensure_memory_available(estimated_vram)
-
         self._logger.info(f"[TS Qwen3 VL V3] model={resolved_model_id}")
         self._logger.info(f"[TS Qwen3 VL V3] precision={resolved_precision} attention={resolved_attention}")
 
-        # 4. Load Model
         try:
             model, processor = self._load_model(
                 resolved_model_id,
@@ -144,31 +141,17 @@ class TS_Qwen3_VL_V3:
             )
         except Exception as e:
             self._logger.error(f"[TS Qwen3 VL V3] Load error: {e}", exc_info=True)
-            return (f"ERROR: {e}", self._pil_to_tensor(processed_images))
+            out_tensor = self._pil_to_tensor(processed_images)
+            self._logger.info(f"[TS Qwen3 VL V3] output image shape: {tuple(out_tensor.shape)}")
+            return (f"ERROR: {e}", out_tensor)
 
-        # 5. Device Management (Soft Load)
-        # If model is on CPU but we have CUDA, try to move it to GPU now
-        target_device = self._get_device()
-        moved_to_gpu = False
-        
-        if target_device.type == "cuda" and not self._model_has_cuda_device(model):
-            try:
-                self._logger.info(f"[TS Qwen3 VL V3] Moving model to GPU for inference...")
-                # Double check memory before moving
-                self._ensure_memory_available(estimated_vram, force_unload=True)
-                model.to(target_device)
-                moved_to_gpu = True
-            except RuntimeError as e:
-                if self._is_oom_error(e):
-                    self._logger.error("[TS Qwen3 VL V3] OOM while moving to GPU. Falling back to CPU/Offload.")
-                    # Try to move back to CPU if partially failed
-                    model.to("cpu")
-                    # Clean cache
-                    self._prepare_memory(force=True)
-                    return ("ERROR: Out of Memory during model GPU transfer.", self._pil_to_tensor(processed_images))
-                raise e
+        if torch.cuda.is_available() and not self._model_has_cuda_device(model):
+            err = "CUDA available but model is on CPU; aborting to prevent CPU generation."
+            self._logger.error(f"[TS Qwen3 VL V3] {err}")
+            out_tensor = self._pil_to_tensor(processed_images)
+            self._logger.info(f"[TS Qwen3 VL V3] output image shape: {tuple(out_tensor.shape)}")
+            return (f"ERROR: {err}", out_tensor)
 
-        # 6. Prepare Inputs
         preset_configs, _ = self._load_presets()
         preset_data = preset_configs.get(system_preset)
         if system_preset == "Your instruction" and custom_system_prompt:
@@ -212,8 +195,6 @@ class TS_Qwen3_VL_V3:
             {"role": "user", "content": user_content}
         ]
 
-        # 7. Generation
-        output_text = ""
         try:
             inputs = processor.apply_chat_template(
                 messages,
@@ -222,22 +203,17 @@ class TS_Qwen3_VL_V3:
                 return_dict=True,
                 return_tensors="pt"
             )
-            
-            # Ensure inputs are on the same device as the model
-            input_device = self._select_input_device(model)
-            inputs = self._move_inputs_to_device(inputs, input_device)
-            self._log_processing_device("inputs_moved", input_device, model, inputs)
+            target_device = self._select_input_device(model)
+            inputs = self._move_inputs_to_device(inputs, target_device)
+            self._log_processing_device("inputs_moved", target_device, model, inputs)
 
             gen_params["max_new_tokens"] = max_new_tokens
             gen_params["use_cache"] = True
             gen_params["pad_token_id"] = self._get_pad_token_id(processor, model)
             gen_params["do_sample"] = gen_params.get("temperature", 0) > 0
-            
-            rng_cuda_devices = self._cuda_indices_for_rng(model, input_device)
-            
-            # Generator setup
+            rng_cuda_devices = self._cuda_indices_for_rng(model, target_device)
             if self._supports_generator(model):
-                gen_device = self._select_generator_device(input_device)
+                gen_device = self._select_generator_device(target_device)
                 gen = torch.Generator(device=gen_device)
                 gen.manual_seed(seed)
                 gen_params["generator"] = gen
@@ -246,7 +222,7 @@ class TS_Qwen3_VL_V3:
                 rng_context = torch.random.fork_rng(devices=rng_cuda_devices) if rng_cuda_devices else torch.random.fork_rng()
 
             dtype = self._dtype_from_precision(resolved_precision)
-            autocast_device = input_device if isinstance(input_device, torch.device) else model.device
+            autocast_device = target_device if isinstance(target_device, torch.device) else model.device
             use_autocast = getattr(autocast_device, "type", None) == "cuda" and dtype in (torch.float16, torch.bfloat16)
 
             with rng_context:
@@ -256,8 +232,7 @@ class TS_Qwen3_VL_V3:
                         for idx in rng_cuda_devices:
                             with torch.cuda.device(idx):
                                 torch.cuda.manual_seed(seed)
-                
-                self._logger.info("[TS Qwen3 VL V3] Generating...")
+                self._log_processing_device("generate_start", target_device, model, inputs)
                 with torch.inference_mode():
                     if use_autocast:
                         with torch.autocast(device_type="cuda", dtype=dtype):
@@ -273,95 +248,16 @@ class TS_Qwen3_VL_V3:
                 skip_special_tokens=True,
                 clean_up_tokenization_spaces=True
             )[0].strip()
-
         except Exception as e:
             self._logger.error(f"[TS Qwen3 VL V3] Generation error: {e}", exc_info=True)
             output_text = f"ERROR: {e}"
-        finally:
-            # 8. Post-Generation Cleanup / Offload
-            if unload_after_generation:
-                self._unload_model(resolved_model_id, resolved_precision, resolved_attention)
-            elif moved_to_gpu:
-                # If we moved it to GPU just for this run, move it back to CPU to be nice to other nodes
-                # unless unload_after_generation is False, implying we want to keep it hot.
-                # BUT, to avoid OOM for other nodes, soft offload to CPU is safer than keeping in VRAM.
-                # However, user expectation might be "keep loaded for speed".
-                # Strategy: Keep in VRAM until Comfy kicks it out? 
-                # Since we are outside Comfy's patcher, Comfy CANNOT kick us out.
-                # Thus, we MUST move back to CPU or risk blocking Comfy.
-                try:
-                    self._logger.info("[TS Qwen3 VL V3] Soft-offloading model to CPU to free VRAM.")
-                    model.to("cpu")
-                    self._prepare_memory(force=True)
-                except Exception:
-                    pass
+
+        if unload_after_generation:
+            self._unload_model(resolved_model_id, resolved_precision, resolved_attention)
 
         out_tensor = self._pil_to_tensor(processed_images)
+        self._logger.info(f"[TS Qwen3 VL V3] output image shape: {tuple(out_tensor.shape)}")
         return (output_text, out_tensor)
-
-    # ------------------------
-    # Memory & Management Logic
-    # ------------------------
-    def _estimate_vram_usage(self, model_id, precision):
-        """
-        Estimates VRAM usage in GB.
-        """
-        size_b = self._MODEL_SIZES_B.get(model_id, 4)
-        
-        # Base model weights
-        if precision in ("fp32", "auto"): # 'auto' usually resolves to fp16/bf16 on GPU, but worst case
-            bytes_per_param = 4 if precision == "fp32" else 2.2 # Slight overhead
-        elif precision in ("fp16", "bf16"):
-            bytes_per_param = 2.2
-        elif precision == "int8":
-            bytes_per_param = 1.2
-        elif precision == "int4":
-            bytes_per_param = 0.8
-        else:
-            bytes_per_param = 2.2
-
-        weights_gb = size_b * bytes_per_param
-        
-        # Context overhead (KV cache, activation, vision encoder buffer)
-        # 1024 tokens is small, but vision models take extra for image patches.
-        # Rough buffer estimate.
-        context_overhead_gb = 1.5 
-        if size_b >= 8:
-            context_overhead_gb = 2.5
-
-        return weights_gb + context_overhead_gb
-
-    def _ensure_memory_available(self, required_vram_gb, force_unload=False):
-        """
-        Interacts with ComfyUI memory manager to free up space.
-        """
-        if not torch.cuda.is_available():
-            return
-
-        try:
-            mm.soft_empty_cache()
-            
-            free_mem_bytes = mm.get_free_memory()
-            free_mem_gb = free_mem_bytes / (1024**3)
-            
-            self._logger.info(f"[TS Qwen3 VL V3] Memory Check: Required={required_vram_gb:.2f}GB, Free={free_mem_gb:.2f}GB")
-
-            # Heuristic: If we have enough free memory, don't unload everything aggressively
-            # unless force_unload is True (e.g., just before moving to GPU)
-            if force_unload or free_mem_gb < required_vram_gb:
-                self._logger.info("[TS Qwen3 VL V3] Low VRAM detected (or forced). Unloading ComfyUI models...")
-                mm.unload_all_models()
-                mm.soft_empty_cache()
-                if torch.cuda.is_available():
-                    torch.cuda.empty_cache()
-                    
-                # Re-check
-                free_mem_bytes = mm.get_free_memory()
-                free_mem_gb = free_mem_bytes / (1024**3)
-                self._logger.info(f"[TS Qwen3 VL V3] Memory Post-Clean: Free={free_mem_gb:.2f}GB")
-                
-        except Exception as e:
-            self._logger.warning(f"[TS Qwen3 VL V3] Memory management warning: {e}")
 
     # ------------------------
     # Utilities
@@ -609,6 +505,8 @@ class TS_Qwen3_VL_V3:
         self._logger.info(
             f"[TS Qwen3 VL V3] Device ({stage}): target={target_str} model={model_device} inputs={input_devices_str}"
         )
+        if torch.cuda.is_available() and "cpu" in input_devices and str(target_str).startswith("cuda"):
+            self._logger.warning("[TS Qwen3 VL V3] Warning: some inputs remain on CPU while target is CUDA.")
 
     @staticmethod
     def _collect_tensor_devices(obj):
@@ -673,34 +571,45 @@ class TS_Qwen3_VL_V3:
         bnb_ok = self._is_bitsandbytes_available()
         bf16_ok = torch.cuda.is_bf16_supported()
 
-        # Heuristics based on model size and VRAM
         if size_b >= 8:
-            if vram_gb >= 22 and bf16_ok: return "bf16"
-            if vram_gb >= 20: return "fp16"
-            if vram_gb >= 12 and bnb_ok: return "int8"
-            if bnb_ok: return "int4"
+            if vram_gb >= 20 and bf16_ok:
+                return "bf16"
+            if vram_gb >= 16:
+                return "fp16"
+            if vram_gb >= 10 and bnb_ok:
+                return "int8"
+            if bnb_ok:
+                return "int4"
             return "fp16"
         if size_b >= 4:
-            if vram_gb >= 12 and bf16_ok: return "bf16"
-            if vram_gb >= 10: return "fp16"
-            if vram_gb >= 8 and bnb_ok: return "int8"
-            if bnb_ok: return "int4"
+            if vram_gb >= 12 and bf16_ok:
+                return "bf16"
+            if vram_gb >= 10:
+                return "fp16"
+            if vram_gb >= 6 and bnb_ok:
+                return "int8"
+            if bnb_ok:
+                return "int4"
             return "fp16"
-        
-        # 2B models
-        if vram_gb >= 8 and bf16_ok: return "bf16"
-        if vram_gb >= 6: return "fp16"
-        if bnb_ok: return "int8"
+        if vram_gb >= 8 and bf16_ok:
+            return "bf16"
+        if vram_gb >= 6:
+            return "fp16"
+        if bnb_ok:
+            return "int8"
         return "fp16"
 
     def _resolve_attention(self, attention_mode, precision):
         if attention_mode != "auto":
             device = self._get_device()
             if device.type != "cuda":
+                self._logger.warning("[TS Qwen3 VL V3] Non-CUDA device, forcing eager attention.")
                 return "eager"
             if attention_mode == "flash_attention_2" and (not self._is_flash_attn_available() or precision not in ("fp16", "bf16")):
+                self._logger.warning("[TS Qwen3 VL V3] flash_attention_2 unavailable, falling back to sdpa/eager.")
                 return "sdpa" if self._is_sdpa_available() else "eager"
             if attention_mode == "sdpa" and not self._is_sdpa_available():
+                self._logger.warning("[TS Qwen3 VL V3] SDPA unavailable, forcing eager attention.")
                 return "eager"
             return attention_mode
 
@@ -725,12 +634,9 @@ class TS_Qwen3_VL_V3:
                 device = self._get_device()
                 if device.type == "cuda":
                     props = torch.cuda.get_device_properties(device)
-                    # Use Comfy's get_free_memory logic if possible for safety, 
-                    # but for *capabilities* checking total memory is better.
-                    return float(props.total_memory) / (1024 ** 3)
                 else:
                     return 0.0
-                return 0.0
+                return float(props.total_memory) / (1024 ** 3)
         except Exception:
             pass
         return 0.0
@@ -802,9 +708,6 @@ class TS_Qwen3_VL_V3:
             self._cache_order.remove(key)
         if not cached:
             return
-        
-        # Explicitly delete references
-        del cached
         gc.collect()
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
@@ -827,9 +730,6 @@ class TS_Qwen3_VL_V3:
         if offline_mode:
             load_kwargs["local_files_only"] = True
 
-        # Pre-clean for heavy loads
-        self._prepare_memory(force=True)
-
         if precision in ("int4", "int8"):
             if not self._is_bitsandbytes_available():
                 raise RuntimeError(f"{precision} requires bitsandbytes.")
@@ -845,19 +745,11 @@ class TS_Qwen3_VL_V3:
             load_kwargs["device_map"] = "auto"
         else:
             load_kwargs["torch_dtype"] = self._dtype_from_precision(precision)
-            # For non-quantized models, we can load to CPU initially to safely manage VRAM transition
-            # This prevents OOM during loading if VRAM is fragmented
-            if device.type == "cuda":
-                # We will move it later in process() after checking VRAM
-                # But if it's small enough, 'cuda' is faster. 
-                # Given OOM concerns, 'cpu' + low_cpu_mem_usage is safer.
-                pass 
 
         self._logger.info(f"[TS Qwen3 VL V3] Loading processor from {local_dir}")
         processor = processor_class.from_pretrained(local_dir, trust_remote_code=True, local_files_only=offline_mode)
 
         self._logger.info(f"[TS Qwen3 VL V3] Loading model from {local_dir}")
-        
         def _try_load():
             try:
                 return model_class.from_pretrained(local_dir, **load_kwargs)
@@ -872,23 +764,17 @@ class TS_Qwen3_VL_V3:
             model = _try_load()
         except RuntimeError as e:
             if self._is_oom_error(e):
-                self._logger.warning("[TS Qwen3 VL V3] OOM during load, retrying after AGGRESSIVE cleanup.")
-                mm.unload_all_models() # Force unload other nodes
+                self._logger.warning("[TS Qwen3 VL V3] OOM during load, retrying after cache cleanup.")
                 self._prepare_memory(force=True)
                 model = _try_load()
             else:
                 raise
-
-        # If not quantized (auto device map), putting it on device is manual.
-        # We leave it on CPU here if it wasn't quantized, process() will handle .to(cuda)
-        # Exception: if user has plenty of VRAM, we could move it now, but deferred is safer.
-        if precision not in ("int4", "int8") and device.type == "cuda":
-            # Just eval, don't move yet.
-            pass 
-        elif precision not in ("int4", "int8") and device.type != "cuda":
-             model.to(device)
-
+        if precision not in ("int4", "int8"):
+            model.to(device)
         model.eval()
+
+        if torch.cuda.is_available() and not self._model_has_cuda_device(model):
+            self._logger.warning("[TS Qwen3 VL V3] CUDA available but model is on CPU; generation will run on CPU.")
 
         self._set_cached(key, model, processor)
         return model, processor

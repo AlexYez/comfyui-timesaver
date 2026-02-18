@@ -1,17 +1,8 @@
 import math
 import torch
-import torch.nn.functional as F
-
-import folder_paths
 
 
 class TS_ResolutionSelector:
-    _LOG_PREFIX = "[TS Resolution Selector]"
-    _COLOR_CYAN = "\x1b[36m"
-    _COLOR_GREEN = "\x1b[32m"
-    _COLOR_YELLOW = "\x1b[33m"
-    _COLOR_RESET = "\x1b[0m"
-
     ASPECT_PRESETS = [
         ("1:1", 1.0, 1.0),
         ("4:3", 4.0, 3.0),
@@ -37,30 +28,14 @@ class TS_ResolutionSelector:
                 "aspect_ratio": (cls.ASPECT_OPTIONS, {"default": "1:1"}),
                 "resolution": ("FLOAT", {"default": 1.5, "min": 0.5, "max": 4.0, "step": 0.1, "display": "slider"}),
                 "custom_ratio": ("STRING", {"default": "0:0"}),
-            },
-            "optional": {
-                "image": ("IMAGE",),
-            },
+            }
         }
 
     @classmethod
-    def IS_CHANGED(cls, aspect_ratio, resolution, custom_ratio, image=None):
-        if image is not None:
-            return float("nan")
+    def IS_CHANGED(cls, aspect_ratio, resolution, custom_ratio):
         res_value = 0.0 if resolution is None else float(resolution)
         ratio_value = custom_ratio if custom_ratio is not None else "0:0"
         return f"{aspect_ratio}-{ratio_value}-{res_value:.3f}"
-
-    def _log(self, message, color=None):
-        tint = color or self._COLOR_CYAN
-        print(f"{tint}{self._LOG_PREFIX} {message}{self._COLOR_RESET}")
-
-    def _log_tensor_shape(self, label, tensor, color=None):
-        if not isinstance(tensor, torch.Tensor):
-            return
-        tint = color or self._COLOR_CYAN
-        shape = tuple(tensor.shape)
-        self._log(f"{label} shape={shape} dtype={tensor.dtype} device={tensor.device}", color=tint)
 
     def _parse_ratio(self, ratio_text):
         if not ratio_text:
@@ -108,33 +83,7 @@ class TS_ResolutionSelector:
         candidate_b = (w2, h2)
         return min([candidate_a, candidate_b], key=score)
 
-    def _fit_image_to_canvas(self, image, target_w, target_h):
-        if image is None or not isinstance(image, torch.Tensor):
-            return None
-        if image.ndim != 4:
-            return None
-
-        batch, src_h, src_w, channels = image.shape
-        if src_h <= 0 or src_w <= 0 or channels <= 0:
-            return None
-
-        scale = min(target_w / float(src_w), target_h / float(src_h))
-        new_w = max(1, int(round(src_w * scale)))
-        new_h = max(1, int(round(src_h * scale)))
-        new_w = min(target_w, new_w)
-        new_h = min(target_h, new_h)
-
-        image_nchw = image.permute(0, 3, 1, 2)
-        resized_nchw = F.interpolate(image_nchw, size=(new_h, new_w), mode="bicubic", align_corners=False)
-        resized = resized_nchw.permute(0, 2, 3, 1)
-
-        canvas = torch.ones((batch, target_h, target_w, channels), dtype=image.dtype, device=image.device)
-        top = max(0, (target_h - new_h) // 2)
-        left = max(0, (target_w - new_w) // 2)
-        canvas[:, top : top + new_h, left : left + new_w, :] = resized
-        return canvas.clamp(0.0, 1.0)
-
-    def select_resolution(self, aspect_ratio, resolution, custom_ratio, image=None):
+    def select_resolution(self, aspect_ratio, resolution, custom_ratio):
         ratio_w, ratio_h = self._parse_ratio(aspect_ratio)
         custom_value = custom_ratio if custom_ratio is not None else "0:0"
         if custom_value.strip() and custom_value.strip() != "0:0":
@@ -155,23 +104,10 @@ class TS_ResolutionSelector:
         width = max(1, int(width))
         height = max(1, int(height))
 
-        if image is not None:
-            image = image.float()
-            self._log_tensor_shape("input", image, color=self._COLOR_GREEN)
-            fitted = self._fit_image_to_canvas(image, width, height)
-            if fitted is not None:
-                img = fitted
-            else:
-                img = torch.zeros((1, height, width, 3), dtype=torch.float32)
-        else:
-            img = torch.zeros((1, height, width, 3), dtype=torch.float32)
+        img = torch.zeros((1, height, width, 3), dtype=torch.float32)
 
-        self._log(
-            f"aspect_ratio={aspect_ratio} custom_ratio={custom_value} resolution={res_value:.3f} divide_by={divisor}",
-            color=self._COLOR_YELLOW,
-        )
-        self._log(f"output={width}x{height}", color=self._COLOR_YELLOW)
-        self._log_tensor_shape("output", img, color=self._COLOR_CYAN)
+        print(f"[TS Resolution Selector] aspect_ratio={aspect_ratio} custom_ratio={custom_value} resolution={res_value:.3f} divide_by={divisor}")
+        print(f"[TS Resolution Selector] output={width}x{height} img_shape={tuple(img.shape)}")
 
         return (img,)
 

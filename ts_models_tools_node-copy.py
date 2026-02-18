@@ -3,11 +3,9 @@ import json
 import glob
 import gc
 import torch
-import uuid
 import folder_paths # Используем нативные пути ComfyUI
 from comfy.model_patcher import ModelPatcher
 import comfy.model_patcher
-import comfy.sd
 from safetensors.torch import save_file, load_file
 from safetensors import safe_open
 from collections import OrderedDict
@@ -103,33 +101,30 @@ class TS_ModelConverterAdvancedNode:
     CATEGORY = "Model Conversion"
 
     def should_convert_to_fp8(self, tensor_name: str) -> bool:
-        if "patch_embedding" in tensor_name:
+        # 1. Базовая проверка: работаем только с весами (.weight)
+        if not tensor_name.endswith(".weight"):
             return False
-        if "scale_weight" in tensor_name:
+
+        # 2. Исключаем FP32 параметры
+        if "scale_weight" in tensor_name: return False
+        if "patch_embedding" in tensor_name: return False
+
+        # 3. Исключаем FP16 параметры (нормы и модуляции)
+        if "norm" in tensor_name: return False
+        if "modulation" in tensor_name: return False
+
+        # 4. Логика для Блоков (основная часть модели)
+        if "blocks." in tensor_name:
+            if "cross_attn" in tensor_name or "ffn" in tensor_name or "self_attn" in tensor_name:
+                return True
             return False
-        return True
 
-    def _convert_tensor_to_fp8(self, tensor, tensor_name, target_dtype, device, logs):
-        if not tensor.is_floating_point():
-            return tensor.to("cpu"), False
-        if not self.should_convert_to_fp8(tensor_name):
-            return tensor.to("cpu"), False
+        # 5. Внешние слои
+        if "head.head.weight" in tensor_name: return True
+        if "text_embedding" in tensor_name or "time_embedding" in tensor_name or "time_projection" in tensor_name:
+            return True
 
-        if device == "cuda":
-            try:
-                tensor = tensor.to(device, non_blocking=True)
-                tensor = tensor.to(target_dtype)
-                return tensor.to("cpu"), True
-            except Exception as e:
-                logs.append(f"  [WARN] {tensor_name} FP8 GPU convert failed: {e}")
-
-        try:
-            tensor = tensor.to("cpu")
-            tensor = tensor.to(target_dtype)
-            return tensor, True
-        except Exception as e:
-            logs.append(f"  [WARN] {tensor_name} FP8 CPU convert failed: {e}")
-            return tensor.to("cpu"), False
+        return False
 
     def convert_model(self, model_name, fp8_mode, shard_subdir, final_filename):
         logs = []
@@ -175,15 +170,16 @@ class TS_ModelConverterAdvancedNode:
                     tensor_names = f_in.keys()
                     for tensor_name in tqdm(tensor_names, desc="Converting"):
                         tensor = f_in.get_tensor(tensor_name)
-
-                        tensor, converted = self._convert_tensor_to_fp8(
-                            tensor, tensor_name, target_dtype, device, logs
-                        )
-                        if converted:
+                        
+                        if self.should_convert_to_fp8(tensor_name):
+                            # Конвертация через GPU для скорости (если есть), потом на CPU
+                            tensor = tensor.to(device).to(target_dtype).to("cpu")
                             logs.append(f"  [FP8] {tensor_name}")
                         else:
+                            # Оставляем как есть (обычно FP16/BF16/FP32)
+                            tensor = tensor.to("cpu")
                             logs.append(f"  [KEEP] {tensor_name}")
-
+                        
                         shard_state[tensor_name] = tensor
 
                 save_file(shard_state, out_path)
@@ -203,83 +199,8 @@ class TS_ModelConverterAdvancedNode:
         return ("Folder conversion not fully supported in this simplified mode yet.",)
 
 # ==========================
-# Advanced Converter Direct (Model Input)
-# ==========================
-class TS_ModelConverterAdvancedDirectNode(TS_ModelConverterAdvancedNode):
-    """
-    Convert loaded MODEL to FP8 (e4m3fn / e5m2) and save to disk.
-    """
-
-    @classmethod
-    def INPUT_TYPES(s):
-        return {
-            "required": {
-                "model": ("MODEL",),
-                "fp8_mode": (["e4m3fn", "e5m2"], {"default": "e5m2"}),
-                "shard_subdir": ("STRING", {"multiline": False, "default": "fp8_shards"}),
-                "final_filename": ("STRING", {"multiline": False, "default": "converted_model_fp8.safetensors"}),
-            }
-        }
-
-    RETURN_TYPES = ("STRING",)
-    RETURN_NAMES = ("log",)
-    FUNCTION = "convert_model"
-    CATEGORY = "TS/Model Conversion"
-
-    def convert_model(self, model, fp8_mode, shard_subdir, final_filename):
-        logs = []
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-        target_dtype = torch.float8_e4m3fn if fp8_mode == "e4m3fn" else torch.float8_e5m2
-
-        output_dir = folder_paths.get_output_directory()
-        out_path = os.path.join(output_dir, final_filename)
-
-        logs.append("--- START FP8 CONVERSION (DIRECT) ---")
-        logs.append(f"Target: {fp8_mode}")
-
-        temp_filename = f"ts_tmp_export_{uuid.uuid4().hex}.safetensors"
-        temp_path = os.path.join(output_dir, temp_filename)
-
-        shard_state = OrderedDict()
-        try:
-            comfy.sd.save_checkpoint(temp_path, model, clip=None, vae=None, clip_vision=None, metadata={}, extra_keys={})
-            logs.append(f"Temp saved: {temp_path}")
-
-            with safe_open(temp_path, framework="pt", device="cpu") as f_in:
-                tensor_names = f_in.keys()
-                for tensor_name in tqdm(tensor_names, desc="Converting"):
-                    tensor = f_in.get_tensor(tensor_name)
-
-                    tensor, converted = self._convert_tensor_to_fp8(
-                        tensor, tensor_name, target_dtype, device, logs
-                    )
-                    if converted:
-                        logs.append(f"  [FP8] {tensor_name}")
-                    else:
-                        logs.append(f"  [KEEP] {tensor_name}")
-
-                    shard_state[tensor_name] = tensor
-
-            save_file(shard_state, out_path)
-            logs.append(f"OK Saved to: {out_path}")
-        except Exception as e:
-            logs.append(f"Conversion failed: {e}")
-        finally:
-            if os.path.exists(temp_path):
-                try:
-                    os.remove(temp_path)
-                except Exception:
-                    pass
-
-        del shard_state
-        gc.collect()
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-
-        return ("\n".join(logs),)
-
-# ==========================
 # Model Scanner
+# ==========================
 class ModelScanner:
     def __init__(self):
         pass
@@ -353,12 +274,10 @@ class ModelScanner:
 NODE_CLASS_MAPPINGS = {
     "TS_ModelConverter": TS_ModelConverterNode,
     "TS_ModelConverterAdvanced": TS_ModelConverterAdvancedNode,
-    "TS_ModelConverterAdvancedDirect": TS_ModelConverterAdvancedDirectNode,
     "ModelScanner": ModelScanner
 }
 NODE_DISPLAY_NAME_MAPPINGS = {
     "TS_ModelConverter": "TS Model Converter",
     "TS_ModelConverterAdvanced": "TS Model Converter Advanced",
-    "TS_ModelConverterAdvancedDirect": "TS Model Converter Advanced Direct",
     "ModelScanner": "🔍 Model Layer Scanner"
 }
