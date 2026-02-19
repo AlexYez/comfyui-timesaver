@@ -52,25 +52,85 @@ class TS_Qwen3_VL_V3:
 
         return {
             "required": {
-                "model_name": (cls._MODEL_LIST, {"default": "hfmaster/Qwen3-VL-2B"}),
-                "custom_model_id": ("STRING", {"multiline": False, "default": ""}),
-                "system_preset": (preset_options, {"default": preset_options[0] if preset_options else "Your instruction"}),
-                "prompt": ("STRING", {"multiline": True, "default": ""}),
-                "seed": ("INT", {"default": 42, "min": 0, "max": 0xffffffffffffffff}),
-                "max_new_tokens": ("INT", {"default": 512, "min": 64, "max": 8192, "step": 64}),
-                "precision": (precision_options, {"default": "auto"}),
-                "attention_mode": (attention_options, {"default": "auto"}),
-                "offline_mode": ("BOOLEAN", {"default": False}),
-                "unload_after_generation": ("BOOLEAN", {"default": False}),
-                "enable": ("BOOLEAN", {"default": True}),
-                "hf_token": ("STRING", {"multiline": False, "default": ""}),
-                "max_image_size": ("INT", {"default": 1024, "min": 64, "max": 4096, "step": 32}),
-                "video_max_frames": ("INT", {"default": 16, "min": 4, "max": 256, "step": 4}),
+                "model_name": (cls._MODEL_LIST, {
+                    "default": "hfmaster/Qwen3-VL-2B",
+                    "tooltip": "Выберите модель из списка. Для использования сторонних моделей выберите 'Custom (manual)'."
+                }),
+                "custom_model_id": ("STRING", {
+                    "multiline": False, 
+                    "default": "",
+                    "tooltip": "ID репозитория на HuggingFace (например, 'Qwen/Qwen2-VL-7B-Instruct') или полный локальный путь."
+                }),
+                "hf_token": ("STRING", {
+                    "multiline": False, 
+                    "default": "",
+                    "tooltip": "Ваш токен HuggingFace (Write/Read) для скачивания моделей. Оставьте пустым для публичных моделей."
+                }),
+                "system_preset": (preset_options, {
+                    "default": preset_options[0] if preset_options else "Your instruction",
+                    "tooltip": "Предустановка системного промпта. Влияет на поведение и стиль ответов модели."
+                }),
+                "prompt": ("STRING", {
+                    "multiline": True, 
+                    "default": "",
+                    "tooltip": "Ваш запрос (промпт) к модели."
+                }),
+                "seed": ("INT", {
+                    "default": 42, 
+                    "min": 0, 
+                    "max": 0xffffffffffffffff,
+                    "tooltip": "Сид для воспроизводимости результатов генерации."
+                }),
+                "max_new_tokens": ("INT", {
+                    "default": 512, 
+                    "min": 64, 
+                    "max": 8192, 
+                    "step": 64,
+                    "tooltip": "Максимальное количество токенов в ответе (длина текста)."
+                }),
+                "precision": (precision_options, {
+                    "default": "auto",
+                    "tooltip": "Точность весов. 'auto' выбирает оптимальную. int4/int8 требуют установленного bitsandbytes."
+                }),
+                "attention_mode": (attention_options, {
+                    "default": "auto",
+                    "tooltip": "Тип внимания. 'flash_attention_2' быстрее и экономичнее, но требует совместимой GPU."
+                }),
+                "offline_mode": ("BOOLEAN", {
+                    "default": False,
+                    "tooltip": "Запретить скачивание. Использовать только файлы, уже находящиеся в папке models/LLM."
+                }),
+                "unload_after_generation": ("BOOLEAN", {
+                    "default": False,
+                    "tooltip": "Выгружать модель из памяти сразу после генерации. Экономит VRAM, но замедляет повторные запуски."
+                }),
+                "enable": ("BOOLEAN", {
+                    "default": True,
+                    "tooltip": "Включить обработку. Если выключено — просто передает изображения на выход без изменений."
+                }),
+                "max_image_size": ("INT", {
+                    "default": 1024, 
+                    "min": 64, 
+                    "max": 4096, 
+                    "step": 32,
+                    "tooltip": "Максимальный размер стороны изображения. Большие разрешения требуют больше VRAM."
+                }),
+                "video_max_frames": ("INT", {
+                    "default": 16, 
+                    "min": 4, 
+                    "max": 256, 
+                    "step": 4,
+                    "tooltip": "Сколько кадров из видео передавать модели. Больше кадров = лучше понимание контекста, но больше расход памяти."
+                }),
             },
             "optional": {
-                "image": ("IMAGE",),
-                "video": ("IMAGE",),
-                "custom_system_prompt": ("STRING", {"multiline": True, "forceInput": True}),
+                "image": ("IMAGE", {"tooltip": "Входное изображение."}),
+                "video": ("IMAGE", {"tooltip": "Входной видеопоток (батч изображений)."}),
+                "custom_system_prompt": ("STRING", {
+                    "multiline": True, 
+                    "forceInput": True,
+                    "tooltip": "Ваш системный промпт. Работает, если в 'system_preset' выбрано 'Your instruction'."
+                }),
             }
         }
 
@@ -283,12 +343,6 @@ class TS_Qwen3_VL_V3:
                 self._unload_model(resolved_model_id, resolved_precision, resolved_attention)
             elif moved_to_gpu:
                 # If we moved it to GPU just for this run, move it back to CPU to be nice to other nodes
-                # unless unload_after_generation is False, implying we want to keep it hot.
-                # BUT, to avoid OOM for other nodes, soft offload to CPU is safer than keeping in VRAM.
-                # However, user expectation might be "keep loaded for speed".
-                # Strategy: Keep in VRAM until Comfy kicks it out? 
-                # Since we are outside Comfy's patcher, Comfy CANNOT kick us out.
-                # Thus, we MUST move back to CPU or risk blocking Comfy.
                 try:
                     self._logger.info("[TS Qwen3 VL V3] Soft-offloading model to CPU to free VRAM.")
                     model.to("cpu")
@@ -323,8 +377,6 @@ class TS_Qwen3_VL_V3:
         weights_gb = size_b * bytes_per_param
         
         # Context overhead (KV cache, activation, vision encoder buffer)
-        # 1024 tokens is small, but vision models take extra for image patches.
-        # Rough buffer estimate.
         context_overhead_gb = 1.5 
         if size_b >= 8:
             context_overhead_gb = 2.5
@@ -346,8 +398,6 @@ class TS_Qwen3_VL_V3:
             
             self._logger.info(f"[TS Qwen3 VL V3] Memory Check: Required={required_vram_gb:.2f}GB, Free={free_mem_gb:.2f}GB")
 
-            # Heuristic: If we have enough free memory, don't unload everything aggressively
-            # unless force_unload is True (e.g., just before moving to GPU)
             if force_unload or free_mem_gb < required_vram_gb:
                 self._logger.info("[TS Qwen3 VL V3] Low VRAM detected (or forced). Unloading ComfyUI models...")
                 mm.unload_all_models()
@@ -355,7 +405,6 @@ class TS_Qwen3_VL_V3:
                 if torch.cuda.is_available():
                     torch.cuda.empty_cache()
                     
-                # Re-check
                 free_mem_bytes = mm.get_free_memory()
                 free_mem_gb = free_mem_bytes / (1024**3)
                 self._logger.info(f"[TS Qwen3 VL V3] Memory Post-Clean: Free={free_mem_gb:.2f}GB")
@@ -673,7 +722,6 @@ class TS_Qwen3_VL_V3:
         bnb_ok = self._is_bitsandbytes_available()
         bf16_ok = torch.cuda.is_bf16_supported()
 
-        # Heuristics based on model size and VRAM
         if size_b >= 8:
             if vram_gb >= 22 and bf16_ok: return "bf16"
             if vram_gb >= 20: return "fp16"
@@ -687,7 +735,6 @@ class TS_Qwen3_VL_V3:
             if bnb_ok: return "int4"
             return "fp16"
         
-        # 2B models
         if vram_gb >= 8 and bf16_ok: return "bf16"
         if vram_gb >= 6: return "fp16"
         if bnb_ok: return "int8"
@@ -725,8 +772,6 @@ class TS_Qwen3_VL_V3:
                 device = self._get_device()
                 if device.type == "cuda":
                     props = torch.cuda.get_device_properties(device)
-                    # Use Comfy's get_free_memory logic if possible for safety, 
-                    # but for *capabilities* checking total memory is better.
                     return float(props.total_memory) / (1024 ** 3)
                 else:
                     return 0.0
@@ -803,7 +848,6 @@ class TS_Qwen3_VL_V3:
         if not cached:
             return
         
-        # Explicitly delete references
         del cached
         gc.collect()
         if torch.cuda.is_available():
@@ -827,7 +871,6 @@ class TS_Qwen3_VL_V3:
         if offline_mode:
             load_kwargs["local_files_only"] = True
 
-        # Pre-clean for heavy loads
         self._prepare_memory(force=True)
 
         if precision in ("int4", "int8"):
@@ -845,13 +888,8 @@ class TS_Qwen3_VL_V3:
             load_kwargs["device_map"] = "auto"
         else:
             load_kwargs["torch_dtype"] = self._dtype_from_precision(precision)
-            # For non-quantized models, we can load to CPU initially to safely manage VRAM transition
-            # This prevents OOM during loading if VRAM is fragmented
-            if device.type == "cuda":
-                # We will move it later in process() after checking VRAM
-                # But if it's small enough, 'cuda' is faster. 
-                # Given OOM concerns, 'cpu' + low_cpu_mem_usage is safer.
-                pass 
+            # Deferred load to GPU
+            pass 
 
         self._logger.info(f"[TS Qwen3 VL V3] Loading processor from {local_dir}")
         processor = processor_class.from_pretrained(local_dir, trust_remote_code=True, local_files_only=offline_mode)
@@ -873,19 +911,13 @@ class TS_Qwen3_VL_V3:
         except RuntimeError as e:
             if self._is_oom_error(e):
                 self._logger.warning("[TS Qwen3 VL V3] OOM during load, retrying after AGGRESSIVE cleanup.")
-                mm.unload_all_models() # Force unload other nodes
+                mm.unload_all_models()
                 self._prepare_memory(force=True)
                 model = _try_load()
             else:
                 raise
 
-        # If not quantized (auto device map), putting it on device is manual.
-        # We leave it on CPU here if it wasn't quantized, process() will handle .to(cuda)
-        # Exception: if user has plenty of VRAM, we could move it now, but deferred is safer.
-        if precision not in ("int4", "int8") and device.type == "cuda":
-            # Just eval, don't move yet.
-            pass 
-        elif precision not in ("int4", "int8") and device.type != "cuda":
+        if precision not in ("int4", "int8") and device.type != "cuda":
              model.to(device)
 
         model.eval()

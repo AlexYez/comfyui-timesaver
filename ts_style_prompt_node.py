@@ -8,6 +8,7 @@ from server import PromptServer
 
 
 logger = logging.getLogger("TimesaverVFX_Pack")
+_NO_STYLE_OPTION = "None"
 
 
 def _find_pack_root():
@@ -80,7 +81,7 @@ class TS_StylePromptSelector:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "style_id": ("STRING", {"default": "photorealistic"}),
+                "style_id": ("STRING", {"default": ""}),
             }
         }
 
@@ -92,7 +93,7 @@ class TS_StylePromptSelector:
     def get_prompt(self, style_id):
         styles = _load_styles()
         selected_id = (style_id or "").strip()
-        if not selected_id and styles:
+        if not selected_id or selected_id == _NO_STYLE_OPTION:
             return (" ",)
         prompt = ""
         if styles and selected_id:
@@ -102,7 +103,7 @@ class TS_StylePromptSelector:
                     break
         if not prompt:
             logger.warning("[TS Style Prompt Selector] Style not found: %s", selected_id)
-        return (prompt or " ",)
+        return (prompt or "",)
 
 
 NODE_CLASS_MAPPINGS = {

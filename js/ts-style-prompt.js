@@ -1,12 +1,17 @@
-import { app } from "../../scripts/app.js";
+﻿import { app } from "../../scripts/app.js";
 import { api } from "../../scripts/api.js";
 
-const EXT_NAME = "ts_suite.style_prompt_selector";
+const EXTENSION_ID = "ts_suite.style_prompt_selector";
 const NODE_NAME = "TS_StylePromptSelector";
 const STYLE_INPUT = "style_id";
 const STYLE_CSS_ID = "ts-style-selector-styles";
 
-function ensureStylesheet() {
+const NODE_WIDTH = 250;
+const NODE_HEIGHT = 300;
+const WIDGET_HEIGHT = 240;
+const GRID_GAP = 4;
+
+function ensureStyles() {
     if (document.getElementById(STYLE_CSS_ID)) {
         return;
     }
@@ -14,80 +19,97 @@ function ensureStylesheet() {
     style.id = STYLE_CSS_ID;
     style.textContent = `
 .ts-style-selector {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
-  color: #e8e8e8;
-  box-sizing: border-box;
-  padding-bottom: 12px;
-  pointer-events: none;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 6px;
+    box-sizing: border-box;
+    overflow: hidden;
+    height: 100%;
+    min-height: 0;
+    width: 100%;
+    color: #e6e7ea;
+    font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+    pointer-events: auto;
 }
 .ts-style-search {
-  width: 100%;
-  box-sizing: border-box;
-  padding: 6px 8px;
-  background: #141414;
-  border: 1px solid #333;
-  border-radius: 6px;
-  color: #e8e8e8;
-  outline: none;
-  pointer-events: auto;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 4px 6px;
+    background: #141414;
+    border: 1px solid #333;
+    border-radius: 6px;
+    color: #e8e8e8;
+    outline: none;
+    font-size: 11px;
 }
 .ts-style-search::placeholder {
-  color: #8a8a8a;
+    color: #8a8a8a;
 }
 .ts-style-grid {
-  display: grid;
-  --ts-card-size: 88px;
-  grid-template-columns: repeat(auto-fit, minmax(var(--ts-card-size), 1fr));
-  grid-auto-rows: var(--ts-card-size);
-  gap: 8px;
-  max-height: 300px;
-  overflow: auto;
-  padding: 4px 4px 4px 6px;
-  align-content: start;
-  justify-content: start;
-  pointer-events: auto;
+    display: grid;
+    grid-template-columns: repeat(3, var(--ts-card-size, 1fr));
+    grid-auto-rows: var(--ts-card-size, auto);
+    gap: 4px;
+    flex: 1 1 auto;
+    min-height: 0;
+    width: 100%;
+    align-items: start;
+    align-content: start;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding-right: 2px;
+    padding-bottom: 15px;
+    box-sizing: border-box;
 }
 .ts-style-card {
-  position: relative;
-  width: 100%;
-  aspect-ratio: 1 / 1;
-  border: 1px solid #2a2a2a;
-  border-radius: 8px;
-  overflow: hidden;
-  background: #1a1a1a;
-  cursor: pointer;
-  padding: 0;
-  pointer-events: auto;
+    position: relative;
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    border: 1px solid #2d343f;
+    border-radius: 6px;
+    background: #14171c;
+    padding: 0;
+    cursor: pointer;
+    overflow: hidden;
 }
 .ts-style-card img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
 }
 .ts-style-card.is-selected {
-  outline: 2px solid #4da3ff;
-  box-shadow: 0 0 0 2px rgba(77, 163, 255, 0.35);
+    border-color: #4da3ff;
+    box-shadow: 0 0 0 1px rgba(77, 163, 255, 0.4);
 }
 .ts-style-label {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  padding: 4px 6px;
-  font-size: 10px;
-  text-align: center;
-  background: rgba(0, 0, 0, 0.55);
-  color: #f0f0f0;
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    padding: 3px 4px;
+    font-size: 9px;
+    text-align: center;
+    background: rgba(0, 0, 0, 0.55);
+    color: #f0f0f0;
+    box-sizing: border-box;
+    pointer-events: none;
+}
+.ts-style-grid.has-selection .ts-style-card::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.75);
+    pointer-events: none;
+}
+.ts-style-grid.has-selection .ts-style-card.is-selected::after {
+    background: transparent;
 }
 .ts-style-empty {
-  font-size: 12px;
-  color: #9a9a9a;
-  padding: 4px 2px;
-  pointer-events: auto;
+    font-size: 11px;
+    color: #9a9a9a;
+    padding: 4px 2px;
 }
 `;
     document.head.appendChild(style);
@@ -105,21 +127,31 @@ function makePreviewUrl(relPath) {
     return api.apiURL(`/ts_styles/preview?path=${encodeURIComponent(relPath)}`);
 }
 
-function isNearResizeEdge(event, container, threshold = 12) {
-    if (!container) {
-        return false;
-    }
-    const rect = container.getBoundingClientRect();
-    if (!rect.width || !rect.height) {
-        return false;
-    }
-    const x = event.clientX;
-    const y = event.clientY;
-    return x >= rect.right - threshold || y >= rect.bottom - threshold;
-}
-
 function isTargetNode(node) {
     return node?.comfyClass === NODE_NAME || node?.type === NODE_NAME;
+}
+
+function isNodesV2() {
+    if (typeof window === "undefined") {
+        return false;
+    }
+    return Boolean(window.comfyAPI?.domWidget?.DOMWidgetImpl);
+}
+
+function hideStyleWidget(node) {
+    const widget = node?.widgets?.find((item) => item.name === STYLE_INPUT);
+    if (widget) {
+        widget.hidden = true;
+        widget.type = "hidden";
+        widget.serialize = true;
+        widget.options = { ...(widget.options || {}), hidden: true, serialize: true };
+        widget.computeSize = () => [0, -4];
+    }
+
+    const input = node?.inputs?.find((item) => item?.name === STYLE_INPUT);
+    if (input) {
+        input.hidden = true;
+    }
 }
 
 function setupStyleSelector(node) {
@@ -132,14 +164,13 @@ function setupStyleSelector(node) {
         return;
     }
 
-    ensureStylesheet();
+    ensureStyles();
+    hideStyleWidget(node);
 
-    node.resizable = true;
-    if (!node.size || node.size.length < 2) {
-        node.size = [360, 420];
-    } else {
-        node.size = [Math.max(node.size[0], 360), Math.max(node.size[1], 420)];
-    }
+    node.resizable = false;
+    node.size = [NODE_WIDTH, NODE_HEIGHT];
+    node.min_size = [NODE_WIDTH, NODE_HEIGHT];
+    node.max_size = [NODE_WIDTH, NODE_HEIGHT];
 
     const styleWidget = node.widgets?.find((widget) => widget.name === STYLE_INPUT);
     if (styleWidget) {
@@ -149,23 +180,14 @@ function setupStyleSelector(node) {
 
     const container = document.createElement("div");
     container.className = "ts-style-selector";
+
     const search = document.createElement("input");
     search.type = "text";
     search.className = "ts-style-search";
     search.placeholder = "Search styles...";
-    stopPropagation(search, [
-        "pointerdown",
-        "pointerup",
-        "mousedown",
-        "mouseup",
-        "wheel",
-        "dblclick",
-        "contextmenu",
-    ]);
 
     const grid = document.createElement("div");
     grid.className = "ts-style-grid";
-    stopPropagation(grid, ["wheel"]);
 
     const empty = document.createElement("div");
     empty.className = "ts-style-empty";
@@ -175,114 +197,122 @@ function setupStyleSelector(node) {
     container.appendChild(grid);
     container.appendChild(empty);
 
-    const domWidget = node.addDOMWidget("ts_style_selector", "ts_style_selector", container, {
+    const isV2 = isNodesV2();
+    const widgetOptions = {
         serialize: false,
         hideOnZoom: true,
-    });
+    };
+    if (isV2) {
+        widgetOptions.getMinHeight = () => WIDGET_HEIGHT;
+        widgetOptions.getMaxHeight = () => WIDGET_HEIGHT;
+    }
 
-    domWidget.computeSize = function (width) {
-        const height = Math.max(240, (node.size?.[1] || 420) - 80);
-        return [width, height];
+    const domWidget = node.addDOMWidget("ts_style_selector", "div", container, widgetOptions);
+    const domWidgetEl = domWidget?.element || domWidget?.el || domWidget?.container;
+    if (domWidgetEl) {
+        domWidgetEl.style.overflow = "hidden";
+        domWidgetEl.style.height = `${WIDGET_HEIGHT}px`;
+        domWidgetEl.style.minHeight = `${WIDGET_HEIGHT}px`;
+        domWidgetEl.style.maxHeight = `${WIDGET_HEIGHT}px`;
+    }
+    container.style.height = `${WIDGET_HEIGHT}px`;
+    container.style.minHeight = `${WIDGET_HEIGHT}px`;
+    container.style.maxHeight = `${WIDGET_HEIGHT}px`;
+
+    domWidget.computeSize = function () {
+        return [NODE_WIDTH, WIDGET_HEIGHT];
     };
 
     const state = {
         styles: [],
         filtered: [],
-        selectedId: "",
+        selectedValue: "",
+        loading: true,
     };
+    let layoutRaf = null;
 
     const updateLayout = () => {
-        const width = Math.max(200, node.size?.[0] || container.clientWidth || 360);
-        const height = Math.max(240, node.size?.[1] || container.clientHeight || 420);
-        const gridWidth = grid.clientWidth || width;
-        const horizontalPadding = 16;
-        const available = Math.max(160, gridWidth - horizontalPadding);
-        const gap = 8;
-        const minSize = 72;
-        const maxSize = 140;
-        let columns = Math.max(2, Math.floor((available + gap) / (minSize + gap)));
-        columns = Math.min(columns, 6);
-        const rawSize = Math.floor((available - gap * (columns - 1)) / columns);
-        const cardSize = Math.max(minSize, Math.min(maxSize, rawSize));
-        grid.style.setProperty("--ts-card-size", `${cardSize}px`);
-        grid.style.maxHeight = `${Math.max(140, height - 130)}px`;
+        const containerHeight = container.clientHeight || WIDGET_HEIGHT;
+        const searchHeight = search.getBoundingClientRect().height || 0;
+        const gridHeight = Math.max(0, containerHeight - searchHeight - 6);
+        grid.style.height = `${gridHeight}px`;
+        grid.style.minHeight = `${gridHeight}px`;
+        const gridWidth = grid.clientWidth || NODE_WIDTH;
+        const available = Math.max(0, gridWidth - GRID_GAP * 2);
+        const card = Math.max(24, Math.floor(available / 3));
+        grid.style.setProperty("--ts-card-size", `${card}px`);
     };
-    let layoutFrame = null;
+
     const scheduleLayout = () => {
-        if (layoutFrame) {
+        if (layoutRaf) {
             return;
         }
-        layoutFrame = requestAnimationFrame(() => {
-            layoutFrame = null;
+        layoutRaf = requestAnimationFrame(() => {
+            layoutRaf = null;
             updateLayout();
         });
     };
-    const ensureLayoutReady = () => {
-        let attempts = 0;
-        const tick = () => {
-            attempts += 1;
-            scheduleLayout();
-            const ready =
-                container.isConnected &&
-                grid.clientWidth > 0 &&
-                grid.clientHeight > 0 &&
-                (node.size?.[0] || 0) > 0 &&
-                (node.size?.[1] || 0) > 0;
-            if (!ready && attempts < 60) {
-                requestAnimationFrame(tick);
-            }
-        };
-        requestAnimationFrame(tick);
+
+    const styleValue = (style) => (style.name || style.id || "").trim();
+
+    const matchesSelection = (style, value) => {
+        if (!value) {
+            return false;
+        }
+        return value === style.id || value === style.name || value === styleValue(style);
     };
 
-    const syncSelection = () => {
-        if (styleWidget?.value) {
-            state.selectedId = styleWidget.value;
-        } else if (node.properties && node.properties[STYLE_INPUT]) {
-            state.selectedId = node.properties[STYLE_INPUT];
-        }
-    };
-
-    const setSelected = (style) => {
-        if (!style || !style.id) {
-            return;
-        }
-        const nextId = style.id === state.selectedId ? "" : style.id;
-        state.selectedId = nextId;
-        if (styleWidget) {
-            styleWidget.value = nextId;
-            styleWidget.callback?.(nextId);
+    const setSelection = (value, trigger = true) => {
+        state.selectedValue = value || "";
+        grid.classList.toggle("has-selection", Boolean(state.selectedValue));
+        grid.querySelectorAll(".ts-style-card").forEach((card) => {
+            const isSelected = card.dataset.value === state.selectedValue;
+            card.classList.toggle("is-selected", isSelected);
+        });
+        if (styleWidget && trigger) {
+            styleWidget.value = state.selectedValue;
+            styleWidget.callback?.(state.selectedValue);
         }
         if (node.setProperty) {
-            node.setProperty(STYLE_INPUT, nextId);
+            node.setProperty(STYLE_INPUT, state.selectedValue);
         } else {
             node.properties ||= {};
-            node.properties[STYLE_INPUT] = nextId;
+            node.properties[STYLE_INPUT] = state.selectedValue;
         }
-        renderGrid();
         node.setDirtyCanvas(true, true);
     };
 
     const renderGrid = () => {
         grid.innerHTML = "";
-        if (!state.filtered.length) {
-            empty.textContent = state.styles.length ? "No styles found." : "No styles available.";
+
+        if (state.loading) {
+            empty.textContent = "Loading styles...";
             empty.style.display = "block";
             return;
         }
+
+        if (!state.filtered.length) {
+            empty.textContent = "No styles found.";
+            empty.style.display = "block";
+            return;
+        }
+
         empty.style.display = "none";
+        grid.classList.toggle("has-selection", Boolean(state.selectedValue));
+
         state.filtered.forEach((style) => {
+            const value = styleValue(style);
+            if (!value) {
+                return;
+            }
             const card = document.createElement("button");
             card.type = "button";
             card.className = "ts-style-card";
-            if (style.id === state.selectedId) {
+            card.dataset.value = value;
+            if (matchesSelection(style, state.selectedValue)) {
                 card.classList.add("is-selected");
             }
-            if (style.description) {
-                card.title = style.description;
-            } else if (style.prompt) {
-                card.title = style.prompt;
-            }
+            card.title = style.description || style.prompt || style.name || style.id || "";
 
             if (style.preview) {
                 const img = document.createElement("img");
@@ -296,27 +326,19 @@ function setupStyleSelector(node) {
 
             const label = document.createElement("div");
             label.className = "ts-style-label";
-            label.textContent = style.name || style.id || "Style";
+            label.textContent = style.name || style.id || "";
             card.appendChild(label);
 
-            const guardResize = (event) => {
-                if (isNearResizeEdge(event, container)) {
-                    return;
-                }
-                event.stopPropagation();
-            };
-            card.addEventListener("pointerdown", guardResize);
-            card.addEventListener("mousedown", guardResize);
-            card.addEventListener("contextmenu", (event) => {
-                event.stopPropagation();
-            });
             card.addEventListener("click", (event) => {
                 event.preventDefault();
-                setSelected(style);
+                const nextValue = value === state.selectedValue ? "" : value;
+                setSelection(nextValue, true);
+                renderGrid();
             });
 
             grid.appendChild(card);
         });
+        scheduleLayout();
     };
 
     const applyFilter = () => {
@@ -325,12 +347,7 @@ function setupStyleSelector(node) {
             state.filtered = state.styles.slice();
         } else {
             state.filtered = state.styles.filter((style) => {
-                const haystack = [
-                    style.id,
-                    style.name,
-                    style.description,
-                    style.prompt,
-                ]
+                const haystack = [style.id, style.name, style.description, style.prompt]
                     .filter(Boolean)
                     .join(" ")
                     .toLowerCase();
@@ -340,12 +357,14 @@ function setupStyleSelector(node) {
         renderGrid();
     };
 
-    search.addEventListener("input", () => {
-        applyFilter();
-    });
+    const syncSelection = () => {
+        const stored = styleWidget?.value || node.properties?.[STYLE_INPUT] || "";
+        setSelection(stored, false);
+    };
 
     const loadStyles = async () => {
-        empty.textContent = "Loading styles...";
+        state.loading = true;
+        renderGrid();
         try {
             const response = await fetch(api.apiURL("/ts_styles"));
             if (!response.ok) {
@@ -353,18 +372,31 @@ function setupStyleSelector(node) {
             }
             const payload = await response.json();
             state.styles = Array.isArray(payload.styles) ? payload.styles : [];
+            state.loading = false;
             syncSelection();
-            if (!state.selectedId && state.styles.length) {
-                setSelected(state.styles[0]);
-            } else {
-                applyFilter();
-            }
-            ensureLayoutReady();
+            applyFilter();
+            scheduleLayout();
         } catch (error) {
+            state.loading = false;
+            state.filtered = [];
             empty.textContent = "Failed to load styles.";
+            empty.style.display = "block";
             console.error("[TS Style Prompt Selector] Failed to load styles:", error);
         }
     };
+
+    search.addEventListener("input", applyFilter);
+
+    stopPropagation(container, [
+        "pointerdown",
+        "pointerup",
+        "mousedown",
+        "mouseup",
+        "wheel",
+        "dblclick",
+        "contextmenu",
+    ]);
+    stopPropagation(grid, ["wheel"]);
 
     node._tsStyleSelectorSync = () => {
         syncSelection();
@@ -372,29 +404,23 @@ function setupStyleSelector(node) {
         scheduleLayout();
     };
 
-    if (typeof ResizeObserver === "function") {
-        const observer = new ResizeObserver(() => scheduleLayout());
-        observer.observe(container);
-        node._tsStyleSelectorObserver = observer;
-    }
-
-    const prevOnResize = node.onResize;
-    node.onResize = function () {
-        const result = prevOnResize?.apply(this, arguments);
-        scheduleLayout();
-        return result;
+    const prevOnRemoved = node.onRemoved;
+    node.onRemoved = function () {
+        if (layoutRaf) {
+            cancelAnimationFrame(layoutRaf);
+            layoutRaf = null;
+        }
+        return prevOnRemoved?.apply(this, arguments);
     };
 
-    ensureLayoutReady();
-
+    renderGrid();
     loadStyles();
     scheduleLayout();
-    node._tsStyleEnsureLayout = ensureLayoutReady;
 }
 
 app.registerExtension({
-    name: EXT_NAME,
-    async nodeCreated(node) {
+    name: EXTENSION_ID,
+    nodeCreated(node) {
         if (!isTargetNode(node)) {
             return;
         }
@@ -407,7 +433,11 @@ app.registerExtension({
         if (!node._tsStyleSelectorInitialized) {
             setupStyleSelector(node);
         }
+        node.resizable = false;
+        node.size = [NODE_WIDTH, NODE_HEIGHT];
+        node.min_size = [NODE_WIDTH, NODE_HEIGHT];
+        node.max_size = [NODE_WIDTH, NODE_HEIGHT];
+        hideStyleWidget(node);
         node._tsStyleSelectorSync?.();
-        node._tsStyleEnsureLayout?.();
     },
 });
