@@ -1,4 +1,5 @@
 from typing import Optional
+import time
 
 import torch
 import comfy.utils
@@ -626,8 +627,15 @@ class TS_ImagePromptInjector:
         return (image,)
 
     @classmethod
-    def IS_CHANGED(cls, image: torch.Tensor, prompt: str, extra_pnginfo=None) -> float:
-        return float("NaN")
+    def IS_CHANGED(
+        cls, image: torch.Tensor, prompt: str, prompt_graph=None
+    ) -> str:
+        prompt_text = cls._normalize_prompt(prompt)
+        if isinstance(image, torch.Tensor):
+            shape = tuple(image.shape)
+        else:
+            shape = "none"
+        return f"ts_prompt_injector_{shape}_{len(prompt_text)}_{time.time_ns()}"
 
 
 NODE_CLASS_MAPPINGS = {
