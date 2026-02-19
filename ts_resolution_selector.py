@@ -1,4 +1,4 @@
-import math
+﻿import math
 import torch
 import torch.nn.functional as F
 
@@ -7,10 +7,6 @@ import folder_paths
 
 class TS_ResolutionSelector:
     _LOG_PREFIX = "[TS Resolution Selector]"
-    _COLOR_CYAN = "\x1b[36m"
-    _COLOR_GREEN = "\x1b[32m"
-    _COLOR_YELLOW = "\x1b[33m"
-    _COLOR_RESET = "\x1b[0m"
 
     ASPECT_PRESETS = [
         ("1:1", 1.0, 1.0),
@@ -51,16 +47,14 @@ class TS_ResolutionSelector:
         ratio_value = custom_ratio if custom_ratio is not None else "0:0"
         return f"{aspect_ratio}-{ratio_value}-{res_value:.3f}"
 
-    def _log(self, message, color=None):
-        tint = color or self._COLOR_CYAN
-        print(f"{tint}{self._LOG_PREFIX} {message}{self._COLOR_RESET}")
+    def _log(self, message):
+        print(f"{self._LOG_PREFIX} {message}")
 
-    def _log_tensor_shape(self, label, tensor, color=None):
+    def _log_tensor_shape(self, label, tensor):
         if not isinstance(tensor, torch.Tensor):
             return
-        tint = color or self._COLOR_CYAN
         shape = tuple(tensor.shape)
-        self._log(f"{label} shape={shape} dtype={tensor.dtype} device={tensor.device}", color=tint)
+        self._log(f"{label} shape={shape} dtype={tensor.dtype} device={tensor.device}")
 
     def _parse_ratio(self, ratio_text):
         if not ratio_text:
@@ -108,11 +102,56 @@ class TS_ResolutionSelector:
         candidate_b = (w2, h2)
         return min([candidate_a, candidate_b], key=score)
 
+    def _crop_alpha_to_bbox(self, image, pad_px=10):
+        if image is None or not isinstance(image, torch.Tensor):
+            return None
+        if image.ndim != 4:
+            return None
+
+        batch, src_h, src_w, channels = image.shape
+        if channels < 4:
+            return image
+
+        rgb = image[..., :3]
+        alpha = image[..., 3:4].clamp(0.0, 1.0)
+        output = []
+
+        for i in range(batch):
+            alpha_i = alpha[i, ..., 0]
+            if not torch.any(alpha_i > 0):
+                # Fully transparent image: composite on white without crop.
+                comp = rgb[i] * alpha_i.unsqueeze(-1) + (1.0 - alpha_i.unsqueeze(-1))
+                output.append(comp.unsqueeze(0))
+                continue
+
+            coords = torch.nonzero(alpha_i > 0, as_tuple=False)
+            y_min = int(coords[:, 0].min().item())
+            y_max = int(coords[:, 0].max().item())
+            x_min = int(coords[:, 1].min().item())
+            x_max = int(coords[:, 1].max().item())
+
+            y_min = max(0, y_min - pad_px)
+            x_min = max(0, x_min - pad_px)
+            y_max = min(src_h - 1, y_max + pad_px)
+            x_max = min(src_w - 1, x_max + pad_px)
+
+            crop_rgb = rgb[i, y_min : y_max + 1, x_min : x_max + 1, :]
+            crop_alpha = alpha_i[y_min : y_max + 1, x_min : x_max + 1].unsqueeze(-1)
+            comp = crop_rgb * crop_alpha + (1.0 - crop_alpha)
+            output.append(comp.unsqueeze(0))
+
+        return torch.cat(output, dim=0)
+
     def _fit_image_to_canvas(self, image, target_w, target_h):
         if image is None or not isinstance(image, torch.Tensor):
             return None
         if image.ndim != 4:
             return None
+
+        if image.shape[3] >= 4:
+            image = self._crop_alpha_to_bbox(image, pad_px=10)
+            if image is None:
+                return None
 
         batch, src_h, src_w, channels = image.shape
         if src_h <= 0 or src_w <= 0 or channels <= 0:
@@ -157,7 +196,7 @@ class TS_ResolutionSelector:
 
         if image is not None:
             image = image.float()
-            self._log_tensor_shape("input", image, color=self._COLOR_GREEN)
+            self._log_tensor_shape("input", image)
             fitted = self._fit_image_to_canvas(image, width, height)
             if fitted is not None:
                 img = fitted
@@ -167,11 +206,10 @@ class TS_ResolutionSelector:
             img = torch.zeros((1, height, width, 3), dtype=torch.float32)
 
         self._log(
-            f"aspect_ratio={aspect_ratio} custom_ratio={custom_value} resolution={res_value:.3f} divide_by={divisor}",
-            color=self._COLOR_YELLOW,
+            f"aspect_ratio={aspect_ratio} custom_ratio={custom_value} resolution={res_value:.3f} divide_by={divisor}"
         )
-        self._log(f"output={width}x{height}", color=self._COLOR_YELLOW)
-        self._log_tensor_shape("output", img, color=self._COLOR_CYAN)
+        self._log(f"output={width}x{height}")
+        self._log_tensor_shape("output", img)
 
         return (img,)
 

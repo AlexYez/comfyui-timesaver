@@ -4,10 +4,10 @@ const EXTENSION_ID = "ts.resolutionselector";
 const NODE_NAME = "TS_ResolutionSelector";
 const INPUT_RATIO = "aspect_ratio";
 const STYLE_ID = "ts-resolution-selector-styles";
-const DEFAULT_WIDGET_HEIGHT = 250;
-const MIN_WIDGET_HEIGHT = 220;
-const MIN_NODE_WIDTH = 300;
-const MIN_NODE_HEIGHT = 260;
+const FIXED_NODE_WIDTH = 250;
+const FIXED_NODE_HEIGHT = 340;
+const FIXED_WIDGET_HEIGHT = 240;
+const GRID_CELL_SIZE = 65;
 
 const RATIO_PRESETS = [
     { label: "1:1", value: "1:1" },
@@ -53,6 +53,7 @@ function ensureStyles() {
     align-content: center;
     justify-content: center;
     overflow: hidden;
+    --ts-reso-cell: ${GRID_CELL_SIZE}px;
 }
 .ts-reso-card {
     border: 1px solid #2d343f;
@@ -151,12 +152,8 @@ function setupResolutionSelector(node) {
 
     ensureStyles();
 
-    node.resizable = true;
-    if (!node.size || node.size.length < 2) {
-        node.size = [Math.max(320, MIN_NODE_WIDTH), Math.max(320, MIN_NODE_HEIGHT)];
-    } else {
-        node.size = [Math.max(MIN_NODE_WIDTH, node.size[0]), Math.max(MIN_NODE_HEIGHT, node.size[1])];
-    }
+    node.resizable = false;
+    node.size = [FIXED_NODE_WIDTH, FIXED_NODE_HEIGHT];
 
     const ratioWidget = node.widgets?.find((widget) => widget.name === INPUT_RATIO);
     if (ratioWidget) {
@@ -167,10 +164,8 @@ function setupResolutionSelector(node) {
     const container = document.createElement("div");
     container.className = "ts-reso-selector";
     const isV2 = isNodesV2();
-    let widgetHeight = DEFAULT_WIDGET_HEIGHT;
-    let baseHeight = null;
+    const widgetHeight = FIXED_WIDGET_HEIGHT;
     let domWidgetEl = null;
-    let layoutRaf = null;
 
     const grid = document.createElement("div");
     grid.className = "ts-reso-grid";
@@ -232,61 +227,6 @@ function setupResolutionSelector(node) {
         return [width, widgetHeight];
     };
 
-    const ensureBaseHeight = () => {
-        if (isV2) {
-            return;
-        }
-        if (baseHeight !== null) {
-            return;
-        }
-        const nodeHeight = node.size?.[1];
-        if (!nodeHeight) {
-            return;
-        }
-        baseHeight = Math.max(0, nodeHeight - widgetHeight);
-    };
-
-    const syncWidgetHeightFromNode = () => {
-        if (isV2) {
-            return;
-        }
-        ensureBaseHeight();
-        if (baseHeight === null) {
-            return;
-        }
-        const nodeHeight = node.size?.[1];
-        if (!nodeHeight) {
-            return;
-        }
-        widgetHeight = Math.max(MIN_WIDGET_HEIGHT, nodeHeight - baseHeight);
-    };
-
-    const updateGridLayout = () => {
-        const host = domWidgetEl || container;
-        const width = host?.clientWidth || node.size?.[0] || 0;
-        const height = host?.clientHeight || (isV2 ? 0 : widgetHeight) || 0;
-        if (!width || !height) {
-            return;
-        }
-        const padding = 12;
-        const gap = 5;
-        const availableW = Math.max(0, width - padding - gap * 2);
-        const fallbackH = height || availableW;
-        const availableH = Math.max(0, fallbackH - padding - gap * 2);
-        const cellSize = Math.max(32, Math.floor(Math.min(availableW / 3, availableH / 3)));
-        grid.style.setProperty("--ts-reso-cell", `${cellSize}px`);
-    };
-
-    const scheduleLayout = () => {
-        if (layoutRaf) {
-            return;
-        }
-        layoutRaf = requestAnimationFrame(() => {
-            layoutRaf = null;
-            updateGridLayout();
-        });
-    };
-
     const state = {
         selected: "",
     };
@@ -327,40 +267,13 @@ function setupResolutionSelector(node) {
 
     node._tsResolutionSelectorSync = () => {
         syncSelection();
-        scheduleLayout();
-    };
-
-    if (typeof ResizeObserver === "function") {
-        const observer = new ResizeObserver(() => scheduleLayout());
-        observer.observe(container);
-        node._tsResolutionSelectorObserver = observer;
-    }
-
-    const prevOnResize = node.onResize;
-    node.onResize = function () {
-        const result = prevOnResize?.apply(this, arguments);
-        syncWidgetHeightFromNode();
-        scheduleLayout();
-        return result;
     };
 
     const prevOnRemoved = node.onRemoved;
     node.onRemoved = function () {
-        if (layoutRaf) {
-            cancelAnimationFrame(layoutRaf);
-            layoutRaf = null;
-        }
-        if (node._tsResolutionSelectorObserver) {
-            node._tsResolutionSelectorObserver.disconnect();
-            node._tsResolutionSelectorObserver = null;
-        }
         return prevOnRemoved?.apply(this, arguments);
     };
 
-    requestAnimationFrame(() => {
-        syncWidgetHeightFromNode();
-        scheduleLayout();
-    });
     syncSelection();
 }
 

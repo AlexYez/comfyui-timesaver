@@ -347,7 +347,7 @@ class TS_BGRM_BiRefNet:
             "invert_output": "Enable to invert both the image and mask output (useful for certain effects).",
             "refine_foreground": "Use Fast Foreground Colour Estimation to optimize transparent background",
             "background": "Choose background type: Alpha (transparent) or Color (custom background color).",
-            "background_color": "Select background color preset (black, white, green)."
+            "background_color": "Enter background color in hex format (e.g., #ffffff for white)."
         }
         return {
             "required": {
@@ -363,7 +363,7 @@ class TS_BGRM_BiRefNet:
                 "invert_output": ("BOOLEAN", {"default": False, "tooltip": tooltips["invert_output"]}),
                 "refine_foreground": ("BOOLEAN", {"default": False, "tooltip": tooltips["refine_foreground"]}),
                 "background": (["Alpha", "Color"], {"default": "Alpha", "tooltip": tooltips["background"]}),
-                "background_color": (["black", "white", "green"], {"default": "white", "tooltip": tooltips["background_color"]}),
+                "background_color": ("STRING", {"default": "#ffffff", "tooltip": tooltips["background_color"]}),
             }
         }
 
@@ -447,16 +447,7 @@ class TS_BGRM_BiRefNet:
                         else:
                             raise ValueError("Invalid color format")
                         return (r, g, b, a)
-                    background_color = params.get("background_color", "white")
-                    color_presets = {
-                        "black": "#000000",
-                        "white": "#ffffff",
-                        "green": "#00ff00",
-                    }
-                    if isinstance(background_color, str):
-                        color_key = background_color.strip().lower()
-                        if color_key in color_presets:
-                            background_color = color_presets[color_key]
+                    background_color = params.get("background_color", "#ffffff")
                     rgba = hex_to_rgba(background_color)
                     bg_image = Image.new('RGBA', orig_image.size, rgba)
                     composite_image = Image.alpha_composite(bg_image, foreground)

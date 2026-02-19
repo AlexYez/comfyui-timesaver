@@ -23,15 +23,7 @@ class TS_Logger:
     """
     @staticmethod
     def log(node_name, message, color="cyan"):
-        colors = {
-            "cyan": "\033[96m",
-            "green": "\033[92m",
-            "yellow": "\033[93m",
-            "red": "\033[91m",
-            "reset": "\033[0m"
-        }
-        c = colors.get(color, colors["cyan"])
-        print(f"{c}[TS Nodes: {node_name}]{colors['reset']} {message}")
+        print(f"[TS {node_name}] {message}")
 
     @staticmethod
     def error(node_name, message):
@@ -459,7 +451,7 @@ class TS_Animation_Preview:
                     return normalized
             return None
 
-        if isinstance(audio, Mapping):
+        if isinstance(audio, dict):
             if "audio" in audio:
                 return self._normalize_audio_input(audio["audio"])
             if "data" in audio:
@@ -481,6 +473,27 @@ class TS_Animation_Preview:
                 "yellow",
             )
             return None
+
+        if isinstance(audio, Mapping):
+            try:
+                waveform = audio["waveform"]
+                sample_rate = audio["sample_rate"]
+            except KeyError:
+                TS_Logger.log(
+                    "AnimationPreview",
+                    "Audio input ignored: missing waveform/sample_rate keys.",
+                    "yellow",
+                )
+                return None
+            except Exception as e:
+                TS_Logger.log(
+                    "AnimationPreview",
+                    f"Audio input ignored: failed to load audio from mapping. {str(e)}",
+                    "yellow",
+                )
+                return None
+
+            return {"waveform": waveform, "sample_rate": sample_rate}
 
         waveform = getattr(audio, "waveform", None)
         sample_rate = getattr(audio, "sample_rate", getattr(audio, "sampler_rate", None))
