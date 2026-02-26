@@ -95,7 +95,7 @@
     {
       "id": "line-art-sketch",
       "name": "Line Art / Sketch",
-      "prompt": "line art, ",
+      "prompt": "line art sketch, ",
       "preview": "img/Line-Art.png",
       "description": "Pen or ink sketch look."
     },
