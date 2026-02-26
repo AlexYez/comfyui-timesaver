@@ -40,7 +40,7 @@ class TS_FloatSlider:
         return {
             "required": {
                 "value": ("FLOAT", {
-                    "default": 0.5, "min": 0.0, "max": 1.0, "step": 0.1,
+                    "default": 0.5, "min": -1000000000.0, "max": 1000000000.0, "step": 0.1,
                     "display": "slider", "round": 0.01
                 }),
             },
@@ -67,7 +67,7 @@ class TS_Int_Slider:
         return {
             "required": {
                 "value": ("INT", {
-                    "default": 512, "min": 320, "max": 2048, "step": 8,
+                    "default": 512, "min": -2147483648, "max": 2147483647, "step": 8,
                     "display": "slider" 
                 }),
             },
