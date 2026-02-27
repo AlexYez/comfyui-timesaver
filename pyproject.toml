@@ -1,7 +1,7 @@
 [project]
 name = "comfyui-timesaver"
 description = "ComfyUI nodes from [Timesaver](https://github.com/AlexYez/comfyui-timesaver)."
-version = "7.5"
+version = "7.6"
 license = { file = "LICENSE.txt" }
 dependencies = [
     "accelerate>=0.21.0",
@@ -27,8 +27,8 @@ dependencies = [
     "kornia",
     "tiktoken",
     "qwen-vl-utils>=0.0.8",
-    "demucs"
-    "geomloss"
+    "demucs",
+    "geomloss",
     "pykeops"
 ]
 
