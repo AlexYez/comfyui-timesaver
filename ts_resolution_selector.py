@@ -33,6 +33,7 @@ class TS_ResolutionSelector:
                 "aspect_ratio": (cls.ASPECT_OPTIONS, {"default": "1:1"}),
                 "resolution": ("FLOAT", {"default": 1.5, "min": 0.5, "max": 4.0, "step": 0.1, "display": "slider"}),
                 "custom_ratio": ("STRING", {"default": "0:0"}),
+                "original_aspect": ("BOOLEAN", {"default": False}),
             },
             "optional": {
                 "image": ("IMAGE",),
@@ -40,12 +41,12 @@ class TS_ResolutionSelector:
         }
 
     @classmethod
-    def IS_CHANGED(cls, aspect_ratio, resolution, custom_ratio, image=None):
+    def IS_CHANGED(cls, aspect_ratio, resolution, custom_ratio, original_aspect=False, image=None):
         if image is not None:
             return float("nan")
         res_value = 0.0 if resolution is None else float(resolution)
         ratio_value = custom_ratio if custom_ratio is not None else "0:0"
-        return f"{aspect_ratio}-{ratio_value}-{res_value:.3f}"
+        return f"{aspect_ratio}-{ratio_value}-{res_value:.3f}-{bool(original_aspect)}"
 
     def _log(self, message):
         print(f"{self._LOG_PREFIX} {message}")
@@ -173,12 +174,29 @@ class TS_ResolutionSelector:
         canvas[:, top : top + new_h, left : left + new_w, :] = resized
         return canvas.clamp(0.0, 1.0)
 
-    def select_resolution(self, aspect_ratio, resolution, custom_ratio, image=None):
+    def _get_image_aspect(self, image):
+        if image is None or not isinstance(image, torch.Tensor):
+            return None
+        if image.ndim != 4:
+            return None
+        _batch, src_h, src_w, _channels = image.shape
+        if src_h <= 0 or src_w <= 0:
+            return None
+        return float(src_w) / float(src_h)
+
+    def select_resolution(self, aspect_ratio, resolution, custom_ratio, original_aspect=False, image=None):
         ratio_w, ratio_h = self._parse_ratio(aspect_ratio)
         custom_value = custom_ratio if custom_ratio is not None else "0:0"
         if custom_value.strip() and custom_value.strip() != "0:0":
             ratio_w, ratio_h = self._parse_ratio(custom_value)
         aspect = ratio_w / ratio_h if ratio_h != 0 else 1.0
+        aspect_source = "preset/custom"
+
+        if bool(original_aspect) and image is not None:
+            image_aspect = self._get_image_aspect(image)
+            if image_aspect is not None and image_aspect > 0:
+                aspect = image_aspect
+                aspect_source = "image"
 
         divisor = 32
 
@@ -206,7 +224,8 @@ class TS_ResolutionSelector:
             img = torch.zeros((1, height, width, 3), dtype=torch.float32)
 
         self._log(
-            f"aspect_ratio={aspect_ratio} custom_ratio={custom_value} resolution={res_value:.3f} divide_by={divisor}"
+            f"aspect_ratio={aspect_ratio} custom_ratio={custom_value} original_aspect={bool(original_aspect)} "
+            f"aspect_source={aspect_source} resolution={res_value:.3f} divide_by={divisor}"
         )
         self._log(f"output={width}x{height}")
         self._log_tensor_shape("output", img)
