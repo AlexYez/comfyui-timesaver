@@ -1,35 +1,26 @@
 [project]
 name = "comfyui-timesaver"
 description = "ComfyUI nodes from [Timesaver](https://github.com/AlexYez/comfyui-timesaver)."
-version = "7.6"
+version = "7.7"
 license = { file = "LICENSE.txt" }
 dependencies = [
     "accelerate>=0.21.0",
     "bitsandbytes>=0.40.0",
     "easydict>=1.10.0",
-    "einops>=0.4.0",
     "huggingface_hub>=0.20.0",
     "imageio>=2.20.0",
     "imageio-ffmpeg>=0.4.0",
     "matplotlib>=3.4.0",
-    "numpy>=1.21.0",
     "opencv-python>=4.5.0",
-    "optimum>=1.9.0",
-    "pillow>=9.0.0",
     "py360convert>=0.1.0",
-    "requests>=2.28.0",
     "srt>=3.5.0",
-    "torch>=2.0.0",
-    "torchaudio>=2.0.0",
-    "transformers>=4.57.1",
-    "tqdm>=4.65.0",
     "urllib3>=1.26.0",
-    "kornia",
     "tiktoken",
     "qwen-vl-utils>=0.0.8",
     "demucs",
     "geomloss",
-    "pykeops"
+    "pykeops",
+    "silero"
 ]
 
 [project.urls]
@@ -38,7 +29,5 @@ Repository = "https://github.com/AlexYez/comfyui-timesaver"
 [tool.comfy]
 PublisherId = "timesaver"
 DisplayName = "ComfyUI Timesaver Nodes"
-Icon = ""
+Icon = "icon.png"
 
-# Note: VideoDepthAnything is not available on PyPI. Install manually from its repository.
-# Example: https://github.com/DepthAnything/DepthAnything-V2

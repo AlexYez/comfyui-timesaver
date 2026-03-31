@@ -1,46 +1,17 @@
-# Core AI/ML libraries
-torch>=2.0.0
-torchvision>=0.15.0
-torchaudio>=2.0.0
-transformers>=4.57.1
+accelerate>=0.21.0
+bitsandbytes>=0.40.0
 huggingface_hub>=0.20.0
-accelerate>=0.21.0  # For optimized model loading and training
-bitsandbytes>=0.40.0  # For 8-bit and 4-bit quantization
-safetensors>=0.4.2
-srt>=3.5.0  # For creating .srt subtitle files
-
-# Image and numerical processing
+srt>=3.5.0
 opencv-python>=4.5.0
 matplotlib>=3.4.0
 imageio>=2.20.0
 imageio-ffmpeg>=0.4.0
-numpy>=1.21.0
-Pillow>=9.0.0
-einops>=0.4.0  # For tensor manipulations
-spandrel
-
-# 360 Image Conversion
 py360convert>=0.1.0
-
-# HTTP Requests and Progress Bar
-requests>=2.28.0
 urllib3>=1.26.0
-tqdm>=4.65.0
-
-# Utilities
-easydict>=1.10.0  # Optional, for easier configuration handling
-
-kornia
+easydict>=1.10.0
 qwen-vl-utils>=0.0.8
 tiktoken
 demucs
 geomloss
 pykeops
-# llama-cpp-python @ git+https://github.com/JamePeng/llama-cpp-python.git
-
-
-# Note: For torch, you may need to install a specific version based on your hardware and CUDA setup.
-# Example: pip install torch==2.0.0+cu118 torchaudio==2.0.0+cu118 -f https://download.pytorch.org/whl/torch_stable.html
-
-# Note: VideoDepthAnything is not available on PyPI. Install manually from its repository.
-# Example: https://github.com/DepthAnything/DepthAnything-V2
+silero

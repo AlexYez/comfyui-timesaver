@@ -4,6 +4,7 @@ import json
 import logging
 import importlib.util
 import inspect
+import re
 from contextlib import nullcontext
 
 import torch
@@ -19,6 +20,8 @@ class TS_Qwen3_VL_V3:
     _MODEL_LIST = [
         "hfmaster/Qwen3-VL-2B",
         "hfmaster/Qwen3-VL-4B",
+        "Qwen/Qwen3.5-2B",
+        "Qwen/Qwen3.5-4B",
         "prithivMLmods/Qwen3-VL-4B-Instruct-Unredacted-MAX",
         "prithivMLmods/Qwen3-VL-8B-Instruct-Unredacted-MAX",
         "Custom (manual)"
@@ -26,6 +29,8 @@ class TS_Qwen3_VL_V3:
     _MODEL_SIZES_B = {
         "hfmaster/Qwen3-VL-2B": 2,
         "hfmaster/Qwen3-VL-4B": 4,
+        "Qwen/Qwen3.5-2B": 2,
+        "Qwen/Qwen3.5-4B": 4,
         "prithivMLmods/Qwen3-VL-4B-Instruct-Unredacted-MAX": 4,
         "prithivMLmods/Qwen3-VL-8B-Instruct-Unredacted-MAX": 8
     }
@@ -275,12 +280,15 @@ class TS_Qwen3_VL_V3:
         # 7. Generation
         output_text = ""
         try:
-            inputs = processor.apply_chat_template(
-                messages,
-                tokenize=True,
-                add_generation_prompt=True,
-                return_dict=True,
-                return_tensors="pt"
+            if (image is not None or video is not None) and not self._supports_multimodal_inputs(processor):
+                raise RuntimeError(
+                    "Loaded processor/tokenizer does not support image/video input. "
+                    "Select a vision-language model or disable image/video inputs."
+                )
+
+            inputs = self._apply_chat_template(
+                processor,
+                messages
             )
             
             # Ensure inputs are on the same device as the model
@@ -328,7 +336,8 @@ class TS_Qwen3_VL_V3:
             generated_trimmed = [
                 out_ids[len(in_ids):] for in_ids, out_ids in zip(inputs["input_ids"], generated_ids)
             ]
-            output_text = processor.batch_decode(
+            output_text = self._batch_decode(
+                processor,
                 generated_trimmed,
                 skip_special_tokens=True,
                 clean_up_tokenization_spaces=True
@@ -360,7 +369,7 @@ class TS_Qwen3_VL_V3:
         """
         Estimates VRAM usage in GB.
         """
-        size_b = self._MODEL_SIZES_B.get(model_id, 4)
+        size_b = self._model_size_b(model_id)
         
         # Base model weights
         if precision in ("fp32", "auto"): # 'auto' usually resolves to fp16/bf16 on GPU, but worst case
@@ -702,6 +711,21 @@ class TS_Qwen3_VL_V3:
             return custom
         return model_name
 
+    @classmethod
+    def _model_size_b(cls, model_id):
+        explicit = cls._MODEL_SIZES_B.get(model_id)
+        if explicit:
+            return float(explicit)
+
+        repo_name = (model_id or "").split("/")[-1]
+        match = re.search(r"([0-9]+(?:\.[0-9]+)?)\s*[bB](?![a-zA-Z])", repo_name)
+        if match:
+            try:
+                return float(match.group(1))
+            except Exception:
+                pass
+        return 4.0
+
     def _resolve_precision(self, precision, model_id):
         if precision != "auto":
             device = self._get_device()
@@ -718,7 +742,7 @@ class TS_Qwen3_VL_V3:
             return "fp32"
 
         vram_gb = self._get_vram_gb()
-        size_b = self._MODEL_SIZES_B.get(model_id, 4)
+        size_b = self._model_size_b(model_id)
         bnb_ok = self._is_bitsandbytes_available()
         bf16_ok = torch.cuda.is_bf16_supported()
 
@@ -788,14 +812,15 @@ class TS_Qwen3_VL_V3:
         return torch.float32
 
     def _get_pad_token_id(self, processor, model):
+        tokenizer = self._get_tokenizer_from_processor(processor)
         pad_id = None
         try:
-            pad_id = processor.tokenizer.pad_token_id
+            pad_id = tokenizer.pad_token_id
         except Exception:
             pad_id = None
         if pad_id is None:
             try:
-                pad_id = processor.tokenizer.eos_token_id
+                pad_id = tokenizer.eos_token_id
             except Exception:
                 pad_id = None
         if pad_id is None:
@@ -804,6 +829,51 @@ class TS_Qwen3_VL_V3:
             except Exception:
                 pad_id = None
         return pad_id
+
+    @staticmethod
+    def _get_tokenizer_from_processor(processor):
+        tokenizer = getattr(processor, "tokenizer", None)
+        if tokenizer is not None:
+            return tokenizer
+        return processor
+
+    @staticmethod
+    def _supports_multimodal_inputs(processor):
+        tokenizer = TS_Qwen3_VL_V3._get_tokenizer_from_processor(processor)
+        if hasattr(processor, "image_processor") or hasattr(processor, "video_processor"):
+            return True
+        if hasattr(tokenizer, "image_processor") or hasattr(tokenizer, "video_processor"):
+            return True
+        return False
+
+    def _apply_chat_template(self, processor, messages):
+        template_fn = getattr(processor, "apply_chat_template", None)
+        if template_fn is None:
+            tokenizer = self._get_tokenizer_from_processor(processor)
+            template_fn = getattr(tokenizer, "apply_chat_template", None)
+        if template_fn is None:
+            raise RuntimeError("Loaded processor/tokenizer does not provide apply_chat_template.")
+
+        return template_fn(
+            messages,
+            tokenize=True,
+            add_generation_prompt=True,
+            return_dict=True,
+            return_tensors="pt"
+        )
+
+    def _batch_decode(self, processor, token_ids, skip_special_tokens=True, clean_up_tokenization_spaces=True):
+        decode_fn = getattr(processor, "batch_decode", None)
+        if decode_fn is None:
+            tokenizer = self._get_tokenizer_from_processor(processor)
+            decode_fn = getattr(tokenizer, "batch_decode", None)
+        if decode_fn is None:
+            raise RuntimeError("Loaded processor/tokenizer does not provide batch_decode.")
+        return decode_fn(
+            token_ids,
+            skip_special_tokens=skip_special_tokens,
+            clean_up_tokenization_spaces=clean_up_tokenization_spaces
+        )
 
     # ------------------------
     # Model loading & caching
@@ -862,7 +932,7 @@ class TS_Qwen3_VL_V3:
 
         local_dir = self._ensure_model_available(model_id, offline_mode, hf_token, hf_endpoint)
 
-        model_class, processor_class, bnb_config_cls = self._resolve_transformers_classes()
+        transformers_module, bnb_config_cls = self._resolve_transformers_runtime()
         device = self._get_device()
 
         load_kwargs = {"trust_remote_code": True, "low_cpu_mem_usage": True}
@@ -876,6 +946,8 @@ class TS_Qwen3_VL_V3:
         if precision in ("int4", "int8"):
             if not self._is_bitsandbytes_available():
                 raise RuntimeError(f"{precision} requires bitsandbytes.")
+            if bnb_config_cls is None:
+                raise RuntimeError("BitsAndBytesConfig not found in transformers installation.")
             compute_dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
             if precision == "int4":
                 load_kwargs["quantization_config"] = bnb_config_cls(
@@ -892,30 +964,26 @@ class TS_Qwen3_VL_V3:
             pass 
 
         self._logger.info(f"[TS Qwen3 VL V3] Loading processor from {local_dir}")
-        processor = processor_class.from_pretrained(local_dir, trust_remote_code=True, local_files_only=offline_mode)
+        processor = self._load_processor_or_tokenizer(transformers_module, local_dir, offline_mode)
 
         self._logger.info(f"[TS Qwen3 VL V3] Loading model from {local_dir}")
-        
-        def _try_load():
+        model = None
+        model_load_errors = []
+        for loader_name, model_class in self._resolve_model_loader_candidates(transformers_module, local_dir):
             try:
-                return model_class.from_pretrained(local_dir, **load_kwargs)
-            except TypeError as e:
-                if "attn_implementation" in str(e) and "attn_implementation" in load_kwargs:
-                    self._logger.warning("[TS Qwen3 VL V3] attn_implementation unsupported, retrying without it.")
-                    load_kwargs.pop("attn_implementation", None)
-                    return model_class.from_pretrained(local_dir, **load_kwargs)
-                raise
+                self._logger.info(f"[TS Qwen3 VL V3] Trying loader: {loader_name}")
+                model = self._load_model_with_loader(model_class, local_dir, load_kwargs)
+                self._logger.info(f"[TS Qwen3 VL V3] Loaded with: {loader_name}")
+                break
+            except Exception as e:
+                msg = str(e)
+                model_load_errors.append(f"{loader_name}: {msg}")
+                self._logger.warning(f"[TS Qwen3 VL V3] Loader failed ({loader_name}): {msg}")
+                continue
 
-        try:
-            model = _try_load()
-        except RuntimeError as e:
-            if self._is_oom_error(e):
-                self._logger.warning("[TS Qwen3 VL V3] OOM during load, retrying after AGGRESSIVE cleanup.")
-                mm.unload_all_models()
-                self._prepare_memory(force=True)
-                model = _try_load()
-            else:
-                raise
+        if model is None:
+            tail = "; ".join(model_load_errors[-3:]) if model_load_errors else "no candidates"
+            raise RuntimeError(f"Unable to load model {model_id}. Last loader errors: {tail}")
 
         if precision not in ("int4", "int8") and device.type != "cuda":
              model.to(device)
@@ -924,6 +992,124 @@ class TS_Qwen3_VL_V3:
 
         self._set_cached(key, model, processor)
         return model, processor
+
+    def _resolve_transformers_runtime(self):
+        import transformers
+
+        bnb_config_cls = getattr(transformers, "BitsAndBytesConfig", None)
+        return transformers, bnb_config_cls
+
+    def _resolve_model_loader_candidates(self, transformers_module, local_dir):
+        candidates = []
+        seen = set()
+
+        def _add(class_name):
+            if not class_name or class_name in seen:
+                return
+            klass = getattr(transformers_module, class_name, None)
+            if klass is None or not hasattr(klass, "from_pretrained"):
+                return
+            seen.add(class_name)
+            candidates.append((class_name, klass))
+
+        for architecture_name in self._read_model_architectures(local_dir):
+            _add(architecture_name)
+
+        major = self._transformers_major_version(transformers_module)
+        if major >= 5:
+            ordered = [
+                "AutoModelForImageTextToText",
+                "AutoModelForCausalLM",
+                "AutoModel",
+                "Qwen3_5ForConditionalGeneration",
+                "Qwen3VLForConditionalGeneration",
+                "Qwen2VLForConditionalGeneration",
+                "AutoModelForVision2Seq"
+            ]
+        else:
+            ordered = [
+                "Qwen3_5ForConditionalGeneration",
+                "Qwen3VLForConditionalGeneration",
+                "Qwen2VLForConditionalGeneration",
+                "AutoModelForImageTextToText",
+                "AutoModelForVision2Seq",
+                "AutoModelForCausalLM",
+                "AutoModel"
+            ]
+        for class_name in ordered:
+            _add(class_name)
+
+        return candidates
+
+    def _load_model_with_loader(self, model_class, local_dir, load_kwargs):
+        kwargs_for_load = dict(load_kwargs)
+
+        def _run_load(kwargs):
+            try:
+                return model_class.from_pretrained(local_dir, **kwargs)
+            except TypeError as e:
+                if "attn_implementation" in str(e) and "attn_implementation" in kwargs:
+                    self._logger.warning("[TS Qwen3 VL V3] attn_implementation unsupported, retrying without it.")
+                    retry_kwargs = dict(kwargs)
+                    retry_kwargs.pop("attn_implementation", None)
+                    return model_class.from_pretrained(local_dir, **retry_kwargs)
+                raise
+
+        try:
+            return _run_load(kwargs_for_load)
+        except RuntimeError as e:
+            if not self._is_oom_error(e):
+                raise
+            self._logger.warning("[TS Qwen3 VL V3] OOM during load, retrying after AGGRESSIVE cleanup.")
+            mm.unload_all_models()
+            self._prepare_memory(force=True)
+            return _run_load(kwargs_for_load)
+
+    def _load_processor_or_tokenizer(self, transformers_module, local_dir, offline_mode):
+        common_kwargs = {"trust_remote_code": True}
+        if offline_mode:
+            common_kwargs["local_files_only"] = True
+
+        processor_cls = getattr(transformers_module, "AutoProcessor", None)
+        if processor_cls is not None:
+            try:
+                return processor_cls.from_pretrained(local_dir, **common_kwargs)
+            except Exception as e:
+                self._logger.warning(f"[TS Qwen3 VL V3] AutoProcessor load failed: {e}")
+
+        tokenizer_cls = getattr(transformers_module, "AutoTokenizer", None)
+        if tokenizer_cls is not None:
+            tokenizer = tokenizer_cls.from_pretrained(local_dir, **common_kwargs)
+            self._logger.warning("[TS Qwen3 VL V3] Falling back to AutoTokenizer (text-only features).")
+            return tokenizer
+
+        raise RuntimeError("Neither AutoProcessor nor AutoTokenizer is available in transformers.")
+
+    @staticmethod
+    def _read_model_architectures(local_dir):
+        config_path = os.path.join(local_dir, "config.json")
+        if not os.path.exists(config_path):
+            return []
+        try:
+            with open(config_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            architectures = data.get("architectures", [])
+            if isinstance(architectures, list):
+                return [a for a in architectures if isinstance(a, str) and a]
+        except Exception:
+            return []
+        return []
+
+    @staticmethod
+    def _transformers_major_version(transformers_module):
+        version = str(getattr(transformers_module, "__version__", "0"))
+        match = re.match(r"\s*(\d+)", version)
+        if not match:
+            return 0
+        try:
+            return int(match.group(1))
+        except Exception:
+            return 0
 
     def _prepare_memory(self, force=False):
         if not force:
@@ -940,18 +1126,6 @@ class TS_Qwen3_VL_V3:
     def _is_oom_error(exc):
         msg = str(exc).lower()
         return "out of memory" in msg or "cuda out of memory" in msg
-
-    def _resolve_transformers_classes(self):
-        try:
-            from transformers import AutoProcessor, BitsAndBytesConfig, Qwen3VLForConditionalGeneration
-            return Qwen3VLForConditionalGeneration, AutoProcessor, BitsAndBytesConfig
-        except Exception:
-            try:
-                from transformers import AutoProcessor, BitsAndBytesConfig, Qwen2VLForConditionalGeneration
-                return Qwen2VLForConditionalGeneration, AutoProcessor, BitsAndBytesConfig
-            except Exception:
-                from transformers import AutoProcessor, BitsAndBytesConfig, AutoModelForCausalLM
-                return AutoModelForCausalLM, AutoProcessor, BitsAndBytesConfig
 
     # ------------------------
     # Download & integrity
