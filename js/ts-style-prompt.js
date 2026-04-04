@@ -245,6 +245,15 @@ function setupStyleSelector(node) {
     };
     if (isV2) {
         widgetOptions.getMinHeight = () => MIN_WIDGET_HEIGHT;
+        widgetOptions.getMaxHeight = () => Math.max(MIN_WIDGET_HEIGHT, MAX_NODE_HEIGHT - WIDGET_CHROME_HEIGHT);
+        widgetOptions.getHeight = () => {
+            const targetHeight = getWidgetHeight(node);
+            return Math.max(MIN_WIDGET_HEIGHT, Math.min(targetHeight, MAX_NODE_HEIGHT - WIDGET_CHROME_HEIGHT));
+        };
+        widgetOptions.afterResize = () => {
+            sanitizeNodeSize(node);
+            scheduleLayout();
+        };
     }
 
     const domWidget = node.addDOMWidget(DOM_WIDGET_NAME, "div", container, widgetOptions);
@@ -264,28 +273,53 @@ function setupStyleSelector(node) {
     let layoutRaf = null;
     let resizeObserver = null;
 
+    const computeCardSize = (availableWidth) => {
+        const w = Math.max(0, availableWidth - GRID_GAP * 2);
+        return Math.max(24, Math.floor(w / 3));
+    };
+
     const syncLayout = () => {
         sanitizeNodeSize(node);
         const widgetHeight = getWidgetHeight(node);
 
-        if (domWidgetEl) {
-            domWidgetEl.style.height = `${widgetHeight}px`;
-            domWidgetEl.style.minHeight = `${widgetHeight}px`;
-            domWidgetEl.style.maxHeight = `${widgetHeight}px`;
+        if (isV2) {
+            // V2: don't force inline heights on domWidgetEl/container —
+            // Vue controls sizing via getHeight/getMinHeight/getMaxHeight.
+            // Read actual rendered size from the DOM for grid computation.
+            const containerRect = container.getBoundingClientRect();
+            const domWidgetRect = domWidgetEl?.getBoundingClientRect();
+            const actualHeight = containerRect.height > 10
+                ? containerRect.height
+                : (domWidgetRect?.height > 10 ? domWidgetRect.height : widgetHeight);
+
+            const searchHeight = search.getBoundingClientRect().height || 0;
+            const gridHeight = Math.max(0, actualHeight - searchHeight - 6);
+            grid.style.height = `${gridHeight}px`;
+            grid.style.minHeight = `${gridHeight}px`;
+
+            const gridWidth = grid.clientWidth || node.size?.[0] || DEFAULT_NODE_WIDTH;
+            const card = computeCardSize(gridWidth);
+            grid.style.setProperty("--ts-card-size", `${card}px`);
+        } else {
+            // Legacy: force all heights via inline styles (original behavior)
+            if (domWidgetEl) {
+                domWidgetEl.style.height = `${widgetHeight}px`;
+                domWidgetEl.style.minHeight = `${widgetHeight}px`;
+                domWidgetEl.style.maxHeight = `${widgetHeight}px`;
+            }
+            container.style.height = `${widgetHeight}px`;
+            container.style.minHeight = `${widgetHeight}px`;
+            container.style.maxHeight = `${widgetHeight}px`;
+
+            const searchHeight = search.getBoundingClientRect().height || 0;
+            const gridHeight = Math.max(0, widgetHeight - searchHeight - 6);
+            grid.style.height = `${gridHeight}px`;
+            grid.style.minHeight = `${gridHeight}px`;
+
+            const gridWidth = grid.clientWidth || node.size?.[0] || DEFAULT_NODE_WIDTH;
+            const card = computeCardSize(gridWidth);
+            grid.style.setProperty("--ts-card-size", `${card}px`);
         }
-        container.style.height = `${widgetHeight}px`;
-        container.style.minHeight = `${widgetHeight}px`;
-        container.style.maxHeight = `${widgetHeight}px`;
-
-        const searchHeight = search.getBoundingClientRect().height || 0;
-        const gridHeight = Math.max(0, widgetHeight - searchHeight - 6);
-        grid.style.height = `${gridHeight}px`;
-        grid.style.minHeight = `${gridHeight}px`;
-
-        const gridWidth = grid.clientWidth || node.size?.[0] || DEFAULT_NODE_WIDTH;
-        const available = Math.max(0, gridWidth - GRID_GAP * 2);
-        const card = Math.max(24, Math.floor(available / 3));
-        grid.style.setProperty("--ts-card-size", `${card}px`);
     };
 
     const scheduleLayout = () => {
