@@ -1,14 +1,20 @@
-﻿import { app } from "../../scripts/app.js";
+import { app } from "../../scripts/app.js";
 import { api } from "../../scripts/api.js";
 
 const EXTENSION_ID = "ts_suite.style_prompt_selector";
 const NODE_NAME = "TS_StylePromptSelector";
 const STYLE_INPUT = "style_id";
 const STYLE_CSS_ID = "ts-style-selector-styles";
+const DOM_WIDGET_NAME = "ts_style_selector";
 
-const NODE_WIDTH = 250;
-const NODE_HEIGHT = 300;
-const WIDGET_HEIGHT = 240;
+const DEFAULT_NODE_WIDTH = 250;
+const DEFAULT_NODE_HEIGHT = 300;
+const MIN_NODE_WIDTH = 240;
+const MIN_NODE_HEIGHT = 280;
+const MAX_NODE_WIDTH = 520;
+const MAX_NODE_HEIGHT = 900;
+const MIN_WIDGET_HEIGHT = 180;
+const WIDGET_CHROME_HEIGHT = 56;
 const GRID_GAP = 4;
 
 function ensureStyles() {
@@ -24,6 +30,7 @@ function ensureStyles() {
     gap: 6px;
     padding: 6px;
     box-sizing: border-box;
+    contain: layout paint;
     overflow: hidden;
     height: 100%;
     min-height: 0;
@@ -48,8 +55,8 @@ function ensureStyles() {
 }
 .ts-style-grid {
     display: grid;
-    grid-template-columns: repeat(3, var(--ts-card-size, 1fr));
-    grid-auto-rows: var(--ts-card-size, auto);
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-auto-rows: var(--ts-card-size, 64px);
     gap: 4px;
     flex: 1 1 auto;
     min-height: 0;
@@ -65,7 +72,7 @@ function ensureStyles() {
 .ts-style-card {
     position: relative;
     width: 100%;
-    aspect-ratio: 1 / 1;
+    height: var(--ts-card-size, 64px);
     border: 1px solid #2d343f;
     border-radius: 6px;
     background: #14171c;
@@ -94,6 +101,9 @@ function ensureStyles() {
     background: rgba(0, 0, 0, 0.55);
     color: #f0f0f0;
     box-sizing: border-box;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
     pointer-events: none;
 }
 .ts-style-grid.has-selection .ts-style-card::after {
@@ -138,6 +148,23 @@ function isNodesV2() {
     return Boolean(window.comfyAPI?.domWidget?.DOMWidgetImpl);
 }
 
+function clamp(value, min, max) {
+    return Math.max(min, Math.min(max, value));
+}
+
+function sanitizeNodeSize(node) {
+    const width = clamp(Number(node?.size?.[0]) || DEFAULT_NODE_WIDTH, MIN_NODE_WIDTH, MAX_NODE_WIDTH);
+    const height = clamp(Number(node?.size?.[1]) || DEFAULT_NODE_HEIGHT, MIN_NODE_HEIGHT, MAX_NODE_HEIGHT);
+    node.size = [width, height];
+    node.min_size = [MIN_NODE_WIDTH, MIN_NODE_HEIGHT];
+    node.max_size = [MAX_NODE_WIDTH, MAX_NODE_HEIGHT];
+}
+
+function getWidgetHeight(node) {
+    const safeHeight = clamp(Number(node?.size?.[1]) || DEFAULT_NODE_HEIGHT, MIN_NODE_HEIGHT, MAX_NODE_HEIGHT);
+    return Math.max(MIN_WIDGET_HEIGHT, safeHeight - WIDGET_CHROME_HEIGHT);
+}
+
 function hideStyleWidget(node) {
     const widget = node?.widgets?.find((item) => item.name === STYLE_INPUT);
     if (widget) {
@@ -145,7 +172,7 @@ function hideStyleWidget(node) {
         widget.type = "hidden";
         widget.serialize = true;
         widget.options = { ...(widget.options || {}), hidden: true, serialize: true };
-        widget.computeSize = () => [0, -4];
+        widget.computeSize = () => [0, 0];
     }
 
     const input = node?.inputs?.find((item) => item?.name === STYLE_INPUT);
@@ -154,28 +181,42 @@ function hideStyleWidget(node) {
     }
 }
 
-function setupStyleSelector(node) {
-    if (!node || node._tsStyleSelectorInitialized) {
+function removeDomWidgets(node) {
+    if (!Array.isArray(node?.widgets)) {
         return;
     }
-    node._tsStyleSelectorInitialized = true;
+    for (let index = node.widgets.length - 1; index >= 0; index -= 1) {
+        const widget = node.widgets[index];
+        if (widget?.name !== DOM_WIDGET_NAME) {
+            continue;
+        }
+        const element = widget.element || widget.el || widget.container;
+        element?.remove?.();
+        node.widgets.splice(index, 1);
+    }
+}
 
-    if (typeof node.addDOMWidget !== "function") {
+function setupStyleSelector(node) {
+    if (!node || typeof node.addDOMWidget !== "function") {
         return;
     }
+
+    if (typeof node._tsStyleSelectorCleanup === "function") {
+        node._tsStyleSelectorCleanup();
+    }
+    removeDomWidgets(node);
 
     ensureStyles();
     hideStyleWidget(node);
+    sanitizeNodeSize(node);
 
-    node.resizable = false;
-    node.size = [NODE_WIDTH, NODE_HEIGHT];
-    node.min_size = [NODE_WIDTH, NODE_HEIGHT];
-    node.max_size = [NODE_WIDTH, NODE_HEIGHT];
+    node.resizable = true;
+    node._tsStyleSelectorInitialized = true;
 
     const styleWidget = node.widgets?.find((widget) => widget.name === STYLE_INPUT);
     if (styleWidget) {
         styleWidget.hidden = true;
-        styleWidget.computeSize = () => [0, -4];
+        styleWidget.computeSize = () => [0, 0];
     }
 
     const container = document.createElement("div");
@@ -203,25 +244,15 @@ function setupStyleSelector(node) {
         hideOnZoom: true,
     };
     if (isV2) {
-        widgetOptions.getMinHeight = () => WIDGET_HEIGHT;
-        widgetOptions.getMaxHeight = () => WIDGET_HEIGHT;
+        widgetOptions.getMinHeight = () => MIN_WIDGET_HEIGHT;
     }
 
-    const domWidget = node.addDOMWidget("ts_style_selector", "div", container, widgetOptions);
+    const domWidget = node.addDOMWidget(DOM_WIDGET_NAME, "div", container, widgetOptions);
     const domWidgetEl = domWidget?.element || domWidget?.el || domWidget?.container;
     if (domWidgetEl) {
         domWidgetEl.style.overflow = "hidden";
-        domWidgetEl.style.height = `${WIDGET_HEIGHT}px`;
-        domWidgetEl.style.minHeight = `${WIDGET_HEIGHT}px`;
-        domWidgetEl.style.maxHeight = `${WIDGET_HEIGHT}px`;
+        domWidgetEl.style.width = "100%";
     }
-    container.style.height = `${WIDGET_HEIGHT}px`;
-    container.style.minHeight = `${WIDGET_HEIGHT}px`;
-    container.style.maxHeight = `${WIDGET_HEIGHT}px`;
-
-    domWidget.computeSize = function () {
-        return [NODE_WIDTH, WIDGET_HEIGHT];
-    };
 
     const state = {
         styles: [],
@@ -229,15 +260,29 @@ function setupStyleSelector(node) {
         selectedValue: "",
         loading: true,
     };
-    let layoutRaf = null;
 
-    const updateLayout = () => {
-        const containerHeight = container.clientHeight || WIDGET_HEIGHT;
+    let layoutRaf = null;
+    let resizeObserver = null;
+
+    const syncLayout = () => {
+        sanitizeNodeSize(node);
+        const widgetHeight = getWidgetHeight(node);
+
+        if (domWidgetEl) {
+            domWidgetEl.style.height = `${widgetHeight}px`;
+            domWidgetEl.style.minHeight = `${widgetHeight}px`;
+            domWidgetEl.style.maxHeight = `${widgetHeight}px`;
+        }
+        container.style.height = `${widgetHeight}px`;
+        container.style.minHeight = `${widgetHeight}px`;
+        container.style.maxHeight = `${widgetHeight}px`;
+
         const searchHeight = search.getBoundingClientRect().height || 0;
-        const gridHeight = Math.max(0, containerHeight - searchHeight - 6);
+        const gridHeight = Math.max(0, widgetHeight - searchHeight - 6);
         grid.style.height = `${gridHeight}px`;
         grid.style.minHeight = `${gridHeight}px`;
-        const gridWidth = grid.clientWidth || NODE_WIDTH;
+
+        const gridWidth = grid.clientWidth || node.size?.[0] || DEFAULT_NODE_WIDTH;
         const available = Math.max(0, gridWidth - GRID_GAP * 2);
         const card = Math.max(24, Math.floor(available / 3));
         grid.style.setProperty("--ts-card-size", `${card}px`);
@@ -249,8 +294,13 @@ function setupStyleSelector(node) {
         }
         layoutRaf = requestAnimationFrame(() => {
             layoutRaf = null;
-            updateLayout();
+            syncLayout();
         });
+    };
+
+    domWidget.computeSize = function (width) {
+        const safeWidth = clamp(Number(width) || node.size?.[0] || DEFAULT_NODE_WIDTH, MIN_NODE_WIDTH, MAX_NODE_WIDTH);
+        return [safeWidth, getWidgetHeight(node)];
     };
 
     const styleValue = (style) => (style.name || style.id || "").trim();
@@ -263,23 +313,29 @@ function setupStyleSelector(node) {
     };
 
     const setSelection = (value, trigger = true) => {
-        state.selectedValue = value || "";
+        const nextValue = value || "";
+        const changed = nextValue !== state.selectedValue;
+        state.selectedValue = nextValue;
         grid.classList.toggle("has-selection", Boolean(state.selectedValue));
         grid.querySelectorAll(".ts-style-card").forEach((card) => {
             const isSelected = card.dataset.value === state.selectedValue;
             card.classList.toggle("is-selected", isSelected);
         });
-        if (styleWidget && trigger) {
+
+        if (styleWidget && trigger && changed) {
             styleWidget.value = state.selectedValue;
             styleWidget.callback?.(state.selectedValue);
         }
-        if (node.setProperty) {
-            node.setProperty(STYLE_INPUT, state.selectedValue);
-        } else {
-            node.properties ||= {};
-            node.properties[STYLE_INPUT] = state.selectedValue;
+
+        if (changed) {
+            if (node.setProperty) {
+                node.setProperty(STYLE_INPUT, state.selectedValue);
+            } else {
+                node.properties ||= {};
+                node.properties[STYLE_INPUT] = state.selectedValue;
+            }
+            node.setDirtyCanvas(true, true);
         }
-        node.setDirtyCanvas(true, true);
     };
 
     const renderGrid = () => {
@@ -305,6 +361,7 @@ function setupStyleSelector(node) {
             if (!value) {
                 return;
             }
+
             const card = document.createElement("button");
             card.type = "button";
             card.className = "ts-style-card";
@@ -338,6 +395,7 @@ function setupStyleSelector(node) {
 
             grid.appendChild(card);
         });
+
         scheduleLayout();
     };
 
@@ -404,14 +462,60 @@ function setupStyleSelector(node) {
         scheduleLayout();
     };
 
+    const previousOnResize = node.onResize;
+    const onResizeWrapped = function () {
+        const result = previousOnResize?.apply(this, arguments);
+        sanitizeNodeSize(this);
+        scheduleLayout();
+        return result;
+    };
+    node.onResize = onResizeWrapped;
+
     const prevOnRemoved = node.onRemoved;
-    node.onRemoved = function () {
+    const onRemovedWrapped = function () {
         if (layoutRaf) {
             cancelAnimationFrame(layoutRaf);
             layoutRaf = null;
         }
+        resizeObserver?.disconnect();
+        resizeObserver = null;
+        node._tsStyleSelectorCleanup = null;
+        node._tsStyleSelectorSync = null;
+        node._tsStyleSelectorInitialized = false;
+        if (node.onResize === onResizeWrapped) {
+            node.onResize = previousOnResize;
+        }
         return prevOnRemoved?.apply(this, arguments);
     };
+    node.onRemoved = onRemovedWrapped;
+
+    node._tsStyleSelectorCleanup = () => {
+        if (layoutRaf) {
+            cancelAnimationFrame(layoutRaf);
+            layoutRaf = null;
+        }
+        resizeObserver?.disconnect();
+        resizeObserver = null;
+        if (node.onResize === onResizeWrapped) {
+            node.onResize = previousOnResize;
+        }
+        if (node.onRemoved === onRemovedWrapped) {
+            node.onRemoved = prevOnRemoved;
+        }
+        removeDomWidgets(node);
+        node._tsStyleSelectorSync = null;
+        node._tsStyleSelectorInitialized = false;
+    };
+
+    if (typeof ResizeObserver !== "undefined") {
+        resizeObserver = new ResizeObserver(() => {
+            scheduleLayout();
+        });
+        resizeObserver.observe(container);
+        if (domWidgetEl && domWidgetEl !== container) {
+            resizeObserver.observe(domWidgetEl);
+        }
+    }
 
     renderGrid();
     loadStyles();
@@ -430,14 +534,13 @@ app.registerExtension({
         if (!isTargetNode(node)) {
             return;
         }
-        if (!node._tsStyleSelectorInitialized) {
+        hideStyleWidget(node);
+        sanitizeNodeSize(node);
+        const hasWidget = node.widgets?.some((widget) => widget?.name === DOM_WIDGET_NAME);
+        if (!hasWidget || !node._tsStyleSelectorSync) {
             setupStyleSelector(node);
         }
-        node.resizable = false;
-        node.size = [NODE_WIDTH, NODE_HEIGHT];
-        node.min_size = [NODE_WIDTH, NODE_HEIGHT];
-        node.max_size = [NODE_WIDTH, NODE_HEIGHT];
-        hideStyleWidget(node);
+        node.resizable = true;
         node._tsStyleSelectorSync?.();
     },
 });
