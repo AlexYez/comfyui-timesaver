@@ -1,0 +1,88 @@
+{
+  "blocks": [
+    {
+      "file": "styles.txt",
+      "enabled": false
+    },
+    {
+      "file": "film.txt",
+      "enabled": false
+    },
+    {
+      "file": "camera.txt",
+      "enabled": true
+    },
+    {
+      "file": "face.txt",
+      "enabled": true
+    },
+    {
+      "file": "gaze.txt",
+      "enabled": false
+    },
+    {
+      "file": "emotion.txt",
+      "enabled": false
+    },
+    {
+      "file": "makeup.txt",
+      "enabled": true
+    },
+    {
+      "file": "hair.txt",
+      "enabled": true
+    },
+    {
+      "file": "hair-color.txt",
+      "enabled": true
+    },
+    {
+      "file": "piercing.txt",
+      "enabled": true
+    },
+    {
+      "file": "jewelry.txt",
+      "enabled": true
+    },
+    {
+      "file": "accessories.txt",
+      "enabled": true
+    },
+    {
+      "file": "breast.txt",
+      "enabled": true
+    },
+    {
+      "file": "skin.txt",
+      "enabled": false
+    },
+    {
+      "file": "tattoo.txt",
+      "enabled": false
+    },
+    {
+      "file": "body.txt",
+      "enabled": false
+    },
+    {
+      "file": "lingerie.txt",
+      "enabled": true
+    },
+    {
+      "file": "pose.txt",
+      "enabled": false
+    },
+    {
+      "file": "daytime.txt",
+      "enabled": false
+    },
+    {
+      "file": "light.txt",
+      "enabled": false
+    },
+    {
+      "file": "interior.txt",
+      "enabled": false
+    }
+  ]
+}
