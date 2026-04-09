@@ -1,7 +1,7 @@
 [project]
 name = "comfyui-timesaver"
 description = "ComfyUI nodes from [Timesaver](https://github.com/AlexYez/comfyui-timesaver)."
-version = "8.1"
+version = "8.2"
 license = { file = "LICENSE.txt" }
 dependencies = [
     "accelerate>=0.21.0",
@@ -29,5 +29,5 @@ Repository = "https://github.com/AlexYez/comfyui-timesaver"
 [tool.comfy]
 PublisherId = "timesaver"
 DisplayName = "ComfyUI Timesaver Nodes"
-Icon = "icon.png"
+Icon = "https://raw.githubusercontent.com/AlexYez/comfyui-timesaver/refs/heads/master/icon.png"
 
