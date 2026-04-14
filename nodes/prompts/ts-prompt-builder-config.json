@@ -1,15 +1,27 @@
 {
   "blocks": [
     {
+      "file": "light.txt",
+      "enabled": true
+    },
+    {
+      "file": "camera-angle.txt",
+      "enabled": true
+    },
+    {
+      "file": "ass-showing.txt",
+      "enabled": false
+    },
+    {
       "file": "styles.txt",
       "enabled": false
     },
     {
-      "file": "film.txt",
-      "enabled": false
+      "file": "lense.txt",
+      "enabled": true
     },
     {
-      "file": "camera.txt",
+      "file": "film.txt",
       "enabled": true
     },
     {
@@ -17,15 +29,19 @@
       "enabled": true
     },
     {
-      "file": "gaze.txt",
-      "enabled": false
+      "file": "skin.txt",
+      "enabled": true
     },
     {
       "file": "emotion.txt",
-      "enabled": false
+      "enabled": true
     },
     {
       "file": "makeup.txt",
+      "enabled": true
+    },
+    {
+      "file": "color.txt",
       "enabled": true
     },
     {
@@ -33,43 +49,39 @@
       "enabled": true
     },
     {
-      "file": "hair-color.txt",
-      "enabled": true
-    },
-    {
-      "file": "piercing.txt",
-      "enabled": true
-    },
-    {
-      "file": "jewelry.txt",
-      "enabled": true
-    },
-    {
-      "file": "accessories.txt",
-      "enabled": true
-    },
-    {
       "file": "breast.txt",
       "enabled": true
     },
     {
-      "file": "skin.txt",
-      "enabled": false
-    },
-    {
-      "file": "tattoo.txt",
+      "file": "piercing.txt",
       "enabled": false
     },
     {
       "file": "body.txt",
-      "enabled": false
+      "enabled": true
     },
     {
       "file": "lingerie.txt",
       "enabled": true
     },
     {
-      "file": "pose.txt",
+      "file": "tattoo-eros.txt",
+      "enabled": false
+    },
+    {
+      "file": "tattoo.txt",
+      "enabled": true
+    },
+    {
+      "file": "pose-eros.txt",
+      "enabled": false
+    },
+    {
+      "file": "jewelry.txt",
+      "enabled": false
+    },
+    {
+      "file": "accessories.txt",
       "enabled": false
     },
     {
@@ -77,12 +89,28 @@
       "enabled": false
     },
     {
-      "file": "light.txt",
+      "file": "bdsm.txt",
+      "enabled": false
+    },
+    {
+      "file": "pose-fasion.txt",
+      "enabled": true
+    },
+    {
+      "file": "action-eros.txt",
+      "enabled": false
+    },
+    {
+      "file": "dress-eros.txt",
+      "enabled": false
+    },
+    {
+      "file": "emotion-eros.txt",
       "enabled": false
     },
     {
       "file": "interior.txt",
-      "enabled": false
+      "enabled": true
     }
   ]
 }

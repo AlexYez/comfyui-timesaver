@@ -1,0 +1,165 @@
+black
+jet black
+soft black
+blue black
+natural black
+off black
+charcoal
+graphite
+dark brown
+medium brown
+light brown
+chestnut
+mahogany
+chocolate brown
+coffee brown
+walnut brown
+cinnamon brown
+mocha
+espresso
+hazelnut
+bronze brown
+ash brown
+cool brown
+warm brown
+auburn
+deep auburn
+light auburn
+red
+true red
+deep red
+ruby red
+burgundy
+wine red
+cherry red
+cranberry
+ginger
+strawberry
+strawberry blonde
+copper
+deep copper
+light copper
+burnt orange
+orange
+tangerine
+apricot
+caramel
+dark caramel
+light caramel
+toffee
+honey
+honey blonde
+dark honey
+platinum
+platinum blonde
+icy blonde
+ice platinum
+pale blonde
+dirty blonde
+golden blonde
+warm blonde
+cool blonde
+ash blonde
+beige blonde
+sandy blonde
+sun-kissed blonde
+butter blonde
+vanilla blonde
+champagne blonde
+cream blonde
+pearl blonde
+silver
+metallic silver
+steel gray
+gray
+dark gray
+light gray
+smoky gray
+white
+pure white
+ivory
+off white
+pearl white
+salt and pepper
+pastel pink
+cotton candy pink
+bubblegum pink
+baby pink
+dusty pink
+rose pink
+rose gold
+peach
+coral
+salmon
+lavender
+lilac
+pastel purple
+violet
+dark purple
+deep violet
+plum
+eggplant
+magenta
+fuchsia
+neon pink
+hot pink
+pastel blue
+sky blue
+ice blue
+baby blue
+powder blue
+steel blue
+navy blue
+midnight blue
+royal blue
+electric blue
+denim blue
+cobalt blue
+teal
+turquoise
+aqua
+cyan
+mint green
+sage green
+olive green
+lime green
+neon green
+emerald green
+forest green
+jade green
+pastel green
+seafoam green
+pastel yellow
+pale yellow
+butter yellow
+golden yellow
+mustard yellow
+bright yellow
+lemon yellow
+multicolor
+rainbow
+pastel rainbow
+neon rainbow
+unicorn
+oil slick
+holographic
+ombre
+reverse ombre
+sombre
+balayage
+highlighted
+lowlights
+babylights
+teasylights
+money piece
+face framing
+two-tone
+split dye
+dip-dye
+peekaboo color
+underlayer color
+color melt
+shadow root
+rooted color
+gradient
+color block
