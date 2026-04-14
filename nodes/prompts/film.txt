@@ -1,91 +1,77 @@
-Kodak Portra soft pastel film effect Kodak
-Kodak Gold warm nostalgic glow film effect
-Kodak Ektar vivid saturation film effect
-Kodak Ultramax natural skin tone film effect
-Kodak Tri-X cinematic grain film effect
-Kodak Vision3 cinematic film look
-Kodak Portra 400 dreamy skin tone film effect
-Kodak Portra 800 low light soft grain film effect
-Kodak ColorPlus vintage warmth film effect
-Kodak Pro Image soft contrast film effect
-Fuji Pro 400H airy pastel film effect Fujifilm
-Fuji Superia vibrant color film effect
-Fuji Velvia high saturation film effect
-Fuji Astia soft portrait film effect
-Fuji Provia neutral cinematic film effect
-Fuji Natura soft indoor film effect
-Fuji Classic Chrome muted tones film effect
-Fuji Nostalgic Negative warm retro film effect
-Fuji Velvia sunset rich tones film effect
-Fuji Pro 160NS delicate portrait film effect
-Polaroid instant vintage fade film effect Polaroid
-Polaroid soft pastel instant film effect
-Polaroid faded retro tones film effect
-Polaroid creamy highlight bloom film effect
-Polaroid warm skin glow film effect
-Polaroid subtle vignette instant effect
-Polaroid matte soft contrast film effect
-Polaroid dreamy highlight wash film effect
-Polaroid pastel tint vintage effect
-Polaroid soft shadow fade effect
-Lomography color shift film effect Lomography
-Lomo purple tone cross process effect
-Lomo high contrast experimental film effect
-Lomo soft blur vintage effect
-Lomo color splash film effect
-Lomo dreamy vignette effect
-Lomo pastel faded film effect
-Lomo saturation boost effect
-Lomo grainy nostalgic effect
-Lomo analog toy camera effect
-Cinestill cinematic tungsten film effect Cinestill
-Cinestill 800T neon glow film effect
-Cinestill halation highlight bloom effect
-Cinestill night cinematic color effect
-Cinestill red halation glow effect
-Cinestill soft cinematic grain effect
-Cinestill moody urban film effect
-Cinestill cinematic low light effect
-Cinestill atmospheric night tone effect
-Cinestill streetlight glow effect
-Panavision anamorphic cinematic film look Panavision
-Panavision lens flare bloom effect
-Panavision wide cinematic softness effect
-Panavision shallow depth cinematic effect
-Panavision skin tone film look
-Panavision golden highlight rolloff
-ARRI Alexa cinematic film simulation ARRI
-ARRI LogC filmic color grading look
-ARRI cinematic dynamic range effect
-ARRI soft highlight transition look
-ARRI neutral film tone simulation
-Technicolor three strip vintage effect Technicolor
-Technicolor rich color separation effect
-Technicolor classic Hollywood tone
-Technicolor saturated retro effect
-Technicolor warm cinematic palette
-Cross process color shift film effect
-Cross process green-magenta tint
-Cross process contrast boost effect
-Cross process experimental tone shift
-Expired film washed out effect
-Expired film color fade effect
-Expired film grain texture
-Light leak analog film effect
-Film burn transition effect
-Film dust and scratches effect
-Film grain overlay effect
-Vintage analog fade effect
-Soft halation bloom effect
-Gate weave analog effect
-Chromatic aberration film effect
-Color fringing film effect
-Bleach bypass cinematic effect
-Push processed film look
-Pull processed film softness
-Split tone analog effect
-Duotone film simulation
-Monochrome matte film look
-Sepia vintage film effect
-Infrared film simulation
-Day for night cinematic effect
+1. shot on Kodak Portra 400
+2. shot on Kodak Portra 800
+3. shot on Kodak Gold 200
+4. shot on Kodak Ektar 100
+5. shot on Kodak Ultramax 400
+6. shot on Kodak ColorPlus 200
+7. shot on Kodak Tri-X 400
+8. shot on Kodak T-Max 400
+9. shot on Kodak Vision3 500T
+10. shot on Kodak Vision3 250D
+11. shot on Kodak Vision3 50D
+12. shot on Kodachrome 64
+13. shot on Kodak Ektachrome E100
+14. shot on Fuji Pro 400H
+15. shot on Fuji Superia 400
+16. shot on Fuji C200
+17. shot on Fuji Pro 160NS
+18. shot on Fuji Natura 1600
+19. shot on Fuji Velvia 50
+20. shot on Fuji Provia 100F
+21. shot on Fuji Astia 100F
+22. Fujifilm Classic Chrome
+23. Fujifilm Classic Negative
+24. Fujifilm Eterna
+25. shot on Fuji Eterna 500T
+26. shot on CineStill 800T
+27. shot on CineStill 50D
+28. shot on Ilford HP5 Plus 400
+29. shot on Ilford Delta 3200
+30. shot on Ilford FP4 Plus 125
+31. shot on Ilford Pan F Plus 50
+32. shot on Agfa Vista 200
+33. shot on Lomography Color 400
+34. shot on Fomapan 400
+35. Polaroid instant film photo
+36. Polaroid SX-70 photo
+37. Instax Mini photo
+38. Lomography film effect
+39. toy camera photo, Holga
+40. Diana camera photo
+41. ARRI Alexa film look
+42. ARRI Alexa 35 LogC4
+43. Panavision anamorphic lens
+44. Cooke S4 lens look
+45. shot on RED Komodo
+46. Technicolor three-strip film
+47. Technicolor two-strip film
+48. Autochrome photo
+49. film grain overlay
+50. halation glow effect
+51. light leak film effect
+52. lens flare, anamorphic
+53. film dust and scratches
+54. gate weave film effect
+55. chromatic aberration
+56. vignette, analog film
+57. bleach bypass film look
+58. cross-processed film
+59. push processed film, +2 stops
+60. pull processed film
+61. expired film effect
+62. color reversal film
+63. split toning, warm highlights cool shadows
+64. teal and orange color grade
+65. sepia tone photograph
+66. duotone film effect
+67. desaturated matte film look
+68. day for night film effect
+69. 35mm film photo
+70. medium format film, Hasselblad
+71. large format 4x5 photograph
+72. Super 8mm film footage
+73. 16mm film footage
+74. 2000s digicam aesthetic
+75. 80s vintage photograph
+76. 90s disposable camera photo
+77. infrared film photo

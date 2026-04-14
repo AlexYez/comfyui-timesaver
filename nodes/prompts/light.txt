@@ -1,81 +1,90 @@
-key light lighting, primary strong illumination, highlights subject contours, cinematic soft shadows
-fill light lighting, soft secondary illumination, reduces harsh shadows, balances scene
-back light lighting, rim illumination from behind, accentuates silhouette, soft glow
-rim light lighting, edge highlighting, separates subject from background, subtle erotic effect
-top light lighting, overhead illumination, defines features, soft shadow play
-side light lighting, lateral illumination, dramatic depth, highlights curves
-under lighting lighting, illumination from below, seductive and eerie accent
-practical lighting lighting, visible light sources in scene, realistic erotic ambiance
-ambient light lighting, general soft illumination, intimate subtle mood
-motivated lighting lighting, natural source inspired, realistic soft highlights
-cinematic lighting lighting, film-style controlled illumination, dramatic and erotic focus
-dramatic lighting lighting, high contrast, deep shadows, sensual visual tension
-moody lighting lighting, low contrast, soft shadowed atmosphere, intimate erotic vibe
-low key lighting lighting, predominantly dark, selective highlights, sensual focus
-high key lighting lighting, bright even illumination, soft romantic mood
-film noir lighting lighting, stark shadows, high contrast, erotic mystery
-Rembrandt lighting lighting, triangle shadow under eye, classic cinematic allure
-split lighting lighting, half face illuminated, seductive erotic drama
-butterfly lighting lighting, soft top-down shadow under nose, glamorous erotic framing
-loop lighting lighting, subtle shadow by nose, soft classic allure
-chiaroscuro lighting lighting, extreme light-dark contrast, erotic visual tension
-front lighting lighting, frontal illumination, soft flattering erotic effect
-side lighting lighting, lateral illumination, highlights curves and textures
-backlighting lighting, illumination from behind, creates silhouette and glow
-edge lighting lighting, light on subject edges, soft contouring and erotic accent
-cross lighting lighting, two-directional illumination, complex erotic mood
-up lighting lighting, light from below, soft dramatic shadowing
-down lighting lighting, overhead subtle glow, sensual accent
-soft lighting lighting, diffuse gentle light, smooth skin and textures
-hard lighting lighting, sharp shadows, strong dramatic erotic emphasis
-diffused lighting lighting, softened illumination, tender erotic mood
-specular lighting lighting, reflective highlights, accentuating curves and textures
-bounce lighting lighting, reflected soft light, gentle skin highlights, erotic subtlety
-reflected light lighting, indirect illuminated surfaces, soft intimate ambiance
-indirect lighting lighting, light from hidden sources, soft teasing effect
-global illumination lighting, realistic light interaction, soft erotic balance
-volumetric lighting lighting, light beams in air, ethereal erotic atmosphere
-god rays lighting, sunlight shafts through scene, divine erotic glow
-light shafts lighting, streaks of light through elements, soft teasing effect
-fog lighting lighting, illuminated mist, soft mysterious erotic mood
-haze lighting lighting, subtle diffused particles, intimate scene depth
-mist lighting lighting, soft moisture-laden light, erotic softness
-dust-lit atmosphere lighting, airborne particles highlighted, sensual subtle ambiance
-candlelight lighting, warm flickering illumination, romantic intimate eroticism
-firelight lighting, dancing warm glow, soft shadows, cozy erotic vibe
-tungsten lighting lighting, warm artificial light, soft romantic allure
-golden hour light lighting, warm natural sunlight, sensual soft shadows
-sunset lighting lighting, deep warm tones, erotic soft ambiance
-warm glow lighting, general warm illumination, intimate teasing effect
-moonlight lighting, cool soft light, nocturnal erotic mood
-blue hour lighting, twilight soft cool illumination, subtle erotic vibe
-cool lighting lighting, soft blue tones, sleek erotic aesthetic
-neon lighting lighting, vivid colored glow, playful erotic cyberpunk mood
-fluorescent lighting lighting, bright artificial tone, clean erotic ambiance
-silhouette lighting lighting, strong backlight, soft shadow erotic outline
-halo lighting lighting, glowing rim around subject, angelic erotic effect
-glow lighting lighting, soft luminous aura, subtle teasing eroticism
-bloom lighting lighting, light bleed effect, ethereal erotic softness
-subsurface light effect lighting, light through translucent skin or material, soft sensual glow
-translucent lighting lighting, soft illumination through semi-transparent objects, intimate erotic mood
-window light lighting, natural light from window, soft skin highlights, tender erotic vibe
-lamp light lighting, focused warm glow, cozy intimate scene
-studio lighting lighting, professional softboxes and key lights, controlled erotic framing
-practical lamp lighting lighting, visible lamp providing soft glow, intimate cozy erotic scene
-soft box lighting lighting, diffused studio light, smooth skin textures, soft erotic focus
-neon glow lighting, colored neon illumination, playful erotic cyberpunk aesthetic
-laser lighting lighting, sharp colored beams, dynamic erotic highlight
-bioluminescent lighting lighting, glowing natural elements, surreal erotic ambiance
-cyberpunk lighting lighting, vivid neon and contrast, futuristic erotic vibe
-holographic light lighting, reflective multi-colored projection, playful erotic glow
-daylight lighting, natural sun illumination, realistic soft erotic atmosphere
-sunlight lighting, direct warm sunlight, highlighting curves and skin textures
-skylight lighting, soft overhead natural illumination, ethereal erotic mood
-overcast light lighting, diffuse daylight through clouds, soft teasing shadows
-dappled light lighting, light filtered through leaves, playful erotic highlights
-vintage lighting lighting, warm filmic glow, retro erotic mood
-noir lighting lighting, high contrast dramatic shadows, seductive mystery
-dreamy lighting lighting, soft ethereal diffusion, tender erotic ambiance
-ethereal lighting lighting, otherworldly glow, mystical sensual effect
-surreal lighting lighting, exaggerated colored and directional illumination, playful erotic fantasy
-fantasy glow lighting, magical soft luminance, intimate erotic dreamlike effect
+Rembrandt lighting, triangle shadow on cheek
+butterfly lighting, shadow under nose
+loop lighting, soft diagonal nose shadow
+split lighting, half face in shadow
+clamshell lighting, soft wraparound glow
+broad lighting, lit side toward camera
+short lighting, shadow side toward camera
+paramount lighting, glamour Hollywood style
+key light from 45 degrees
+fill light, soft shadow reduction
+backlight, glowing hair edges
+rim light, thin bright outline on subject
+edge light, sharp contour separation
+top light, deep eye socket shadows
+under lighting, dramatic upward shadows
+side lighting, half shadow half glow
+cross lighting, two opposing sources
+front flat lighting, even no shadow
+soft diffused light, gentle gradients
+hard direct light, crisp sharp shadows
+specular light, mirror-like bright reflections
+bounce light, warm reflected off wall
+dappled light, scattered through leaves
+golden hour, warm amber low sun
+sunset light, deep orange and pink sky
+sunrise light, soft peach horizon glow
+candlelight, flickering warm orange intimate
+firelight, dancing red-orange warm shadows
+tungsten bulb, deep warm yellow-orange cast
+oil lamp light, amber glow soft flicker
+match flame light, tiny warm point source
+blue hour, deep cobalt twilight sky
+moonlight, pale silver-blue cold glow
+overcast daylight, flat cool soft gray
+north window light, cool even diffusion
+shade light, open cool blue ambient
+snowbound light, bright cold blue-white reflection
+fog light, scattered cool gray luminance
+bright midday sunlight, hard overhead
+cloudy bright, soft white no shadow
+window light, single source soft falloff
+skylight, open shade blue fill
+forest light, green-filtered canopy glow
+volumetric light, visible beams through air
+god rays, shafts of light through clouds
+dust-lit atmosphere, particles catching light
+fog with backlight, glowing haze
+mist diffusion, softened silhouettes
+haze light, low contrast warm scatter
+smoke-filled room, diffused streaks of light
+rain-filtered light, wet reflections everywhere
+steam backlight, translucent vapor glow
+neon pink light, hot magenta cast
+neon blue light, electric cyan glow
+neon green light, toxic emerald cast
+red neon sign glow, warm crimson ambient
+mixed neon, pink and blue split tone
+fluorescent tube, cold green-white flicker
+LED strip light, purple ambient wash
+laser light, sharp colored beams
+UV blacklight, glowing violet ultraviolet
+RGB gaming light, multicolor face wash
+disco ball light, scattered moving spots
+film noir lighting, high contrast venetian blind shadows
+low key lighting, mostly shadow minimal fill
+high key lighting, bright even minimal shadow
+chiaroscuro, extreme dark-light contrast
+silhouette, full backlight subject dark
+cinematic motivated lighting, source visible in frame
+Blade Runner lighting, neon rain wet reflections
+Kubrick symmetrical practical lighting
+Wong Kar-wai saturated color gel lighting
+Vermeer window light, single soft side source
+Caravaggio dramatic spotlight, black background
+warm-cool split, orange key blue fill
+complementary color gel, teal and amber
+monochromatic red light, deep crimson mood
+single color wash, deep blue melancholy
+golden warm backlight with cool blue fill
+green-magenta split lighting, surreal contrast
+sodium vapor, sickly amber-yellow street light
+mercury vapor, pale green-blue industrial
+halation bloom, soft glow around highlights
+lens flare, bright streak across frame
+bokeh light, soft colored circles background
+subsurface scattering, light through skin or petals
+translucent backlight, glowing through fabric or hair
+bioluminescent glow, organic blue-green light
+holographic light, rainbow prismatic reflections
+light painting, long exposure colored trails
