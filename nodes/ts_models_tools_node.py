@@ -816,4 +816,3 @@ class TS_CPULoraMergerNode:
 
 NODE_CLASS_MAPPINGS["TS_CPULoraMerger"] = TS_CPULoraMergerNode
 NODE_DISPLAY_NAME_MAPPINGS["TS_CPULoraMerger"] = "TS CPU LoRA Merger"
-
