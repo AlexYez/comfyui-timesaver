@@ -145,12 +145,13 @@ function setupAudioLoader(node) {
     const state = {
         mode: String(getWidgetValue(node, INPUT_MODE, "load") || "load"),
         sourcePath: String(getWidgetValue(node, INPUT_SOURCE_PATH, "") || ""),
+        recordedPath: "",
         cropStart: Number(getWidgetValue(node, INPUT_CROP_START, 0) || 0),
         cropEnd: Number(getWidgetValue(node, INPUT_CROP_END, -1) || -1),
         isLooping: Boolean(node.properties?.ts_audio_loader_loop ?? false),
         duration: 0, sampleRate: 0, channels: 0, mediaType: "audio", peaks: [], filename: "",
         status: isPreviewNode ? "Connect audio and queue once to preview." : "Choose file to upload or record from microphone.",
-        isLoading: false, isRecording: false,
+        isLoading: false, isRecording: false, recordingObjectUrl: null,
         dragMode: null, dragAnchorSeconds: 0, dragStartLeft: 0, dragStartRight: 0, rafId: 0, mediaReady: false,
     };
 
@@ -332,8 +333,14 @@ function setupAudioLoader(node) {
         if (!isPreviewNode) return;
         setWidgetValue(node, INPUT_PREVIEW_STATE, JSON.stringify(payload));
     }
+    function clearRecordingObjectUrl() {
+        if (!state.recordingObjectUrl) return;
+        URL.revokeObjectURL(state.recordingObjectUrl);
+        state.recordingObjectUrl = null;
+    }
     function applyMediaPayload(payload, options = {}) {
         const mediaPath = String(payload?.preview_path || payload?.filepath || "");
+        clearRecordingObjectUrl();
         state.duration = Number(payload?.duration_seconds || 0);
         state.sampleRate = Number(payload?.sample_rate || 0);
         state.channels = Number(payload?.channels || 0);
@@ -526,6 +533,7 @@ function setupAudioLoader(node) {
             if (!uploadedPath) throw new Error("Upload failed.");
             state.mode = "load";
             state.sourcePath = uploadedPath;
+            state.recordedPath = "";
             state.cropStart = 0;
             state.cropEnd = -1;
             syncWidgets();
@@ -542,6 +550,112 @@ function setupAudioLoader(node) {
     let mediaStream = null;
     let mediaRecorder = null;
     let recordChunks = [];
+    async function decodeAudioBlob(blob) {
+        const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContextCtor) throw new Error("AudioContext unavailable.");
+        const audioContext = new AudioContextCtor();
+        try {
+            const arrayBuffer = await blob.arrayBuffer();
+            return await audioContext.decodeAudioData(arrayBuffer.slice(0));
+        } finally {
+            await audioContext.close().catch(() => {});
+        }
+    }
+    function audioBufferToWavBlob(audioBuffer) {
+        const channelCount = Math.max(1, audioBuffer.numberOfChannels || 1);
+        const sampleRate = Math.max(1, audioBuffer.sampleRate || 44100);
+        const frameCount = Math.max(0, audioBuffer.length || 0);
+        const bytesPerSample = 2;
+        const blockAlign = channelCount * bytesPerSample;
+        const dataSize = frameCount * blockAlign;
+        const buffer = new ArrayBuffer(44 + dataSize);
+        const view = new DataView(buffer);
+        let offset = 0;
+        const writeString = (value) => {
+            for (let index = 0; index < value.length; index += 1) {
+                view.setUint8(offset, value.charCodeAt(index));
+                offset += 1;
+            }
+        };
+        writeString("RIFF");
+        view.setUint32(offset, 36 + dataSize, true); offset += 4;
+        writeString("WAVE");
+        writeString("fmt ");
+        view.setUint32(offset, 16, true); offset += 4;
+        view.setUint16(offset, 1, true); offset += 2;
+        view.setUint16(offset, channelCount, true); offset += 2;
+        view.setUint32(offset, sampleRate, true); offset += 4;
+        view.setUint32(offset, sampleRate * blockAlign, true); offset += 4;
+        view.setUint16(offset, blockAlign, true); offset += 2;
+        view.setUint16(offset, bytesPerSample * 8, true); offset += 2;
+        writeString("data");
+        view.setUint32(offset, dataSize, true); offset += 4;
+        const channels = [];
+        for (let channelIndex = 0; channelIndex < channelCount; channelIndex += 1) {
+            channels.push(audioBuffer.getChannelData(channelIndex));
+        }
+        for (let frameIndex = 0; frameIndex < frameCount; frameIndex += 1) {
+            for (let channelIndex = 0; channelIndex < channelCount; channelIndex += 1) {
+                const sample = clamp(channels[channelIndex][frameIndex] || 0, -1, 1);
+                const pcm = sample < 0 ? sample * 0x8000 : sample * 0x7fff;
+                view.setInt16(offset, Math.round(pcm), true);
+                offset += 2;
+            }
+        }
+        return new Blob([buffer], { type: "audio/wav" });
+    }
+    function buildPeaksFromAudioBuffer(audioBuffer, targetBins = 2048) {
+        const channelCount = Math.max(1, audioBuffer.numberOfChannels || 1);
+        const sampleCount = audioBuffer.length || 0;
+        if (!sampleCount) return [0];
+        const mono = new Float32Array(sampleCount);
+        for (let channelIndex = 0; channelIndex < channelCount; channelIndex += 1) {
+            const channelData = audioBuffer.getChannelData(channelIndex);
+            for (let index = 0; index < sampleCount; index += 1) {
+                mono[index] += Math.abs(channelData[index]) / channelCount;
+            }
+        }
+        if (mono.length <= targetBins) return Array.from(mono, (value) => clamp(value, 0, 1));
+        const peaks = [];
+        const samplesPerBin = Math.max(1, Math.ceil(mono.length / targetBins));
+        for (let offset = 0; offset < mono.length; offset += samplesPerBin) {
+            let peak = 0;
+            const end = Math.min(mono.length, offset + samplesPerBin);
+            for (let index = offset; index < end; index += 1) {
+                if (mono[index] > peak) peak = mono[index];
+            }
+            peaks.push(clamp(peak, 0, 1));
+        }
+        return peaks;
+    }
+    async function previewRecording(blob, filename, decoded = null) {
+        clearRecordingObjectUrl();
+        const objectUrl = URL.createObjectURL(blob);
+        state.recordingObjectUrl = objectUrl;
+        state.mediaType = "audio";
+        state.filename = filename;
+        state.status = "Processing recording...";
+        state.mediaReady = true;
+        audioEl.src = objectUrl;
+        audioEl.load();
+        videoEl.removeAttribute("src");
+        videoEl.load();
+        try {
+            const decodedBuffer = decoded || await decodeAudioBlob(blob);
+            state.duration = Number(decodedBuffer.duration || 0);
+            state.sampleRate = Number(decodedBuffer.sampleRate || 0);
+            state.channels = Number(decodedBuffer.numberOfChannels || 0);
+            state.peaks = buildPeaksFromAudioBuffer(decodedBuffer);
+            state.status = "Drag on waveform to crop. Double-click resets full range.";
+            state.cropStart = 0;
+            state.cropEnd = -1;
+            updateText();
+            drawWaveform();
+        } catch {
+            state.status = "Recording saved. Loading waveform...";
+            updateText();
+        }
+    }
     async function stopRecording() {
         if (!mediaRecorder) return;
         const recorder = mediaRecorder;
@@ -559,13 +673,6 @@ function setupAudioLoader(node) {
         if (!response.ok) throw new Error(payload?.error || "Failed to upload recording.");
         return payload?.path || "";
     }
-    function mimeToFilename(mimeType) {
-        const mime = String(mimeType || "").toLowerCase();
-        if (mime.includes("ogg")) return "recording.ogg";
-        if (mime.includes("mp4")) return "recording.m4a";
-        if (mime.includes("wav")) return "recording.wav";
-        return "recording.webm";
-    }
     async function toggleRecording() {
         if (isPreviewNode) return;
         if (state.isRecording) { await stopRecording(); return; }
@@ -573,14 +680,23 @@ function setupAudioLoader(node) {
             mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
             recordChunks = [];
             mediaRecorder = new MediaRecorder(mediaStream);
+            const recordingMimeType = mediaRecorder.mimeType || "audio/webm";
             mediaRecorder.addEventListener("dataavailable", (event) => { if (event.data?.size) recordChunks.push(event.data); });
             mediaRecorder.addEventListener("stop", async () => {
                 try {
-                    const blob = new Blob(recordChunks, { type: mediaRecorder?.mimeType || "audio/webm" });
-                    const savedPath = await uploadRecording(blob, mimeToFilename(mediaRecorder?.mimeType));
+                    const blob = new Blob(recordChunks, { type: recordingMimeType });
+                    let uploadBlob = blob;
+                    let decodedBuffer = null;
+                    try {
+                        decodedBuffer = await decodeAudioBlob(blob);
+                        uploadBlob = audioBufferToWavBlob(decodedBuffer);
+                    } catch {}
+                    await previewRecording(uploadBlob, "Microphone Recording.wav", decodedBuffer);
+                    const savedPath = await uploadRecording(uploadBlob, "recording.wav");
                     if (savedPath) {
                         state.mode = "record";
                         state.sourcePath = savedPath;
+                        state.recordedPath = savedPath;
                         state.cropStart = 0;
                         state.cropEnd = -1;
                         syncWidgets();
@@ -749,8 +865,10 @@ function setupAudioLoader(node) {
     const sourceWidgetPoll = !isPreviewNode ? window.setInterval(() => {
         const nextSourcePath = String(getWidgetValue(node, INPUT_SOURCE_PATH, "") || "");
         if (nextSourcePath === state.sourcePath) return;
+        if (!nextSourcePath && state.mode === "record" && state.recordedPath) return;
         state.sourcePath = nextSourcePath;
         state.mode = "load";
+        state.recordedPath = "";
         state.cropStart = 0;
         state.cropEnd = -1;
         syncWidgets();
@@ -760,6 +878,7 @@ function setupAudioLoader(node) {
         resizeObserver.disconnect();
         if (sourceWidgetPoll) window.clearInterval(sourceWidgetPoll);
         if (state.rafId) { cancelAnimationFrame(state.rafId); state.rafId = 0; }
+        clearRecordingObjectUrl();
         [audioEl, videoEl].forEach((media) => { media.pause(); media.removeAttribute("src"); media.load(); });
         if (mediaRecorder && state.isRecording) { try { mediaRecorder.stop(); } catch {} }
         if (mediaStream) { mediaStream.getTracks().forEach((track) => track.stop()); mediaStream = null; }
