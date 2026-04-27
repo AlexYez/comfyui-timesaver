@@ -32,7 +32,7 @@ comfyui-timesaver/
 
 ## Highlights
 
-- Total documented nodes: **52**
+- Total documented nodes: **53**
 - Collapsible cards for every node
 - Screenshot placeholders for each node
 - Beginner-friendly wording + technical references
@@ -43,6 +43,7 @@ comfyui-timesaver/
 | --- | --- | --- | --- |
 | `TS_Qwen3_VL_V3` | Main multimodal Qwen node (text + image/video) with presets, precision, and offline controls. | `TS/LLM` | `STRING, IMAGE` |
 | `TSWhisper` | Whisper transcription/translation node with SRT + plain text output. | `TS/Audio` | `STRING, STRING, STRING` |
+| `TS_VoiceRecognition` | Browser microphone recorder that inserts Whisper-recognized speech into a text field. | `TS/audio` | `STRING` |
 | `TS_SileroTTS` | Russian TTS node based on Silero with chunking and AUDIO output. | `TS/audio` | `AUDIO` |
 | `TS_MusicStems` | Splits music into stems (vocals, bass, drums, others, instrumental). | `TS/Audio` | `AUDIO, AUDIO, AUDIO, AUDIO, AUDIO` |
 | `TS_PromptBuilder` | Builds structured prompts from JSON config + seed for reproducible prompt variations. | `TS/Prompt` | `STRING` |
@@ -159,6 +160,38 @@ Whisper transcription/translation node with SRT + plain text output.
 - Category: `TS/Audio`
 - Function: `generate_srt_and_text`
 - Dependency note: Uses `transformers` and `torchaudio`.
+
+</details>
+
+<details>
+<summary><strong>TS_VoiceRecognition</strong> - Browser microphone recorder that inserts Whisper-recognized speech into a text field.</summary>
+
+![Screenshot placeholder for TS_VoiceRecognition](docs/img/placeholders/ts-voice-recognition.png)
+
+> Screenshot placeholder: replace this with your own screenshot.
+
+**What this node does**
+Records speech from the browser microphone, sends it to the local ComfyUI backend, recognizes it with openai-whisper, and inserts the text at the cursor position.
+
+**Quick usage**
+1. Add the node from `TS/audio`.
+2. Install the updated dependencies, then restart ComfyUI.
+3. Click the node button to download the configured Whisper model, then record and stop.
+
+**Main controls**
+- Required: `text`, `translate_to_english`
+- Optional: *(none)*
+
+**Outputs**
+- `STRING`
+
+**Technical info**
+- Internal id: `TS_VoiceRecognition`
+- Class: `TS_VoiceRecognition`
+- File: `nodes/ts_voice_recognition_node.py`
+- Category: `TS/audio`
+- Function: `execute`
+- Dependency note: Uses `openai-whisper`, `torch`, `numpy`, and ffmpeg/imageio-ffmpeg.
 
 </details>
 
