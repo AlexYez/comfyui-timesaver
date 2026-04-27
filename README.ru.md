@@ -33,7 +33,7 @@ comfyui-timesaver/
 
 ## Что есть в этом README
 
-- Задокументировано нод: **52**
+- Задокументировано нод: **53**
 - Для каждой ноды есть раскрывающаяся карточка `<details>`
 - Для каждой ноды добавлен плейсхолдер скриншота
 - Описание написано простым языком, без перегруза терминами
@@ -44,6 +44,7 @@ comfyui-timesaver/
 | --- | --- | --- | --- |
 | `TS_Qwen3_VL_V3` | Основная мультимодальная нода Qwen (текст + изображение/видео) с пресетами, управлением precision и offline-режимом. | `TS/LLM` | `STRING` |
 | `TSWhisper` | Нода Whisper для транскрибации и перевода аудио с выводом SRT и обычного текста. | `TS/Audio` | `STRING` |
+| `TS_VoiceRecognition` | Browser microphone recorder that inserts Whisper-recognized speech into a text field. | `TS/audio` | `STRING` |
 | `TS_SileroTTS` | Русская TTS-нода на базе Silero с чанкингом и выходом AUDIO. | `TS/audio` | `AUDIO` |
 | `TS_MusicStems` | Разделяет музыку на стемы (vocals, bass, drums, others, instrumental). | `TS/Audio` | `AUDIO` |
 | `TS_PromptBuilder` | Собирает структурированные промпты из JSON-конфига и seed для воспроизводимых вариаций. | `TS/Prompt` | `STRING` |
@@ -160,6 +161,38 @@ comfyui-timesaver/
 - Category: `TS/Audio`
 - Function: `generate_srt_and_text`
 - Примечание по зависимостям: Использует `transformers` and `torchaudio`.
+
+</details>
+
+<details>
+<summary><strong>TS_VoiceRecognition</strong> - Browser microphone recorder that inserts Whisper-recognized speech into a text field.</summary>
+
+![Плейсхолдер скриншота для TS_VoiceRecognition](docs/img/placeholders/ts-voice-recognition.png)
+
+> Плейсхолдер: замените этот блок вашим скриншотом ноды.
+
+**Что делает эта нода**
+Browser microphone recorder that inserts Whisper-recognized speech into a text field.
+
+**Быстрый старт**
+1. Добавьте ноду в граф и подключите обязательные входы.
+2. Сначала оставьте дефолты и меняйте параметры постепенно.
+3. Подключите выход к следующей ноде и сравните результат.
+
+**Основные параметры**
+- Обязательные: `text`, `translate_to_english`
+- Опциональные: *(none)*
+
+**Выходы**
+- `STRING`
+
+**Техническая информация**
+- Internal id: `TS_VoiceRecognition`
+- Class: `TS_VoiceRecognition`
+- File: `nodes/ts_voice_recognition_node.py`
+- Category: `TS/audio`
+- Function: `execute`
+- Примечание по зависимостям: Использует `openai-whisper`, `torch`, `numpy`, and ffmpeg/imageio-ffmpeg.
 
 </details>
 
