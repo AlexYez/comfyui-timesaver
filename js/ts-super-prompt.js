@@ -8,14 +8,17 @@ const AI_ROUTE_BASE = "/ts_super_prompt";
 const VOICE_EVENT_PREFIX = "ts_voice_recognition";
 const AI_EVENT_PREFIX = "ts_super_prompt";
 const TEXT_WIDGET = "text";
+const HIGH_QUALITY_WIDGET = "high_quality";
 const SYSTEM_PRESET_WIDGET = "system_preset";
 const WIDGET_TOOLTIPS = {
     [TEXT_WIDGET]: "Поле промпта: сюда попадает распознанная речь, а кнопка Ai prompt заменяет текст улучшенным промптом.",
+    [HIGH_QUALITY_WIDGET]: "Включите, чтобы распознавать речь моделью Whisper turbo (large-v3 turbo). Выключено: используется быстрая base.",
     [SYSTEM_PRESET_WIDGET]: "Выберите системный пресет из qwen_3_vl_presets.json для улучшения промпта.",
 };
 const VOICE_BUTTON_TOOLTIP = "Запускает запись с микрофона. Во время записи нажмите еще раз, чтобы остановить и распознать аудио.";
 const AI_BUTTON_TOOLTIP = "Улучшает текст через Qwen/Qwen3.5-2B: при необходимости переводит на английский и делает качественный промпт для генерации.";
 const DEFAULT_MODEL = "base";
+const HIGH_QUALITY_MODEL = "turbo";
 const LEGACY_DOM_WIDGET_NAME = "ts_super_prompt_progress";
 const CURSOR_PATCH_FLAG = "__tsSuperPromptCursorPatch";
 const PROGRESS_CLEAR_DELAY_MS = 900;
@@ -28,6 +31,14 @@ function getWidget(node, name) {
 function getWidgetValue(node, name, fallback = null) {
     const widget = getWidget(node, name);
     return widget?.value ?? fallback;
+}
+
+function toBoolean(value) {
+    if (typeof value === "boolean") return value;
+    if (typeof value === "string") {
+        return ["1", "true", "yes", "on"].includes(value.trim().toLowerCase());
+    }
+    return Boolean(value);
 }
 
 function setDirty(node) {
@@ -61,7 +72,7 @@ function removeControlWidgets(node) {
 
 function removeStaleConfigWidgets(node) {
     if (!Array.isArray(node?.widgets)) return;
-    const allowed = new Set([TEXT_WIDGET, SYSTEM_PRESET_WIDGET]);
+    const allowed = new Set([TEXT_WIDGET, HIGH_QUALITY_WIDGET, SYSTEM_PRESET_WIDGET]);
     for (let index = node.widgets.length - 1; index >= 0; index -= 1) {
         const widget = node.widgets[index];
         if (!widget?.name || allowed.has(widget.name) || widget.__tsSuperPromptButton) continue;
@@ -210,6 +221,21 @@ function setupSuperPrompt(node) {
     };
     progressWidget = createProgressWidget(node);
 
+    const isHighQualityEnabled = () => toBoolean(getWidgetValue(node, HIGH_QUALITY_WIDGET, false));
+
+    const getActiveVoiceModel = () => {
+        return isHighQualityEnabled() ? HIGH_QUALITY_MODEL : DEFAULT_MODEL;
+    };
+
+    const syncActiveVoiceModel = () => {
+        const modelName = getActiveVoiceModel();
+        if (state.activeModelName !== modelName) {
+            state.activeModelName = modelName;
+            state.modelReady = false;
+        }
+        return modelName;
+    };
+
     const setVoiceLabel = (label) => {
         if (!voiceButton) return;
         voiceButton.name = label;
@@ -238,6 +264,7 @@ function setupSuperPrompt(node) {
     };
 
     const refreshVoiceButton = () => {
+        syncActiveVoiceModel();
         if (state.isRecording) {
             setVoiceLabel("Stop Recording");
             return;
@@ -433,10 +460,13 @@ function setupSuperPrompt(node) {
     };
 
     const refreshStatus = async () => {
+        const modelName = syncActiveVoiceModel();
+        const params = new URLSearchParams({
+            model: modelName,
+            high_quality: isHighQualityEnabled() ? "true" : "false",
+        });
         try {
-            const data = await fetchJson(`${VOICE_ROUTE_BASE}/status`);
-            const names = Object.keys(data || {});
-            state.activeModelName = names[0] || DEFAULT_MODEL;
+            const data = await fetchJson(`${VOICE_ROUTE_BASE}/status?${params.toString()}`);
             const info = data[state.activeModelName] || {};
             state.modelReady = Boolean(info.downloaded);
             state.missingDependencies = Array.isArray(info.missing_dependencies) ? info.missing_dependencies : [];
@@ -453,6 +483,7 @@ function setupSuperPrompt(node) {
     };
 
     const downloadVoiceModel = async (force = false) => {
+        syncActiveVoiceModel();
         if (state.missingDependencies.length > 0) {
             progressWidget?.set({
                 text: `Missing ${state.missingDependencies[0]}`,
@@ -469,7 +500,11 @@ function setupSuperPrompt(node) {
             const data = await fetchJson(`${VOICE_ROUTE_BASE}/preload`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ model: state.activeModelName, force }),
+                body: JSON.stringify({
+                    model: state.activeModelName,
+                    high_quality: isHighQualityEnabled(),
+                    force,
+                }),
             });
             if (!data.ok) throw new Error(data.error || "preload failed");
             state.modelReady = true;
@@ -485,7 +520,10 @@ function setupSuperPrompt(node) {
     };
 
     const sendAudioToServer = async (blob) => {
+        syncActiveVoiceModel();
         const form = new FormData();
+        form.append("model", state.activeModelName);
+        form.append("high_quality", isHighQualityEnabled() ? "true" : "false");
         form.append("audio", blob, "recording.webm");
 
         try {
@@ -591,6 +629,7 @@ function setupSuperPrompt(node) {
 
     const handleVoiceClick = (event) => {
         if (state.isVoiceBusy || state.isAiBusy) return;
+        syncActiveVoiceModel();
         if (state.isRecording) {
             stopRecording();
             return;
@@ -644,6 +683,21 @@ function setupSuperPrompt(node) {
             operation_id: state.activeAiOperationId,
         };
     };
+
+    const highQualityWidget = getWidget(node, HIGH_QUALITY_WIDGET);
+    if (highQualityWidget && !highQualityWidget.__tsSuperPromptPatched) {
+        highQualityWidget.label = "Hight Quality";
+        const originalCallback = highQualityWidget.callback;
+        highQualityWidget.callback = function highQualityCallback(value) {
+            const result = originalCallback?.apply(this, arguments);
+            if (!disposed && !state.isRecording && !state.isVoiceBusy) {
+                syncActiveVoiceModel();
+                refreshStatus();
+            }
+            return result;
+        };
+        highQualityWidget.__tsSuperPromptPatched = true;
+    }
 
     const enhancePrompt = async () => {
         if (state.isVoiceBusy || state.isAiBusy || state.isRecording) return;
