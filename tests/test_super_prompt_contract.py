@@ -123,6 +123,14 @@ def test_super_prompt_schema_contract(monkeypatch):
     assert schema.outputs[0].display_name == "text"
 
 
+def test_super_prompt_default_model_has_stock_qwen_option(monkeypatch):
+    module = _load_module(monkeypatch)
+
+    assert module.DEFAULT_MODEL_ID == "huihui-ai/Huihui-Qwen3.5-2B-abliterated"
+    assert module.SUPER_PROMPT_MODEL_QWEN_2B == "Qwen/Qwen3.5-2B"
+    assert module.SUPER_PROMPT_MODEL_QWEN_2B in module.SUPER_PROMPT_MODEL_OPTIONS
+
+
 def test_super_prompt_strips_thinking_output(monkeypatch):
     module = _load_module(monkeypatch)
 
