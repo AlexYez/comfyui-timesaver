@@ -1,13 +1,14 @@
 [project]
 name = "comfyui-timesaver"
 description = "ComfyUI nodes from [Timesaver](https://github.com/AlexYez/comfyui-timesaver)."
-version = "8.5"
+version = "8.6"
 license = { file = "LICENSE.txt" }
 dependencies = [
     "accelerate>=0.21.0",
     "bitsandbytes>=0.40.0",
     "easydict>=1.10.0",
     "huggingface_hub>=0.20.0",
+    "transformers>=4.57.0",
     "imageio>=2.20.0",
     "imageio-ffmpeg>=0.4.0",
     "matplotlib>=3.4.0",
