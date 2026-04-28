@@ -183,6 +183,24 @@ def test_download_done_keeps_ui_busy_until_memory_load(monkeypatch):
     assert events == [("status", {"model": "base", "text": "Voice model file ready", "percent": 100.0})]
 
 
+def test_memory_load_status_is_short_for_button_label(monkeypatch):
+    module = _load_module(monkeypatch)
+    events = []
+
+    monkeypatch.setattr(module, "ensure_model", lambda name: module.WHISPER_DIR / f"{name}.pt")
+    monkeypatch.setattr(module, "_send_voice_event", lambda event, payload: events.append((event, payload)))
+    module._VOICE_MODEL_CACHE.clear()
+
+    fake_torch = types.SimpleNamespace()
+    fake_whisper = types.SimpleNamespace(load_model=lambda *args, **kwargs: object())
+    monkeypatch.setattr(module, "_load_whisper_runtime", lambda: (fake_torch, fake_whisper))
+
+    module.load_model("turbo", "cpu", progress_start=42.0, progress_end=64.0)
+
+    assert ("status", {"model": "turbo", "text": "Loading model...", "percent": 42.0}) in events
+    assert not any("turbo into" in str(payload.get("text", "")) for _, payload in events)
+
+
 def test_transcription_cleanup_removes_duplicate_prepositions(monkeypatch):
     module = _load_module(monkeypatch)
 
