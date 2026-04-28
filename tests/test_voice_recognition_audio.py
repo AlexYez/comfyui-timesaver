@@ -116,6 +116,17 @@ def test_audio_preprocess_trims_and_normalizes_speech(monkeypatch):
     assert result.peak_after > result.peak_before
 
 
+def test_audio_preprocess_fades_trimmed_edges(monkeypatch):
+    module = _load_module(monkeypatch)
+
+    audio = np.ones(module.AUDIO_SAMPLE_RATE, dtype=np.float32) * 0.02
+    result = module._preprocess_audio(audio)
+
+    assert result.speech_detected is True
+    assert abs(float(result.audio[0])) < 1e-6
+    assert abs(float(result.audio[-1])) < 1e-6
+
+
 def test_audio_preprocess_rejects_silence(monkeypatch):
     module = _load_module(monkeypatch)
 
@@ -159,6 +170,15 @@ def test_turbo_uses_actual_whisper_download_filename(monkeypatch):
 
     assert module._model_file_path("base").name == "base.pt"
     assert module._model_file_path("turbo").name == "large-v3-turbo.pt"
+
+
+def test_transcription_cleanup_removes_duplicate_prepositions(monkeypatch):
+    module = _load_module(monkeypatch)
+
+    assert module._clean_transcription_text("кот с с камерой и в в кадре") == "кот с камерой и в кадре"
+    assert module._clean_transcription_text("with with cinematic light, from from above") == (
+        "with cinematic light, from above"
+    )
 
 
 def test_voice_recognition_backend_registers_only_super_prompt_node(monkeypatch):
