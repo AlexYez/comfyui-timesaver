@@ -597,7 +597,7 @@ def load_model(name: str, device: str = "auto", progress_start: float = 82.0, pr
 
     ensure_model(name)
     _voice_log_info(f"Loading Whisper model '{name}' on {target_device} ({'fp16' if use_fp16 else 'fp32'})")
-    _send_voice_status(name, f"Loading {name} into memory on {target_device}", progress_start)
+    _send_voice_status(name, "Loading model...", progress_start)
 
     try:
         model = whisper.load_model(
@@ -614,7 +614,7 @@ def load_model(name: str, device: str = "auto", progress_start: float = 82.0, pr
         target_device = "cpu"
         use_fp16 = False
         cache_key = (name, target_device, use_fp16)
-        _send_voice_status(name, f"Loading {name} into memory on CPU", min(progress_end, progress_start + 4.0))
+        _send_voice_status(name, "Loading model...", min(progress_end, progress_start + 4.0))
         model = whisper.load_model(
             name,
             device=target_device,
