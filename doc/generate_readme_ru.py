@@ -86,7 +86,6 @@ def parse_cards(readme_text: str) -> list[NodeCard]:
 RU_DESCRIPTION_BY_NODE_ID: dict[str, str] = {
     "TS_Qwen3_VL_V3": "Основная мультимодальная нода Qwen (текст + изображение/видео) с пресетами, управлением precision и offline-режимом.",
     "TSWhisper": "Нода Whisper для транскрибации и перевода аудио с выводом SRT и обычного текста.",
-    "TS_VoiceRecognition": "Browser microphone recorder that inserts Whisper-recognized speech into a text field.",
     "TS_SileroTTS": "Русская TTS-нода на базе Silero с чанкингом и выходом AUDIO.",
     "TS_MusicStems": "Разделяет музыку на стемы (vocals, bass, drums, others, instrumental).",
     "TS_PromptBuilder": "Собирает структурированные промпты из JSON-конфига и seed для воспроизводимых вариаций.",

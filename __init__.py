@@ -5,7 +5,12 @@ import re
 import sys
 from pathlib import Path
 
-from .ts_dependency_manager import TSDependencyManager
+_STANDALONE_IMPORT = __package__ in {None, ""}
+
+if _STANDALONE_IMPORT:
+    from ts_dependency_manager import TSDependencyManager
+else:
+    from .ts_dependency_manager import TSDependencyManager
 
 logger = logging.getLogger("TimesaverVFX_Pack")
 
@@ -356,10 +361,11 @@ def _collect_critical_missing_roots() -> set[str]:
     return roots
 
 
-for _entry in _MODULE_ENTRIES:
-    _load_module(_entry["module_import"], _entry["module_label"])
+if not _STANDALONE_IMPORT:
+    for _entry in _MODULE_ENTRIES:
+        _load_module(_entry["module_import"], _entry["module_label"])
 
-_IMPORT_AUDIT_RESULTS = _scan_external_imports()
-_print_startup_report()
+    _IMPORT_AUDIT_RESULTS = _scan_external_imports()
+    _print_startup_report()
 
 __all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS"]

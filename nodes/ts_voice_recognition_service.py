@@ -7,12 +7,12 @@ import subprocess
 import threading
 import time
 import uuid
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import folder_paths
 from aiohttp import web
-from comfy_api.latest import IO
 
 try:
     import server
@@ -20,16 +20,52 @@ except Exception:
     server = None
 
 
-LOGGER = logging.getLogger("comfyui_timesaver.ts_voice_recognition")
-LOG_PREFIX = "[TS Voice Recognition]"
+LOGGER = logging.getLogger("comfyui_timesaver.ts_voice_recognition_service")
+LOG_PREFIX = "[TS Voice Recognition Service]"
 
+# User-configurable recognition settings. Keep the ComfyUI widget surface compact;
+# tune recognition behavior here instead of adding workflow-breaking controls.
 ACTIVE_MODEL = "base"
 DEVICE = "auto"
 GPU_PRECISION = "fp16"
 SOURCE_LANGUAGE = "ru"
-INITIAL_PROMPT = ""
+TRANSLATE_TO_ENGLISH = False
 BEAM_SIZE = 5
 TEMPERATURE = 0.0
+
+# Whisper context prompt for prompt-dictation. Keep it concise: Whisper uses it as
+# vocabulary/style context, not as an instruction-following system prompt.
+INITIAL_PROMPT_ENABLED = True
+INITIAL_PROMPT = """
+Это диктовка промпта для генерации изображений, видео или музыки в ComfyUI.
+Сохраняй смешанный русский и английский текст, не переводя названия стилей и технические термины.
+Частые слова и фразы: prompt, negative prompt, cinematic, photorealistic, ultra detailed,
+high detail, sharp focus, soft focus, depth of field, bokeh, volumetric lighting,
+rim light, backlight, golden hour, moody lighting, color grading, composition,
+close-up, medium shot, wide shot, establishing shot, macro shot, low angle,
+high angle, top view, eye level, portrait, landscape, 35mm, 50mm, 85mm,
+wide angle lens, telephoto lens, anamorphic lens, fisheye, dolly zoom,
+pan, tilt, tracking shot, handheld camera, slow motion, time lapse,
+Unreal Engine, Octane render, Redshift, Blender, 3D render, anime style,
+watercolor, oil painting, concept art, storyboard, music prompt, ambient,
+synthwave, orchestral, cinematic trailer, vocals, drums, bass, guitar, piano.
+""".strip()
+INITIAL_PROMPT_EXTRA = ""
+
+# Audio preparation. These steps run before Whisper to reduce silence/noise work
+# and keep the model focused on speech rather than microphone artifacts.
+AUDIO_SAMPLE_RATE = 16000
+AUDIO_TRIM_ENABLED = True
+AUDIO_NORMALIZE_ENABLED = True
+AUDIO_VAD_ENABLED = True
+AUDIO_VAD_FRAME_MS = 30
+AUDIO_VAD_HOP_MS = 10
+AUDIO_VAD_RMS_THRESHOLD = 0.003
+AUDIO_VAD_ADAPTIVE_MULTIPLIER = 2.2
+AUDIO_VAD_MIN_SPEECH_SEC = 0.18
+AUDIO_VAD_PADDING_SEC = 0.20
+AUDIO_NORMALIZE_TARGET_PEAK = 0.92
+AUDIO_NORMALIZE_MAX_GAIN_DB = 12.0
 
 ALL_MODELS = (
     "tiny",
@@ -69,6 +105,11 @@ ROUTE_BASE = "/ts_voice_recognition"
 WHISPER_DIR = Path(getattr(folder_paths, "models_dir", Path.cwd() / "models")) / "whisper"
 _DOWNLOAD_LOCK = threading.Lock()
 _MODEL_CACHE: dict[tuple[str, str, bool], Any] = {}
+
+
+# ---------------------------------------------------------------------------
+# ComfyUI server helpers
+# ---------------------------------------------------------------------------
 
 
 def _log_info(message: str) -> None:
@@ -152,7 +193,7 @@ def _load_whisper_runtime():
     missing = _missing_runtime_packages()
     if missing:
         raise RuntimeError(
-            "Missing dependencies for TS Voice Recognition: "
+            "Missing dependencies for TS Voice Recognition Service: "
             f"{', '.join(missing)}. Install requirements.txt and restart ComfyUI."
         )
 
@@ -161,11 +202,19 @@ def _load_whisper_runtime():
         import whisper
     except ImportError as exc:
         raise RuntimeError(
-            "TS Voice Recognition requires openai-whisper and torch. "
+            "TS Voice Recognition Service requires openai-whisper and torch. "
             "Install requirements.txt and restart ComfyUI."
         ) from exc
 
     return torch, whisper
+
+
+def _configured_initial_prompt() -> str | None:
+    if not INITIAL_PROMPT_ENABLED:
+        return None
+    parts = [str(INITIAL_PROMPT or "").strip(), str(INITIAL_PROMPT_EXTRA or "").strip()]
+    prompt = "\n".join(part for part in parts if part)
+    return prompt or None
 
 
 def _get_ffmpeg_executable() -> str:
@@ -177,7 +226,27 @@ def _get_ffmpeg_executable() -> str:
         return "ffmpeg"
 
 
+@dataclass(frozen=True)
+class AudioPreprocessResult:
+    """Prepared audio plus diagnostics returned to the browser for debugging."""
+
+    audio: Any
+    original_duration: float
+    processed_duration: float
+    speech_detected: bool
+    speech_start: float
+    speech_end: float
+    trimmed: bool
+    normalized: bool
+    gain: float
+    peak_before: float
+    peak_after: float
+    vad_threshold: float
+
+
 class ProgressBroadcaster:
+    """Throttle Whisper model download progress events for ComfyUI widgets."""
+
     def __init__(self, model_name: str):
         self.model_name = model_name
         self.last_sent = 0.0
@@ -215,6 +284,11 @@ class ProgressBroadcaster:
 
     def error(self, text: str) -> None:
         self._send("error", {"text": text})
+
+
+# ---------------------------------------------------------------------------
+# Whisper model lifecycle
+# ---------------------------------------------------------------------------
 
 
 def _model_file_path(name: str) -> Path:
@@ -346,6 +420,11 @@ def load_model(name: str, device: str = "auto"):
     return model, target_device, use_fp16
 
 
+# ---------------------------------------------------------------------------
+# Audio decoding and preprocessing
+# ---------------------------------------------------------------------------
+
+
 def _read_audio(filepath: str):
     import numpy as np
 
@@ -380,6 +459,179 @@ def _read_audio(filepath: str):
         raise RuntimeError(f"Cannot decode audio: {exc}") from exc
 
 
+def _as_float32_audio(audio: Any):
+    import numpy as np
+
+    array = np.asarray(audio, dtype=np.float32).reshape(-1)
+    if array.size == 0:
+        return array.copy()
+    return np.nan_to_num(array, nan=0.0, posinf=0.0, neginf=0.0, copy=True)
+
+
+def _frame_rms(audio, sample_rate: int) -> tuple[Any, Any, int, int]:
+    import numpy as np
+
+    if audio.size == 0:
+        return np.asarray([], dtype=np.float32), np.asarray([], dtype=np.int64), 0, 0
+
+    frame_size = max(1, int(sample_rate * AUDIO_VAD_FRAME_MS / 1000))
+    hop_size = max(1, int(sample_rate * AUDIO_VAD_HOP_MS / 1000))
+    starts = np.arange(0, audio.size, hop_size, dtype=np.int64)
+    ends = np.minimum(starts + frame_size, audio.size)
+    lengths = np.maximum(ends - starts, 1)
+
+    squared = audio.astype(np.float64, copy=False) ** 2
+    cumulative = np.concatenate(([0.0], np.cumsum(squared, dtype=np.float64)))
+    energy = cumulative[ends] - cumulative[starts]
+    rms = np.sqrt(energy / lengths).astype(np.float32)
+    return rms, starts, frame_size, hop_size
+
+
+def _adaptive_vad_threshold(rms) -> float:
+    import numpy as np
+
+    if rms.size == 0:
+        return float(AUDIO_VAD_RMS_THRESHOLD)
+    noise_floor = float(np.percentile(rms, 20))
+    max_rms = float(np.max(rms))
+    adaptive = noise_floor * float(AUDIO_VAD_ADAPTIVE_MULTIPLIER)
+    if max_rms > 0:
+        adaptive = min(adaptive, max_rms * 0.35)
+    return max(float(AUDIO_VAD_RMS_THRESHOLD), adaptive)
+
+
+def _detect_speech_bounds(audio, sample_rate: int) -> tuple[int, int, bool, float]:
+    import numpy as np
+
+    rms, starts, frame_size, hop_size = _frame_rms(audio, sample_rate)
+    threshold = _adaptive_vad_threshold(rms)
+    if rms.size == 0:
+        return 0, 0, False, threshold
+
+    speech_mask = rms >= threshold
+    if not bool(np.any(speech_mask)):
+        return 0, 0, False, threshold
+
+    voiced_duration = float(np.count_nonzero(speech_mask) * hop_size) / float(sample_rate)
+    if voiced_duration < float(AUDIO_VAD_MIN_SPEECH_SEC):
+        return 0, 0, False, threshold
+
+    speech_indices = np.flatnonzero(speech_mask)
+    padding = max(0, int(sample_rate * AUDIO_VAD_PADDING_SEC))
+    start = max(0, int(starts[int(speech_indices[0])]) - padding)
+    end = min(audio.size, int(starts[int(speech_indices[-1])]) + frame_size + padding)
+    return start, end, end > start, threshold
+
+
+def _normalize_audio(audio):
+    import numpy as np
+
+    if audio.size == 0:
+        return audio, False, 1.0, 0.0, 0.0
+
+    peak_before = float(np.max(np.abs(audio)))
+    if not AUDIO_NORMALIZE_ENABLED or peak_before <= 1e-6:
+        return audio.astype(np.float32, copy=False), False, 1.0, peak_before, peak_before
+
+    target_peak = min(0.99, max(0.05, float(AUDIO_NORMALIZE_TARGET_PEAK)))
+    max_gain = 10.0 ** (float(AUDIO_NORMALIZE_MAX_GAIN_DB) / 20.0)
+    requested_gain = target_peak / peak_before
+    gain = min(requested_gain, max_gain) if requested_gain >= 1.0 else requested_gain
+    normalized = np.clip(audio * gain, -1.0, 1.0).astype(np.float32, copy=False)
+    peak_after = float(np.max(np.abs(normalized))) if normalized.size else 0.0
+    return normalized, abs(gain - 1.0) > 0.01, float(gain), peak_before, peak_after
+
+
+def _preprocess_audio(audio: Any, sample_rate: int = AUDIO_SAMPLE_RATE) -> AudioPreprocessResult:
+    import numpy as np
+
+    original = _as_float32_audio(audio)
+    original_duration = float(original.size) / float(sample_rate)
+    peak_before = float(np.max(np.abs(original))) if original.size else 0.0
+
+    if original.size == 0:
+        return AudioPreprocessResult(
+            audio=original,
+            original_duration=0.0,
+            processed_duration=0.0,
+            speech_detected=False,
+            speech_start=0.0,
+            speech_end=0.0,
+            trimmed=False,
+            normalized=False,
+            gain=1.0,
+            peak_before=0.0,
+            peak_after=0.0,
+            vad_threshold=float(AUDIO_VAD_RMS_THRESHOLD),
+        )
+
+    start, end, speech_detected, vad_threshold = _detect_speech_bounds(original, sample_rate)
+    if not speech_detected and AUDIO_VAD_ENABLED:
+        empty = np.asarray([], dtype=np.float32)
+        return AudioPreprocessResult(
+            audio=empty,
+            original_duration=original_duration,
+            processed_duration=0.0,
+            speech_detected=False,
+            speech_start=0.0,
+            speech_end=0.0,
+            trimmed=True,
+            normalized=False,
+            gain=1.0,
+            peak_before=peak_before,
+            peak_after=0.0,
+            vad_threshold=vad_threshold,
+        )
+
+    if speech_detected and AUDIO_TRIM_ENABLED:
+        processed = original[start:end].copy()
+        speech_start = float(start) / float(sample_rate)
+        speech_end = float(end) / float(sample_rate)
+        trimmed = start > 0 or end < original.size
+    else:
+        processed = original.copy()
+        speech_start = 0.0
+        speech_end = original_duration
+        trimmed = False
+
+    processed, normalized, gain, _trimmed_peak_before, peak_after = _normalize_audio(processed)
+    return AudioPreprocessResult(
+        audio=processed,
+        original_duration=original_duration,
+        processed_duration=float(processed.size) / float(sample_rate),
+        speech_detected=bool(speech_detected),
+        speech_start=speech_start,
+        speech_end=speech_end,
+        trimmed=trimmed,
+        normalized=normalized,
+        gain=gain,
+        peak_before=peak_before,
+        peak_after=peak_after,
+        vad_threshold=vad_threshold,
+    )
+
+
+def _audio_metadata(audio: AudioPreprocessResult) -> dict[str, Any]:
+    return {
+        "duration": round(audio.original_duration, 2),
+        "processed_duration": round(audio.processed_duration, 2),
+        "speech_detected": audio.speech_detected,
+        "speech_start": round(audio.speech_start, 2),
+        "speech_end": round(audio.speech_end, 2),
+        "audio_trimmed": audio.trimmed,
+        "audio_normalized": audio.normalized,
+        "audio_gain": round(audio.gain, 3),
+        "audio_peak_before": round(audio.peak_before, 4),
+        "audio_peak_after": round(audio.peak_after, 4),
+        "vad_threshold": round(audio.vad_threshold, 5),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Recognition endpoints
+# ---------------------------------------------------------------------------
+
+
 def transcribe_audio(
     filepath: str,
     model_name: str,
@@ -389,12 +641,23 @@ def transcribe_audio(
     initial_prompt: str | None = None,
 ) -> dict[str, Any]:
     torch, _ = _load_whisper_runtime()
-    model, _, use_fp16 = load_model(model_name, device)
-
-    audio = _read_audio(filepath)
-    duration = len(audio) / 16000.0
     task = "translate" if target_language == "en" else "transcribe"
     language = None if source_language in (None, "", "auto") else source_language
+
+    _send_event("status", {"model": model_name, "text": "Preparing audio"})
+    audio_info = _preprocess_audio(_read_audio(filepath), AUDIO_SAMPLE_RATE)
+    metadata = _audio_metadata(audio_info)
+    if not audio_info.speech_detected or len(audio_info.audio) == 0:
+        _send_event("status", {"model": model_name, "text": "No speech detected"})
+        return {
+            "text": "",
+            "language": language or "?",
+            "task": task,
+            **metadata,
+        }
+
+    _send_event("status", {"model": model_name, "text": "Recognizing speech"})
+    model, _, use_fp16 = load_model(model_name, device)
 
     transcribe_kwargs = {
         "task": task,
@@ -411,16 +674,16 @@ def transcribe_audio(
     if initial_prompt:
         transcribe_kwargs["initial_prompt"] = initial_prompt
 
-    with torch.no_grad():
-        result = model.transcribe(audio, **transcribe_kwargs)
+    with torch.inference_mode():
+        result = model.transcribe(audio_info.audio, **transcribe_kwargs)
 
     text = (result.get("text") or "").strip()
     detected = result.get("language", language or "?")
     return {
         "text": text,
         "language": detected,
-        "duration": round(duration, 2),
         "task": task,
+        **metadata,
     }
 
 
@@ -459,13 +722,13 @@ async def transcribe_endpoint(request: web.Request) -> web.StreamResponse:
                     break
                 handle.write(chunk)
 
-        translate = request.query.get("translate", "false").lower() in {"true", "1", "yes"}
         model_name = ACTIVE_MODEL
-        if translate and model_name in MODELS_WITHOUT_TRANSLATE:
+        translate_to_english = bool(TRANSLATE_TO_ENGLISH)
+        if translate_to_english and model_name in MODELS_WITHOUT_TRANSLATE:
             _log_warning(f"Model '{model_name}' does not support translation. Using transcription.")
-            translate = False
+            translate_to_english = False
 
-        target_language = "en" if translate else "same"
+        target_language = "en" if translate_to_english else "same"
         result = await asyncio.to_thread(
             transcribe_audio,
             str(filepath),
@@ -473,7 +736,7 @@ async def transcribe_endpoint(request: web.Request) -> web.StreamResponse:
             DEVICE,
             SOURCE_LANGUAGE,
             target_language,
-            INITIAL_PROMPT or None,
+            _configured_initial_prompt(),
         )
         return web.json_response(result)
     except Exception as exc:
@@ -515,41 +778,7 @@ async def status_endpoint(request: web.Request) -> web.StreamResponse:
                 "loaded": any(cache_key[0] == name for cache_key in _MODEL_CACHE.keys()),
                 "path": str(_model_file_path(name)),
                 "missing_dependencies": _missing_runtime_packages(),
+                "translate_to_english": bool(TRANSLATE_TO_ENGLISH),
             }
         }
     )
-
-
-class TS_VoiceRecognition(IO.ComfyNode):
-    @classmethod
-    def define_schema(cls) -> IO.Schema:
-        return IO.Schema(
-            node_id="TS_VoiceRecognition",
-            display_name="TS Voice Recognition",
-            category="TS/audio",
-            description="Record speech from the browser microphone and insert recognized Whisper text into the node.",
-            inputs=[
-                IO.String.Input(
-                    "text",
-                    multiline=True,
-                    default="",
-                    tooltip="Recognized text buffer. The voice button inserts text at the current cursor position.",
-                ),
-                IO.Boolean.Input(
-                    "translate_to_english",
-                    default=False,
-                    tooltip="Translate speech to English instead of keeping the source language.",
-                ),
-            ],
-            outputs=[IO.String.Output(display_name="text")],
-            search_aliases=["voice recognition", "whisper recorder", "speech to text", "microphone"],
-        )
-
-    @classmethod
-    def execute(cls, text: str = "", translate_to_english: bool = False) -> IO.NodeOutput:
-        _ = translate_to_english
-        return IO.NodeOutput(text or "")
-
-
-NODE_CLASS_MAPPINGS = {"TS_VoiceRecognition": TS_VoiceRecognition}
-NODE_DISPLAY_NAME_MAPPINGS = {"TS_VoiceRecognition": "TS Voice Recognition"}

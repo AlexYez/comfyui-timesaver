@@ -43,8 +43,8 @@ comfyui-timesaver/
 | Node ID | Для чего нужна | Категория | Типы выходов |
 | --- | --- | --- | --- |
 | `TS_Qwen3_VL_V3` | Основная мультимодальная нода Qwen (текст + изображение/видео) с пресетами, управлением precision и offline-режимом. | `TS/LLM` | `STRING` |
+| `TS_SuperPrompt` | Нода для диктовки идеи и улучшения промпта через Qwen/Qwen3.5-2B с пресетами из `qwen_3_vl_presets.json` и опциональным image-входом. | `TS/LLM` | `STRING` |
 | `TSWhisper` | Нода Whisper для транскрибации и перевода аудио с выводом SRT и обычного текста. | `TS/Audio` | `STRING` |
-| `TS_VoiceRecognition` | Browser microphone recorder that inserts Whisper-recognized speech into a text field. | `TS/audio` | `STRING` |
 | `TS_SileroTTS` | Русская TTS-нода на базе Silero с чанкингом и выходом AUDIO. | `TS/audio` | `AUDIO` |
 | `TS_MusicStems` | Разделяет музыку на стемы (vocals, bass, drums, others, instrumental). | `TS/Audio` | `AUDIO` |
 | `TS_PromptBuilder` | Собирает структурированные промпты из JSON-конфига и seed для воспроизводимых вариаций. | `TS/Prompt` | `STRING` |
@@ -133,6 +133,39 @@ comfyui-timesaver/
 </details>
 
 <details>
+<summary><strong>TS_SuperPrompt</strong> - Нода для диктовки идеи и улучшения промпта через Qwen/Qwen3.5-2B.</summary>
+
+![Плейсхолдер скриншота для TS_SuperPrompt](docs/img/placeholders/ts-super-prompt.png)
+
+> Плейсхолдер: замените этот блок вашим скриншотом ноды.
+
+**Что делает эта нода**
+Записывает речь с микрофона в текстовое поле, а кнопка `Ai prompt` улучшает исходный текст в prompt для image, video или music generation. Qwen работает в non-thinking режиме; пресеты берутся из `nodes/qwen_3_vl_presets.json`. В ноде есть progressbar для записи, распознавания, загрузки модели и Ai prompt.
+
+**Быстрый старт**
+1. Добавьте ноду в граф и введите или наговорите идею.
+2. Выберите `system_preset`.
+3. Нажмите `Ai prompt` для замены текста улучшенным prompt.
+
+**Основные параметры**
+- В интерфейсе: `text`, `system_preset`, кнопки `Start Recording` и `Ai prompt`
+- Опциональные входы: `image`
+- Расширенные настройки: переменные `SUPER_PROMPT_*` в начале `nodes/ts_super_prompt_node.py`
+
+**Выходы**
+- `STRING`
+
+**Техническая информация**
+- Internal id: `TS_SuperPrompt`
+- Class: `TS_SuperPrompt`
+- File: `nodes/ts_super_prompt_node.py`
+- Category: `TS/LLM`
+- Function: `execute`
+- Примечание по зависимостям: Использует `openai-whisper`, `transformers`, `torch`, `huggingface_hub` и `Qwen/Qwen3.5-2B`.
+
+</details>
+
+<details>
 <summary><strong>TSWhisper</strong> - Нода Whisper для транскрибации и перевода аудио с выводом SRT и обычного текста.</summary>
 
 ![Плейсхолдер скриншота для TSWhisper](docs/img/placeholders/tswhisper.png)
@@ -164,37 +197,6 @@ comfyui-timesaver/
 
 </details>
 
-<details>
-<summary><strong>TS_VoiceRecognition</strong> - Browser microphone recorder that inserts Whisper-recognized speech into a text field.</summary>
-
-![Плейсхолдер скриншота для TS_VoiceRecognition](docs/img/placeholders/ts-voice-recognition.png)
-
-> Плейсхолдер: замените этот блок вашим скриншотом ноды.
-
-**Что делает эта нода**
-Browser microphone recorder that inserts Whisper-recognized speech into a text field.
-
-**Быстрый старт**
-1. Добавьте ноду в граф и подключите обязательные входы.
-2. Сначала оставьте дефолты и меняйте параметры постепенно.
-3. Подключите выход к следующей ноде и сравните результат.
-
-**Основные параметры**
-- Обязательные: `text`, `translate_to_english`
-- Опциональные: *(none)*
-
-**Выходы**
-- `STRING`
-
-**Техническая информация**
-- Internal id: `TS_VoiceRecognition`
-- Class: `TS_VoiceRecognition`
-- File: `nodes/ts_voice_recognition_node.py`
-- Category: `TS/audio`
-- Function: `execute`
-- Примечание по зависимостям: Использует `openai-whisper`, `torch`, `numpy`, and ffmpeg/imageio-ffmpeg.
-
-</details>
 
 <details>
 <summary><strong>TS_SileroTTS</strong> - Русская TTS-нода на базе Silero с чанкингом и выходом AUDIO.</summary>
