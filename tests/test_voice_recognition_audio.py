@@ -47,6 +47,19 @@ class _IO:
     NodeOutput = _NodeOutput
     String = _ComfyType
     Boolean = _ComfyType
+    Combo = _ComfyType
+    Image = _ComfyType
+
+
+class _DummyQwen:
+    @classmethod
+    def _load_presets(cls):
+        return {
+            "Prompts enhance": {
+                "system_prompt": "Enhance prompt.",
+                "gen_params": {"temperature": 0.8},
+            }
+        }, ["Prompts enhance"]
 
 
 def _install_stubs(monkeypatch, root: Path) -> None:
@@ -71,13 +84,17 @@ def _install_stubs(monkeypatch, root: Path) -> None:
     monkeypatch.setitem(sys.modules, "aiohttp", aiohttp)
     monkeypatch.setitem(sys.modules, "aiohttp.web", web)
 
+    qwen_module = types.ModuleType("nodes.ts_qwen3_vl_v3_node")
+    qwen_module.TS_Qwen3_VL_V3 = _DummyQwen
+    monkeypatch.setitem(sys.modules, "nodes.ts_qwen3_vl_v3_node", qwen_module)
+
 
 def _load_module(monkeypatch):
     root = Path(__file__).resolve().parents[1]
     _install_stubs(monkeypatch, root)
     monkeypatch.syspath_prepend(str(root))
-    sys.modules.pop("nodes.ts_voice_recognition_service", None)
-    return importlib.import_module("nodes.ts_voice_recognition_service")
+    sys.modules.pop("nodes.ts_super_prompt_node", None)
+    return importlib.import_module("nodes.ts_super_prompt_node")
 
 
 def test_audio_preprocess_trims_and_normalizes_speech(monkeypatch):
@@ -128,9 +145,9 @@ def test_initial_prompt_is_prompt_dictation_context(monkeypatch):
     assert module._configured_initial_prompt() is None
 
 
-def test_voice_recognition_service_registers_no_node(monkeypatch):
+def test_voice_recognition_backend_registers_only_super_prompt_node(monkeypatch):
     module = _load_module(monkeypatch)
 
     assert not hasattr(module, "TS_" + "VoiceRecognition")
-    assert not hasattr(module, "NODE_CLASS_MAPPINGS")
+    assert module.NODE_CLASS_MAPPINGS == {"TS_SuperPrompt": module.TS_SuperPrompt}
     assert module.TRANSLATE_TO_ENGLISH is False
