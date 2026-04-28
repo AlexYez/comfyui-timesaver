@@ -110,7 +110,8 @@ AUDIO_VAD_HOP_MS = 10
 AUDIO_VAD_RMS_THRESHOLD = 0.003
 AUDIO_VAD_ADAPTIVE_MULTIPLIER = 2.2
 AUDIO_VAD_MIN_SPEECH_SEC = 0.18
-AUDIO_VAD_PADDING_SEC = 0.20
+AUDIO_VAD_PADDING_SEC = 0.30
+AUDIO_EDGE_FADE_MS = 12
 AUDIO_NORMALIZE_TARGET_PEAK = 0.92
 AUDIO_NORMALIZE_MAX_GAIN_DB = 12.0
 
@@ -746,6 +747,20 @@ def _normalize_audio(audio):
     return normalized, abs(gain - 1.0) > 0.01, float(gain), peak_before, peak_after
 
 
+def _apply_edge_fade(audio, sample_rate: int):
+    import numpy as np
+
+    fade_samples = max(0, int(sample_rate * float(AUDIO_EDGE_FADE_MS) / 1000.0))
+    if fade_samples <= 1 or audio.size <= fade_samples * 2:
+        return audio.astype(np.float32, copy=False)
+
+    processed = audio.astype(np.float32, copy=True)
+    fade_in = np.linspace(0.0, 1.0, fade_samples, dtype=np.float32)
+    processed[:fade_samples] *= fade_in
+    processed[-fade_samples:] *= fade_in[::-1]
+    return processed
+
+
 def _preprocess_audio(audio: Any, sample_rate: int = AUDIO_SAMPLE_RATE) -> AudioPreprocessResult:
     import numpy as np
 
@@ -798,6 +813,7 @@ def _preprocess_audio(audio: Any, sample_rate: int = AUDIO_SAMPLE_RATE) -> Audio
         speech_end = original_duration
         trimmed = False
 
+    processed = _apply_edge_fade(processed, sample_rate)
     processed, normalized, gain, _trimmed_peak_before, peak_after = _normalize_audio(processed)
     return AudioPreprocessResult(
         audio=processed,
@@ -829,6 +845,55 @@ def _audio_metadata(audio: AudioPreprocessResult) -> dict[str, Any]:
         "audio_peak_after": round(audio.peak_after, 4),
         "vad_threshold": round(audio.vad_threshold, 5),
     }
+
+
+_DUPLICATE_TRANSCRIPTION_WORDS = {
+    "с",
+    "со",
+    "в",
+    "во",
+    "к",
+    "ко",
+    "у",
+    "о",
+    "об",
+    "от",
+    "до",
+    "из",
+    "за",
+    "на",
+    "по",
+    "под",
+    "над",
+    "при",
+    "для",
+    "через",
+    "без",
+    "with",
+    "in",
+    "on",
+    "at",
+    "to",
+    "from",
+    "of",
+    "for",
+    "by",
+}
+
+
+def _clean_transcription_text(text: str) -> str:
+    cleaned = re.sub(r"\s+", " ", str(text or "")).strip()
+    if not cleaned:
+        return ""
+
+    for word in sorted(_DUPLICATE_TRANSCRIPTION_WORDS, key=len, reverse=True):
+        pattern = re.compile(rf"(?iu)(\b{re.escape(word)}\b)(?:\s+)(\b{re.escape(word)}\b)")
+        while True:
+            collapsed = pattern.sub(r"\1", cleaned)
+            if collapsed == cleaned:
+                break
+            cleaned = collapsed
+    return cleaned
 
 
 def _send_voice_status(model_name: str, text: str, percent: float | None = None) -> None:
@@ -890,7 +955,7 @@ def transcribe_audio(
         result = model.transcribe(audio_info.audio, **transcribe_kwargs)
 
     _send_voice_status(model_name, "Finalizing speech text", 92.0)
-    text = (result.get("text") or "").strip()
+    text = _clean_transcription_text(result.get("text") or "")
     detected = result.get("language", language or "?")
     return {
         "text": text,
