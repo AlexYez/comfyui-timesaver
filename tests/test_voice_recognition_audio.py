@@ -172,6 +172,17 @@ def test_turbo_uses_actual_whisper_download_filename(monkeypatch):
     assert module._model_file_path("turbo").name == "large-v3-turbo.pt"
 
 
+def test_download_done_keeps_ui_busy_until_memory_load(monkeypatch):
+    module = _load_module(monkeypatch)
+    events = []
+
+    monkeypatch.setattr(module, "_send_voice_event", lambda event, payload: events.append((event, payload)))
+
+    module.ProgressBroadcaster("base").done()
+
+    assert events == [("status", {"model": "base", "text": "Voice model file ready", "percent": 100.0})]
+
+
 def test_transcription_cleanup_removes_duplicate_prepositions(monkeypatch):
     module = _load_module(monkeypatch)
 
