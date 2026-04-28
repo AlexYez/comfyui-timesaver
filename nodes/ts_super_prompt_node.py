@@ -420,8 +420,8 @@ class ProgressBroadcaster:
             },
         )
 
-    def done(self) -> None:
-        self._send("done", {})
+    def done(self, text: str = "Voice model file ready") -> None:
+        self._send("status", {"text": text, "percent": 100.0})
 
     def error(self, text: str) -> None:
         self._send("error", {"text": text})
@@ -526,8 +526,7 @@ def ensure_model(name: str, force: bool = False) -> Path:
                 _voice_log_warning(f"Could not remove old model file for '{name}': {exc}")
 
         if not force and is_model_cached(name):
-            progress.status(f"{name} ready")
-            progress.done()
+            progress.done(f"{name} file ready")
             return target_file
 
         progress.status(f"Downloading {name}")
@@ -574,13 +573,12 @@ def ensure_model(name: str, force: bool = False) -> Path:
 
         final_size = target_file.stat().st_size
         progress.progress(f"{name}.pt", final_size, final_size, force=True)
-        progress.status(f"{name} ready")
-        progress.done()
+        progress.done(f"{name} file ready")
         _voice_log_info(f"Whisper model '{name}' ready ({final_size / (1024 * 1024):.0f} MB)")
         return target_file
 
 
-def load_model(name: str, device: str = "auto"):
+def load_model(name: str, device: str = "auto", progress_start: float = 82.0, progress_end: float = 96.0):
     torch, whisper = _load_whisper_runtime()
 
     if device == "auto":
@@ -594,10 +592,12 @@ def load_model(name: str, device: str = "auto"):
     use_fp16 = target_device == "cuda" and GPU_PRECISION == "fp16"
     cache_key = (name, target_device, use_fp16)
     if cache_key in _VOICE_MODEL_CACHE:
+        _send_voice_status(name, "Voice model already in memory", progress_end)
         return _VOICE_MODEL_CACHE[cache_key], target_device, use_fp16
 
     ensure_model(name)
     _voice_log_info(f"Loading Whisper model '{name}' on {target_device} ({'fp16' if use_fp16 else 'fp32'})")
+    _send_voice_status(name, f"Loading {name} into memory on {target_device}", progress_start)
 
     try:
         model = whisper.load_model(
@@ -610,10 +610,11 @@ def load_model(name: str, device: str = "auto"):
         if target_device != "cuda":
             raise
         _voice_log_warning(f"GPU load failed for '{name}': {exc}. Falling back to CPU.")
-        _send_voice_event("status", {"model": name, "text": "GPU load failed; using CPU"})
+        _send_voice_status(name, "GPU load failed; using CPU", min(progress_end, progress_start + 2.0))
         target_device = "cpu"
         use_fp16 = False
         cache_key = (name, target_device, use_fp16)
+        _send_voice_status(name, f"Loading {name} into memory on CPU", min(progress_end, progress_start + 4.0))
         model = whisper.load_model(
             name,
             device=target_device,
@@ -622,6 +623,7 @@ def load_model(name: str, device: str = "auto"):
         )
 
     _VOICE_MODEL_CACHE[cache_key] = model
+    _send_voice_status(name, "Voice model loaded into memory", progress_end)
     return model, target_device, use_fp16
 
 
@@ -933,7 +935,7 @@ def transcribe_audio(
         }
 
     _send_voice_status(model_name, "Loading voice model", 40.0)
-    model, _, use_fp16 = load_model(model_name, device)
+    model, _, use_fp16 = load_model(model_name, device, progress_start=42.0, progress_end=64.0)
     _send_voice_status(model_name, "Recognizing speech", 68.0)
 
     transcribe_kwargs = {
@@ -1046,8 +1048,11 @@ async def preload_endpoint(request: web.Request) -> web.StreamResponse:
     force = bool(data.get("force", False))
 
     try:
+        _send_voice_status(name, "Preparing voice model", 5.0)
         await asyncio.to_thread(ensure_model, name, force)
+        _send_voice_status(name, "Loading voice model into memory", 78.0)
         await asyncio.to_thread(load_model, name, DEVICE)
+        _send_voice_event("done", {"model": name, "text": "Voice model ready", "percent": 100.0})
         return web.json_response({"ok": True})
     except Exception as exc:
         LOGGER.exception("%s Whisper preload failed", VOICE_LOG_PREFIX)
