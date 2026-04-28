@@ -66,11 +66,18 @@ class _DummyQwen:
 
 
 def _install_stubs(monkeypatch):
+    root = Path(__file__).resolve().parents[1]
+
     comfy_api = types.ModuleType("comfy_api")
     latest = types.ModuleType("comfy_api.latest")
     latest.IO = _IO
     monkeypatch.setitem(sys.modules, "comfy_api", comfy_api)
     monkeypatch.setitem(sys.modules, "comfy_api.latest", latest)
+
+    folder_paths = types.ModuleType("folder_paths")
+    folder_paths.models_dir = str(root / ".test_models")
+    folder_paths.get_input_directory = lambda: str(root / ".test_input")
+    monkeypatch.setitem(sys.modules, "folder_paths", folder_paths)
 
     aiohttp = types.ModuleType("aiohttp")
     web = types.SimpleNamespace(
