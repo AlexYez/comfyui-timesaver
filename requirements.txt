@@ -1,6 +1,7 @@
 accelerate>=0.21.0
 bitsandbytes>=0.40.0
 huggingface_hub>=0.20.0
+transformers>=4.57.0
 srt>=3.5.0
 opencv-python>=4.5.0
 openai-whisper>=20231117

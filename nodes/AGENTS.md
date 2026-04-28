@@ -1,47 +1,84 @@
 # nodes/AGENTS.md — Python Backend Node Rules
 
-This directory contains Python backend code for ComfyUI custom nodes.
+Эта папка содержит Python backend-код для ComfyUI custom nodes.
 
-Follow the root `AGENTS.md` first. This file adds backend-specific rules.
+Codex всегда отвечает пользователю на русском языке. Код и идентификаторы могут быть на английском, но отчёты, объяснения, риски и результаты проверок — на русском.
+
+Следуй root `AGENTS.md` сначала. Этот файл добавляет backend-specific правила.
 
 ---
 
 ## 1. Backend Operating Loop
 
-For backend changes, always work in this order:
+Всегда:
 
-1. Inspect existing node contracts.
-2. Identify V1 or V3 API.
-3. Plan the smallest safe change.
-4. Implement only the requested change.
-5. Run import/contract/tensor checks where possible.
-6. Self-review the diff for workflow breakage.
+1. Изучи существующие node contracts.
+2. Определи V1 или V3 API.
+3. Составь минимальный безопасный план.
+4. Сохрани структуру: одна публичная нода = один основной `.py` файл.
+5. Реализуй только запрошенное.
+6. Запусти все возможные backend-проверки.
+7. Перечитай diff на предмет workflow breakage.
 
-If the implementation reveals new architectural risk, stop and re-plan.
+Если обнаружился новый архитектурный риск — остановись и перепланируй.
 
 ---
 
-## 2. Default Backend Direction
+## 2. One Node = One Python File
 
-New nodes must use the ComfyUI V3 Node API unless the task explicitly says otherwise.
+Каждая публичная ComfyUI-нода должна иметь один основной `.py` файл.
 
-Preferred development import:
+Preferred:
+
+```text
+nodes/ts_resize_image.py
+nodes/ts_audio_preview.py
+nodes/ts_video_metadata.py
+```
+
+Avoid:
+
+```text
+nodes/ts_resize_image/schema.py
+nodes/ts_resize_image/execute.py
+nodes/ts_resize_image/validation.py
+nodes/ts_resize_image/types.py
+```
+
+Shared utilities разрешены только если логика используется 2+ нодами:
+
+```text
+utils/image_ops.py
+utils/path_utils.py
+utils/tensor_checks.py
+```
+
+Правило:
+
+- Простая нода — один самодостаточный `.py` файл.
+- Средняя нода — один `.py` файл + private helpers внутри него.
+- Повторяемая логика — вынести только reusable часть в `utils/`.
+- Не дробить ноду ради “чистой архитектуры”.
+
+---
+
+## 3. Default Backend Direction
+
+New nodes must use ComfyUI V3 Node API unless explicitly requested otherwise.
+
+Preferred import:
 
 ```python
 from comfy_api.latest import ComfyExtension, io, ui
 ```
 
-Use a pinned version such as `comfy_api.v0_0_2` only when the repository has deliberately standardized on it for release reproducibility.
+Use pinned `comfy_api.v0_0_2` only when the project release target requires it.
 
-V1 nodes are legacy maintenance only.
-
-Do not create new V1 nodes unless explicitly requested.
-
-Do not migrate V1 nodes to V3 unless explicitly requested.
+V1 nodes are legacy maintenance only. Do not create new V1 nodes and do not migrate V1 to V3 without explicit request.
 
 ---
 
-## 3. V3 Node Structure
+## 4. V3 Node Structure
 
 A V3 node must:
 
@@ -51,7 +88,7 @@ A V3 node must:
 - Return `io.NodeOutput`.
 - Avoid `__init__`.
 - Avoid instance state.
-- Avoid mutable class state unless it is a deliberate, documented cache.
+- Avoid mutable class state unless it is a deliberate documented cache.
 - Use official ComfyUI APIs only.
 
 Example:
@@ -72,9 +109,7 @@ class TS_ExampleNode(io.ComfyNode):
                 io.Image.Input("image"),
                 io.Float.Input("strength", default=1.0, min=0.0, max=10.0),
             ],
-            outputs=[
-                io.Image.Output(display_name="image"),
-            ],
+            outputs=[io.Image.Output(display_name="image")],
         )
 
     @classmethod
@@ -94,7 +129,7 @@ async def comfy_entrypoint() -> TsBackendExtension:
 
 ---
 
-## 4. Stable Node Identity
+## 5. Stable Node Identity
 
 Never change existing:
 
@@ -111,81 +146,55 @@ Never change existing:
 - Hidden input semantics.
 - Cache/fingerprint semantics.
 
-If a node must be renamed or restructured:
+If a node must be renamed/restructured:
 
 - Preserve old node ID if possible.
 - Add `search_aliases`.
 - Use `io.NodeReplace` through `ComfyAPI`.
-- Keep old aliases where practical.
-- Add contract tests.
-- Add migration notes.
+- Keep aliases where practical.
+- Add contract tests and migration notes.
 
 ---
 
-## 5. V3 Schema Rules
+## 6. Schema Quality
 
-Schema must be explicit and stable.
+Schema must be explicit and stable:
 
-Required schema quality:
+- globally unique prefixed `node_id`
+- human-readable `display_name`
+- stable `category`
+- concise `description`
+- clear input names/defaults
+- `advanced=True` for advanced inputs
+- stable output display names
+- `is_deprecated=True` for deprecated nodes
+- `is_experimental=True` for experimental nodes
 
-- `node_id` is globally unique and prefixed.
-- `display_name` is human-readable.
-- `category` is stable.
-- `description` is useful and concise.
-- Inputs have clear names and defaults.
-- Advanced inputs are marked with `advanced=True` when appropriate.
-- Optional inputs are truly optional.
-- Outputs have stable display names.
-- Deprecated nodes use `is_deprecated=True`.
-- Experimental nodes use `is_experimental=True`.
-
-Avoid:
-
-- Ambiguous input names like `value`, `data`, `x`, unless context is obvious.
-- Hidden behavior based on magic strings.
-- Unbounded values without reason.
-- Changing defaults to "improve" results.
+Avoid ambiguous input names, hidden magic strings, unbounded values without reason, and default changes that alter existing workflows.
 
 ---
 
-## 6. V1 Legacy Maintenance
+## 7. V1 Legacy Maintenance
 
-For V1 nodes, preserve:
+For V1 nodes preserve:
 
-- `INPUT_TYPES`.
-- `RETURN_TYPES`.
-- `RETURN_NAMES`.
-- `FUNCTION`.
-- `CATEGORY`.
-- `OUTPUT_NODE`.
-- `NODE_CLASS_MAPPINGS`.
-- `NODE_DISPLAY_NAME_MAPPINGS`.
-- Input names.
-- Widget defaults.
-- Output order and types.
+- `INPUT_TYPES`
+- `RETURN_TYPES`
+- `RETURN_NAMES`
+- `FUNCTION`
+- `CATEGORY`
+- `OUTPUT_NODE`
+- `NODE_CLASS_MAPPINGS`
+- `NODE_DISPLAY_NAME_MAPPINGS`
+- input names, defaults, output order/types
 
-Safe V1 changes:
+Safe V1 changes: internal helpers in same file, logging, error messages, critical bug fixes without public contract change.
 
-- Fix clear bugs without changing public contract.
-- Add internal helper functions.
-- Add validation only if it does not reject previously valid workflows unexpectedly.
-- Improve logging.
-- Improve error messages.
-- Add compatibility aliases.
-
-Unsafe V1 changes:
-
-- Changing mappings.
-- Changing input names.
-- Changing output order.
-- Changing defaults.
-- Changing function names.
-- Removing old mappings.
-- Moving to V3 without explicit migration request.
+Unsafe: mapping/name/default/output changes or V1→V3 migration without explicit request.
 
 ---
 
-## 7. Tensor Format and Batch Handling
+## 8. Tensor and Batch Rules
 
 ComfyUI conventions:
 
@@ -197,23 +206,14 @@ LATENT -> latent["samples"]
 
 Rules:
 
-- Always check `image.ndim == 4` for IMAGE when relevant.
-- Always check `mask.ndim == 3` for MASK when relevant.
-- Always preserve batch dimension.
-- Never silently process only the first item in a batch.
-- Never mutate input tensors directly.
+- Check `image.ndim == 4` when relevant.
+- Check `mask.ndim == 3` when relevant.
+- Preserve batch dimension.
+- Never process only the first batch item silently.
 - Clone before modification.
-- Preserve device unless conversion is necessary.
-- Preserve dtype where possible.
-- Clamp outputs to valid range only when the operation can exceed range.
+- Preserve dtype/device where possible.
+- Clamp only when operation may exceed valid range.
 - Document shape-changing behavior.
-
-Good:
-
-```python
-result = image.clone()
-result = result.clamp(0.0, 1.0)
-```
 
 Bad:
 
@@ -224,216 +224,73 @@ return io.NodeOutput(image[0])
 
 ---
 
-## 8. Validation Rules
+## 9. Validation, Fingerprint, Lazy Inputs
 
-Use `validate_inputs` for user-facing validation.
+Use `validate_inputs` for user-facing validation. Return `True` or a clear error string.
 
-```python
-@classmethod
-def validate_inputs(cls, **kwargs) -> bool | str:
-    if kwargs["strength"] < 0:
-        return "strength must be greater than or equal to 0."
-    return True
-```
+Use `fingerprint_inputs` when output depends on external state. Never return a constant unless permanent caching is intentional.
 
-Rules:
+Use `check_lazy_status` only when needed. Do not do heavy work there.
 
-- Return `True` or a clear error string.
-- Mention the exact input name.
-- Do not leak secrets.
-- Do not expose unnecessary full user paths.
-- Do not perform expensive model loading in validation.
-- Do not mutate inputs during validation.
+Declare hidden inputs explicitly and access them through `cls.hidden`.
 
 ---
 
-## 9. Cache and Fingerprint Rules
-
-Use `fingerprint_inputs` when node output depends on external state.
-
-```python
-@classmethod
-def fingerprint_inputs(cls, **kwargs):
-    return meaningful_hash
-```
-
-Rules:
-
-- Never return a constant unless permanent caching is intentional.
-- Include file modification time/hash when output depends on a file.
-- Include config version when output depends on config.
-- Avoid hashing huge tensors manually.
-- Keep fingerprint deterministic.
-
-Common mistakes:
-
-- Returning `True` means the node may run once and then reuse cache forever.
-- Returning random values forces reruns and breaks caching.
-- Ignoring external files can return stale outputs.
-
----
-
-## 10. Lazy Evaluation Rules
-
-Use `check_lazy_status` only when needed.
-
-Rules:
-
-- Request optional/lazy inputs only when they are actually needed.
-- Keep logic simple and deterministic.
-- Do not perform heavy work in `check_lazy_status`.
-- Return input names, not display names.
-
----
-
-## 11. Hidden Inputs
-
-Declare hidden inputs explicitly in V3 schema when needed.
-
-Common hidden values:
-
-- `io.Hidden.unique_id`
-- `io.Hidden.prompt`
-- `io.Hidden.extra_pnginfo`
-- `io.Hidden.dynprompt`
-
-Rules:
-
-- Access hidden values through `cls.hidden`.
-- Do not rely on hidden inputs that are not declared.
-- Do not serialize private prompt data unnecessarily.
-- Do not log hidden prompt data unless required and safe.
-
----
-
-## 12. UI Helpers
-
-Use official `ui` helpers:
-
-- `ui.PreviewImage(images, cls=cls)`
-- `ui.PreviewMask(mask, cls=cls)`
-- `ui.PreviewAudio(audio, cls=cls)`
-- `ui.PreviewText("text")`
-- `ui.ImageSaveHelper.get_save_images_ui(...)`
-- `ui.AudioSaveHelper.get_save_audio_ui(...)`
-
-Rules:
-
-- Pass `cls=cls` where required to preserve metadata.
-- Do not invent custom UI dicts if a helper exists.
-- Keep preview generation lightweight.
-- Do not save files outside ComfyUI-approved locations.
-
----
-
-## 13. Model Loading and Heavy Dependencies
-
-Rules:
+## 10. Model Loading, File I/O, Security
 
 - Do not load models at import time.
-- Do not import torch-heavy or model-heavy libraries at import time unless unavoidable.
-- Load lazily inside the node operation.
-- Use ComfyUI folder/model path APIs.
+- Use lazy imports for heavy dependencies.
+- Use ComfyUI folder/model APIs.
 - Respect ComfyUI model management.
-- Provide clear missing-model messages.
-- Avoid permanent references to large tensors.
-- Avoid duplicated model instances.
-
-No auto-downloads unless the node explicitly documents and validates this behavior.
-
-No package installation from node code.
-
----
-
-## 14. File I/O and Security
-
-Use `pathlib.Path`.
-
-Validate:
-
-- Existence.
-- File extension.
-- Directory boundary.
-- Write permissions.
-- Filename safety.
-
-Avoid:
-
-- Path traversal.
-- Writing outside configured output/cache folders.
-- Opening arbitrary user-provided paths without validation.
-- Extracting archives without safe path checks.
-- Logging secrets or tokens.
-
-Never use shell commands for normal file operations.
+- No auto-downloads unless explicitly documented and validated.
+- No package installation from node code.
+- Use `pathlib.Path`.
+- Validate paths, extensions, directory boundaries and write permissions.
+- Avoid path traversal and arbitrary writes.
+- Never use shell commands for normal file operations.
 
 ---
 
-## 15. Backend Verification
+## 11. Mandatory Backend Verification
 
-After backend changes, run:
+After backend changes, run every available relevant check.
+
+Minimum:
 
 ```bash
 python -m compileall .
 python -m pytest tests
 ```
 
-If contract tests exist:
+If available:
 
 ```bash
+python -m ruff check .
+python -m ruff format --check .
+python -m mypy .
 python -m pytest tests/test_node_contracts.py
-```
-
-If tensor tests exist:
-
-```bash
 python -m pytest tests/test_tensor_shapes.py
+python -m pytest tests/test_workflows.py
 ```
 
-For new nodes, add or update tests for:
+For new nodes, add/update tests for schema contract, validation, batch behavior, output shape, dtype/range, missing optional dependency, error paths, and no input tensor mutation.
 
-- Schema contract.
-- Input validation.
-- Batch tensor behavior.
-- Output shape.
-- Output dtype/range.
-- Missing optional dependency behavior.
-- Error paths.
-
-If the runtime cannot execute tests, list what should be run locally.
+If tests cannot run, list exact local commands.
 
 ---
 
-## 16. Backend Self-Review Checklist
+## 12. Backend Definition of Done
 
-Before finalizing backend code, check:
+Backend task is complete only when:
 
-- No public node identity changed.
-- No input/output names changed.
-- No output order/types changed.
-- No defaults changed.
-- No category changed.
-- No input tensors mutated.
-- Batch dimension preserved.
-- Optional dependencies are lazy and graceful.
-- No heavy model load at import time.
-- No unsafe path/shell behavior.
-- Logging uses `logging`, not `print`.
-- Import path is portable.
-- Verification was performed or limitations are stated.
-
----
-
-## 17. Backend Definition of Done
-
-A backend task is complete only when:
-
-- Node identity is preserved or migration is provided.
+- Ответ пользователю на русском.
+- Node identity preserved or migration provided.
 - Code imports without syntax errors.
-- Inputs/outputs/defaults are correct.
-- Tensor batch handling is correct.
-- No input mutation occurs.
+- Inputs/outputs/defaults correct.
+- Tensor batch handling correct.
+- Input tensors not mutated.
 - Logging uses `logging`.
-- Optional dependencies are graceful.
-- No unsafe path/shell behavior is introduced.
-- Relevant tests/checks are run or limitations are stated.
+- Optional dependencies fail gracefully.
+- No unsafe path/shell behavior.
+- One-node-one-file preserved.
+- All possible relevant checks run or limitations stated.

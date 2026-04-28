@@ -1,44 +1,75 @@
 # js/AGENTS.md — ComfyUI Frontend Extension Rules
 
-This directory contains JavaScript/TypeScript frontend extensions for ComfyUI.
+Эта папка содержит JavaScript/TypeScript frontend extensions для ComfyUI.
 
-Follow the root `AGENTS.md` first. This file adds frontend-specific rules.
+Codex всегда отвечает пользователю на русском языке. Код и идентификаторы могут быть на английском, но отчёты, объяснения, риски и результаты проверок — на русском.
+
+Следуй root `AGENTS.md` сначала. Этот файл добавляет frontend-specific правила.
 
 ---
 
 ## 1. Frontend Operating Loop
 
-For frontend changes, always work in this order:
+For frontend changes:
 
-1. Inspect existing extension IDs and widget contracts.
-2. Identify whether code is modern hook/Vue-oriented or legacy LiteGraph.
+1. Inspect extension IDs, widget IDs, setting IDs and backend node IDs.
+2. Identify modern hook/Vue-oriented code or legacy LiteGraph.
 3. Plan the smallest safe change.
-4. Implement focused changes only.
-5. Run lint/build/tests if available.
-6. Verify in browser/ComfyUI when possible.
-7. Check console for new errors.
+4. Keep node-specific frontend in one `.js` file per node.
+5. Run all available JS checks.
+6. Run Playwright E2E if available.
+7. Verify browser console when possible.
 
-If browser verification is not possible, state exactly what should be tested manually.
+If browser verification is not possible, state exact manual steps.
 
 ---
 
-## 2. Frontend Direction
+## 2. One Node = One Optional JS File
+
+If a node needs frontend behavior, it should have one corresponding `.js` file.
+
+Preferred:
+
+```text
+nodes/ts_preview_tools.py
+js/ts-preview-tools.js
+```
+
+Avoid:
+
+```text
+js/ts-preview-tools/menu.js
+js/ts-preview-tools/widgets.js
+js/ts-preview-tools/state.js
+js/ts-preview-tools/events.js
+```
+
+Shared JS utilities are allowed only if reused by 2+ modules:
+
+```text
+js/shared/dom-utils.js
+js/shared/widget-utils.js
+```
+
+---
+
+## 3. Frontend Direction
 
 Use official ComfyUI frontend extension APIs.
 
 Expected patterns:
 
-- Frontend files live under the configured `WEB_DIRECTORY`.
-- Extensions are registered with `app.registerExtension`.
+- Files live under configured `WEB_DIRECTORY`.
+- Extensions registered with `app.registerExtension`.
 - Extension IDs are stable and unique.
-- Vue-oriented APIs and documented hooks are preferred for modern UI behavior.
+- Vue-oriented APIs and documented hooks are preferred.
 - Legacy LiteGraph code is maintenance-only unless explicitly required.
 
 Do not rely on private ComfyUI internals.
 
 ---
 
-## 3. Stable Frontend Identity
+## 4. Stable Frontend Identity
 
 Never change existing:
 
@@ -50,56 +81,32 @@ Never change existing:
 - Node class names referenced by frontend code.
 - Backend node IDs referenced by frontend code.
 
-If a rename is necessary:
-
-- Keep compatibility aliases where possible.
-- Support old saved keys.
-- Add migration logic.
-- Document the migration.
-- Add tests if possible.
+If rename is necessary, keep compatibility aliases, support old saved keys, add migration logic, docs and tests.
 
 ---
 
-## 4. File and Module Style
+## 5. File and Module Style
 
 Use:
 
-- ES2020+ syntax.
+- ES2020+.
 - ES modules where possible.
-- Small focused modules.
+- One focused node-specific JS file.
 - Clear lifecycle functions.
 - Explicit constants.
-- Stable naming.
-
-File naming:
-
-```text
-ts-module-name.js
-```
-
-Extension ID naming:
-
-```text
-ts.moduleName
-```
-
-Class naming:
-
-```text
-TsClassName
-```
 
 Avoid:
 
-- One giant JS file.
+- One giant JS file for unrelated nodes.
+- Many tiny files for one node.
 - Hidden global state.
-- Unclear side effects during import.
-- Duplicated UI logic.
-- Copy-pasted event handlers.
+- Unclear import side effects.
+- Duplicate UI logic.
+- Copy-pasted handlers.
 
 ---
 
-## 5. Official API Usage
+## 6. Official API Usage
 
 Preferred:
 
@@ -117,61 +124,45 @@ app.registerExtension({
 Rules:
 
 - Use documented hooks.
-- Keep extension lifecycle predictable.
-- Check node class names before applying node-specific logic.
-- Fail gracefully when a backend node is not present.
-- Do not assume load order unless documented.
+- Keep lifecycle predictable.
+- Check node class names before node-specific logic.
+- Fail gracefully when backend node is absent.
 - Do not assume internal DOM structure is stable.
 
 ---
 
-## 6. Monkey-Patching Policy
+## 7. Monkey-Patching Policy
 
 Forbidden by default:
 
-- Modifying `LGraphCanvas.prototype`.
-- Modifying `LGraphNode.prototype`.
-- Modifying ComfyUI app prototypes.
-- Modifying browser built-in prototypes.
-- Overriding core methods without an official hook.
+- `LGraphCanvas.prototype` changes.
+- `LGraphNode.prototype` changes.
+- ComfyUI app prototype changes.
+- Browser built-in prototype changes.
+- Core method overrides without official hook.
 
-Allowed only for legacy maintenance:
-
-- A small isolated compatibility shim.
-- Clear comments explaining why official hooks are not enough.
-- Strict guards around ComfyUI version or feature detection.
-- No broad side effects.
-
-If monkey-patching is found during review, mark it as high-risk and suggest a hook-based replacement.
+Allowed only for isolated legacy compatibility with clear comments, feature detection and strict guards.
 
 ---
 
-## 7. DOM and Vue Rules
+## 8. DOM, Vue, State and Performance
 
-Modern ComfyUI frontend is moving toward documented extension hooks and Vue-based UI patterns.
+Prefer official extension points over direct DOM mutation.
 
 Rules:
 
-- Prefer official extension points over direct DOM mutation.
-- Keep DOM queries scoped.
-- Avoid brittle selectors.
-- Avoid polling loops.
-- Clean up event listeners.
-- Clean up observers.
-- Avoid memory leaks in long-running sessions.
-- Store UI state explicitly.
-
-If direct DOM manipulation is necessary:
-
-- Keep it minimal.
-- Add comments.
-- Feature-detect target elements.
-- Fail silently but log a debug/warning message when useful.
-- Do not break ComfyUI if the element is missing.
+- Scope DOM queries.
+- Avoid brittle selectors and polling loops.
+- Clean up event listeners and observers.
+- Avoid memory leaks.
+- Keep UI state bounded.
+- Do not store secrets in localStorage/sessionStorage.
+- Use debouncing/throttling for frequent UI events.
+- Avoid blocking main thread in large workflows.
 
 ---
 
-## 8. Backend/Frontend Contract
+## 9. Backend/Frontend Contract
 
 Frontend code must not invent backend contracts.
 
@@ -179,50 +170,51 @@ When JS references backend nodes:
 
 - Use stable backend node IDs.
 - Confirm node class names.
-- Do not depend on display names.
-- Do not depend on category names for logic.
-- Keep widget name references synchronized with backend schema.
-- Preserve old widget names where possible.
-
-When backend schema changes:
-
-- Update JS deliberately.
-- Add compatibility for old workflows.
-- Document the change.
-- Add tests if tooling exists.
+- Do not depend on display names or categories for logic.
+- Keep widget names synchronized with backend schema.
+- Preserve old widget names when possible.
 
 ---
 
-## 9. Browser Verification
+## 10. Mandatory Browser and E2E Verification
 
-Frontend work needs browser feedback.
+Frontend work must be verified like a real user whenever possible.
 
-Verify when possible:
+If Playwright exists, run:
 
-- ComfyUI loads.
+```bash
+npm run test:e2e
+```
+
+If specific tests exist:
+
+```bash
+npx playwright test tests/e2e
+npx playwright test tests/e2e/comfyui-load.spec.js
+npx playwright test tests/e2e/node-search.spec.js
+npx playwright test tests/e2e/workflow-open.spec.js
+```
+
+User-like checks should cover:
+
+- ComfyUI opens at `COMFY_URL` or `http://127.0.0.1:8188`.
 - Browser console has no new errors.
-- Extension initializes once.
-- Workflow reload does not duplicate handlers.
-- Target node UI works.
-- Old workflows still open.
-- Settings persist correctly.
+- Target node can be found/searchable.
+- Node widgets can be changed.
+- Old workflow JSON opens if fixtures exist.
+- Reload does not duplicate handlers.
 - Missing backend node degrades gracefully.
-- UI does not block large workflows.
 
-If browser automation or manual browser access is unavailable, state the exact manual steps required.
+If ComfyUI is not running, say in Russian:
+
+```text
+Не проверено через браузер: ComfyUI не запущен на 127.0.0.1:8188.
+Локально нужно запустить ComfyUI и выполнить npm run test:e2e.
+```
 
 ---
 
-## 10. Error Handling
-
-Good frontend errors:
-
-- Explain what failed.
-- Identify the module.
-- Avoid breaking the entire ComfyUI UI.
-- Avoid alert spam.
-- Avoid leaking secrets.
-- Degrade gracefully.
+## 11. Error Handling and Logging
 
 Use:
 
@@ -231,54 +223,11 @@ console.warn("[TS ModuleName] message");
 console.error("[TS ModuleName] message", error);
 ```
 
-Avoid:
-
-- Silent catch blocks.
-- Console spam in normal operation.
-- Throwing from lifecycle hooks unless the extension truly cannot function.
-- User-facing popups for developer-only issues.
+Avoid silent catch blocks, console spam, secrets, and user popups for developer-only issues.
 
 ---
 
-## 11. State Management
-
-Rules:
-
-- Avoid global mutable state.
-- Use closure/module state only when necessary.
-- Keep state small.
-- Reset/cleanup state when nodes are removed or workflows change.
-- Do not store large binary data in frontend state.
-- Do not store secrets in localStorage/sessionStorage.
-- Version saved state when schema may evolve.
-
----
-
-## 12. Performance Rules
-
-ComfyUI workflows can contain many nodes.
-
-Avoid:
-
-- Expensive DOM scans on every frame.
-- Per-node polling loops.
-- Large synchronous work during UI interactions.
-- Blocking main thread with heavy parsing.
-- Repeated image/video decoding.
-- Unbounded caches.
-
-Prefer:
-
-- Event-based updates.
-- Debouncing.
-- Throttling.
-- Lazy UI construction.
-- WeakMap for node-associated metadata.
-- Cleanup on node removal.
-
----
-
-## 13. Security Rules
+## 12. Security
 
 Do not:
 
@@ -290,11 +239,11 @@ Do not:
 - Fetch arbitrary remote URLs without validation.
 - Trust metadata from workflow files.
 
-If rendering user-provided text, use `textContent` or safe rendering.
+Use `textContent` or safe rendering for user text.
 
 ---
 
-## 14. JS Tooling Checks
+## 13. Mandatory JS Checks
 
 If JS tooling exists, run:
 
@@ -302,47 +251,31 @@ If JS tooling exists, run:
 npm run lint
 npm run test
 npm run build
+npm run test:e2e
 ```
 
-If the repo uses another package manager, use the existing project convention.
-
-If no tooling exists, at least manually verify:
+If no tooling exists, manually verify or document:
 
 - ComfyUI starts.
 - Browser console has no new errors.
 - Extension loads.
 - Target node behavior works.
 - Old workflows still open.
-- No duplicate event handlers are created after reload.
+- Event handlers are not duplicated after reload.
 
 ---
 
-## 15. Frontend Self-Review Checklist
+## 14. Frontend Definition of Done
 
-Before finalizing frontend code, check:
+Frontend task is complete only when:
 
-- Extension ID unchanged.
-- Widget/config keys unchanged.
-- No new private internals.
-- No new monkey-patching.
-- Event listeners are cleaned up.
-- Observers are cleaned up.
-- UI state is bounded.
-- No secrets in frontend code.
-- Browser verification performed or manual steps listed.
-- Backend schema references remain correct.
-
----
-
-## 16. Frontend Definition of Done
-
-A frontend task is complete only when:
-
-- Extension IDs are stable.
-- Existing widget/config keys are preserved.
-- No private internals are newly used.
-- No monkey-patching is added unless explicitly justified.
-- Event listeners and observers are cleaned up.
-- Browser console is clean or manual verification is documented.
-- Backend/frontend contract remains compatible.
-- Relevant checks were run or limitations are stated.
+- Ответ пользователю на русском.
+- Extension IDs stable.
+- Widget/config keys preserved.
+- One-node-one-JS-file preserved.
+- No new private internals or monkey-patching.
+- Listeners/observers cleaned up.
+- Browser console clean or manual verification documented.
+- Playwright E2E run when available.
+- Backend/frontend contract compatible.
+- All possible checks run or limitations stated.
