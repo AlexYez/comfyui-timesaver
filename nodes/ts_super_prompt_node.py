@@ -63,6 +63,10 @@ SUPER_PROMPT_MAX_IMAGE_SIZE = 1024
 SUPER_PROMPT_HF_TOKEN = ""
 SUPER_PROMPT_HF_ENDPOINT = "huggingface.co, hf-mirror.com"
 SUPER_PROMPT_CUSTOM_SYSTEM_PROMPT = ""
+SUPER_PROMPT_DOWNLOAD_SIZE_ESTIMATES = {
+    SUPER_PROMPT_MODEL_HUIHUI_2B: 4_500_000_000,
+    SUPER_PROMPT_MODEL_QWEN_2B: 4_500_000_000,
+}
 
 # User-configurable recognition settings. Keep the ComfyUI widget surface compact;
 # tune recognition behavior here instead of adding workflow-breaking controls.
@@ -140,6 +144,9 @@ MODEL_SIZES = {
     "turbo": 1_620_000_000,
 }
 
+MODEL_FILE_NAMES = {
+    "turbo": "large-v3-turbo.pt",
+}
 MODELS_WITHOUT_TRANSLATE = {"turbo"}
 ALLOWED_AUDIO_SUFFIXES = {".aac", ".aiff", ".flac", ".m4a", ".mp3", ".mp4", ".ogg", ".opus", ".wav", ".webm"}
 WHISPER_DIR = Path(getattr(folder_paths, "models_dir", Path.cwd() / "models")) / "whisper"
@@ -239,6 +246,33 @@ def _send_error(operation_id: str | None, text: str) -> None:
     if operation_id:
         payload["operation_id"] = operation_id
     _send_ai_event("error", payload)
+
+
+def _format_bytes(size_bytes: int) -> str:
+    value = float(max(0, int(size_bytes)))
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if value < 1024.0 or unit == "TB":
+            return f"{value:.1f} {unit}" if unit != "B" else f"{int(value)} B"
+        value /= 1024.0
+    return f"{value:.1f} TB"
+
+
+def _directory_size(path: Path) -> int:
+    if not path.exists():
+        return 0
+
+    total = 0
+    try:
+        iterator = path.rglob("*")
+        for item in iterator:
+            try:
+                if item.is_file():
+                    total += item.stat().st_size
+            except OSError:
+                continue
+    except OSError:
+        return total
+    return total
 
 
 # ---------------------------------------------------------------------------
@@ -392,13 +426,77 @@ class ProgressBroadcaster:
         self._send("error", {"text": text})
 
 
+class QwenDownloadProgressMonitor:
+    """Poll local HuggingFace files while snapshot_download runs."""
+
+    def __init__(
+        self,
+        operation_id: str | None,
+        model_id: str,
+        local_dir: Path,
+        total_bytes: int,
+        start_percent: float = 20.0,
+        end_percent: float = 44.0,
+        enabled: bool = True,
+    ):
+        self.operation_id = operation_id
+        self.model_id = model_id
+        self.local_dir = local_dir
+        self.total_bytes = max(1, int(total_bytes))
+        self.start_percent = float(start_percent)
+        self.end_percent = float(end_percent)
+        self.enabled = bool(enabled)
+        self._stop = threading.Event()
+        self._thread: threading.Thread | None = None
+        self._last_size = -1
+
+    def start(self) -> None:
+        if not self.enabled:
+            return
+        _send_progress(self.operation_id, f"Connecting to HuggingFace for {self.model_id}", self.start_percent)
+        self._thread = threading.Thread(target=self._run, daemon=True)
+        self._thread.start()
+
+    def stop(self, success: bool) -> None:
+        if not self.enabled:
+            return
+        self._stop.set()
+        if self._thread is not None:
+            self._thread.join(timeout=1.0)
+        if success:
+            size = _directory_size(self.local_dir)
+            _send_progress(
+                self.operation_id,
+                f"Qwen model files ready ({_format_bytes(size)})",
+                self.end_percent,
+            )
+
+    def _run(self) -> None:
+        while not self._stop.is_set():
+            self._emit_progress()
+            self._stop.wait(0.7)
+
+    def _emit_progress(self) -> None:
+        size = _directory_size(self.local_dir)
+        if size == self._last_size and size > 0:
+            return
+        self._last_size = size
+        ratio = max(0.0, min(1.0, size / float(self.total_bytes)))
+        percent = self.start_percent + (self.end_percent - self.start_percent) * ratio
+        if size <= 0:
+            text = f"Downloading Qwen model {self.model_id}"
+        else:
+            text = f"Downloading Qwen model {self.model_id}: {_format_bytes(size)}"
+        _send_progress(self.operation_id, text, percent)
+
+
 # ---------------------------------------------------------------------------
 # Whisper model lifecycle
 # ---------------------------------------------------------------------------
 
 
 def _model_file_path(name: str) -> Path:
-    return WHISPER_DIR / f"{name}.pt"
+    return WHISPER_DIR / MODEL_FILE_NAMES.get(name, f"{name}.pt")
 
 
 def is_model_cached(name: str) -> bool:
@@ -733,6 +831,13 @@ def _audio_metadata(audio: AudioPreprocessResult) -> dict[str, Any]:
     }
 
 
+def _send_voice_status(model_name: str, text: str, percent: float | None = None) -> None:
+    payload: dict[str, Any] = {"model": model_name, "text": text}
+    if percent is not None:
+        payload["percent"] = max(0.0, min(100.0, float(percent)))
+    _send_voice_event("status", payload)
+
+
 # ---------------------------------------------------------------------------
 # Recognition endpoints
 # ---------------------------------------------------------------------------
@@ -750,11 +855,11 @@ def transcribe_audio(
     task = "translate" if target_language == "en" else "transcribe"
     language = None if source_language in (None, "", "auto") else source_language
 
-    _send_voice_event("status", {"model": model_name, "text": "Preparing audio"})
+    _send_voice_status(model_name, "Preparing audio", 10.0)
     audio_info = _preprocess_audio(_read_audio(filepath), AUDIO_SAMPLE_RATE)
     metadata = _audio_metadata(audio_info)
     if not audio_info.speech_detected or len(audio_info.audio) == 0:
-        _send_voice_event("status", {"model": model_name, "text": "No speech detected"})
+        _send_voice_status(model_name, "No speech detected", 100.0)
         return {
             "text": "",
             "language": language or "?",
@@ -762,8 +867,9 @@ def transcribe_audio(
             **metadata,
         }
 
-    _send_voice_event("status", {"model": model_name, "text": "Recognizing speech"})
+    _send_voice_status(model_name, "Loading voice model", 40.0)
     model, _, use_fp16 = load_model(model_name, device)
+    _send_voice_status(model_name, "Recognizing speech", 68.0)
 
     transcribe_kwargs = {
         "task": task,
@@ -783,6 +889,7 @@ def transcribe_audio(
     with torch.inference_mode():
         result = model.transcribe(audio_info.audio, **transcribe_kwargs)
 
+    _send_voice_status(model_name, "Finalizing speech text", 92.0)
     text = (result.get("text") or "").strip()
     detected = result.get("language", language or "?")
     return {
@@ -896,6 +1003,32 @@ async def status_endpoint(request: web.Request) -> web.StreamResponse:
             }
         }
     )
+
+
+def _qwen_model_dir(model_id: str) -> Path:
+    return Path(getattr(folder_paths, "models_dir", Path.cwd() / "models")) / "LLM" / str(model_id).split("/")[-1]
+
+
+def _qwen_download_estimate(model_id: str) -> int:
+    explicit = SUPER_PROMPT_DOWNLOAD_SIZE_ESTIMATES.get(model_id)
+    if explicit:
+        return int(explicit)
+    try:
+        size_b = float(_get_qwen_engine()._model_size_b(model_id))
+    except Exception:
+        size_b = 2.0
+    return int(max(1.0, size_b) * 2_250_000_000)
+
+
+def _is_qwen_model_available(engine: TS_Qwen3_VL_V3, model_id: str) -> bool:
+    checker = getattr(engine, "_check_model_integrity", None)
+    if not callable(checker):
+        return False
+    try:
+        return bool(checker(str(_qwen_model_dir(model_id))))
+    except Exception:
+        return False
+
 
 def _get_qwen_engine() -> TS_Qwen3_VL_V3:
     global _QWEN_ENGINE
@@ -1229,7 +1362,36 @@ def _generate_with_qwen(
         _send_progress(operation_id, "Checking memory", 12.0)
         engine._ensure_memory_available(estimated_vram)
 
-        _send_progress(operation_id, "Loading or downloading Qwen model", 22.0)
+        _send_progress(operation_id, "Checking Qwen model files", 16.0)
+        qwen_model_available = _is_qwen_model_available(engine, DEFAULT_MODEL_ID)
+        if qwen_model_available:
+            _send_progress(operation_id, "Qwen model found locally", 22.0)
+        elif SUPER_PROMPT_OFFLINE_MODE:
+            _send_progress(operation_id, "Using offline Qwen model files", 22.0)
+        else:
+            _send_progress(operation_id, "Qwen model download starting", 20.0)
+
+        if not qwen_model_available and not bool(SUPER_PROMPT_OFFLINE_MODE):
+            qwen_monitor = QwenDownloadProgressMonitor(
+                operation_id=operation_id,
+                model_id=DEFAULT_MODEL_ID,
+                local_dir=_qwen_model_dir(DEFAULT_MODEL_ID),
+                total_bytes=_qwen_download_estimate(DEFAULT_MODEL_ID),
+            )
+            qwen_monitor.start()
+            download_success = False
+            try:
+                engine._ensure_model_available(
+                    DEFAULT_MODEL_ID,
+                    bool(SUPER_PROMPT_OFFLINE_MODE),
+                    str(SUPER_PROMPT_HF_TOKEN or ""),
+                    str(SUPER_PROMPT_HF_ENDPOINT or ""),
+                )
+                download_success = True
+            finally:
+                qwen_monitor.stop(download_success)
+
+        _send_progress(operation_id, "Loading Qwen model into memory", 46.0)
         model, processor = engine._load_model(
             DEFAULT_MODEL_ID,
             resolved_precision,
@@ -1238,12 +1400,13 @@ def _generate_with_qwen(
             str(SUPER_PROMPT_HF_TOKEN or ""),
             str(SUPER_PROMPT_HF_ENDPOINT or ""),
         )
+        _send_progress(operation_id, "Qwen model loaded", 50.0)
 
         target_device = engine._get_device()
         moved_to_gpu = False
         if target_device.type == "cuda" and not engine._model_has_cuda_device(model):
             try:
-                _send_progress(operation_id, "Moving Qwen to GPU", 38.0)
+                _send_progress(operation_id, "Moving Qwen to GPU", 54.0)
                 engine._ensure_memory_available(estimated_vram, force_unload=True)
                 model.to(target_device)
                 moved_to_gpu = True
@@ -1264,7 +1427,7 @@ def _generate_with_qwen(
                     "Use a Qwen vision-language model or disconnect image."
                 )
 
-            _send_progress(operation_id, "Preparing Qwen input", 52.0)
+            _send_progress(operation_id, "Preparing Qwen input", 62.0)
             messages = _build_messages(
                 system_prompt,
                 text,
@@ -1312,7 +1475,7 @@ def _generate_with_qwen(
                         with torch.cuda.device(idx):
                             torch.cuda.manual_seed(int(SUPER_PROMPT_SEED))
 
-                _send_progress(operation_id, "Generating AI prompt", 72.0)
+                _send_progress(operation_id, "Generating AI prompt", 78.0)
                 with torch.inference_mode():
                     if use_autocast:
                         with torch.autocast(device_type="cuda", dtype=dtype):
