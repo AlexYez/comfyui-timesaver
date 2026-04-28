@@ -16,7 +16,7 @@ const WIDGET_TOOLTIPS = {
     [SYSTEM_PRESET_WIDGET]: "Выберите системный пресет из qwen_3_vl_presets.json для улучшения промпта.",
 };
 const VOICE_BUTTON_TOOLTIP = "Запускает запись с микрофона. Во время записи нажмите еще раз, чтобы остановить и распознать аудио.";
-const AI_BUTTON_TOOLTIP = "Улучшает текст через Qwen/Qwen3.5-2B: при необходимости переводит на английский и делает качественный промпт для генерации.";
+const AI_BUTTON_TOOLTIP = "Улучшает текст через Huihui-Qwen3.5-2B-abliterated: при необходимости переводит на английский и делает качественный промпт для генерации.";
 const DEFAULT_MODEL = "base";
 const HIGH_QUALITY_MODEL = "turbo";
 const LEGACY_DOM_WIDGET_NAME = "ts_super_prompt_progress";

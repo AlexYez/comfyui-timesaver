@@ -41,7 +41,14 @@ VOICE_LOG_PREFIX = "[TS Super Prompt Voice]"
 
 # User-configurable settings for the compact TS Super Prompt UI.
 # Change these values here instead of exposing extra widgets in ComfyUI.
-DEFAULT_MODEL_ID = "Qwen/Qwen3.5-2B"
+SUPER_PROMPT_MODEL_HUIHUI_2B = "huihui-ai/Huihui-Qwen3.5-2B-abliterated"
+SUPER_PROMPT_MODEL_QWEN_2B = "Qwen/Qwen3.5-2B"
+SUPER_PROMPT_MODEL_OPTIONS = (
+    SUPER_PROMPT_MODEL_HUIHUI_2B,
+    SUPER_PROMPT_MODEL_QWEN_2B,
+)
+# To switch back to stock Qwen, set DEFAULT_MODEL_ID = SUPER_PROMPT_MODEL_QWEN_2B.
+DEFAULT_MODEL_ID = SUPER_PROMPT_MODEL_HUIHUI_2B
 DEFAULT_PRESET = "Prompts enhance"
 CUSTOM_PRESET = "Your instruction"
 SUPER_PROMPT_TARGET = "auto"

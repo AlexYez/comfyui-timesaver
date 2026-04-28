@@ -171,7 +171,7 @@ python -m pip install -r requirements.txt
 | Нода | Простое описание | Выходы |
 | --- | --- | --- |
 | `TS_Qwen3_VL_V3` | Отправляет текст, изображение или видео в Qwen и возвращает ответ. | `STRING`, `IMAGE` |
-| `TS_SuperPrompt` | Записывает речь в текстовое поле, показывает progressbar и улучшает промпт через Qwen/Qwen3.5-2B с пресетами из `qwen_3_vl_presets.json`. | `STRING` |
+| `TS_SuperPrompt` | Записывает речь в текстовое поле, показывает progressbar и улучшает промпт через Huihui-Qwen3.5-2B-abliterated с пресетами из `qwen_3_vl_presets.json`. | `STRING` |
 | `TS_PromptBuilder` | Собирает промпт из готовых категорий и поддерживает seed для повторяемости. | `STRING` |
 | `TS_BatchPromptLoader` | Берет одну строку из многострочного списка по индексу. | `STRING`, `INT` |
 | `TS_StylePromptSelector` | Подставляет готовый стиль из локальной библиотеки стилей. | `STRING` |
@@ -467,7 +467,7 @@ ComfyUI usually shows which connections are valid, so there is no need to memori
 | Node | Plain Description | Outputs |
 | --- | --- | --- |
 | `TS_Qwen3_VL_V3` | Sends text, image, or video to Qwen and returns a response. | `STRING`, `IMAGE` |
-| `TS_SuperPrompt` | Records speech into a text field, shows a progress bar, and enhances prompts with Qwen/Qwen3.5-2B using presets from `qwen_3_vl_presets.json`. | `STRING` |
+| `TS_SuperPrompt` | Records speech into a text field, shows a progress bar, and enhances prompts with Huihui-Qwen3.5-2B-abliterated using presets from `qwen_3_vl_presets.json`. | `STRING` |
 | `TS_PromptBuilder` | Builds a prompt from reusable categories and supports seeds. | `STRING` |
 | `TS_BatchPromptLoader` | Selects one line from a multiline prompt list by index. | `STRING`, `INT` |
 | `TS_StylePromptSelector` | Inserts a ready-made style from the local style library. | `STRING` |
