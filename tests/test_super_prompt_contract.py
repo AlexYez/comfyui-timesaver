@@ -111,11 +111,13 @@ def test_super_prompt_schema_contract(monkeypatch):
     assert schema.node_id == "TS_SuperPrompt"
     assert schema.display_name == "TS Super Prompt"
     assert schema.category == "TS/LLM"
-    assert list(inputs) == ["text", "system_preset", "image"]
+    assert list(inputs) == ["text", "high_quality", "system_preset", "image"]
     assert inputs["text"].default == ""
+    assert inputs["high_quality"].default is False
     assert inputs["system_preset"].options == ["Prompts enhance", "Your instruction"]
     assert inputs["image"].optional is True
     assert "промпта" in inputs["text"].kwargs["tooltip"]
+    assert "turbo" in inputs["high_quality"].kwargs["tooltip"]
     assert "пресет" in inputs["system_preset"].kwargs["tooltip"]
     assert "изображение" in inputs["image"].kwargs["tooltip"]
     assert schema.outputs[0].display_name == "text"

@@ -145,6 +145,15 @@ def test_initial_prompt_is_prompt_dictation_context(monkeypatch):
     assert module._configured_initial_prompt() is None
 
 
+def test_high_quality_selects_turbo_voice_model(monkeypatch):
+    module = _load_module(monkeypatch)
+
+    assert module._resolve_voice_model(False, "turbo") == "base"
+    assert module._resolve_voice_model("false", "turbo") == "base"
+    assert module._resolve_voice_model(True, "base") == "turbo"
+    assert module._resolve_voice_model("true") == "turbo"
+
+
 def test_voice_recognition_backend_registers_only_super_prompt_node(monkeypatch):
     module = _load_module(monkeypatch)
 
