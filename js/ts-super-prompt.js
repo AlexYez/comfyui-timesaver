@@ -303,9 +303,12 @@ function setupSuperPrompt(node) {
 
     const onStatus = (event) => {
         if (!matchesActiveModel(event.detail) || !state.isVoiceBusy) return;
-        setVoiceLabel(String(event.detail?.text || "Working"));
+        const rawPercent = event.detail?.percent;
+        const percent = Number.isFinite(Number(rawPercent)) ? Number(rawPercent) : undefined;
+        setVoiceLabel(compactStatusLabel("Working", event.detail));
         progressWidget?.set({
             text: String(event.detail?.text || "Working"),
+            percent,
             active: true,
             error: false,
         });

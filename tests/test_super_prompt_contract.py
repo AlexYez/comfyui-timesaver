@@ -131,6 +131,21 @@ def test_super_prompt_default_model_has_stock_qwen_option(monkeypatch):
     assert module.SUPER_PROMPT_MODEL_QWEN_2B in module.SUPER_PROMPT_MODEL_OPTIONS
 
 
+def test_qwen_download_monitor_scales_directory_progress(monkeypatch):
+    module = _load_module(monkeypatch)
+    events = []
+
+    monkeypatch.setattr(module, "_send_progress", lambda op, text, percent=None: events.append((op, text, percent)))
+    monkeypatch.setattr(module, "_directory_size", lambda _path: 50)
+
+    monitor = module.QwenDownloadProgressMonitor("op", "test/model", Path("unused"), 100, 20.0, 40.0)
+    monitor._emit_progress()
+
+    assert events[-1][0] == "op"
+    assert "50 B" in events[-1][1]
+    assert events[-1][2] == 30.0
+
+
 def test_super_prompt_strips_thinking_output(monkeypatch):
     module = _load_module(monkeypatch)
 

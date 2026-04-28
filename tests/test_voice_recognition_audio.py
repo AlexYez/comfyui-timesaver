@@ -154,6 +154,13 @@ def test_high_quality_selects_turbo_voice_model(monkeypatch):
     assert module._resolve_voice_model("true") == "turbo"
 
 
+def test_turbo_uses_actual_whisper_download_filename(monkeypatch):
+    module = _load_module(monkeypatch)
+
+    assert module._model_file_path("base").name == "base.pt"
+    assert module._model_file_path("turbo").name == "large-v3-turbo.pt"
+
+
 def test_voice_recognition_backend_registers_only_super_prompt_node(monkeypatch):
     module = _load_module(monkeypatch)
 
