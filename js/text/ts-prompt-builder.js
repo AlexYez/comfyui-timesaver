@@ -1,5 +1,5 @@
-import { app } from "../../scripts/app.js";
-import { api } from "../../scripts/api.js";
+import { app } from "/scripts/app.js";
+import { api } from "/scripts/api.js";
 
 const TS_PROMPT_BUILDER_EXTENSION_ID = "ts.prompt_builder";
 const TS_PROMPT_BUILDER_NODE_NAME = "TS_PromptBuilder";

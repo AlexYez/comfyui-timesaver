@@ -111,7 +111,11 @@ Avoid:
 Preferred:
 
 ```javascript
-import { app } from "../../scripts/app.js";
+// Use absolute /scripts/* paths so files keep working regardless of the
+// js/<category>/ subdirectory they live in. Relative ../../scripts paths
+// break for files at js/<category>/file.js (extra `..` lands outside
+// /extensions/comfyui-timesaver/).
+import { app } from "/scripts/app.js";
 
 app.registerExtension({
   name: "ts.exampleExtension",

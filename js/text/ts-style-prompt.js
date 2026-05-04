@@ -1,5 +1,5 @@
-import { app } from "../../scripts/app.js";
-import { api } from "../../scripts/api.js";
+import { app } from "/scripts/app.js";
+import { api } from "/scripts/api.js";
 
 const EXTENSION_ID = "ts_suite.style_prompt_selector";
 const NODE_NAME = "TS_StylePromptSelector";
