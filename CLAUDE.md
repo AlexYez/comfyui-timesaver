@@ -43,7 +43,7 @@ tests/AGENTS.md
 
 - Версия: `8.8` (`pyproject.toml`).
 - Репозиторий: https://github.com/AlexYez/comfyui-timesaver.
-- 57 нод в категориях: image / video / audio / llm / text / files / utils / conditioning.
+- 56 нод в категориях: image / video / audio / llm / text / files / utils / conditioning.
 - conditioning/ содержит 1 ноду: TS_MultiReference.
 - Корневой загрузчик: [`__init__.py`](__init__.py) — рекурсивно сканирует `nodes/**/*.py`, оборачивает entrypoints через `TSDependencyManager` и печатает startup-таблицу.
 - Dependency guard: [`ts_dependency_manager.py`](ts_dependency_manager.py).
@@ -65,7 +65,7 @@ comfyui-timesaver/
 │  ├─ image/  (25)
 │  │  ├─ _keying_helpers.py
 │  │  └─ ts_*.py
-│  ├─ video/  (8)
+│  ├─ video/  (7)
 │  ├─ audio/  (6)
 │  │  └─ _audio_helpers.py
 │  ├─ llm/    (2)
@@ -418,7 +418,7 @@ Verification summary в ответе пользователю — обязате
 `WEB_DIRECTORY = "./js"` в `__init__.py`. Каждый `.js` подключается автоматически.
 
 - Используй `app.registerExtension({ name: "ts.<id>", ... })` через `import { app } from "/scripts/app.js"`.
-- Стабильные extension IDs (НЕ менять): `ts.bookmark`, `ts.resolutionselector`, `ts.filebrowser`, `ts.audioLoader`, `ts.animationpreview`, `ts.prompt_builder`, `ts_suite.style_prompt_selector`, `ts.superPrompt`, `ts.slider-settings`.
+- Стабильные extension IDs (НЕ менять): `ts.bookmark`, `ts.resolutionselector`, `ts.audioLoader`, `ts.animationpreview`, `ts.prompt_builder`, `ts_suite.style_prompt_selector`, `ts.superPrompt`, `ts.float-slider`, `ts.int-slider`.
 - Один публичный узел с фронтендом = один `.js`. Не дроби на `menu.js / widgets.js / state.js`.
 - Никаких глобалов, monkey-patch, eval, `new Function`, blind `innerHTML` с пользовательским текстом.
 - Логи: `console.warn("[TS ModuleName] ...")` / `console.error("[TS ModuleName] ...", err)` — без эмоджи и спама.

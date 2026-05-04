@@ -1,4 +1,4 @@
-# docs/AGENTS.md — Documentation Rules
+# doc/AGENTS.md — Documentation Rules
 
 Эта папка содержит пользовательскую и developer-документацию.
 
@@ -20,11 +20,9 @@ Do not write marketing fluff when technical docs are needed.
 
 Use documentation to preserve engineering lessons:
 
-- `docs/ai-lessons.md`
-- `docs/troubleshooting.md`
-- `docs/migration.md`
-- `docs/developer-notes.md`
-- nearest relevant `AGENTS.md` for permanent rules
+- `doc/migration.md` — release-to-release migration notes (existing).
+- `doc/TS_DEPENDENCY_POLICY.md` — optional dependency rules (existing).
+- nearest relevant `AGENTS.md` for permanent rules.
 
 If a mistake can happen twice, add a guardrail: doc, test, contract snapshot or AGENTS rule.
 

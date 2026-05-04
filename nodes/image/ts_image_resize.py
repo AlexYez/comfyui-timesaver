@@ -113,7 +113,7 @@ class TS_ImageResize:
         elif _smaller_side > 0 or _larger_side > 0: chosen_method = "side_dims"
         elif _megapixels > 0.0: chosen_method = "megapixels"
 
-        # --- 1. Р Р°СЃС‡РµС‚ 'РёРґРµР°Р»СЊРЅС‹С…' СЂР°Р·РјРµСЂРѕРІ РЅР° РѕСЃРЅРѕРІРµ РІС‹Р±СЂР°РЅРЅРѕРіРѕ РјРµС‚РѕРґР° ---
+        # --- 1. Расчет 'идеальных' размеров на основе выбранного метода ---
         if chosen_method == "megapixels":
             if original_H > 0 and original_W > 0:
                 aspect_ratio = ideal_w / ideal_h
@@ -125,9 +125,9 @@ class TS_ImageResize:
             ideal_h *= _scale_factor
         elif chosen_method == "target_dims":
             if keep_proportion:
-                 # Р”Р»СЏ 'cover and crop' Рё РѕРґРЅРѕРіРѕ Р·Р°РґР°РЅРЅРѕРіРѕ СЂР°Р·РјРµСЂР°,
-                 # РёРґРµР°Р»СЊРЅС‹Рµ СЂР°Р·РјРµСЂС‹ - СЌС‚Рѕ РїСЂРѕСЃС‚Рѕ С†РµР»РµРІС‹Рµ.
-                 # Р”Р»СЏ РѕРґРЅРѕРіРѕ СЂР°Р·РјРµСЂР° - РїСЂРѕРїРѕСЂС†РёРѕРЅР°Р»СЊРЅРѕ РјР°СЃС€С‚Р°Р±РёСЂСѓРµРј.
+                 # Для 'cover and crop' и одного заданного размера,
+                 # идеальные размеры - это просто целевые.
+                 # Для одного размера - пропорционально масштабируем.
                 ratio = ideal_w / ideal_h if ideal_h != 0 else float('inf')
                 if _target_width > 0 and _target_height > 0:
                     ideal_w, ideal_h = float(_target_width), float(_target_height)
@@ -137,7 +137,7 @@ class TS_ImageResize:
                 elif _target_height > 0:
                     ideal_h = float(_target_height)
                     ideal_w = ideal_h * ratio
-            else: # Р‘РµР· СЃРѕС…СЂР°РЅРµРЅРёСЏ РїСЂРѕРїРѕСЂС†РёР№
+            else: # Без сохранения пропорций
                 if _target_width > 0: ideal_w = float(_target_width)
                 if _target_height > 0: ideal_h = float(_target_height)
         elif chosen_method == "side_dims":
@@ -157,23 +157,23 @@ class TS_ImageResize:
                     ideal_h = float(_larger_side)
                     ideal_w = ideal_h * ratio
 
-        # --- 2. РџСЂРёРјРµРЅРµРЅРёРµ 'dont_enlarge' ---
+        # --- 2. Применение 'dont_enlarge' ---
         if dont_enlarge and chosen_method is not None:
             if ideal_w * ideal_h > original_W * original_H:
                 ideal_w, ideal_h = float(original_W), float(original_H)
         
-        # --- 3. РћРїСЂРµРґРµР»РµРЅРёРµ С„РёРЅР°Р»СЊРЅС‹С… СЂР°Р·РјРµСЂРѕРІ С…РѕР»СЃС‚Р° ---
+        # --- 3. Определение финальных размеров холста ---
         is_cover_crop_mode = (chosen_method == "target_dims" and keep_proportion and _target_width > 0 and _target_height > 0)
         is_free_distort_mode = (chosen_method == "target_dims" and not keep_proportion and _target_width > 0 and _target_height > 0)
         
         final_w, final_h = 0, 0
         if is_cover_crop_mode or is_free_distort_mode:
-            # Р’ СЌС‚РёС… РґРІСѓС… СЂРµР¶РёРјР°С… 'divisible_by' РР“РќРћР РР РЈР•РўРЎРЇ,
-            # С‚Р°Рє РєР°Рє РїРѕР»СЊР·РѕРІР°С‚РµР»СЊ СЏРІРЅРѕ СѓРєР°Р·Р°Р» РєРѕРЅРµС‡РЅРѕРµ СЂР°Р·СЂРµС€РµРЅРёРµ.
+            # В этих двух режимах 'divisible_by' ИГНОРИРУЕТСЯ,
+            # так как пользователь явно указал конечное разрешение.
             final_w = int(round(ideal_w))
             final_h = int(round(ideal_h))
         else:
-            # Р’Рѕ РІСЃРµС… РѕСЃС‚Р°Р»СЊРЅС‹С… РїСЂРѕРїРѕСЂС†РёРѕРЅР°Р»СЊРЅС‹С… СЂРµР¶РёРјР°С… СЃС‚СЂРѕРіРѕ СЃРѕР±Р»СЋРґР°РµРј РєСЂР°С‚РЅРѕСЃС‚СЊ.
+            # Во всех остальных пропорциональных режимах строго соблюдаем кратность.
             if _divisible_by > 1:
                 final_w = math.floor(ideal_w / _divisible_by) * _divisible_by
                 final_h = math.floor(ideal_h / _divisible_by) * _divisible_by
@@ -189,20 +189,20 @@ class TS_ImageResize:
         current_pixels_nchw = pixels.permute(0, 3, 1, 2)
         current_mask_nchw = mask.unsqueeze(1) if mask is not None else None
         
-        # --- 4. Р•РґРёРЅР°СЏ Р»РѕРіРёРєР° РјР°СЃС€С‚Р°Р±РёСЂРѕРІР°РЅРёСЏ Рё РѕР±СЂРµР·РєРё ---
+        # --- 4. Единая логика масштабирования и обрезки ---
         if final_w == original_W and final_h == original_H:
              final_output_pixels_nchw = current_pixels_nchw
         elif is_free_distort_mode:
-            # РџСЂРѕСЃС‚РѕРµ РјР°СЃС€С‚Р°Р±РёСЂРѕРІР°РЅРёРµ СЃ РёСЃРєР°Р¶РµРЅРёРµРј
+            # Простое масштабирование с искажением
             final_output_pixels_nchw = self._interp_image(current_pixels_nchw, (final_w, final_h), upscale_method)
             if current_mask_nchw is not None:
                 current_mask_nchw = self._interp_image(current_mask_nchw, (final_w, final_h), "nearest-exact")
         else:
-            # РЈРЅРёРІРµСЂСЃР°Р»СЊРЅР°СЏ Р»РѕРіРёРєР° "РїРѕРєСЂС‹С‚СЊ Рё РѕР±СЂРµР·Р°С‚СЊ" РґР»СЏ РІСЃРµС… РїСЂРѕРїРѕСЂС†РёРѕРЅР°Р»СЊРЅС‹С… СЂРµР¶РёРјРѕРІ
+            # Универсальная логика "покрыть и обрезать" для всех пропорциональных режимов
             src_ratio = float(original_W) / float(original_H) if original_H != 0 else float('inf')
             target_canvas_ratio = float(final_w) / float(final_h) if final_h != 0 else float('inf')
 
-            # Р’С‹С‡РёСЃР»СЏРµРј РїСЂРѕРјРµР¶СѓС‚РѕС‡РЅС‹Р№ СЂР°Р·РјРµСЂ С‚Р°Рє, С‡С‚РѕР±С‹ РёР·РѕР±СЂР°Р¶РµРЅРёРµ РџРћРљР Р«Р’РђР›Рћ С†РµР»РµРІРѕР№ С…РѕР»СЃС‚
+            # Вычисляем промежуточный размер так, чтобы изображение ПОКРЫВАЛО целевой холст
             if src_ratio > target_canvas_ratio:
                 scale_to_h = final_h
                 scale_to_w = round(scale_to_h * src_ratio)
@@ -212,12 +212,12 @@ class TS_ImageResize:
             
             scale_to_w, scale_to_h = max(1, int(scale_to_w)), max(1, int(scale_to_h))
 
-            # РњР°СЃС€С‚Р°Р±РёСЂСѓРµРј РґРѕ РїСЂРѕРјРµР¶СѓС‚РѕС‡РЅРѕРіРѕ СЂР°Р·РјРµСЂР°
+            # Масштабируем до промежуточного размера
             scaled_pixels_nchw = self._interp_image(current_pixels_nchw, (scale_to_w, scale_to_h), upscale_method)
             if current_mask_nchw is not None:
                 current_mask_nchw = self._interp_image(current_mask_nchw, (scale_to_w, scale_to_h), "nearest-exact")
             
-            # Р’С‹С‡РёСЃР»СЏРµРј РєРѕРѕСЂРґРёРЅР°С‚С‹ РґР»СЏ С†РµРЅС‚СЂР°Р»СЊРЅРѕР№ РѕР±СЂРµР·РєРё
+            # Вычисляем координаты для центральной обрезки
             crop_x = (scaled_pixels_nchw.shape[3] - final_w) // 2
             crop_y = (scaled_pixels_nchw.shape[2] - final_h) // 2
             crop_x, crop_y = max(0, crop_x), max(0, crop_y)
@@ -232,9 +232,9 @@ class TS_ImageResize:
         return (final_output_pixels, final_output_pixels.shape[2], final_output_pixels.shape[1], final_output_mask)
 
 
-# ... (РѕСЃС‚Р°Р»СЊРЅРѕР№ РєРѕРґ Р±РµР· РёР·РјРµРЅРµРЅРёР№) ...
+# ... (остальной код без изменений) ...
 
-# рџ”§ РЎРїРёСЃРѕРє РїРѕРґРґРµСЂР¶РёРІР°РµРјС‹С… СЂР°Р·СЂРµС€РµРЅРёР№ Qwen Image
+# 🔧 Список поддерживаемых разрешений Qwen Image
 
 
 NODE_CLASS_MAPPINGS = {"TS_ImageResize": TS_ImageResize}

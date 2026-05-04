@@ -18,12 +18,12 @@ except ImportError:
 
 
 QWEN_IMAGE_SUPPORTED_RESOLUTIONS = [
-    (1344, 1344, 1.0),   # 1:1 (Р±Р»РёР¶Р°Р№С€РµРµ Рє 1328x1328)
-    (1792, 1008, 1.778), # 16:9 (Р±Р»РёР¶Р°Р№С€РµРµ Рє 1664x928)
+    (1344, 1344, 1.0),   # 1:1 (ближайшее к 1328x1328)
+    (1792, 1008, 1.778), # 16:9 (ближайшее к 1664x928)
     (1008, 1792, 0.562), # 9:16
-    (1456, 1088, 1.338), # 4:3 (Р±Р»РёР¶Р°Р№С€РµРµ Рє 1472x1140)
+    (1456, 1088, 1.338), # 4:3 (ближайшее к 1472x1140)
     (1088, 1456, 0.747), # 3:4
-    (1568, 1056, 1.484), # 3:2 (Р±Р»РёР¶Р°Р№С€РµРµ Рє 1584x1056)
+    (1568, 1056, 1.484), # 3:2 (ближайшее к 1584x1056)
     (1056, 1568, 0.673), # 2:3
 ]
 
@@ -63,35 +63,35 @@ class TS_QwenSafeResize:
             img_np = (image[i].cpu().numpy() * 255).astype(np.uint8)
             pil_img = Image.fromarray(img_np)
 
-            # ---- Р’С‹Р±РёСЂР°РµРј Р±Р»РёР¶Р°Р№С€РµРµ СЂР°Р·СЂРµС€РµРЅРёРµ ----
+            # ---- Выбираем ближайшее разрешение ----
             target_w, target_h = closest_supported_resolution(w, h)
 
-            # ---- РњР°СЃС€С‚Р°Р±РёСЂСѓРµРј ----
+            # ---- Масштабируем ----
             scale = max(target_w / w, target_h / h)
             new_w = int(w * scale)
             new_h = int(h * scale)
 
             resized = pil_img.resize((new_w, new_h), resample=Image.LANCZOS)
 
-            # ---- РљСЂРѕРї РїРѕ С†РµРЅС‚СЂСѓ ----
+            # ---- Кроп по центру ----
             left = (new_w - target_w) // 2
             top = (new_h - target_h) // 2
             right = left + target_w
             bottom = top + target_h
             cropped = resized.crop((left, top, right, bottom))
 
-            # в†’ РѕР±СЂР°С‚РЅРѕ РІ С‚РµРЅР·РѕСЂ float32 (0..1)
+            # → обратно в тензор float32 (0..1)
             img_out = torch.from_numpy(np.array(cropped)).float() / 255.0
             # (H,W,C) в†’ (1,H,W,C)
             output_images.append(img_out.unsqueeze(0))
 
-        # РЎРѕР±РёСЂР°РµРј Р±Р°С‚С‡
+        # Собираем батч
         output = torch.cat(output_images, dim=0)
         return (output,)
     
 
 
-# Р’СЃРµ СЂР°Р·СЂРµС€РµРЅРёСЏ Qwen: РіРѕСЂРёР·РѕРЅС‚Р°Р»СЊРЅС‹Рµ Рё РІРµСЂС‚РёРєР°Р»СЊРЅС‹Рµ
+# Все разрешения Qwen: горизонтальные и вертикальные
 
 
 NODE_CLASS_MAPPINGS = {"TS_QwenSafeResize": TS_QwenSafeResize}

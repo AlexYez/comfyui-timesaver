@@ -66,10 +66,6 @@ PREVIEW_SAMPLE_RATE = 4000
 SUPPORTED_AUDIO_EXTENSIONS = {".aac", ".aif", ".aiff", ".flac", ".m4a", ".mp3", ".ogg", ".opus", ".wav", ".wma", ".webm"}
 SUPPORTED_VIDEO_EXTENSIONS = {".avi", ".flv", ".m2ts", ".m4v", ".mkv", ".mov", ".mp4", ".mpeg", ".mpg", ".mts", ".ts", ".webm"}
 
-CACHE_DIR.mkdir(parents=True, exist_ok=True)
-RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
-GENERATED_AUDIO_DIR.mkdir(parents=True, exist_ok=True)
-
 
 @dataclass
 class MediaMetadata:
@@ -143,6 +139,39 @@ def _get_ffmpeg_executable() -> str:
         except Exception:
             pass
     return "ffmpeg"
+
+
+def _allowed_view_roots() -> tuple[Path, ...]:
+    # Resolved on every call so changes to folder_paths (rare) are picked up.
+    roots: list[Path] = []
+    try:
+        roots.append(Path(folder_paths.get_input_directory()).resolve())
+    except (OSError, ValueError):
+        pass
+    try:
+        roots.append(Path(folder_paths.get_output_directory()).resolve())
+    except (OSError, ValueError, AttributeError):
+        pass
+    for candidate in (RECORDINGS_DIR, GENERATED_AUDIO_DIR, CACHE_DIR):
+        try:
+            roots.append(candidate.resolve())
+        except OSError:
+            continue
+    return tuple(roots)
+
+
+def _is_inside_allowed_root(path: Path) -> bool:
+    try:
+        resolved = path.resolve(strict=False)
+    except OSError:
+        return False
+    for root in _allowed_view_roots():
+        try:
+            resolved.relative_to(root)
+            return True
+        except ValueError:
+            continue
+    return False
 
 
 def _hash_file_identity(filepath: str) -> str:
@@ -316,6 +345,7 @@ def _write_cached_preview(filepath: str, payload: dict[str, Any]) -> None:
     cache_payload = dict(payload)
     cache_payload["cache_key"] = _hash_file_identity(filepath)
     try:
+        cache_file.parent.mkdir(parents=True, exist_ok=True)
         with cache_file.open("w", encoding="utf-8") as handle:
             json.dump(cache_payload, handle, ensure_ascii=True)
     except OSError as exc:
@@ -464,6 +494,7 @@ def _write_preview_audio_file(waveform: torch.Tensor, sample_rate: int, prefix: 
     output_path = GENERATED_AUDIO_DIR / f"{preview_key}.wav"
     if output_path.is_file():
         return output_path
+    GENERATED_AUDIO_DIR.mkdir(parents=True, exist_ok=True)
     channel_count = min(2, max(1, int(waveform.shape[0])))
     pcm = waveform[:channel_count].transpose(0, 1).numpy()
     pcm = np.clip(pcm, -1.0, 1.0)
@@ -500,6 +531,9 @@ async def ts_audio_loader_metadata(request: web.Request) -> web.StreamResponse:
     filepath = _normalize_selected_path(urllib.parse.unquote(request.query.get("filepath", "")))
     if not filepath or not os.path.isfile(filepath):
         return web.json_response({"error": "File not found."}, status=404)
+    if not _is_inside_allowed_root(Path(filepath)):
+        _log_warning(f"Rejected metadata request outside allowed roots: {filepath}")
+        return web.json_response({"error": "File not found."}, status=404)
     try:
         return web.json_response(await asyncio.to_thread(_get_media_preview, filepath))
     except Exception as exc:
@@ -510,6 +544,9 @@ async def ts_audio_loader_metadata(request: web.Request) -> web.StreamResponse:
 async def ts_audio_loader_view(request: web.Request) -> web.StreamResponse:
     filepath = _normalize_selected_path(urllib.parse.unquote(request.query.get("filepath", "")))
     if not filepath or not os.path.isfile(filepath):
+        return web.Response(status=404)
+    if not _is_inside_allowed_root(Path(filepath)):
+        _log_warning(f"Rejected view request outside allowed roots: {filepath}")
         return web.Response(status=404)
     try:
         return web.FileResponse(filepath)
@@ -529,6 +566,7 @@ async def ts_audio_loader_upload_recording(request: web.Request) -> web.StreamRe
         if len(suffix) > 10:
             suffix = ".webm"
         output_name = f"ts_audio_recording_{time.strftime('%Y%m%d_%H%M%S')}_{os.getpid()}_{int(time.time_ns() % 1000000)}{suffix}"
+        RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
         output_path = RECORDINGS_DIR / output_name
         with output_path.open("wb") as handle:
             while True:

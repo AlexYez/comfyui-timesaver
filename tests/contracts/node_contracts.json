@@ -111,13 +111,6 @@
     "display_name": "TS Color Match",
     "python_file": "nodes/image/ts_color_match.py"
   },
-  "TS_DeflickerNode": {
-    "api": "v1",
-    "category": "Video PostProcessing",
-    "class_name": "TS_DeflickerNode",
-    "display_name": "TS Advanced Video Deflicker",
-    "python_file": "nodes/video/ts_deflicker.py"
-  },
   "TS_Despill": {
     "api": "v3",
     "category": "TS/image",

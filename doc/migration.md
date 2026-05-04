@@ -27,12 +27,13 @@
 ```text
 nodes/
 ├─ image/    — 25 нод (resize, color, keyer, mask, tile, 360°, и т.п.)
-├─ video/    — 8 нод (depth, upscale, deflicker, frame interpolation, animation preview)
-├─ audio/    — 6 нод (loader, preview, whisper, silero TTS, music stems)
+├─ video/    — 7 нод (depth, upscale, frame interpolation, animation preview, free memory, LTX, RTX upscaler)
+├─ audio/    — 5 нод (loader, preview, whisper, silero TTS, music stems)
 ├─ llm/      — 2 ноды (Qwen3 VL, Super Prompt)
 ├─ text/     — 4 ноды (prompt builder, batch loader, style selector, silero stress)
-├─ files/    — 9 нод (file browser, downloader, model converters, scanner, LoRA merger, EDL→YouTube)
-└─ utils/    — 4 ноды (float/int slider, smart switch, math int)
+├─ files/    — 8 нод (downloader, model converters, scanner, LoRA merger, EDL→YouTube, file path loader)
+├─ utils/    — 4 ноды (float/int slider, smart switch, math int)
+└─ conditioning/ — 1 нода (multi reference)
 ```
 
 `js/` зеркальная структура.
