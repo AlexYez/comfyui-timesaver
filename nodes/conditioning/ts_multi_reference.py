@@ -1,10 +1,10 @@
 """TS Multi Reference — attach up to three IMAGE references to a CONDITIONING.
 
 Each connected reference image is resized to fit max_megapixels on a
-32-pixel grid, encoded through the supplied VAE, and appended as a
-reference_latent on the conditioning. The result is equivalent to
-chaining three native ReferenceLatent nodes after three VAE Encode
-nodes that share a VAE.
+configurable pixel grid (divide_by widget, default 32), encoded through
+the supplied VAE, and appended as a reference_latent on the
+conditioning. The result is equivalent to chaining three native
+ReferenceLatent nodes after three VAE Encode nodes that share a VAE.
 
 The node accepts up to three IMAGE inputs (image_1/image_2/image_3),
 all optional. Use any standard ComfyUI image loader to feed them.
@@ -42,7 +42,9 @@ from comfy_execution.graph_utils import ExecutionBlocker
 logger = logging.getLogger(__name__)
 
 _IMAGE_SLOT_COUNT = 3
-_SIZE_MULTIPLE = 32
+_DEFAULT_SIZE_MULTIPLE = 32
+_MIN_SIZE_MULTIPLE = 1
+_MAX_SIZE_MULTIPLE = 128
 _DEFAULT_MEGAPIXELS = 1.0
 # Hardcoded resize method used when scaling reference images before VAE
 # encoding. Kept as a module-level constant (not a node input) so the UI
@@ -54,13 +56,16 @@ def _target_dimensions(
     width: int,
     height: int,
     max_megapixels: float,
-    multiple: int = _SIZE_MULTIPLE,
+    multiple: int = _DEFAULT_SIZE_MULTIPLE,
 ) -> tuple[int, int]:
     if width <= 0 or height <= 0:
         raise ValueError("Image dimensions must be positive.")
 
     if max_megapixels <= 0:
         raise ValueError("max_megapixels must be greater than zero.")
+
+    if multiple < 1:
+        raise ValueError("multiple must be >= 1.")
 
     source_pixels = width * height
     target_pixels = int(max_megapixels * 1_000_000)
@@ -87,11 +92,14 @@ def _resize_reference_image(
     image: torch.Tensor,
     max_megapixels: float,
     upscale_method: str,
+    size_multiple: int = _DEFAULT_SIZE_MULTIPLE,
 ) -> torch.Tensor:
     image = _normalize_image_tensor(image)
     height = int(image.shape[1])
     width = int(image.shape[2])
-    target_width, target_height = _target_dimensions(width, height, max_megapixels)
+    target_width, target_height = _target_dimensions(
+        width, height, max_megapixels, multiple=size_multiple,
+    )
 
     if target_width == width and target_height == height:
         return image.clamp(0.0, 1.0)
@@ -132,12 +140,13 @@ class TS_MultiReference(IO.ComfyNode):
             display_name="TS Multi Reference",
             category="TS/Conditioning",
             description=(
-                "Resizes up to three reference images to a 32-pixel grid "
-                "(area downscale), encodes each through the VAE, and "
-                "appends them as reference_latents on the conditioning. "
-                "Equivalent to chaining three ReferenceLatent nodes after "
-                "three VAE Encode nodes. Feed images from any standard "
-                "Load Image node. Empty inputs are skipped silently."
+                "Resizes up to three reference images down to a "
+                "divide_by-pixel grid (area downscale), encodes each "
+                "through the VAE, and appends them as reference_latents "
+                "on the conditioning. Equivalent to chaining three "
+                "ReferenceLatent nodes after three VAE Encode nodes. "
+                "Feed images from any standard Load Image node. Empty "
+                "inputs are skipped silently."
             ),
             inputs=[
                 IO.Conditioning.Input(
@@ -164,6 +173,18 @@ class TS_MultiReference(IO.ComfyNode):
                     max=16.0,
                     step=0.01,
                     tooltip="Maximum size for each reference image before VAE encoding.",
+                ),
+                IO.Int.Input(
+                    "divide_by",
+                    default=_DEFAULT_SIZE_MULTIPLE,
+                    min=_MIN_SIZE_MULTIPLE,
+                    max=_MAX_SIZE_MULTIPLE,
+                    step=1,
+                    tooltip=(
+                        "Resized dimensions are rounded down to a multiple of this "
+                        "value before VAE encoding. Most VAEs need 8 or 16; the "
+                        "default 32 is a safe choice for Flux 2, Qwen image edit, etc."
+                    ),
                 ),
                 IO.Image.Input(
                     "image_1",
@@ -196,15 +217,23 @@ class TS_MultiReference(IO.ComfyNode):
         )
 
     @classmethod
-    def validate_inputs(cls, max_megapixels: float, **_):
+    def validate_inputs(
+        cls,
+        max_megapixels: float,
+        divide_by: int = _DEFAULT_SIZE_MULTIPLE,
+        **_,
+    ):
         if max_megapixels <= 0:
             return "max_megapixels must be greater than zero."
+        if divide_by < _MIN_SIZE_MULTIPLE:
+            return f"divide_by must be at least {_MIN_SIZE_MULTIPLE}."
         return True
 
     @classmethod
     def execute(
         cls,
         max_megapixels: float,
+        divide_by: int = _DEFAULT_SIZE_MULTIPLE,
         conditioning=None,
         vae=None,
         image_1: Optional[torch.Tensor] = None,
@@ -239,6 +268,7 @@ class TS_MultiReference(IO.ComfyNode):
                 slot_image,
                 max_megapixels=max_megapixels,
                 upscale_method=_UPSCALE_METHOD,
+                size_multiple=divide_by,
             )
             if attach_reference:
                 latent = _encode_reference_latent(vae, processed_image)
