@@ -8,6 +8,10 @@ ReferenceLatent nodes after three VAE Encode nodes that share a VAE.
 
 The node accepts up to three IMAGE inputs (image_1/image_2/image_3),
 all optional. Use any standard ComfyUI image loader to feed them.
+Each image_N has a matching optional mask_N MASK input — connect the
+MASK output of Load Image to flatten transparent regions onto a white
+background before VAE encoding.
+
 Each image_N input has a matching image_N output that returns the
 resized version (or ExecutionBlocker if the slot is empty so any
 downstream consumer is silently skipped).
@@ -76,7 +80,40 @@ def _target_dimensions(
     return target_width, target_height
 
 
-def _normalize_image_tensor(image: torch.Tensor) -> torch.Tensor:
+def _coerce_mask(mask: torch.Tensor, batch: int, height: int, width: int) -> torch.Tensor:
+    """Bring a MASK tensor to [B, H, W, 1] matching the image grid.
+
+    ComfyUI MASK convention is 1.0 = transparent, 0.0 = opaque (an
+    inverted alpha). The standard Load Image node already uses that.
+    """
+    if mask.ndim == 2:
+        mask = mask.unsqueeze(0)  # [H, W] → [1, H, W]
+    if mask.ndim == 3:
+        mask = mask.unsqueeze(-1)  # [B, H, W] → [B, H, W, 1]
+    if mask.ndim != 4 or mask.shape[-1] != 1:
+        raise ValueError(f"Expected MASK tensor [B,H,W] or [B,H,W,1], got shape {tuple(mask.shape)}.")
+
+    mask = mask.clamp(0.0, 1.0).to(dtype=torch.float32)
+
+    if mask.shape[0] == 1 and batch > 1:
+        mask = mask.expand(batch, -1, -1, -1)
+    elif mask.shape[0] != batch:
+        # Best-effort — fall back to the first frame if batch sizes diverge.
+        mask = mask[:1].expand(batch, -1, -1, -1)
+
+    if mask.shape[1] != height or mask.shape[2] != width:
+        # Bilinear resize to match the image grid; mask is BHWC so move to BCHW.
+        bchw = mask.movedim(-1, 1)
+        bchw = comfy.utils.common_upscale(bchw, width, height, "bilinear", "disabled")
+        mask = bchw.movedim(1, -1)
+
+    return mask.clamp(0.0, 1.0)
+
+
+def _normalize_image_tensor(
+    image: torch.Tensor,
+    mask: torch.Tensor | None = None,
+) -> torch.Tensor:
     if not isinstance(image, torch.Tensor):
         raise TypeError(f"Expected IMAGE tensor, got {type(image)}.")
     if image.ndim == 3:
@@ -87,22 +124,28 @@ def _normalize_image_tensor(image: torch.Tensor) -> torch.Tensor:
         raise ValueError(f"Expected IMAGE tensor with at least 3 channels, got {image.shape[-1]}.")
 
     if image.shape[-1] >= 4:
-        # Composite RGBA onto a white background. Reference-aware models
-        # (qwen-image-edit-multi-reference, flux 2, etc.) expect opaque
-        # references; without compositing, transparent pixels show as
-        # whatever junk happens to live in the RGB channels under
-        # alpha=0, which biases the generation.
-        #
-        # We assume straight (non-premultiplied) RGBA, which is the PIL
-        # and ComfyUI VideoFromFile convention: components.images keeps
-        # the visible RGB and components.alpha is delivered separately,
-        # un-multiplied. Any heuristic to auto-detect premultiplied data
-        # collapses on PNGs with rgb=0 in transparent regions (which is
-        # most PNGs), so we don't try.
+        # Composite RGBA onto a white background using the embedded alpha.
+        # Straight (non-premultiplied) convention — this matches PIL and
+        # ComfyUI VideoFromFile (which keeps RGB and alpha separated).
         rgb = image[:, :, :, :3].clamp(0.0, 1.0)
         alpha = image[:, :, :, 3:4].clamp(0.0, 1.0)
         return (rgb * alpha + (1.0 - alpha)).clamp(0.0, 1.0)
-    return image[:, :, :, :3].clone()
+
+    rgb = image[:, :, :, :3].clamp(0.0, 1.0)
+
+    if isinstance(mask, torch.Tensor):
+        # Standard ComfyUI Load Image returns MASK separately from IMAGE,
+        # so the IMAGE we receive here is plain RGB with the transparent
+        # pixels already flattened to (typically) black. Use the supplied
+        # MASK to recover the alpha and composite on white.
+        # ComfyUI MASK convention: 1.0 = transparent, 0.0 = opaque.
+        batch, height, width, _ = rgb.shape
+        mask_4d = _coerce_mask(mask, batch, height, width)
+        # alpha = 1 - mask, composite on white:
+        # out = rgb*alpha + (1-alpha)*white = rgb*(1-mask) + mask
+        return (rgb * (1.0 - mask_4d) + mask_4d).clamp(0.0, 1.0)
+
+    return rgb.clone()
 
 
 def _resize_reference_image(
@@ -110,8 +153,9 @@ def _resize_reference_image(
     max_megapixels: float,
     upscale_method: str,
     size_multiple: int = _DEFAULT_SIZE_MULTIPLE,
+    mask: torch.Tensor | None = None,
 ) -> torch.Tensor:
-    image = _normalize_image_tensor(image)
+    image = _normalize_image_tensor(image, mask=mask)
     height = int(image.shape[1])
     width = int(image.shape[2])
     target_width, target_height = _target_dimensions(
@@ -208,15 +252,35 @@ class TS_MultiReference(IO.ComfyNode):
                     optional=True,
                     tooltip="Reference image 1. Connect any IMAGE source.",
                 ),
+                IO.Mask.Input(
+                    "mask_1",
+                    optional=True,
+                    tooltip=(
+                        "Optional MASK for image_1. Connect the MASK output of "
+                        "Load Image to flatten transparent regions onto a white "
+                        "background. ComfyUI convention: 1.0 = transparent, "
+                        "0.0 = opaque."
+                    ),
+                ),
                 IO.Image.Input(
                     "image_2",
                     optional=True,
                     tooltip="Reference image 2. Connect any IMAGE source.",
                 ),
+                IO.Mask.Input(
+                    "mask_2",
+                    optional=True,
+                    tooltip="Optional MASK for image_2. See mask_1 tooltip.",
+                ),
                 IO.Image.Input(
                     "image_3",
                     optional=True,
                     tooltip="Reference image 3. Connect any IMAGE source.",
+                ),
+                IO.Mask.Input(
+                    "mask_3",
+                    optional=True,
+                    tooltip="Optional MASK for image_3. See mask_1 tooltip.",
                 ),
             ],
             outputs=[
@@ -256,9 +320,13 @@ class TS_MultiReference(IO.ComfyNode):
         image_1: Optional[torch.Tensor] = None,
         image_2: Optional[torch.Tensor] = None,
         image_3: Optional[torch.Tensor] = None,
+        mask_1: Optional[torch.Tensor] = None,
+        mask_2: Optional[torch.Tensor] = None,
+        mask_3: Optional[torch.Tensor] = None,
     ):
         # Per-slot input → per-slot output (resized image or ExecutionBlocker).
         input_slots = (image_1, image_2, image_3)
+        mask_slots = (mask_1, mask_2, mask_3)
 
         # Determine which slots got real IMAGE tensors.
         has_image = [isinstance(img, torch.Tensor) for img in input_slots]
@@ -275,7 +343,7 @@ class TS_MultiReference(IO.ComfyNode):
 
         current_conditioning = conditioning
         output_images: list = []
-        for slot_image, slot_has in zip(input_slots, has_image):
+        for slot_image, slot_mask, slot_has in zip(input_slots, mask_slots, has_image):
             if not slot_has:
                 # Empty slot → block downstream silently.
                 output_images.append(ExecutionBlocker(None))
@@ -286,6 +354,7 @@ class TS_MultiReference(IO.ComfyNode):
                 max_megapixels=max_megapixels,
                 upscale_method=_UPSCALE_METHOD,
                 size_multiple=divide_by,
+                mask=slot_mask if isinstance(slot_mask, torch.Tensor) else None,
             )
             if attach_reference:
                 latent = _encode_reference_latent(vae, processed_image)

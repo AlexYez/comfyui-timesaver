@@ -71,6 +71,9 @@ def test_v3_schema_contract(monkeypatch):
     assert inputs["image_1"].optional is True
     assert inputs["image_2"].optional is True
     assert inputs["image_3"].optional is True
+    assert inputs["mask_1"].optional is True
+    assert inputs["mask_2"].optional is True
+    assert inputs["mask_3"].optional is True
 
     assert inputs["max_megapixels"].kwargs["default"] == 1.0
     assert inputs["divide_by"].kwargs["default"] == 32
@@ -298,6 +301,63 @@ def test_rgba_with_zero_rgb_under_transparent_pixels(monkeypatch):
     assert torch.allclose(out[0, 0, 0], torch.tensor([0.8, 0.2, 0.4]))
     # Transparent region collapsed to white.
     assert torch.allclose(out[0, 1, 0], torch.tensor([1.0, 1.0, 1.0]))
+
+
+def test_rgb_plus_mask_composites_on_white(monkeypatch):
+    """Standard ComfyUI Load Image returns RGB + MASK separately. When
+    the user wires the matching MASK output into mask_N, transparent
+    regions must be flattened onto white (not black)."""
+    module = _load_module(monkeypatch)
+
+    # 1x2x2x3 RGB: top row red (visible), bottom row black (was transparent).
+    rgb = torch.zeros((1, 2, 2, 3), dtype=torch.float32)
+    rgb[:, 0, :, 0] = 0.7
+    rgb[:, 0, :, 1] = 0.2
+    rgb[:, 0, :, 2] = 0.3
+    # rgb bottom row stays (0, 0, 0).
+
+    # MASK: ComfyUI convention 1.0 = transparent, 0.0 = opaque.
+    mask = torch.zeros((1, 2, 2), dtype=torch.float32)
+    mask[:, 1, :] = 1.0  # bottom row marked transparent
+
+    out = module._normalize_image_tensor(rgb, mask=mask)
+
+    assert out.shape == (1, 2, 2, 3)
+    # Opaque top row preserved.
+    assert torch.allclose(out[0, 0, 0], torch.tensor([0.7, 0.2, 0.3]))
+    # Transparent bottom row → white (not the black we received in rgb).
+    assert torch.allclose(out[0, 1, 0], torch.tensor([1.0, 1.0, 1.0]))
+
+
+def test_rgb_plus_mask_partial_blend(monkeypatch):
+    """Half-mask region must blend toward white, not stay black."""
+    module = _load_module(monkeypatch)
+
+    rgb = torch.full((1, 2, 2, 3), 0.4, dtype=torch.float32)
+    mask = torch.full((1, 2, 2), 0.5, dtype=torch.float32)  # 50% transparent
+
+    out = module._normalize_image_tensor(rgb, mask=mask)
+
+    # out = rgb*(1 - mask) + mask*white = 0.4*0.5 + 0.5 = 0.7
+    expected = torch.tensor([0.7, 0.7, 0.7])
+    assert torch.allclose(out[0, 0, 0], expected, atol=1e-5)
+
+
+def test_mask_resized_to_image_grid(monkeypatch):
+    """If a MASK is delivered at a different resolution (e.g. ComfyUI's
+    64x64 fallback), it must be resized to match the image."""
+    module = _load_module(monkeypatch)
+
+    rgb = torch.full((1, 8, 8, 3), 0.5, dtype=torch.float32)
+    # 4x4 mask, fully opaque. ComfyUI default for 'no alpha' is 64x64
+    # zeros — this exercises the same resize path with smaller numbers.
+    mask = torch.zeros((1, 4, 4), dtype=torch.float32)
+
+    out = module._normalize_image_tensor(rgb, mask=mask)
+
+    # Fully opaque → output is exactly rgb everywhere.
+    assert out.shape == (1, 8, 8, 3)
+    assert torch.allclose(out, rgb)
 
 
 def test_rgb_input_passthrough(monkeypatch):
