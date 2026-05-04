@@ -255,21 +255,18 @@ def test_validate_inputs_rejects_zero_divide_by(monkeypatch):
     ) is True
 
 
-def test_rgba_input_is_composited_on_white(monkeypatch):
-    """RGBA references must be flattened onto a white background, not
-    silently stripped to RGB (which would leak pre-multiplied dark pixels
-    wherever alpha was 0)."""
+def test_rgba_straight_alpha_is_composited_on_white(monkeypatch):
+    """Straight RGBA: rgb is the visible color, independent of alpha.
+    Some channel value > alpha → detector picks the straight branch."""
     module = _load_module(monkeypatch)
 
-    # Build a 1x4x4x4 RGBA image:
-    # - top-left half: red (1,0,0) with alpha=1.0   → stays red
-    # - bottom-left:   red (1,0,0) with alpha=0.0   → must become white
-    # - top-right:     green (0,1,0) with alpha=0.5 → must blend toward white
+    # Build a 1x4x4x4 RGBA image with RED=1.0 everywhere, varied alpha.
+    # max(rgb) > alpha for the alpha=0.5 pixels, so the detector treats
+    # the whole tensor as straight.
     rgba = torch.zeros((1, 4, 4, 4), dtype=torch.float32)
     rgba[..., 0] = 1.0  # R = 1 everywhere
-
-    rgba[:, :2, :2, 3] = 1.0   # opaque red top-left quadrant
-    rgba[:, 2:, :2, 3] = 0.0   # fully transparent bottom-left quadrant
+    rgba[:, :2, :2, 3] = 1.0   # opaque red top-left
+    rgba[:, 2:, :2, 3] = 0.0   # fully transparent bottom-left
     rgba[:, :, 2:, 0] = 0.0    # right half: switch to green
     rgba[:, :, 2:, 1] = 1.0
     rgba[:, :, 2:, 3] = 0.5    # right half: 50% alpha
@@ -277,15 +274,47 @@ def test_rgba_input_is_composited_on_white(monkeypatch):
     out = module._normalize_image_tensor(rgba)
 
     assert out.shape == (1, 4, 4, 3)
-
     # Opaque red region preserved.
     assert torch.allclose(out[0, 0, 0], torch.tensor([1.0, 0.0, 0.0]))
-
-    # Transparent region is pure white.
+    # Transparent region → white.
     assert torch.allclose(out[0, 2, 0], torch.tensor([1.0, 1.0, 1.0]))
-
-    # 50% green over white = (0.5, 1.0, 0.5).
+    # Straight: 50% green at α=0.5 over white = (0.5, 1.0, 0.5).
     assert torch.allclose(out[0, 0, 2], torch.tensor([0.5, 1.0, 0.5]))
+
+
+def test_rgba_premultiplied_alpha_is_composited_correctly(monkeypatch):
+    """Pre-multiplied RGBA: rgb already has alpha baked in. Using the
+    straight formula here would darken the result; the detector must
+    pick the premultiplied branch."""
+    module = _load_module(monkeypatch)
+
+    # Pre-multiplied RGBA: a uniform red at α=0.5 in pre-mul terms means
+    # rgb_pm = (0.5, 0, 0) and α = 0.5 (so rgb <= alpha everywhere).
+    # On a white background, the result must be (0.5 + 0.5, 0 + 0.5, 0 + 0.5)
+    # = (1.0, 0.5, 0.5). With the wrong (straight) formula it would be
+    # (0.5*0.5 + 0.5, 0 + 0.5, 0 + 0.5) = (0.75, 0.5, 0.5) — too dark.
+    rgba = torch.zeros((1, 2, 2, 4), dtype=torch.float32)
+    rgba[..., 0] = 0.5
+    rgba[..., 3] = 0.5
+
+    out = module._normalize_image_tensor(rgba)
+
+    assert out.shape == (1, 2, 2, 3)
+    expected = torch.tensor([1.0, 0.5, 0.5])
+    assert torch.allclose(out[0, 0, 0], expected, atol=1e-5), (
+        f"premultiplied composite incorrect: got {out[0, 0, 0].tolist()}, "
+        f"expected {expected.tolist()}"
+    )
+
+    # Opaque (alpha=1) and transparent (alpha=0) edge cases collapse to
+    # the same answer in either branch — they should still be correct.
+    rgba2 = torch.zeros((1, 2, 2, 4), dtype=torch.float32)
+    rgba2[:, 0, :, 0] = 0.8   # opaque red
+    rgba2[:, 0, :, 3] = 1.0
+    rgba2[:, 1, :, 3] = 0.0   # transparent
+    out2 = module._normalize_image_tensor(rgba2)
+    assert torch.allclose(out2[0, 0, 0], torch.tensor([0.8, 0.0, 0.0]))
+    assert torch.allclose(out2[0, 1, 0], torch.tensor([1.0, 1.0, 1.0]))
 
 
 def test_rgb_input_passthrough(monkeypatch):
