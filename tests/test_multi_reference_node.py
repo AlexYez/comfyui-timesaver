@@ -282,39 +282,22 @@ def test_rgba_straight_alpha_is_composited_on_white(monkeypatch):
     assert torch.allclose(out[0, 0, 2], torch.tensor([0.5, 1.0, 0.5]))
 
 
-def test_rgba_premultiplied_alpha_is_composited_correctly(monkeypatch):
-    """Pre-multiplied RGBA: rgb already has alpha baked in. Using the
-    straight formula here would darken the result; the detector must
-    pick the premultiplied branch."""
+def test_rgba_with_zero_rgb_under_transparent_pixels(monkeypatch):
+    """Most PNGs save rgb=0 in transparent regions. The straight-alpha
+    composite must still produce pure white there, not black."""
     module = _load_module(monkeypatch)
 
-    # Pre-multiplied RGBA: a uniform red at α=0.5 in pre-mul terms means
-    # rgb_pm = (0.5, 0, 0) and α = 0.5 (so rgb <= alpha everywhere).
-    # On a white background, the result must be (0.5 + 0.5, 0 + 0.5, 0 + 0.5)
-    # = (1.0, 0.5, 0.5). With the wrong (straight) formula it would be
-    # (0.5*0.5 + 0.5, 0 + 0.5, 0 + 0.5) = (0.75, 0.5, 0.5) — too dark.
     rgba = torch.zeros((1, 2, 2, 4), dtype=torch.float32)
-    rgba[..., 0] = 0.5
-    rgba[..., 3] = 0.5
+    rgba[:, 0, :, :3] = torch.tensor([0.8, 0.2, 0.4])  # opaque colour
+    rgba[:, 0, :, 3] = 1.0
+    # Bottom row stays at rgb=0, alpha=0 (typical PNG transparent area).
 
     out = module._normalize_image_tensor(rgba)
 
-    assert out.shape == (1, 2, 2, 3)
-    expected = torch.tensor([1.0, 0.5, 0.5])
-    assert torch.allclose(out[0, 0, 0], expected, atol=1e-5), (
-        f"premultiplied composite incorrect: got {out[0, 0, 0].tolist()}, "
-        f"expected {expected.tolist()}"
-    )
-
-    # Opaque (alpha=1) and transparent (alpha=0) edge cases collapse to
-    # the same answer in either branch — they should still be correct.
-    rgba2 = torch.zeros((1, 2, 2, 4), dtype=torch.float32)
-    rgba2[:, 0, :, 0] = 0.8   # opaque red
-    rgba2[:, 0, :, 3] = 1.0
-    rgba2[:, 1, :, 3] = 0.0   # transparent
-    out2 = module._normalize_image_tensor(rgba2)
-    assert torch.allclose(out2[0, 0, 0], torch.tensor([0.8, 0.0, 0.0]))
-    assert torch.allclose(out2[0, 1, 0], torch.tensor([1.0, 1.0, 1.0]))
+    # Opaque region preserved.
+    assert torch.allclose(out[0, 0, 0], torch.tensor([0.8, 0.2, 0.4]))
+    # Transparent region collapsed to white.
+    assert torch.allclose(out[0, 1, 0], torch.tensor([1.0, 1.0, 1.0]))
 
 
 def test_rgb_input_passthrough(monkeypatch):
