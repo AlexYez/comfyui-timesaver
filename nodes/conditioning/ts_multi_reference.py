@@ -45,8 +45,10 @@ def _image_widget_options(include_empty: bool = True) -> tuple[list[str], dict]:
         options = [_EMPTY_IMAGE, *options]
     return options, {
         "default": _EMPTY_IMAGE,
-        "image_upload": True,
-        "tooltip": "ComfyUI input image upload widget. Empty slots are ignored.",
+        "tooltip": (
+            "Reference image filename in the input/ folder. Managed by the "
+            "TS Multi Reference drag-and-drop UI; empty slots are ignored."
+        ),
     }
 
 
@@ -193,7 +195,6 @@ class TS_MultiReference(IO.ComfyNode):
         image_1_options, image_1_extra = _image_widget_options()
         image_2_options, image_2_extra = _image_widget_options()
         image_3_options, image_3_extra = _image_widget_options()
-        image_upload = IO.UploadType.image
 
         return IO.Schema(
             node_id="TS_MultiReference",
@@ -230,25 +231,27 @@ class TS_MultiReference(IO.ComfyNode):
                     default="area",
                     tooltip="Native ComfyUI resize method used before VAE encoding.",
                 ),
+                # Combo inputs intentionally omit upload= — the JS extension
+                # ts.multiReference renders its own drag-and-drop UI and
+                # uploads via the standard /upload/image endpoint. A native
+                # upload widget would render a redundant "choose file" button
+                # below the custom UI.
                 IO.Combo.Input(
                     "image_1",
                     options=image_1_options,
                     default=image_1_extra["default"],
-                    upload=image_upload,
                     tooltip=image_1_extra["tooltip"],
                 ),
                 IO.Combo.Input(
                     "image_2",
                     options=image_2_options,
                     default=image_2_extra["default"],
-                    upload=image_upload,
                     tooltip=image_2_extra["tooltip"],
                 ),
                 IO.Combo.Input(
                     "image_3",
                     options=image_3_options,
                     default=image_3_extra["default"],
-                    upload=image_upload,
                     tooltip=image_3_extra["tooltip"],
                 ),
             ],
@@ -336,8 +339,13 @@ class TS_MultiReference(IO.ComfyNode):
             processed_images.append(processed_image)
 
         if not processed_images:
-            # Pure text-to-image case: no reference, just pass conditioning through.
+            # Pure text-to-image case: no reference, just pass conditioning
+            # through. Emit a single 1x1x1x3 zero placeholder for the IMAGE
+            # list output so downstream nodes (Preview, TS_ImageListToImages)
+            # never receive an empty list, which can crash some consumers.
             logger.debug("[TS Multi Reference] No reference images selected, passing conditioning through.")
+            placeholder = torch.zeros((1, 1, 1, 3), dtype=torch.float32)
+            return IO.NodeOutput([placeholder], current_conditioning)
 
         return IO.NodeOutput(processed_images, current_conditioning)
 
