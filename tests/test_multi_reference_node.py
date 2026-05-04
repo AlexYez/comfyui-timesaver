@@ -343,6 +343,108 @@ def test_rgb_plus_mask_partial_blend(monkeypatch):
     assert torch.allclose(out[0, 0, 0], expected, atol=1e-5)
 
 
+def test_crop_to_mask_bbox_with_padding(monkeypatch):
+    """Object lives in the centre of a much larger transparent margin.
+    Crop must fit around the object plus the padding constant."""
+    module = _load_module(monkeypatch)
+
+    rgb = torch.zeros((1, 200, 200, 3), dtype=torch.float32)
+    rgb[:, 80:120, 80:120, :] = torch.tensor([0.5, 0.4, 0.3])
+
+    # MASK: 1.0 = transparent, 0.0 = opaque.
+    mask = torch.ones((1, 200, 200), dtype=torch.float32)
+    mask[:, 80:120, 80:120] = 0.0
+
+    cropped_image, cropped_mask = module._crop_to_mask_bbox(rgb, mask, padding=16)
+
+    expected_height = (120 - 80) + 16 * 2  # 72
+    expected_width = (120 - 80) + 16 * 2   # 72
+    assert cropped_image.shape == (1, expected_height, expected_width, 3)
+    assert cropped_mask.shape == (1, expected_height, expected_width, 1)
+
+
+def test_crop_clamps_to_image_borders_when_subject_touches_edge(monkeypatch):
+    """Padding must not push the bbox outside the source image."""
+    module = _load_module(monkeypatch)
+
+    rgb = torch.zeros((1, 100, 100, 3), dtype=torch.float32)
+    rgb[:, 0:32, 0:32, 0] = 1.0  # red object in the top-left corner
+
+    mask = torch.ones((1, 100, 100), dtype=torch.float32)
+    mask[:, 0:32, 0:32] = 0.0
+
+    cropped_image, cropped_mask = module._crop_to_mask_bbox(rgb, mask, padding=16)
+
+    # Object at (0, 0..32). Padding 16 would push y_min and x_min to -16,
+    # clamped to 0; y_max and x_max grow to 48 which is in bounds.
+    assert cropped_image.shape == (1, 48, 48, 3)
+    assert cropped_mask.shape == (1, 48, 48, 1)
+
+
+def test_crop_skipped_when_no_mask_and_no_alpha(monkeypatch):
+    """A plain RGB without mask must come back untouched."""
+    module = _load_module(monkeypatch)
+
+    rgb = torch.full((1, 64, 64, 3), 0.5, dtype=torch.float32)
+
+    cropped_image, cropped_mask = module._crop_to_mask_bbox(rgb, mask=None, padding=16)
+
+    assert cropped_image.shape == (1, 64, 64, 3)
+    assert cropped_mask is None
+
+
+def test_crop_skipped_when_mask_is_fully_transparent(monkeypatch):
+    """Degenerate input: entire mask is transparent. We must not crop
+    to a zero-size tensor; leave the source as is."""
+    module = _load_module(monkeypatch)
+
+    rgb = torch.full((1, 64, 64, 3), 0.5, dtype=torch.float32)
+    mask = torch.ones((1, 64, 64), dtype=torch.float32)  # all transparent
+
+    cropped_image, _ = module._crop_to_mask_bbox(rgb, mask, padding=16)
+
+    assert cropped_image.shape == (1, 64, 64, 3)
+
+
+def test_crop_uses_alpha_when_mask_absent(monkeypatch):
+    """RGBA input without a separate MASK still gets cropped via alpha."""
+    module = _load_module(monkeypatch)
+
+    rgba = torch.zeros((1, 100, 100, 4), dtype=torch.float32)
+    rgba[:, 40:60, 40:60, 0] = 1.0
+    rgba[:, 40:60, 40:60, 3] = 1.0  # opaque only inside the 20×20 square
+
+    cropped_image, _ = module._crop_to_mask_bbox(rgba, mask=None, padding=16)
+
+    assert cropped_image.shape == (1, (60 - 40) + 32, (60 - 40) + 32, 4)
+
+
+def test_resize_with_mask_crops_first_then_resizes(monkeypatch):
+    """Integration: a tiny object inside a huge transparent margin must
+    survive into the resized output at near-source resolution, because
+    the bbox crop runs before the megapixel resize."""
+    module = _load_module(monkeypatch)
+
+    # 1024×1024 image with 32×32 object dead-centre, fully transparent
+    # everywhere else.
+    rgb = torch.zeros((1, 1024, 1024, 3), dtype=torch.float32)
+    rgb[:, 496:528, 496:528, :] = torch.tensor([0.6, 0.5, 0.4])
+    mask = torch.ones((1, 1024, 1024), dtype=torch.float32)
+    mask[:, 496:528, 496:528] = 0.0
+
+    out = module._resize_reference_image(
+        rgb, max_megapixels=1.0, upscale_method="area",
+        size_multiple=8, mask=mask,
+    )
+
+    # Without crop, max_megapixels=1.0 of 1024×1024 = 1.0 MP → ~1000 px
+    # per side. With crop the bbox is 32+32 = 64 px per side, well
+    # under 1 MP, so the output should stay at the cropped 64×64 (no
+    # upscale) — the megapixel cap only downscales.
+    assert out.shape[1] == 64 and out.shape[2] == 64
+    assert out.shape[-1] == 3
+
+
 def test_mask_resized_to_image_grid(monkeypatch):
     """If a MASK is delivered at a different resolution (e.g. ComfyUI's
     64x64 fallback), it must be resized to match the image."""
