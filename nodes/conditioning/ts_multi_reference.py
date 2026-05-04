@@ -210,7 +210,11 @@ class TS_MultiReference(IO.ComfyNode):
                 ),
                 IO.Vae.Input(
                     "vae",
-                    tooltip="VAE used to encode reference images into latents.",
+                    optional=True,
+                    tooltip=(
+                        "VAE used to encode reference images into latents. "
+                        "Optional: only required when at least one image slot is filled."
+                    ),
                 ),
                 IO.Float.Input(
                     "max_megapixels",
@@ -302,9 +306,9 @@ class TS_MultiReference(IO.ComfyNode):
     def execute(
         cls,
         conditioning,
-        vae,
         max_megapixels: float,
         upscale_method: str,
+        vae=None,
         image_1: str = _EMPTY_IMAGE,
         image_2: str = _EMPTY_IMAGE,
         image_3: str = _EMPTY_IMAGE,
@@ -312,7 +316,15 @@ class TS_MultiReference(IO.ComfyNode):
         processed_images: list[torch.Tensor] = []
         current_conditioning = conditioning
 
-        for image_name in _selected_images(image_1, image_2, image_3)[:_IMAGE_SLOT_COUNT]:
+        selected = _selected_images(image_1, image_2, image_3)[:_IMAGE_SLOT_COUNT]
+
+        if selected and vae is None:
+            raise RuntimeError(
+                "[TS Multi Reference] VAE input is required when at least one "
+                "reference image is selected."
+            )
+
+        for image_name in selected:
             image = _load_reference_image(image_name)
             processed_image = _resize_reference_image(
                 image,
@@ -324,7 +336,8 @@ class TS_MultiReference(IO.ComfyNode):
             processed_images.append(processed_image)
 
         if not processed_images:
-            logger.warning("[TS Multi Reference] No reference images selected.")
+            # Pure text-to-image case: no reference, just pass conditioning through.
+            logger.debug("[TS Multi Reference] No reference images selected, passing conditioning through.")
 
         return IO.NodeOutput(processed_images, current_conditioning)
 
