@@ -1,10 +1,20 @@
 """TS Multi Reference — attach up to three IMAGE references to a CONDITIONING.
 
-Each connected reference image is resized to fit max_megapixels on a
-configurable pixel grid (divide_by widget, default 32), encoded through
-the supplied VAE, and appended as a reference_latent on the
-conditioning. The result is equivalent to chaining three native
-ReferenceLatent nodes after three VAE Encode nodes that share a VAE.
+For each connected reference image the node:
+  1. Crops to the opaque bounding box + 16 px padding when an alpha
+     source (MASK input or RGBA channels) is available, so the VAE
+     does not waste resolution on transparent margins.
+  2. Composites the visible content onto a white background (so a
+     reference-aware model never sees the pre-multiplied black halos
+     that survive a naive RGB strip).
+  3. Resizes to fit max_megapixels on a configurable pixel grid
+     (divide_by widget, default 32).
+  4. Encodes through the supplied VAE and appends the result as a
+     reference_latent on the conditioning.
+
+The result is equivalent to chaining three native ReferenceLatent
+nodes after three VAE Encode nodes that share a VAE, with the bonus
+of mask-aware cropping and composing.
 
 The node accepts up to three IMAGE inputs (image_1/image_2/image_3),
 all optional. Use any standard ComfyUI image loader to feed them.
@@ -50,6 +60,14 @@ _DEFAULT_SIZE_MULTIPLE = 32
 _MIN_SIZE_MULTIPLE = 1
 _MAX_SIZE_MULTIPLE = 128
 _DEFAULT_MEGAPIXELS = 1.0
+# Padding (in source-image pixels) added around the opaque bounding box
+# when a MASK or RGBA alpha lets us tell which region of the reference
+# is the actual subject. Matters most for product photos with a lot of
+# transparent margin around the object.
+_BBOX_PADDING = 16
+# Pixel intensity considered opaque-enough to count toward the bbox.
+# Treated as "alpha > 0.01"; in MASK convention that's "mask < 0.99".
+_OPACITY_BBOX_THRESHOLD = 0.01
 # Hardcoded resize method used when scaling reference images before VAE
 # encoding. Kept as a module-level constant (not a node input) so the UI
 # stays compact. Edit here if you need a different default.
@@ -110,6 +128,70 @@ def _coerce_mask(mask: torch.Tensor, batch: int, height: int, width: int) -> tor
     return mask.clamp(0.0, 1.0)
 
 
+def _crop_to_mask_bbox(
+    image: torch.Tensor,
+    mask: torch.Tensor | None,
+    padding: int = _BBOX_PADDING,
+) -> tuple[torch.Tensor, torch.Tensor | None]:
+    """Crop image (and mask if present) to the opaque bounding box + padding.
+
+    Source of opacity, in priority order:
+      1. ``mask`` argument (ComfyUI MASK convention: 1.0 = transparent).
+      2. Embedded alpha channel of an RGBA image.
+
+    If neither is available the inputs are returned unchanged. If the
+    chosen alpha is fully transparent everywhere (degenerate input) we
+    also leave the image alone — cropping to nothing is worse than
+    cropping to "everything".
+    """
+    if image.ndim == 3:
+        image = image.unsqueeze(0)
+    if image.ndim != 4:
+        return image, mask
+
+    batch, height, width, _ = image.shape
+
+    aligned_mask: torch.Tensor | None = None
+    if isinstance(mask, torch.Tensor):
+        aligned_mask = _coerce_mask(mask, batch, height, width)
+        # MASK: 1 = transparent, 0 = opaque → alpha = 1 - mask.
+        opaque = (1.0 - aligned_mask.squeeze(-1)) > _OPACITY_BBOX_THRESHOLD
+    elif image.shape[-1] >= 4:
+        opaque = image[..., 3] > _OPACITY_BBOX_THRESHOLD
+    else:
+        # No alpha source — nothing to bbox against.
+        return image, mask
+
+    if not torch.any(opaque):
+        # Fully transparent input: don't shrink to zero.
+        return image, aligned_mask if aligned_mask is not None else mask
+
+    # Union over batch frames so a multi-frame reference shares one bbox.
+    union = opaque.any(dim=0)  # [H, W]
+
+    rows = union.any(dim=1)
+    cols = union.any(dim=0)
+    ys = torch.nonzero(rows, as_tuple=False).flatten()
+    xs = torch.nonzero(cols, as_tuple=False).flatten()
+    y_min = int(ys[0].item())
+    y_max = int(ys[-1].item()) + 1
+    x_min = int(xs[0].item())
+    x_max = int(xs[-1].item()) + 1
+
+    pad = max(0, int(padding))
+    y_min = max(0, y_min - pad)
+    x_min = max(0, x_min - pad)
+    y_max = min(height, y_max + pad)
+    x_max = min(width, x_max + pad)
+
+    cropped_image = image[:, y_min:y_max, x_min:x_max, :]
+    cropped_mask: torch.Tensor | None = None
+    if aligned_mask is not None:
+        cropped_mask = aligned_mask[:, y_min:y_max, x_min:x_max, :]
+
+    return cropped_image, cropped_mask
+
+
 def _normalize_image_tensor(
     image: torch.Tensor,
     mask: torch.Tensor | None = None,
@@ -155,7 +237,16 @@ def _resize_reference_image(
     size_multiple: int = _DEFAULT_SIZE_MULTIPLE,
     mask: torch.Tensor | None = None,
 ) -> torch.Tensor:
+    # Step 1: tighten the reference around the actual subject. When we
+    # know the alpha (either from the MASK input or from RGBA channels),
+    # crop everything outside the opaque bbox + 16 px padding so the VAE
+    # encoder spends its limited resolution on the object, not on empty
+    # transparent margins.
+    image, mask = _crop_to_mask_bbox(image, mask, padding=_BBOX_PADDING)
+
+    # Step 2: composite alpha onto white (uses mask or embedded RGBA alpha).
     image = _normalize_image_tensor(image, mask=mask)
+
     height = int(image.shape[1])
     width = int(image.shape[2])
     target_width, target_height = _target_dimensions(
