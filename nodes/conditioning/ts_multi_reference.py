@@ -213,14 +213,19 @@ class TS_MultiReference(IO.ComfyNode):
             inputs=[
                 IO.Conditioning.Input(
                     "conditioning",
-                    tooltip="Conditioning that will receive reference_latents.",
+                    optional=True,
+                    tooltip=(
+                        "Conditioning that will receive reference_latents. "
+                        "Optional: when not connected, the node skips VAE encoding "
+                        "and only resizes images for the multi_images output."
+                    ),
                 ),
                 IO.Vae.Input(
                     "vae",
                     optional=True,
                     tooltip=(
                         "VAE used to encode reference images into latents. "
-                        "Optional: only required when at least one image slot is filled."
+                        "Required only when both images and conditioning are connected."
                     ),
                 ),
                 IO.Float.Input(
@@ -304,8 +309,8 @@ class TS_MultiReference(IO.ComfyNode):
     @classmethod
     def execute(
         cls,
-        conditioning,
         max_megapixels: float,
+        conditioning=None,
         vae=None,
         image_1: str = _EMPTY_IMAGE,
         image_2: str = _EMPTY_IMAGE,
@@ -316,10 +321,14 @@ class TS_MultiReference(IO.ComfyNode):
 
         selected = _selected_images(image_1, image_2, image_3)[:_IMAGE_SLOT_COUNT]
 
-        if selected and vae is None:
+        # ReferenceLatent is only attached when we have BOTH conditioning
+        # and VAE. With only images + VAE, we still resize them for the
+        # multi_images output but skip encoding (no sink to attach to).
+        attach_reference = selected and current_conditioning is not None
+        if attach_reference and vae is None:
             raise RuntimeError(
-                "[TS Multi Reference] VAE input is required when at least one "
-                "reference image is selected."
+                "[TS Multi Reference] VAE input is required when reference "
+                "images are selected together with a conditioning."
             )
 
         for image_name in selected:
@@ -329,20 +338,25 @@ class TS_MultiReference(IO.ComfyNode):
                 max_megapixels=max_megapixels,
                 upscale_method=_UPSCALE_METHOD,
             )
-            latent = _encode_reference_latent(vae, processed_image)
-            current_conditioning = _append_reference_latent(current_conditioning, latent)
+            if attach_reference:
+                latent = _encode_reference_latent(vae, processed_image)
+                current_conditioning = _append_reference_latent(current_conditioning, latent)
             processed_images.append(processed_image)
 
-        if not processed_images:
-            # Pure text-to-image case: no reference, just pass conditioning
-            # through. Emit a single 1x1x1x3 zero placeholder for the IMAGE
-            # list output so downstream nodes (Preview, TS_ImageListToImages)
-            # never receive an empty list, which can crash some consumers.
-            logger.debug("[TS Multi Reference] No reference images selected, passing conditioning through.")
-            placeholder = torch.zeros((1, 1, 1, 3), dtype=torch.float32)
-            return IO.NodeOutput([placeholder], current_conditioning)
+        # Output a valid CONDITIONING value even if nothing was supplied:
+        # an empty list is a valid ComfyUI conditioning structure.
+        output_conditioning = current_conditioning if current_conditioning is not None else []
 
-        return IO.NodeOutput(processed_images, current_conditioning)
+        if not processed_images:
+            # Pure text-to-image case: no reference. Emit a single 1x1x1x3
+            # zero placeholder for the IMAGE list output so downstream
+            # nodes (Preview, TS_ImageListToImages) never receive an empty
+            # list, which can crash some consumers.
+            logger.debug("[TS Multi Reference] No reference images selected.")
+            placeholder = torch.zeros((1, 1, 1, 3), dtype=torch.float32)
+            return IO.NodeOutput([placeholder], output_conditioning)
+
+        return IO.NodeOutput(processed_images, output_conditioning)
 
 
 NODE_CLASS_MAPPINGS = {
