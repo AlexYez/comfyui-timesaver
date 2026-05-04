@@ -550,6 +550,25 @@ function tsMrSetupNode(node) {
     node.tsMultiReferenceReady = true;
 }
 
+function tsMrSuppressDefaultImagePreview(node) {
+    // ComfyUI's default behaviour for any node with an IMAGE output is to
+    // render the latest output image inside the node body (`node.imgs`).
+    // For TS_MultiReference we already show the references inside the
+    // custom DOM widget, so the auto-preview just produces a duplicate
+    // big thumbnail under the slots. Suppress it.
+    if (Array.isArray(node.imgs)) node.imgs = [];
+    node.images = undefined;
+    if (typeof node.setSizeForImage === "function") {
+        // setSizeForImage adjusts node height for the preview; running it
+        // with an empty imgs list collapses the preview area.
+        try {
+            node.setSizeForImage(true);
+        } catch (err) {
+            // ignore — different ComfyUI versions expose different signatures
+        }
+    }
+}
+
 app.registerExtension({
     name: EXTENSION_ID,
     async beforeRegisterNodeDef(nodeType, nodeData) {
@@ -566,19 +585,30 @@ app.registerExtension({
         nodeType.prototype.onConfigure = function () {
             const result = onConfigure ? onConfigure.apply(this, arguments) : undefined;
             tsMrSetupNode(this);
+            tsMrSuppressDefaultImagePreview(this);
             // After workflow JSON restored widget values, refresh thumbs.
             setTimeout(() => tsMrRender(this), 0);
+            return result;
+        };
+
+        const onExecuted = nodeType.prototype.onExecuted;
+        nodeType.prototype.onExecuted = function (message) {
+            const result = onExecuted ? onExecuted.apply(this, arguments) : undefined;
+            tsMrSuppressDefaultImagePreview(this);
+            tsMrSetDirty(this);
             return result;
         };
     },
     nodeCreated(node) {
         if (node?.comfyClass === NODE_NAME || node?.type === NODE_NAME) {
             tsMrSetupNode(node);
+            tsMrSuppressDefaultImagePreview(node);
         }
     },
     loadedGraphNode(node) {
         if (node?.comfyClass !== NODE_NAME && node?.type !== NODE_NAME) return;
         tsMrSetupNode(node);
+        tsMrSuppressDefaultImagePreview(node);
         setTimeout(() => tsMrRender(node), 0);
     },
 });
