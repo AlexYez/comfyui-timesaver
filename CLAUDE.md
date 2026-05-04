@@ -44,6 +44,7 @@ tests/AGENTS.md
 - Версия: `8.8` (`pyproject.toml`).
 - Репозиторий: https://github.com/AlexYez/comfyui-timesaver.
 - 57 нод в категориях: image / video / audio / llm / text / files / utils / conditioning.
+- conditioning/ содержит 1 ноду: TS_MultiReference.
 - Корневой загрузчик: [`__init__.py`](__init__.py) — рекурсивно сканирует `nodes/**/*.py`, оборачивает entrypoints через `TSDependencyManager` и печатает startup-таблицу.
 - Dependency guard: [`ts_dependency_manager.py`](ts_dependency_manager.py).
 - Snapshot контрактов: [`tests/contracts/node_contracts.json`](tests/contracts/node_contracts.json) (генерится `tools/build_node_contracts.py`).
@@ -71,7 +72,7 @@ comfyui-timesaver/
 │  ├─ text/   (4)
 │  ├─ files/  (8)         # TS_FileBrowser удалён
 │  ├─ utils/  (4)
-│  └─ conditioning/ (1)   # TS_MultiReference
+│  └─ conditioning/ (1)  # TS_MultiReference
 ├─ js/                    # WEB_DIRECTORY = "./js", сканируется рекурсивно
 │  ├─ image/ video/ audio/ llm/ text/ files/ utils/
 │  └─ utils/_slider_helpers.js   # shared ES module

@@ -74,6 +74,10 @@ def test_v3_schema_contract(monkeypatch):
 
     assert inputs["max_megapixels"].kwargs["default"] == 1.0
 
+    # Per-slot outputs: image_1, image_2, image_3, conditioning.
+    output_names = [out.display_name for out in schema.outputs]
+    assert output_names == ["image_1", "image_2", "image_3", "conditioning"]
+
 
 def test_resize_limits_megapixels_and_uses_32_grid(monkeypatch):
     module = _load_module(monkeypatch)
@@ -88,6 +92,14 @@ def test_resize_limits_megapixels_and_uses_32_grid(monkeypatch):
     assert resized.shape[1] % 32 == 0
     assert resized.shape[2] % 32 == 0
     assert resized.shape[1] * resized.shape[2] <= 1_000_000
+
+
+def _unpack(output):
+    """V3 NodeOutput.values is a flat tuple of every output in schema order."""
+    values = output.values
+    assert len(values) == 4, f"expected 4 outputs (image_1/2/3 + conditioning), got {len(values)}"
+    image_1, image_2, image_3, conditioning = values
+    return image_1, image_2, image_3, conditioning
 
 
 def test_execute_three_images_appends_three_reference_latents(monkeypatch):
@@ -118,11 +130,12 @@ def test_execute_three_images_appends_three_reference_latents(monkeypatch):
         image_2=img_b,
         image_3=img_c,
     )
-    multi_images, output_conditioning = output.values
+    image_1, image_2, image_3, output_conditioning = _unpack(output)
 
-    assert len(multi_images) == 3
-    assert all(image.shape[-1] == 3 for image in multi_images)
-    assert all(image.shape[1] % 32 == 0 and image.shape[2] % 32 == 0 for image in multi_images)
+    for image in (image_1, image_2, image_3):
+        assert isinstance(image, torch.Tensor)
+        assert image.shape[-1] == 3
+        assert image.shape[1] % 32 == 0 and image.shape[2] % 32 == 0
     assert len(vae.encoded_shapes) == 3
     # Original conditioning untouched (immutability).
     assert conditioning == [["positive", {"existing": True}]]
@@ -130,7 +143,7 @@ def test_execute_three_images_appends_three_reference_latents(monkeypatch):
     assert len(ref_latents) == 3
 
 
-def test_execute_no_images_emits_blocker_and_passes_conditioning(monkeypatch):
+def test_execute_no_images_blocks_all_image_outputs_and_passes_conditioning(monkeypatch):
     module = _load_module(monkeypatch)
 
     conditioning = [["positive", {"existing": True}]]
@@ -144,9 +157,10 @@ def test_execute_no_images_emits_blocker_and_passes_conditioning(monkeypatch):
         conditioning=conditioning,
         vae=UnusedVAE(),
     )
-    multi_images, output_conditioning = output.values
+    image_1, image_2, image_3, output_conditioning = _unpack(output)
 
-    assert isinstance(multi_images, module.ExecutionBlocker)
+    for image in (image_1, image_2, image_3):
+        assert isinstance(image, module.ExecutionBlocker)
     assert output_conditioning == conditioning
 
 
@@ -165,10 +179,12 @@ def test_execute_no_conditioning_skips_encoding_but_resizes_images(monkeypatch):
         vae=UnusedVAE(),
         image_1=img,
     )
-    multi_images, output_conditioning = output.values
+    image_1, image_2, image_3, output_conditioning = _unpack(output)
 
-    assert len(multi_images) == 1
-    assert multi_images[0].shape[-1] == 3
+    assert isinstance(image_1, torch.Tensor)
+    assert image_1.shape[-1] == 3
+    assert isinstance(image_2, module.ExecutionBlocker)
+    assert isinstance(image_3, module.ExecutionBlocker)
     # No conditioning supplied → empty list, not None.
     assert output_conditioning == []
 
@@ -208,9 +224,11 @@ def test_execute_skips_unconnected_slots_in_middle(monkeypatch):
         image_2=None,
         image_3=img_c,
     )
-    multi_images, output_conditioning = output.values
+    image_1, image_2, image_3, output_conditioning = _unpack(output)
 
-    assert len(multi_images) == 2
+    assert isinstance(image_1, torch.Tensor)
+    assert isinstance(image_2, module.ExecutionBlocker)
+    assert isinstance(image_3, torch.Tensor)
     ref_latents = output_conditioning[0][1]["reference_latents"]
     assert len(ref_latents) == 2
 

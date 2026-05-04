@@ -8,16 +8,19 @@ nodes that share a VAE.
 
 The node accepts up to three IMAGE inputs (image_1/image_2/image_3),
 all optional. Use any standard ComfyUI image loader to feed them.
+Each image_N input has a matching image_N output that returns the
+resized version (or ExecutionBlocker if the slot is empty so any
+downstream consumer is silently skipped).
 
 Behaviour:
-- All inputs unconnected: conditioning passes through unchanged,
-  multi_images returns ExecutionBlocker so downstream consumers are
-  silently skipped.
-- Some images connected, no conditioning: only resize for multi_images,
-  no encoding (no sink for reference_latents).
+- All inputs unconnected: conditioning passes through unchanged, all
+  three image outputs return ExecutionBlocker.
+- Some images connected, no conditioning: only resize for the matching
+  image outputs, no encoding (no sink for reference_latents).
 - Some images connected, no VAE: clear RuntimeError.
 - Standard case (conditioning + vae + N images): N reference_latents
-  attached, multi_images is a list of the resized images.
+  attached, the corresponding image_N outputs return the resized image,
+  the rest return ExecutionBlocker.
 
 node_id: TS_MultiReference
 """
@@ -179,7 +182,9 @@ class TS_MultiReference(IO.ComfyNode):
                 ),
             ],
             outputs=[
-                IO.Image.Output(display_name="multi_images", is_output_list=True),
+                IO.Image.Output(display_name="image_1"),
+                IO.Image.Output(display_name="image_2"),
+                IO.Image.Output(display_name="image_3"),
                 IO.Conditioning.Output(display_name="conditioning"),
             ],
             search_aliases=[
@@ -206,45 +211,48 @@ class TS_MultiReference(IO.ComfyNode):
         image_2: Optional[torch.Tensor] = None,
         image_3: Optional[torch.Tensor] = None,
     ):
-        # Filter to only the slots that actually got an IMAGE tensor.
-        slots = [image_1, image_2, image_3]
-        selected = [img for img in slots[:_IMAGE_SLOT_COUNT] if isinstance(img, torch.Tensor)]
+        # Per-slot input → per-slot output (resized image or ExecutionBlocker).
+        input_slots = (image_1, image_2, image_3)
+
+        # Determine which slots got real IMAGE tensors.
+        has_image = [isinstance(img, torch.Tensor) for img in input_slots]
 
         # ReferenceLatent is only attached when we have BOTH conditioning
-        # and VAE. With only images + VAE, we still resize for the
-        # multi_images output but skip encoding (no sink to attach to).
-        attach_reference = bool(selected) and conditioning is not None
+        # and VAE. With only images + VAE, we still resize for the matching
+        # image outputs but skip encoding (no sink to attach to).
+        attach_reference = any(has_image) and conditioning is not None
         if attach_reference and vae is None:
             raise RuntimeError(
                 "[TS Multi Reference] VAE input is required when reference "
                 "images are provided together with a conditioning."
             )
 
-        processed_images: list[torch.Tensor] = []
         current_conditioning = conditioning
-        for image in selected:
+        output_images: list = []
+        for slot_image, slot_has in zip(input_slots, has_image):
+            if not slot_has:
+                # Empty slot → block downstream silently.
+                output_images.append(ExecutionBlocker(None))
+                continue
+
             processed_image = _resize_reference_image(
-                image,
+                slot_image,
                 max_megapixels=max_megapixels,
                 upscale_method=_UPSCALE_METHOD,
             )
             if attach_reference:
                 latent = _encode_reference_latent(vae, processed_image)
                 current_conditioning = _append_reference_latent(current_conditioning, latent)
-            processed_images.append(processed_image)
+            output_images.append(processed_image)
 
         # Output a valid CONDITIONING value even if nothing was supplied:
         # an empty list is a valid ComfyUI conditioning structure.
         output_conditioning = current_conditioning if current_conditioning is not None else []
 
-        if not processed_images:
-            # No references — emit ExecutionBlocker for multi_images so any
-            # downstream consumer is silently skipped (no fake placeholder
-            # image that could confuse a reference-aware model).
+        if not any(has_image):
             logger.debug("[TS Multi Reference] No reference images provided.")
-            return IO.NodeOutput(ExecutionBlocker(None), output_conditioning)
 
-        return IO.NodeOutput(processed_images, output_conditioning)
+        return IO.NodeOutput(*output_images, output_conditioning)
 
 
 NODE_CLASS_MAPPINGS = {
