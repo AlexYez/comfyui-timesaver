@@ -5,3 +5,7 @@
 /.cache/
 /.pytest_cache/
 /pip/
+/.codex_tmp/
+/.claude/
+pytest-cache-files-*/
+tests/.cache/

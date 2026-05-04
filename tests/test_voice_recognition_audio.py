@@ -84,17 +84,17 @@ def _install_stubs(monkeypatch, root: Path) -> None:
     monkeypatch.setitem(sys.modules, "aiohttp", aiohttp)
     monkeypatch.setitem(sys.modules, "aiohttp.web", web)
 
-    qwen_module = types.ModuleType("nodes.ts_qwen3_vl_v3_node")
+    qwen_module = types.ModuleType("nodes.llm.ts_qwen3_vl")
     qwen_module.TS_Qwen3_VL_V3 = _DummyQwen
-    monkeypatch.setitem(sys.modules, "nodes.ts_qwen3_vl_v3_node", qwen_module)
+    monkeypatch.setitem(sys.modules, "nodes.llm.ts_qwen3_vl", qwen_module)
 
 
 def _load_module(monkeypatch):
     root = Path(__file__).resolve().parents[1]
     _install_stubs(monkeypatch, root)
     monkeypatch.syspath_prepend(str(root))
-    sys.modules.pop("nodes.ts_super_prompt_node", None)
-    return importlib.import_module("nodes.ts_super_prompt_node")
+    sys.modules.pop("nodes.llm.ts_super_prompt", None)
+    return importlib.import_module("nodes.llm.ts_super_prompt")
 
 
 def test_audio_preprocess_trims_and_normalizes_speech(monkeypatch):
