@@ -24,19 +24,19 @@ from safetensors import safe_open
 class TS_ModelConverterAdvancedNode:
     """
     Convert large AI models to FP8 (e4m3fn / e5m2).
-    РСЃРїРѕР»СЊР·СѓРµС‚ РЅР°С‚РёРІРЅС‹Рµ РїСѓС‚Рё ComfyUI РґР»СЏ РїРѕРёСЃРєР° РјРѕРґРµР»РµР№.
+    Использует нативные пути ComfyUI для поиска моделей.
     """
 
     @classmethod
     def INPUT_TYPES(s):
-        # 1. РџРѕР»СѓС‡Р°РµРј СЃРїРёСЃРѕРє С‡РµРєРїРѕРёРЅС‚РѕРІ С‡РµСЂРµР· API ComfyUI (РіР°СЂР°РЅС‚РёСЂРѕРІР°РЅРЅРѕ СЂР°Р±РѕС‚Р°РµС‚)
+        # 1. Получаем список чекпоинтов через API ComfyUI (гарантированно работает)
         checkpoints = folder_paths.get_filename_list("checkpoints")
         
-        # 2. РџРѕР»СѓС‡Р°РµРј СЃРїРёСЃРѕРє diffusion models (UNETs)
+        # 2. Получаем список diffusion models (UNETs)
         unets = folder_paths.get_filename_list("diffusion_models")
         
-        # 3. РЎРѕР±РёСЂР°РµРј РІСЃС‘ РІРјРµСЃС‚Рµ, С„РёР»СЊС‚СЂСѓРµРј С‚РѕР»СЊРєРѕ safetensors РґР»СЏ Р±РµР·РѕРїР°СЃРЅРѕСЃС‚Рё
-        # (С…РѕС‚СЏ safe_open РјРѕР¶РµС‚ С‡РёС‚Р°С‚СЊ Рё РґСЂСѓРіРёРµ, РЅРѕ РґР»СЏ РєРѕРЅРІРµСЂС‚Р°С†РёРё Р»СѓС‡С€Рµ safetensors)
+        # 3. Собираем всё вместе, фильтруем только safetensors для безопасности
+        # (хотя safe_open может читать и другие, но для конвертации лучше safetensors)
         file_list = []
         
         for f in checkpoints:
@@ -47,7 +47,7 @@ class TS_ModelConverterAdvancedNode:
             if f.endswith(".safetensors"):
                 file_list.append(f"diffusion_models | {f}")
 
-        # 4. Р”РѕР±Р°РІР»СЏРµРј СЃРєР°РЅРёСЂРѕРІР°РЅРёРµ РїР°РїРєРё Output (РєР°Рє РІ РѕСЂРёРіРёРЅР°Р»Рµ)
+        # 4. Добавляем сканирование папки Output (как в оригинале)
         output_dir = folder_paths.get_output_directory()
         output_diff_dir = os.path.join(output_dir, "diffusion_models")
         if os.path.exists(output_diff_dir):
@@ -232,10 +232,10 @@ class TS_ModelConverterAdvancedNode:
         device = "cuda" if torch.cuda.is_available() else "cpu"
         target_dtype = torch.float8_e4m3fn if fp8_mode == "e4m3fn" else torch.float8_e5m2
         
-        # РџРѕР»СѓС‡Р°РµРј РїСѓС‚Рё
+        # Получаем пути
         output_dir = folder_paths.get_output_directory()
         
-        # РџР°СЂСЃРёРј РІС‹Р±СЂР°РЅРЅРѕРµ РёРјСЏ РёР· СЃРїРёСЃРєР° (С‚РёРї | РёРјСЏ)
+        # Парсим выбранное имя из списка (тип | имя)
         if " | " in model_name:
             type_key, filename = model_name.split(" | ", 1)
         else:
@@ -243,7 +243,7 @@ class TS_ModelConverterAdvancedNode:
             logs.append("вќЊ Invalid model selection")
             return ("\n".join(logs),)
 
-        # РС‰РµРј РїРѕР»РЅС‹Р№ РїСѓС‚СЊ Рє С„Р°Р№Р»Сѓ
+        # Ищем полный путь к файлу
         model_path = None
         
         if type_key == "checkpoints":
@@ -289,7 +289,7 @@ class TS_ModelConverterAdvancedNode:
             except Exception as e:
                 logs.append(f"вќЊ Conversion failed: {e}")
                 
-            # Р§РёСЃС‚РєР° РїР°РјСЏС‚Рё
+            # Чистка памяти
             del shard_state
             gc.collect()
             if torch.cuda.is_available():

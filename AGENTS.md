@@ -27,7 +27,7 @@ ComfyUI-кредо:
 ```text
 nodes/AGENTS.md
 js/AGENTS.md
-docs/AGENTS.md
+doc/AGENTS.md
 tests/AGENTS.md
 ```
 

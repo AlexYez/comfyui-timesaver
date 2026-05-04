@@ -21,51 +21,32 @@ NODE_DISPLAY_NAME_MAPPINGS = {}
 
 _PACKAGE_DIR = Path(__file__).resolve().parent
 _NODE_MODULE_DIR = _PACKAGE_DIR / "nodes"
-_LEGACY_NODE_FILENAMES = {"ts_resolution_selector.py"}
-
-
-def _is_legacy_node_file(path: Path) -> bool:
-    return path.name.endswith("_node.py") or path.name in _LEGACY_NODE_FILENAMES
 
 
 def _discover_module_entries() -> list[dict[str, str]]:
     entries: list[dict[str, str]] = []
-    seen_stems: set[str] = set()
 
-    if _NODE_MODULE_DIR.is_dir():
-        for py_file in sorted(_NODE_MODULE_DIR.rglob("*.py")):
-            if py_file.name == "__init__.py":
-                continue
-            # Naming convention: every public node file uses the ts_ prefix.
-            # This filter skips helper packages bundled alongside nodes
-            # (frame_interpolation_models/, video_depth_anything/, ...).
-            if not py_file.name.startswith("ts_"):
-                continue
-            relative_to_node_dir = py_file.relative_to(_NODE_MODULE_DIR)
-            if any(part.startswith("_") for part in relative_to_node_dir.parts):
-                # Skip __pycache__ and any private/shared helpers (_shared/, _internal.py, ...).
-                continue
-            relative = py_file.relative_to(_PACKAGE_DIR)
-            module_path = relative.with_suffix("").as_posix().replace("/", ".")
-            entries.append(
-                {
-                    "module_import": module_path,
-                    "module_label": relative.as_posix(),
-                }
-            )
-            seen_stems.add(py_file.stem)
+    if not _NODE_MODULE_DIR.is_dir():
+        return entries
 
-    for py_file in sorted(_PACKAGE_DIR.glob("*.py")):
-        if py_file.name in {"__init__.py", "ts_dependency_manager.py"}:
+    for py_file in sorted(_NODE_MODULE_DIR.rglob("*.py")):
+        if py_file.name == "__init__.py":
             continue
-        if py_file.stem in seen_stems:
+        # Naming convention: every public node file uses the ts_ prefix.
+        # This filter skips helper packages bundled alongside nodes
+        # (frame_interpolation_models/, video_depth_anything/, ...).
+        if not py_file.name.startswith("ts_"):
             continue
-        if not _is_legacy_node_file(py_file):
+        relative_to_node_dir = py_file.relative_to(_NODE_MODULE_DIR)
+        if any(part.startswith("_") for part in relative_to_node_dir.parts):
+            # Skip __pycache__ and any private/shared helpers (_shared/, _internal.py, ...).
             continue
+        relative = py_file.relative_to(_PACKAGE_DIR)
+        module_path = relative.with_suffix("").as_posix().replace("/", ".")
         entries.append(
             {
-                "module_import": py_file.stem,
-                "module_label": py_file.name,
+                "module_import": module_path,
+                "module_label": relative.as_posix(),
             }
         )
 

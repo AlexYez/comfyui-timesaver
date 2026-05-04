@@ -63,7 +63,7 @@ class TS_EDLToYouTubeChaptersNode:
         return (youtube_chapters_output,)
 
 NODE_CLASS_MAPPINGS = {
-    "TS Youtube Chapters": TS_EDLToYouTubeChaptersNode # РљР»СЋС‡ РѕСЃС‚Р°РІР»РµРЅ РѕСЂРёРіРёРЅР°Р»СЊРЅС‹Рј
+    "TS Youtube Chapters": TS_EDLToYouTubeChaptersNode # Ключ оставлен оригинальным
 }
 NODE_DISPLAY_NAME_MAPPINGS = {
     "TS Youtube Chapters": "TS YouTube Chapters"

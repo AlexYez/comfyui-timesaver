@@ -126,9 +126,6 @@ class TS_Smart_Switch:
             TS_Logger.error("SmartSwitch", f"Error: {str(e)}")
             return (None,)
 
-# ==============================================================================
-# Node 4: TS Math Int
-
 
 NODE_CLASS_MAPPINGS = {"TS_Smart_Switch": TS_Smart_Switch}
 NODE_DISPLAY_NAME_MAPPINGS = {"TS_Smart_Switch": "TS Smart Switch"}

@@ -1,6 +1,6 @@
 ﻿import torch
 import torch.nn.functional as F
-import kornia.filters # РўСЂРµР±СѓРµС‚СЃСЏ СѓСЃС‚Р°РЅРѕРІРєР°: pip install kornia
+import kornia.filters # Требуется установка: pip install kornia
 
 class TS_FilmGrain: 
     def __init__(self):
@@ -16,42 +16,42 @@ class TS_FilmGrain:
                     "display": "toggle"
                 }),
                 "grain_size": ("FLOAT", {
-                    "default": 1.0,  # РћСЃС‚Р°РІР»СЏРµРј, С…РѕСЂРѕС€РёР№ Р±Р°Р·РѕРІС‹Р№ СЂР°Р·РјРµСЂ
+                    "default": 1.0,  # Оставляем, хороший базовый размер
                     "min": 0.1, 
                     "max": 5.0, 
                     "step": 0.1, 
                     "display": "slider"
                 }),
                 "grain_intensity": ("FLOAT", {
-                    "default": 0.065, # РЈРІРµР»РёС‡РµРЅРѕ РЅР° 30% (Р±С‹Р»Рѕ 0.05 * 1.3 = 0.065)
+                    "default": 0.065, # Увеличено на 30% (было 0.05 * 1.3 = 0.065)
                     "min": 0.0, 
                     "max": 0.5, 
                     "step": 0.005, 
                     "display": "slider"
                 }),
                 "grain_speed": ("FLOAT", {
-                    "default": 0.5, # РћСЃС‚Р°РІР»СЏРµРј, С…РѕСЂРѕС€РёР№ Р±Р°Р»Р°РЅСЃ РґР»СЏ РІРёРґРµРѕ
+                    "default": 0.5, # Оставляем, хороший баланс для видео
                     "min": 0.0, 
                     "max": 1.0, 
                     "step": 0.01, 
                     "display": "slider"
                 }),
-                "grain_softness": ("FLOAT", { # РђРєС‚РёРІРёСЂСѓРµРј РґР»СЏ Р±РѕР»РµРµ РѕСЂРіР°РЅРёС‡РЅРѕРіРѕ Р·РµСЂРЅР°
+                "grain_softness": ("FLOAT", { # Активируем для более органичного зерна
                     "default": 0.5, 
                     "min": 0.0, 
                     "max": 2.0, 
                     "step": 0.1, 
                     "display": "slider"
                 }),
-                "color_grain_strength": ("FLOAT", { # РђРєС‚РёРІРёСЂСѓРµРј РґР»СЏ Р»РµРіРєРѕРіРѕ С†РІРµС‚РѕРІРѕРіРѕ РѕС‚С‚РµРЅРєР°
-                    "default": 0.15, # РЈРјРµСЂРµРЅРЅС‹Р№ С†РІРµС‚РЅРѕР№ СЌС„С„РµРєС‚
+                "color_grain_strength": ("FLOAT", { # Активируем для легкого цветового оттенка
+                    "default": 0.15, # Умеренный цветной эффект
                     "min": 0.0, 
                     "max": 1.0, 
                     "step": 0.01, 
                     "display": "slider"
                 }),
                 "mid_tone_grain_bias": ("FLOAT", { 
-                    "default": 0.5, # РћСЃС‚Р°РІР»СЏРµРј, С…РѕСЂРѕС€Рѕ РґР»СЏ Kodak-РїРѕРґРѕР±РЅРѕРіРѕ Р·РµСЂРЅР°
+                    "default": 0.5, # Оставляем, хорошо для Kodak-подобного зерна
                     "min": 0.01, 
                     "max": 0.99, 
                     "step": 0.01, 
@@ -71,8 +71,8 @@ class TS_FilmGrain:
 
     def _generate_octave_noise(self, batch_dim, target_h, target_w, channels, scale_factor, current_seed, device, dtype):
         """
-        Р“РµРЅРµСЂРёСЂСѓРµС‚ РѕРґРЅСѓ РѕРєС‚Р°РІСѓ РіР°СѓСЃСЃРѕРІР° С€СѓРјР° РґР»СЏ Р±Р°С‚С‡Р° (batch_dim=B) РёР»Рё РѕРґРЅРѕРіРѕ СЌРєР·РµРјРїР»СЏСЂР° (batch_dim=1)
-        Рё СѓРІРµР»РёС‡РёРІР°РµС‚ РµРµ РґРѕ С†РµР»РµРІРѕРіРѕ СЂР°Р·СЂРµС€РµРЅРёСЏ.
+        Генерирует одну октаву гауссова шума для батча (batch_dim=B) или одного экземпляра (batch_dim=1)
+        и увеличивает ее до целевого разрешения.
         """
         noise_h_octave = max(1, int(target_h / scale_factor))
         noise_w_octave = max(1, int(target_w / scale_factor))
@@ -115,22 +115,9 @@ class TS_FilmGrain:
 
         if images.device != target_device or images.dtype != target_dtype:
             images = images.to(target_device, dtype=target_dtype, non_blocking=True)
-            print(f"Info: Images moved to {images.device} and converted to {images.dtype}")
-        
-        device = images.device 
-        compute_dtype = images.dtype 
-        
-        print(f"--- TS_FilmGrain Debug Info ---")
-        print(f"Final compute device: {device}")
-        print(f"Final compute dtype: {compute_dtype}")
-        print(f"Input images shape: {images.shape}")
-        if device.type == 'cuda':
-            print(f"CUDA current device: {torch.cuda.current_device()}")
-            print(f"CUDA device name: {torch.cuda.get_device_name(torch.cuda.current_device())}")
-            print(f"CUDA memory allocated: {torch.cuda.memory_allocated() / (1024**3):.2f} GB")
-            print(f"CUDA memory cached: {torch.cuda.memory_reserved() / (1024**3):.2f} GB")
-        print(f"--- End Debug Info ---")
 
+        device = images.device
+        compute_dtype = images.dtype
 
         noise_octaves = [
             (grain_size * 1.0, 0.6), 

@@ -85,6 +85,16 @@ def _normalize_image_tensor(image: torch.Tensor) -> torch.Tensor:
         raise ValueError(f"Expected IMAGE tensor [B,H,W,C], got {image.ndim} dimensions.")
     if image.shape[-1] < 3:
         raise ValueError(f"Expected IMAGE tensor with at least 3 channels, got {image.shape[-1]}.")
+
+    if image.shape[-1] >= 4:
+        # Composite RGBA onto a white background. Reference-aware models
+        # (qwen-image-edit-multi-reference, flux 2, etc.) expect opaque
+        # references; without compositing, transparent pixels show as
+        # pre-multiplied black (or whatever junk happens to live in the
+        # RGB channels under alpha=0), which biases the generation.
+        rgb = image[:, :, :, :3]
+        alpha = image[:, :, :, 3:4].clamp(0.0, 1.0)
+        return (rgb * alpha + (1.0 - alpha)).clamp(0.0, 1.0)
     return image[:, :, :, :3].clone()
 
 

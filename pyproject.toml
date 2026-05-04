@@ -22,7 +22,8 @@ dependencies = [
     "demucs",
     "geomloss",
     "pykeops",
-    "silero"
+    "silero",
+    "silero-stress"
 ]
 
 [project.urls]

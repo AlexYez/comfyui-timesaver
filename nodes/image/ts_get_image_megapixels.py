@@ -4,10 +4,8 @@ node_id: TS_GetImageMegapixels
 """
 
 from typing import Optional
-import time
 
 import torch
-import comfy.utils
 
 
 class TS_GetImageMegapixels:
@@ -68,10 +66,8 @@ class TS_GetImageMegapixels:
     def IS_CHANGED(cls, image: torch.Tensor) -> str:
         if image is None or not isinstance(image, torch.Tensor):
             return "none"
-        try:
-            return f"{tuple(image.shape)}_{image.dtype}_{float(image.mean())}"
-        except Exception:
-            return f"{tuple(image.shape)}_{image.dtype}"
+        # Megapixels depend only on shape; do not read pixel data here.
+        return f"{tuple(image.shape)}_{image.dtype}"
 
 
 

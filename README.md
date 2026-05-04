@@ -14,7 +14,7 @@ README написан для тех, кто только осваивает Comf
 
 ## Что Есть В Паке
 
-В паке сейчас **57 нод**. Их можно условно разделить так:
+В паке сейчас **56 нод**. Их можно условно разделить так:
 
 - **изображения**: resize, цвет, фон, маски, тайлы, 360-панорамы;
 - **видео**: глубина, апскейл, дефликер, интерполяция кадров, предпросмотр;
@@ -101,7 +101,6 @@ python -m pip install -r requirements.txt
 | Разбить большое изображение на тайлы | `TS_ImageTileSplitter`, `TS_ImageTileMerger` |
 | Сделать глубину по видео-кадрам | `TS_VideoDepthNode` |
 | Апскейлить видео или кадры | `TS_Video_Upscale_With_Model`, `TS_RTX_Upscaler` |
-| Уменьшить мерцание видео | `TS_DeflickerNode` |
 | Сделать предпросмотр анимации | `TS_Animation_Preview` |
 | Скачать модели или ассеты | `TS Files Downloader` |
 | Посмотреть информацию о модели | `TS_ModelScanner` |
@@ -149,7 +148,6 @@ python -m pip install -r requirements.txt
 | `TS_VideoDepthNode` | Строит карты глубины для последовательности кадров. | `IMAGE` |
 | `TS_Video_Upscale_With_Model` | Апскейлит кадры видео выбранной моделью. | `IMAGE` |
 | `TS_RTX_Upscaler` | Использует NVIDIA RTX Upscaler, если система поддерживает его. | `IMAGE` |
-| `TS_DeflickerNode` | Уменьшает мерцание яркости и цвета между кадрами. | `IMAGE` |
 | `TS_Free_Video_Memory` | Помогает освободить память между тяжелыми шагами видео-графа. | `IMAGE` |
 | `TS_LTX_FirstLastFrame` | Добавляет первый и последний кадр в latent-ветку для LTX-процессов. | `LATENT` |
 | `TS_Animation_Preview` | Делает быстрый предпросмотр анимации и может добавить звук. | UI |
@@ -314,7 +312,7 @@ Repository: https://github.com/AlexYez/comfyui-timesaver
 
 ## What Is Included
 
-The pack currently contains **57 nodes**. They can be grouped like this:
+The pack currently contains **56 nodes**. They can be grouped like this:
 
 - **images**: resizing, color work, background removal, masks, tiles, 360 panoramas;
 - **video**: depth maps, upscaling, deflicker, frame interpolation, preview;
@@ -401,7 +399,6 @@ ComfyUI usually shows which connections are valid, so there is no need to memori
 | Split a large image into tiles | `TS_ImageTileSplitter`, `TS_ImageTileMerger` |
 | Create depth maps from video frames | `TS_VideoDepthNode` |
 | Upscale video frames | `TS_Video_Upscale_With_Model`, `TS_RTX_Upscaler` |
-| Reduce video flicker | `TS_DeflickerNode` |
 | Make an animation preview | `TS_Animation_Preview` |
 | Download models or assets | `TS Files Downloader` |
 | Inspect a model file | `TS_ModelScanner` |
@@ -449,7 +446,6 @@ ComfyUI usually shows which connections are valid, so there is no need to memori
 | `TS_VideoDepthNode` | Creates depth maps from frame sequences. | `IMAGE` |
 | `TS_Video_Upscale_With_Model` | Upscales video frames with a selected model. | `IMAGE` |
 | `TS_RTX_Upscaler` | Uses NVIDIA RTX Upscaler when supported by the system. | `IMAGE` |
-| `TS_DeflickerNode` | Reduces brightness and color flicker between frames. | `IMAGE` |
 | `TS_Free_Video_Memory` | Helps free memory between heavy video steps. | `IMAGE` |
 | `TS_LTX_FirstLastFrame` | Adds first and last frame guidance for LTX workflows. | `LATENT` |
 | `TS_Animation_Preview` | Creates a quick animation preview and can include audio. | UI |

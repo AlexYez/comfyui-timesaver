@@ -255,6 +255,54 @@ def test_validate_inputs_rejects_zero_divide_by(monkeypatch):
     ) is True
 
 
+def test_rgba_input_is_composited_on_white(monkeypatch):
+    """RGBA references must be flattened onto a white background, not
+    silently stripped to RGB (which would leak pre-multiplied dark pixels
+    wherever alpha was 0)."""
+    module = _load_module(monkeypatch)
+
+    # Build a 1x4x4x4 RGBA image:
+    # - top-left half: red (1,0,0) with alpha=1.0   → stays red
+    # - bottom-left:   red (1,0,0) with alpha=0.0   → must become white
+    # - top-right:     green (0,1,0) with alpha=0.5 → must blend toward white
+    rgba = torch.zeros((1, 4, 4, 4), dtype=torch.float32)
+    rgba[..., 0] = 1.0  # R = 1 everywhere
+
+    rgba[:, :2, :2, 3] = 1.0   # opaque red top-left quadrant
+    rgba[:, 2:, :2, 3] = 0.0   # fully transparent bottom-left quadrant
+    rgba[:, :, 2:, 0] = 0.0    # right half: switch to green
+    rgba[:, :, 2:, 1] = 1.0
+    rgba[:, :, 2:, 3] = 0.5    # right half: 50% alpha
+
+    out = module._normalize_image_tensor(rgba)
+
+    assert out.shape == (1, 4, 4, 3)
+
+    # Opaque red region preserved.
+    assert torch.allclose(out[0, 0, 0], torch.tensor([1.0, 0.0, 0.0]))
+
+    # Transparent region is pure white.
+    assert torch.allclose(out[0, 2, 0], torch.tensor([1.0, 1.0, 1.0]))
+
+    # 50% green over white = (0.5, 1.0, 0.5).
+    assert torch.allclose(out[0, 0, 2], torch.tensor([0.5, 1.0, 0.5]))
+
+
+def test_rgb_input_passthrough(monkeypatch):
+    """Plain RGB (no alpha) goes through unchanged after normalization."""
+    module = _load_module(monkeypatch)
+
+    rgb = torch.full((1, 4, 4, 3), 0.42, dtype=torch.float32)
+    before = rgb.clone()
+
+    out = module._normalize_image_tensor(rgb)
+
+    # No mutation of input.
+    assert torch.equal(rgb, before)
+    # Same content.
+    assert torch.allclose(out, rgb)
+
+
 def test_resize_with_custom_divide_by(monkeypatch):
     module = _load_module(monkeypatch)
     image = torch.rand((1, 1080, 1920, 3), dtype=torch.float32)

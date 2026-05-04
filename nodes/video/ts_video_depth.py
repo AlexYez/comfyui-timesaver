@@ -9,7 +9,7 @@ import folder_paths
 import comfy.model_management as mm
 from comfy.utils import ProgressBar, load_torch_file
 
-# --- РРјРїРѕСЂС‚ РјРѕРґРµР»Рё VideoDepthAnything ---
+# --- Импорт модели VideoDepthAnything ---
 try:
     # Preferred layout: comfyui-timesaver/nodes/video_depth_anything
     from .video_depth_anything.video_depth import VideoDepthAnything
@@ -25,13 +25,13 @@ except ImportError:
             print(f"[TS_VideoDepth] CRITICAL IMPORT ERROR: Could not import VideoDepthAnything model.")
             print(f"[TS_VideoDepth] Error details: {e}")
             VideoDepthAnything = None
-# --- РљРѕРЅРµС† РёРјРїРѕСЂС‚Р° ---
+# --- Конец импорта ---
 
 def ensure_even_vda(value):
     return int(value) if int(value) % 2 == 0 else int(value) + 1
 
 def preprocess_vda_internal(tensor_images, max_res=-1):
-    # ... (РєРѕРґ Р±РµР· РёР·РјРµРЅРµРЅРёР№) ...
+    # ... (код без изменений) ...
     if not isinstance(tensor_images, torch.Tensor):
         raise TypeError("Input 'images' must be a PyTorch tensor.")
     if not (tensor_images.ndim == 4 and tensor_images.shape[0] > 0):
@@ -72,7 +72,7 @@ def preprocess_vda_internal(tensor_images, max_res=-1):
 
 def postprocess_vda_colormap_internal(depths_np_float32_input, colormap_name="gray", 
                                       dithering_strength=0.0, apply_median_blur=False, 
-                                      target_h=None, target_w=None, upscale_algorithm="Lanczos4"): # Р”РѕР±Р°РІР»РµРЅ upscale_algorithm
+                                      target_h=None, target_w=None, upscale_algorithm="Lanczos4"): # Добавлен upscale_algorithm
     if depths_np_float32_input is None or depths_np_float32_input.size == 0:
         print("[TS_VideoDepth] Warning: Empty depth map received in postprocess.")
         return torch.empty((0, 0, 0, 3), dtype=torch.float32)
@@ -96,13 +96,13 @@ def postprocess_vda_colormap_internal(depths_np_float32_input, colormap_name="gr
             current_depths_processed = np.array(processed_depths_list_blur, dtype=np.float32)
         del processed_depths_list_blur; gc.collect()
     
-    # --- РђРїСЃРєРµР№Р» РґРѕ С†РµР»РµРІРѕРіРѕ СЂР°Р·СЂРµС€РµРЅРёСЏ ---
+    # --- Апскейл до целевого разрешения ---
     interpolation_methods = {
         "Linear": cv2.INTER_LINEAR,
         "Cubic": cv2.INTER_CUBIC,
         "Lanczos4": cv2.INTER_LANCZOS4
     }
-    chosen_interpolation = interpolation_methods.get(upscale_algorithm, cv2.INTER_LANCZOS4) # РџРѕ СѓРјРѕР»С‡Р°РЅРёСЋ Lanczos4
+    chosen_interpolation = interpolation_methods.get(upscale_algorithm, cv2.INTER_LANCZOS4) # По умолчанию Lanczos4
 
     if target_h is not None and target_w is not None and (current_h != target_h or current_w != target_w):
         print(f"[TS_VideoDepth] Upscaling depth map from ({current_h},{current_w}) to ({target_h},{target_w}) using {upscale_algorithm}.")
@@ -161,7 +161,7 @@ class TS_VideoDepth:
 
     @classmethod
     def INPUT_TYPES(cls):
-        upscale_methods_list = ["Lanczos4", "Cubic", "Linear"] # РџРѕСЂСЏРґРѕРє РґР»СЏ РѕС‚РѕР±СЂР°Р¶РµРЅРёСЏ РІ UI
+        upscale_methods_list = ["Lanczos4", "Cubic", "Linear"] # Порядок для отображения в UI
         return {
             "required": {
                 "images": ("IMAGE", ),
@@ -172,8 +172,8 @@ class TS_VideoDepth:
                 "precision": (['fp16', 'fp32'], {"default": 'fp16'}),
                 "colormap": (['gray', 'inferno', 'viridis', 'plasma', 'magma', 'cividis'], {"default": 'gray'}),
                 "dithering_strength": ("FLOAT", {"default": 0.005, "min": 0.0, "max": 0.016, "step": 0.0001, "round": 0.0001}),
-                "apply_median_blur": ("BOOLEAN", {"default": True}), # РР—РњР•РќР•РќРћ: РІРєР»СЋС‡РµРЅРѕ РїРѕ СѓРјРѕР»С‡Р°РЅРёСЋ
-                "upscale_algorithm": (upscale_methods_list, {"default": "Lanczos4"}), # РќРѕРІС‹Р№ РїР°СЂР°РјРµС‚СЂ
+                "apply_median_blur": ("BOOLEAN", {"default": True}), # ИЗМЕНЕНО: включено по умолчанию
+                "upscale_algorithm": (upscale_methods_list, {"default": "Lanczos4"}), # Новый параметр
             },
         }
     
@@ -184,7 +184,7 @@ class TS_VideoDepth:
 
     @classmethod
     def _ensure_model_loaded_on_cpu(cls, model_filename_to_load):
-        # ... (РєРѕРґ Р±РµР· РёР·РјРµРЅРµРЅРёР№) ...
+        # ... (код без изменений) ...
         if cls._loaded_model_instance is None or cls._loaded_model_filename != model_filename_to_load or cls._model_on_device_type_str != 'cpu':
             if cls._loaded_model_instance is not None and cls._model_on_device_type_str != 'cpu':
                 print(f"[TS_VideoDepth] Offloading previous model: {cls._loaded_model_filename} from {cls._model_on_device_type_str}")
@@ -231,7 +231,7 @@ class TS_VideoDepth:
             print(f"[TS_VideoDepth] Model {model_filename_to_load} is confirmed on CPU.")
         return cls._loaded_model_instance
 
-    # Р”РѕР±Р°РІР»РµРЅ upscale_algorithm РІ Р°СЂРіСѓРјРµРЅС‚С‹
+    # Добавлен upscale_algorithm в аргументы
     def execute_process_unified(self, images, model_filename, input_size, max_res, precision, colormap, dithering_strength, apply_median_blur, upscale_algorithm): 
         
         original_h, original_w = images.shape[1], images.shape[2]
@@ -295,22 +295,13 @@ class TS_VideoDepth:
         
         output_tensor = postprocess_vda_colormap_internal(
             depths_np_float32_for_postproc, colormap, dithering_strength, 
-            apply_median_blur, original_h, original_w, upscale_algorithm # РџРµСЂРµРґР°РµРј РЅРѕРІС‹Р№ РїР°СЂР°РјРµС‚СЂ
+            apply_median_blur, original_h, original_w, upscale_algorithm # Передаем новый параметр
         )
         
         del depths_np_float32_for_postproc; gc.collect()
         print(f"[TS_VideoDepth] Processing finished successfully.")
         return (output_tensor,)
 
-# --- Р РµРіРёСЃС‚СЂР°С†РёСЏ РЅРѕРґС‹ РґР»СЏ ComfyUI ---
+# --- Регистрация ноды для ComfyUI ---
 NODE_CLASS_MAPPINGS = { "TS_VideoDepthNode": TS_VideoDepth }
 NODE_DISPLAY_NAME_MAPPINGS = { "TS_VideoDepthNode": "TS Video Depth" }
-
-if VideoDepthAnything is not None:
-    print("--------------------------------------------------")
-    print("Custom Node: TS Video Depth - Loaded Successfully")
-    print("--------------------------------------------------")
-else:
-    print("--------------------------------------------------")
-    print("Custom Node: TS Video Depth - LOADED WITH ERRORS (VideoDepthAnything model class not found)")
-    print("--------------------------------------------------")

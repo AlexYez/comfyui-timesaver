@@ -36,7 +36,7 @@ class TS_ModelConverterNode:
 
     def convert_to_fp8(self, model):
         try:
-            # Р›РѕРіРёРєР° РґР»СЏ СЂР°Р·РЅС‹С… С‚РёРїРѕРІ РѕР±СЉРµРєС‚РѕРІ РјРѕРґРµР»Рё РІ ComfyUI
+            # Логика для разных типов объектов модели в ComfyUI
             if hasattr(model, 'diffusion_model'):
                 model.diffusion_model = model.diffusion_model.to(torch.float8_e4m3fn)
             elif isinstance(model, ModelPatcher):
@@ -44,7 +44,7 @@ class TS_ModelConverterNode:
             else:
                 model = model.to(torch.float8_e4m3fn)
             
-            # Р§РёСЃС‚РёРј РєСЌС€ РїРѕСЃР»Рµ РєРѕРЅРІРµСЂС‚Р°С†РёРё РІ РїР°РјСЏС‚Рё
+            # Чистим кэш после конвертации в памяти
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
                 

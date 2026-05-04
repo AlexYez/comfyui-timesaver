@@ -18,11 +18,6 @@ import srt
 class TSWhisper:
     _LOG_NAME = "comfyui_ts_whisper"
     _LOG_PREFIX = "[TS Whisper]"
-    _COLOR_CYAN = "\x1b[36m"
-    _COLOR_GREEN = "\x1b[32m"
-    _COLOR_YELLOW = "\x1b[33m"
-    _COLOR_RED = "\x1b[31m"
-    _COLOR_RESET = "\x1b[0m"
 
     def __init__(self):
         self.logger = self._init_logger()
@@ -84,13 +79,12 @@ class TSWhisper:
     def _log_error(self, message):
         self.logger.error(f"{self._LOG_PREFIX} {message}")
 
-    def _log_tensor_shape(self, label, tensor, color=None):
+    def _log_tensor_shape(self, label, tensor):
         if not isinstance(tensor, torch.Tensor):
             return
-        color = color or self._COLOR_CYAN
         shape = tuple(tensor.shape)
         self._log_info(
-            f"{color}{label} shape={shape} dtype={tensor.dtype} device={tensor.device}{self._COLOR_RESET}"
+            f"{label} shape={shape} dtype={tensor.dtype} device={tensor.device}"
         )
 
     def _get_resampler(self, orig_freq, new_freq, device, quality):
@@ -509,7 +503,7 @@ class TSWhisper:
         if not isinstance(waveform_tensor, torch.Tensor):
             raise ValueError("Audio waveform is not a torch.Tensor.")
 
-        self._log_tensor_shape("Input waveform", waveform_tensor, color=self._COLOR_GREEN)
+        self._log_tensor_shape("Input waveform", waveform_tensor)
 
         current_waveform = waveform_tensor.detach()
         if current_waveform.ndim == 3:
@@ -575,7 +569,7 @@ class TSWhisper:
                 current_waveform = current_waveform / peak
             current_waveform = current_waveform.clamp(-1.0, 1.0)
 
-        self._log_tensor_shape("Prepared waveform", current_waveform, color=self._COLOR_CYAN)
+        self._log_tensor_shape("Prepared waveform", current_waveform)
 
         prepared_audio_numpy = current_waveform.cpu().numpy().astype(np.float32, copy=False)
         return prepared_audio_numpy, target_sample_rate

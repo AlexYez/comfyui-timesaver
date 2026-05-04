@@ -66,7 +66,7 @@ class TS_WAN_SafeResize:
     CATEGORY = "image/resize"
 
     def safe_resize(self, image, quality, interconnection_in=None):
-        # РџСЂРёРѕСЂРёС‚РµС‚ interconnection
+        # Приоритет interconnection
         if interconnection_in in self.WAN_RESOLUTIONS:
             internal_quality = interconnection_in
         else:

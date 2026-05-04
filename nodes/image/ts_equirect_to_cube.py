@@ -47,7 +47,7 @@ class TS_EquirectangularToCubemapFacesNode:
         return tensor
 
 NODE_CLASS_MAPPINGS = {
-    "TS Equirectangular to Cube": TS_EquirectangularToCubemapFacesNode # РљР»СЋС‡ РѕСЃС‚Р°РІР»РµРЅ РѕСЂРёРіРёРЅР°Р»СЊРЅС‹Рј
+    "TS Equirectangular to Cube": TS_EquirectangularToCubemapFacesNode # Ключ оставлен оригинальным
 }
 NODE_DISPLAY_NAME_MAPPINGS = {
     "TS Equirectangular to Cube": "TS Equirectangular to Cube"
