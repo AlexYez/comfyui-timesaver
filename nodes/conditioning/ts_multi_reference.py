@@ -1,19 +1,36 @@
+"""TS Multi Reference — attach up to three IMAGE references to a CONDITIONING.
+
+Each connected reference image is resized to fit max_megapixels on a
+32-pixel grid, encoded through the supplied VAE, and appended as a
+reference_latent on the conditioning. The result is equivalent to
+chaining three native ReferenceLatent nodes after three VAE Encode
+nodes that share a VAE.
+
+The node accepts up to three IMAGE inputs (image_1/image_2/image_3),
+all optional. Use any standard ComfyUI image loader to feed them.
+
+Behaviour:
+- All inputs unconnected: conditioning passes through unchanged,
+  multi_images returns ExecutionBlocker so downstream consumers are
+  silently skipped.
+- Some images connected, no conditioning: only resize for multi_images,
+  no encoding (no sink for reference_latents).
+- Some images connected, no VAE: clear RuntimeError.
+- Standard case (conditioning + vae + N images): N reference_latents
+  attached, multi_images is a list of the resized images.
+
+node_id: TS_MultiReference
+"""
+
 from __future__ import annotations
 
-import hashlib
 import logging
 import math
-import os
-from pathlib import Path
-from typing import Iterable
+from typing import Optional
 
-import numpy as np
 import torch
-from PIL import Image, ImageOps, ImageSequence
 
-import comfy.model_management
 import comfy.utils
-import folder_paths
 import node_helpers
 from comfy_api.latest import IO
 from comfy_execution.graph_utils import ExecutionBlocker
@@ -21,48 +38,13 @@ from comfy_execution.graph_utils import ExecutionBlocker
 
 logger = logging.getLogger(__name__)
 
-_EMPTY_IMAGE = ""
 _IMAGE_SLOT_COUNT = 3
 _SIZE_MULTIPLE = 32
 _DEFAULT_MEGAPIXELS = 1.0
-_UPSCALE_METHODS = ["area", "bilinear", "bicubic", "lanczos", "nearest-exact"]
 # Hardcoded resize method used when scaling reference images before VAE
 # encoding. Kept as a module-level constant (not a node input) so the UI
 # stays compact. Edit here if you need a different default.
 _UPSCALE_METHOD = "area"
-
-
-def _list_input_images() -> list[str]:
-    input_dir = Path(folder_paths.get_input_directory())
-    if not input_dir.is_dir():
-        return []
-    files = [
-        path.name
-        for path in input_dir.iterdir()
-        if path.is_file()
-    ]
-    return sorted(folder_paths.filter_files_content_types(files, ["image"]))
-
-
-def _image_widget_options(include_empty: bool = True) -> tuple[list[str], dict]:
-    options = _list_input_images()
-    if include_empty:
-        options = [_EMPTY_IMAGE, *options]
-    return options, {
-        "default": _EMPTY_IMAGE,
-        "tooltip": (
-            "Reference image filename in the input/ folder. Managed by the "
-            "TS Multi Reference drag-and-drop UI; empty slots are ignored."
-        ),
-    }
-
-
-def _selected_images(*image_names: str | None) -> list[str]:
-    return [
-        image_name
-        for image_name in image_names
-        if isinstance(image_name, str) and image_name.strip() != _EMPTY_IMAGE
-    ]
 
 
 def _target_dimensions(
@@ -122,58 +104,14 @@ def _resize_reference_image(
     return resized.clamp(0.0, 1.0)
 
 
-def _intermediate_dtype() -> torch.dtype:
-    dtype_fn = getattr(comfy.model_management, "intermediate_dtype", None)
-    if callable(dtype_fn):
-        return dtype_fn()
-    return torch.float32
-
-
-def _load_reference_image(image_name: str) -> torch.Tensor:
-    image_path = folder_paths.get_annotated_filepath(image_name)
-    image_path_str = os.fspath(image_path)
-
-    img = node_helpers.pillow(Image.open, image_path_str)
-    output_images: list[torch.Tensor] = []
-    width = None
-    height = None
-    dtype = _intermediate_dtype()
-
-    try:
-        for frame in ImageSequence.Iterator(img):
-            frame = node_helpers.pillow(ImageOps.exif_transpose, frame)
-            if frame.mode == "I":
-                frame = frame.point(lambda value: value * (1 / 255))
-            frame = frame.convert("RGB")
-
-            if width is None or height is None:
-                width, height = frame.size
-            if frame.size != (width, height):
-                continue
-
-            image = np.array(frame).astype(np.float32) / 255.0
-            output_images.append(torch.from_numpy(image)[None,].to(dtype=dtype))
-
-            if img.format == "MPO":
-                break
-    finally:
-        img.close()
-
-    if not output_images:
-        raise ValueError(f"Image has no readable frames: {image_name}")
-
-    if len(output_images) == 1:
-        return output_images[0]
-    return torch.cat(output_images, dim=0)
-
-
-def _encode_reference_latent(vae, image: torch.Tensor) -> dict[str, torch.Tensor]:
+def _encode_reference_latent(vae, image: torch.Tensor) -> dict:
     with torch.no_grad():
         samples = vae.encode(image)
     return {"samples": samples}
 
 
-def _append_reference_latent(conditioning, latent: dict[str, torch.Tensor]):
+def _append_reference_latent(conditioning, latent: dict):
+    # Equivalent to the native ReferenceLatent node.
     return node_helpers.conditioning_set_values(
         conditioning,
         {"reference_latents": [latent["samples"]]},
@@ -181,35 +119,22 @@ def _append_reference_latent(conditioning, latent: dict[str, torch.Tensor]):
     )
 
 
-def _hash_files(image_names: Iterable[str]) -> str:
-    digest = hashlib.sha256()
-    for image_name in image_names:
-        image_path = folder_paths.get_annotated_filepath(image_name)
-        digest.update(image_name.encode("utf-8", errors="surrogatepass"))
-        with open(image_path, "rb") as image_file:
-            for chunk in iter(lambda: image_file.read(1024 * 1024), b""):
-                digest.update(chunk)
-    return digest.hexdigest()
-
-
 class TS_MultiReference(IO.ComfyNode):
-    """Load image references and attach them to edit-model conditioning."""
+    """Attach up to three IMAGE references to a CONDITIONING via VAE + reference_latents."""
 
     @classmethod
     def define_schema(cls) -> IO.Schema:
-        image_1_options, image_1_extra = _image_widget_options()
-        image_2_options, image_2_extra = _image_widget_options()
-        image_3_options, image_3_extra = _image_widget_options()
-
         return IO.Schema(
             node_id="TS_MultiReference",
             display_name="TS Multi Reference",
             category="TS/Conditioning",
             description=(
-                "Loads up to three reference images, resizes them to a 32-pixel "
-                "grid (area downscale), encodes them with VAE, and appends "
-                "ReferenceLatent conditioning. With no images selected, "
-                "conditioning passes through unchanged."
+                "Resizes up to three reference images to a 32-pixel grid "
+                "(area downscale), encodes each through the VAE, and "
+                "appends them as reference_latents on the conditioning. "
+                "Equivalent to chaining three ReferenceLatent nodes after "
+                "three VAE Encode nodes. Feed images from any standard "
+                "Load Image node. Empty inputs are skipped silently."
             ),
             inputs=[
                 IO.Conditioning.Input(
@@ -217,8 +142,8 @@ class TS_MultiReference(IO.ComfyNode):
                     optional=True,
                     tooltip=(
                         "Conditioning that will receive reference_latents. "
-                        "Optional: when not connected, the node skips VAE encoding "
-                        "and only resizes images for the multi_images output."
+                        "Optional: when not connected, the node skips VAE "
+                        "encoding and only resizes images for multi_images."
                     ),
                 ),
                 IO.Vae.Input(
@@ -237,28 +162,20 @@ class TS_MultiReference(IO.ComfyNode):
                     step=0.01,
                     tooltip="Maximum size for each reference image before VAE encoding.",
                 ),
-                # Combo inputs intentionally omit upload= — the JS extension
-                # ts.multiReference renders its own drag-and-drop UI and
-                # uploads via the standard /upload/image endpoint. A native
-                # upload widget would render a redundant "choose file" button
-                # below the custom UI.
-                IO.Combo.Input(
+                IO.Image.Input(
                     "image_1",
-                    options=image_1_options,
-                    default=image_1_extra["default"],
-                    tooltip=image_1_extra["tooltip"],
+                    optional=True,
+                    tooltip="Reference image 1. Connect any IMAGE source.",
                 ),
-                IO.Combo.Input(
+                IO.Image.Input(
                     "image_2",
-                    options=image_2_options,
-                    default=image_2_extra["default"],
-                    tooltip=image_2_extra["tooltip"],
+                    optional=True,
+                    tooltip="Reference image 2. Connect any IMAGE source.",
                 ),
-                IO.Combo.Input(
+                IO.Image.Input(
                     "image_3",
-                    options=image_3_options,
-                    default=image_3_extra["default"],
-                    tooltip=image_3_extra["tooltip"],
+                    optional=True,
+                    tooltip="Reference image 3. Connect any IMAGE source.",
                 ),
             ],
             outputs=[
@@ -274,38 +191,10 @@ class TS_MultiReference(IO.ComfyNode):
         )
 
     @classmethod
-    def validate_inputs(
-        cls,
-        max_megapixels: float,
-        image_1: str = _EMPTY_IMAGE,
-        image_2: str = _EMPTY_IMAGE,
-        image_3: str = _EMPTY_IMAGE,
-        **_,
-    ):
+    def validate_inputs(cls, max_megapixels: float, **_):
         if max_megapixels <= 0:
             return "max_megapixels must be greater than zero."
-
-        for image_name in _selected_images(image_1, image_2, image_3):
-            if not folder_paths.exists_annotated_filepath(image_name):
-                return f"Invalid image file: {image_name}"
-
         return True
-
-    @classmethod
-    def fingerprint_inputs(
-        cls,
-        max_megapixels: float,
-        image_1: str = _EMPTY_IMAGE,
-        image_2: str = _EMPTY_IMAGE,
-        image_3: str = _EMPTY_IMAGE,
-        **_,
-    ) -> str:
-        image_names = _selected_images(image_1, image_2, image_3)
-        digest = hashlib.sha256()
-        digest.update(str(max_megapixels).encode("utf-8"))
-        digest.update(_UPSCALE_METHOD.encode("utf-8"))
-        digest.update(_hash_files(image_names).encode("utf-8"))
-        return digest.hexdigest()
 
     @classmethod
     def execute(
@@ -313,27 +202,27 @@ class TS_MultiReference(IO.ComfyNode):
         max_megapixels: float,
         conditioning=None,
         vae=None,
-        image_1: str = _EMPTY_IMAGE,
-        image_2: str = _EMPTY_IMAGE,
-        image_3: str = _EMPTY_IMAGE,
+        image_1: Optional[torch.Tensor] = None,
+        image_2: Optional[torch.Tensor] = None,
+        image_3: Optional[torch.Tensor] = None,
     ):
-        processed_images: list[torch.Tensor] = []
-        current_conditioning = conditioning
-
-        selected = _selected_images(image_1, image_2, image_3)[:_IMAGE_SLOT_COUNT]
+        # Filter to only the slots that actually got an IMAGE tensor.
+        slots = [image_1, image_2, image_3]
+        selected = [img for img in slots[:_IMAGE_SLOT_COUNT] if isinstance(img, torch.Tensor)]
 
         # ReferenceLatent is only attached when we have BOTH conditioning
-        # and VAE. With only images + VAE, we still resize them for the
+        # and VAE. With only images + VAE, we still resize for the
         # multi_images output but skip encoding (no sink to attach to).
-        attach_reference = selected and current_conditioning is not None
+        attach_reference = bool(selected) and conditioning is not None
         if attach_reference and vae is None:
             raise RuntimeError(
                 "[TS Multi Reference] VAE input is required when reference "
-                "images are selected together with a conditioning."
+                "images are provided together with a conditioning."
             )
 
-        for image_name in selected:
-            image = _load_reference_image(image_name)
+        processed_images: list[torch.Tensor] = []
+        current_conditioning = conditioning
+        for image in selected:
             processed_image = _resize_reference_image(
                 image,
                 max_megapixels=max_megapixels,
@@ -349,11 +238,10 @@ class TS_MultiReference(IO.ComfyNode):
         output_conditioning = current_conditioning if current_conditioning is not None else []
 
         if not processed_images:
-            # No references — emit ExecutionBlocker for multi_images so
-            # any downstream consumer is silently skipped (no fake
-            # placeholder image that could confuse a reference-aware
-            # model). Conditioning still passes through.
-            logger.debug("[TS Multi Reference] No reference images selected.")
+            # No references — emit ExecutionBlocker for multi_images so any
+            # downstream consumer is silently skipped (no fake placeholder
+            # image that could confuse a reference-aware model).
+            logger.debug("[TS Multi Reference] No reference images provided.")
             return IO.NodeOutput(ExecutionBlocker(None), output_conditioning)
 
         return IO.NodeOutput(processed_images, output_conditioning)
