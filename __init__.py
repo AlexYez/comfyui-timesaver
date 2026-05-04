@@ -33,13 +33,24 @@ def _discover_module_entries() -> list[dict[str, str]]:
     seen_stems: set[str] = set()
 
     if _NODE_MODULE_DIR.is_dir():
-        for py_file in sorted(_NODE_MODULE_DIR.glob("*.py")):
+        for py_file in sorted(_NODE_MODULE_DIR.rglob("*.py")):
             if py_file.name == "__init__.py":
                 continue
+            # Naming convention: every public node file uses the ts_ prefix.
+            # This filter skips helper packages bundled alongside nodes
+            # (frame_interpolation_models/, video_depth_anything/, ...).
+            if not py_file.name.startswith("ts_"):
+                continue
+            relative_to_node_dir = py_file.relative_to(_NODE_MODULE_DIR)
+            if any(part.startswith("_") for part in relative_to_node_dir.parts):
+                # Skip __pycache__ and any private/shared helpers (_shared/, _internal.py, ...).
+                continue
+            relative = py_file.relative_to(_PACKAGE_DIR)
+            module_path = relative.with_suffix("").as_posix().replace("/", ".")
             entries.append(
                 {
-                    "module_import": f"nodes.{py_file.stem}",
-                    "module_label": py_file.relative_to(_PACKAGE_DIR).as_posix(),
+                    "module_import": module_path,
+                    "module_label": relative.as_posix(),
                 }
             )
             seen_stems.add(py_file.stem)
@@ -77,15 +88,15 @@ if _NODE_MODULE_DIR.is_dir():
     _LOCAL_MODULE_ROOTS.update(
         {
             path.stem
-            for path in _NODE_MODULE_DIR.glob("*.py")
-            if path.name != "__init__.py"
+            for path in _NODE_MODULE_DIR.rglob("*.py")
+            if path.name != "__init__.py" and "__pycache__" not in path.parts
         }
     )
     _LOCAL_MODULE_ROOTS.update(
         {
             path.name
-            for path in _NODE_MODULE_DIR.iterdir()
-            if path.is_dir()
+            for path in _NODE_MODULE_DIR.rglob("*")
+            if path.is_dir() and "__pycache__" not in path.parts
         }
     )
 _LOCAL_MODULE_ROOTS.update(

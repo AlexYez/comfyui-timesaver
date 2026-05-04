@@ -1,0 +1,394 @@
+{
+  "TS Cube to Equirectangular": {
+    "api": "v1",
+    "category": "Tools/TS_Image",
+    "class_name": "TS_CubemapFacesToEquirectangularNode",
+    "display_name": "TS Cube to Equirectangular",
+    "python_file": "nodes/image/ts_cube_to_equirect.py"
+  },
+  "TS Equirectangular to Cube": {
+    "api": "v1",
+    "category": "Tools/TS_Image",
+    "class_name": "TS_EquirectangularToCubemapFacesNode",
+    "display_name": "TS Equirectangular to Cube",
+    "python_file": "nodes/image/ts_equirect_to_cube.py"
+  },
+  "TS Files Downloader": {
+    "api": "v1",
+    "category": "Tools/TS_IO",
+    "class_name": "TS_DownloadFilesNode",
+    "display_name": "TS Files Downloader (Ultimate)",
+    "python_file": "nodes/files/ts_downloader.py"
+  },
+  "TS Youtube Chapters": {
+    "api": "v1",
+    "category": "Tools/TS_Video",
+    "class_name": "TS_EDLToYouTubeChaptersNode",
+    "display_name": "TS YouTube Chapters",
+    "python_file": "nodes/files/ts_edl_chapters.py"
+  },
+  "TSAutoTileSize": {
+    "api": "v1",
+    "category": "utils/Tile Size",
+    "class_name": "TSAutoTileSize",
+    "display_name": "TS Auto Tile Size",
+    "python_file": "nodes/image/ts_auto_tile_size.py"
+  },
+  "TSCropToMask": {
+    "api": "v1",
+    "category": "image/processing",
+    "class_name": "TSCropToMask",
+    "display_name": "TS Crop To Mask",
+    "python_file": "nodes/image/ts_crop_to_mask.py"
+  },
+  "TSRestoreFromCrop": {
+    "api": "v1",
+    "category": "image/processing",
+    "class_name": "TSRestoreFromCrop",
+    "display_name": "TS Restore From Crop",
+    "python_file": "nodes/image/ts_restore_from_crop.py"
+  },
+  "TSWhisper": {
+    "api": "v1",
+    "category": "TS/Audio",
+    "class_name": "TSWhisper",
+    "display_name": "TS Whisper",
+    "python_file": "nodes/audio/ts_whisper.py"
+  },
+  "TS_Animation_Preview": {
+    "api": "v1",
+    "category": "TS/Interface Tools",
+    "class_name": "TS_Animation_Preview",
+    "display_name": "TS Animation Preview",
+    "python_file": "nodes/video/ts_animation_preview.py"
+  },
+  "TS_AudioLoader": {
+    "api": "v3",
+    "category": "TS/audio",
+    "class_name": "TS_AudioLoader",
+    "display_name": "TS Audio Loader",
+    "python_file": "nodes/audio/ts_audio_loader.py"
+  },
+  "TS_AudioPreview": {
+    "api": "v3",
+    "category": "TS/audio",
+    "class_name": "TS_AudioPreview",
+    "display_name": "TS Audio Preview",
+    "python_file": "nodes/audio/ts_audio_preview.py"
+  },
+  "TS_BGRM_BiRefNet": {
+    "api": "v1",
+    "category": "Timesaver/Image Tools",
+    "class_name": "TS_BGRM_BiRefNet",
+    "display_name": "TS Remove Background",
+    "python_file": "nodes/image/ts_bgrm_birefnet.py"
+  },
+  "TS_BatchPromptLoader": {
+    "api": "v1",
+    "category": "utils/text",
+    "class_name": "TS_BatchPromptLoader",
+    "display_name": "TS Batch Prompt Loader",
+    "python_file": "nodes/text/ts_batch_prompt_loader.py"
+  },
+  "TS_CPULoraMerger": {
+    "api": "v1",
+    "category": "TS/Model Tools",
+    "class_name": "TS_CPULoraMergerNode",
+    "display_name": "TS CPU LoRA Merger",
+    "python_file": "nodes/files/ts_cpu_lora_merger.py"
+  },
+  "TS_Color_Grade": {
+    "api": "v1",
+    "category": "TS/Color",
+    "class_name": "TS_Color_Grade",
+    "display_name": "TS Color Grade",
+    "python_file": "nodes/image/ts_color_grade.py"
+  },
+  "TS_Color_Match": {
+    "api": "v1",
+    "category": "TS/Color",
+    "class_name": "TS_Color_Match",
+    "display_name": "TS Color Match",
+    "python_file": "nodes/image/ts_color_match.py"
+  },
+  "TS_DeflickerNode": {
+    "api": "v1",
+    "category": "Video PostProcessing",
+    "class_name": "TS_DeflickerNode",
+    "display_name": "TS Advanced Video Deflicker",
+    "python_file": "nodes/video/ts_deflicker.py"
+  },
+  "TS_Despill": {
+    "api": "v3",
+    "category": "TS/image",
+    "class_name": "TS_Despill",
+    "display_name": "TS Despill",
+    "python_file": "nodes/image/ts_despill.py"
+  },
+  "TS_FilePathLoader": {
+    "api": "v1",
+    "category": "file_utils",
+    "class_name": "TS_FilePathLoader",
+    "display_name": "TS File Path Loader",
+    "python_file": "nodes/files/ts_file_path_loader.py"
+  },
+  "TS_FilmGrain": {
+    "api": "v1",
+    "category": "Image Adjustments/Grain",
+    "class_name": "TS_FilmGrain",
+    "display_name": "TS Film Grain",
+    "python_file": "nodes/image/ts_film_grain.py"
+  },
+  "TS_Film_Emulation": {
+    "api": "v1",
+    "category": "Image/Color",
+    "class_name": "TS_Film_Emulation",
+    "display_name": "TS Film Emulation",
+    "python_file": "nodes/image/ts_film_emulation.py"
+  },
+  "TS_FloatSlider": {
+    "api": "v1",
+    "category": "TS Tools/Sliders",
+    "class_name": "TS_FloatSlider",
+    "display_name": "TS Float Slider",
+    "python_file": "nodes/utils/ts_float_slider.py"
+  },
+  "TS_Frame_Interpolation": {
+    "api": "v1",
+    "category": "TS/Video",
+    "class_name": "TS_Frame_Interpolation",
+    "display_name": "TS Frame Interpolation",
+    "python_file": "nodes/video/ts_frame_interpolation.py"
+  },
+  "TS_Free_Video_Memory": {
+    "api": "v1",
+    "category": "video",
+    "class_name": "TS_Free_Video_Memory",
+    "display_name": "TS Free Video Memory",
+    "python_file": "nodes/video/ts_free_video_memory.py"
+  },
+  "TS_GetImageMegapixels": {
+    "api": "v1",
+    "category": "TS/Image Tools",
+    "class_name": "TS_GetImageMegapixels",
+    "display_name": "TS Get Image Megapixels",
+    "python_file": "nodes/image/ts_get_image_megapixels.py"
+  },
+  "TS_GetImageSizeSide": {
+    "api": "v1",
+    "category": "TS/Image Tools",
+    "class_name": "TS_GetImageSizeSide",
+    "display_name": "TS Get Image Size",
+    "python_file": "nodes/image/ts_get_image_size_side.py"
+  },
+  "TS_ImageBatchCut": {
+    "api": "v1",
+    "category": "TS/Image Tools",
+    "class_name": "TS_ImageBatchCut",
+    "display_name": "TS Image Batch Cut",
+    "python_file": "nodes/image/ts_image_batch_cut.py"
+  },
+  "TS_ImageBatchToImageList": {
+    "api": "v1",
+    "category": "TS/Image Tools",
+    "class_name": "TS_ImageBatchToImageList",
+    "display_name": "TS Image Batch to Image List",
+    "python_file": "nodes/image/ts_image_batch_to_list.py"
+  },
+  "TS_ImageListToImageBatch": {
+    "api": "v1",
+    "category": "TS/Image Tools",
+    "class_name": "TS_ImageListToImageBatch",
+    "display_name": "TS Image List to Image Batch",
+    "python_file": "nodes/image/ts_image_list_to_batch.py"
+  },
+  "TS_ImagePromptInjector": {
+    "api": "v1",
+    "category": "TS/Image Tools",
+    "class_name": "TS_ImagePromptInjector",
+    "display_name": "TS Image Prompt Injector",
+    "python_file": "nodes/image/ts_image_prompt_injector.py"
+  },
+  "TS_ImageResize": {
+    "api": "v1",
+    "category": "image",
+    "class_name": "TS_ImageResize",
+    "display_name": "TS Image Resize",
+    "python_file": "nodes/image/ts_image_resize.py"
+  },
+  "TS_ImageTileMerger": {
+    "api": "v1",
+    "category": "TS/Image Tools",
+    "class_name": "TS_ImageTileMerger",
+    "display_name": "TS Image Tile Merger",
+    "python_file": "nodes/image/ts_image_tile_merger.py"
+  },
+  "TS_ImageTileSplitter": {
+    "api": "v1",
+    "category": "TS/Image Tools",
+    "class_name": "TS_ImageTileSplitter",
+    "display_name": "TS Image Tile Splitter",
+    "python_file": "nodes/image/ts_image_tile_splitter.py"
+  },
+  "TS_Int_Slider": {
+    "api": "v1",
+    "category": "TS Tools/Sliders",
+    "class_name": "TS_Int_Slider",
+    "display_name": "TS Int Slider",
+    "python_file": "nodes/utils/ts_int_slider.py"
+  },
+  "TS_Keyer": {
+    "api": "v3",
+    "category": "TS/image",
+    "class_name": "TS_Keyer",
+    "display_name": "TS Keyer",
+    "python_file": "nodes/image/ts_keyer.py"
+  },
+  "TS_LTX_FirstLastFrame": {
+    "api": "v1",
+    "category": "conditioning/video_models",
+    "class_name": "TS_LTX_FirstLastFrame",
+    "display_name": "TS LTX First/Last Frame",
+    "python_file": "nodes/video/ts_ltx_first_last_frame.py"
+  },
+  "TS_Math_Int": {
+    "api": "v1",
+    "category": "TS/Math",
+    "class_name": "TS_Math_Int",
+    "display_name": "TS Math Int",
+    "python_file": "nodes/utils/ts_math_int.py"
+  },
+  "TS_ModelConverter": {
+    "api": "v1",
+    "category": "conversion",
+    "class_name": "TS_ModelConverterNode",
+    "display_name": "TS Model Converter",
+    "python_file": "nodes/files/ts_model_converter.py"
+  },
+  "TS_ModelConverterAdvanced": {
+    "api": "v1",
+    "category": "Model Conversion",
+    "class_name": "TS_ModelConverterAdvancedNode",
+    "display_name": "TS Model Converter Advanced",
+    "python_file": "nodes/files/ts_model_converter_advanced.py"
+  },
+  "TS_ModelConverterAdvancedDirect": {
+    "api": "v1",
+    "category": "TS/Model Conversion",
+    "class_name": "TS_ModelConverterAdvancedDirectNode",
+    "display_name": "TS Model Converter Advanced Direct",
+    "python_file": "nodes/files/ts_model_converter_advanced_direct.py"
+  },
+  "TS_ModelScanner": {
+    "api": "v1",
+    "category": "utils/model_analysis",
+    "class_name": "TS_ModelScanner",
+    "display_name": "TS Model Scanner",
+    "python_file": "nodes/files/ts_model_scanner.py"
+  },
+  "TS_MusicStems": {
+    "api": "v1",
+    "category": "TS/Audio",
+    "class_name": "TS_MusicStems",
+    "display_name": "TS Music Stems",
+    "python_file": "nodes/audio/ts_music_stems.py"
+  },
+  "TS_PromptBuilder": {
+    "api": "v1",
+    "category": "TS/Prompt",
+    "class_name": "TS_PromptBuilder",
+    "display_name": "TS Prompt Builder",
+    "python_file": "nodes/text/ts_prompt_builder.py"
+  },
+  "TS_Qwen3_VL_V3": {
+    "api": "v1",
+    "category": "TS/LLM",
+    "class_name": "TS_Qwen3_VL_V3",
+    "display_name": "TS Qwen 3 VL V3",
+    "python_file": "nodes/llm/ts_qwen3_vl.py"
+  },
+  "TS_QwenCanvas": {
+    "api": "v1",
+    "category": "TS Qwen",
+    "class_name": "TS_QwenCanvas",
+    "display_name": "TS Qwen Canvas",
+    "python_file": "nodes/image/ts_qwen_canvas.py"
+  },
+  "TS_QwenSafeResize": {
+    "api": "v1",
+    "category": "image/resize",
+    "class_name": "TS_QwenSafeResize",
+    "display_name": "TS Qwen Safe Resize",
+    "python_file": "nodes/image/ts_qwen_safe_resize.py"
+  },
+  "TS_RTX_Upscaler": {
+    "api": "v1",
+    "category": "TS/Upscaling",
+    "class_name": "TS_RTX_Upscaler",
+    "display_name": "TS RTX Upscaler",
+    "python_file": "nodes/video/ts_rtx_upscaler.py"
+  },
+  "TS_ResolutionSelector": {
+    "api": "v1",
+    "category": "TS/Resolution",
+    "class_name": "TS_ResolutionSelector",
+    "display_name": "TS Resolution Selector",
+    "python_file": "nodes/image/ts_resolution_selector.py"
+  },
+  "TS_SileroStress": {
+    "api": "v3",
+    "category": "TS/text",
+    "class_name": "TS_SileroStress",
+    "display_name": "TS Silero Stress",
+    "python_file": "nodes/text/ts_silero_stress.py"
+  },
+  "TS_SileroTTS": {
+    "api": "v3",
+    "category": "TS/audio",
+    "class_name": "TS_SileroTTS",
+    "display_name": "TS Silero TTS",
+    "python_file": "nodes/audio/ts_silero_tts.py"
+  },
+  "TS_Smart_Switch": {
+    "api": "v1",
+    "category": "TS Tools/Logic",
+    "class_name": "TS_Smart_Switch",
+    "display_name": "TS Smart Switch",
+    "python_file": "nodes/utils/ts_smart_switch.py"
+  },
+  "TS_StylePromptSelector": {
+    "api": "v1",
+    "category": "TS/Prompt",
+    "class_name": "TS_StylePromptSelector",
+    "display_name": "TS Style Prompt Selector",
+    "python_file": "nodes/text/ts_style_prompt_selector.py"
+  },
+  "TS_SuperPrompt": {
+    "api": "v3",
+    "category": "TS/LLM",
+    "class_name": "TS_SuperPrompt",
+    "display_name": "TS Super Prompt",
+    "python_file": "nodes/llm/ts_super_prompt.py"
+  },
+  "TS_VideoDepthNode": {
+    "api": "v1",
+    "category": "Tools/Video",
+    "class_name": "TS_VideoDepth",
+    "display_name": "TS Video Depth",
+    "python_file": "nodes/video/ts_video_depth.py"
+  },
+  "TS_Video_Upscale_With_Model": {
+    "api": "v1",
+    "category": "video",
+    "class_name": "TS_Video_Upscale_With_Model",
+    "display_name": "TS Video Upscale With Model",
+    "python_file": "nodes/video/ts_video_upscale_with_model.py"
+  },
+  "TS_WAN_SafeResize": {
+    "api": "v1",
+    "category": "image/resize",
+    "class_name": "TS_WAN_SafeResize",
+    "display_name": "TS WAN Safe Resize",
+    "python_file": "nodes/image/ts_wan_safe_resize.py"
+  }
+}

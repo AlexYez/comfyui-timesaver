@@ -121,7 +121,6 @@ RU_DESCRIPTION_BY_NODE_ID: dict[str, str] = {
     "TS_Free_Video_Memory": "Pass-through нода, которая агрессивно освобождает RAM/VRAM между тяжёлыми видео-шагами.",
     "TS_LTX_FirstLastFrame": "Добавляет guidance первого и последнего кадра в latent-пайплайн (полезно для LTX video control).",
     "TS_Animation_Preview": "Создаёт быстрый превью-ролик из кадров с опциональным объединением аудио.",
-    "TS_FileBrowser": "Встроенный media picker: загружает image/video/audio/mask с диска прямо в ваш граф.",
     "TS_FilePathLoader": "Возвращает путь к файлу и имя файла по индексу из списка папки.",
     "TS Files Downloader": "Массово скачивает модели и ассеты: resume, mirrors, proxy и опциональная распаковка.",
     "TS Youtube Chapters": "Конвертирует EDL-тайминги в готовые timestamp-главы для YouTube.",
