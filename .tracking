@@ -14,7 +14,6 @@ doc/generate_readme_ru.py
 doc/migration.md
 js/AGENTS.md
 js/audio/ts-audio-loader.js
-js/conditioning/ts-multi-reference.js
 js/image/ts-resolution-selector.js
 js/llm/ts-super-prompt.js
 js/text/ts-prompt-builder.js

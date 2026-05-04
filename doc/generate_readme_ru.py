@@ -121,7 +121,7 @@ RU_DESCRIPTION_BY_NODE_ID: dict[str, str] = {
     "TS_Free_Video_Memory": "Pass-through нода, которая агрессивно освобождает RAM/VRAM между тяжёлыми видео-шагами.",
     "TS_LTX_FirstLastFrame": "Добавляет guidance первого и последнего кадра в latent-пайплайн (полезно для LTX video control).",
     "TS_Animation_Preview": "Создаёт быстрый превью-ролик из кадров с опциональным объединением аудио.",
-    "TS_MultiReference": "Передаёт до трёх reference-изображений в conditioning для qwen-image-edit-multi-reference и совместимых моделей. Drag-and-drop UI с превью и сортировкой; VAE опционален.",
+    "TS_MultiReference": "Передаёт до трёх reference-изображений в conditioning для qwen-image-edit-multi-reference и совместимых моделей. До трёх опциональных IMAGE-входов; пустые входы пропускаются.",
     "TS_ImageListToImages": "Парная нода для TS_MultiReference: разбивает image list на три фиксированных IMAGE-выхода с placeholder 64x64 в пустых слотах.",
     "TS_FilePathLoader": "Возвращает путь к файлу и имя файла по индексу из списка папки.",
     "TS Files Downloader": "Массово скачивает модели и ассеты: resume, mirrors, proxy и опциональная распаковка.",
