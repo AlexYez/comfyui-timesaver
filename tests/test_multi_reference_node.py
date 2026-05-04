@@ -73,6 +73,8 @@ def test_v3_schema_contract(monkeypatch):
     assert inputs["image_3"].optional is True
 
     assert inputs["max_megapixels"].kwargs["default"] == 1.0
+    assert inputs["divide_by"].kwargs["default"] == 32
+    assert inputs["divide_by"].kwargs["min"] == 1
 
     # Per-slot outputs: image_1, image_2, image_3, conditioning.
     output_names = [out.display_name for out in schema.outputs]
@@ -240,3 +242,53 @@ def test_validate_inputs_rejects_zero_megapixels(monkeypatch):
         "max_megapixels must be greater than zero."
     )
     assert module.TS_MultiReference.validate_inputs(max_megapixels=1.0) is True
+
+
+def test_validate_inputs_rejects_zero_divide_by(monkeypatch):
+    module = _load_module(monkeypatch)
+
+    assert module.TS_MultiReference.validate_inputs(
+        max_megapixels=1.0, divide_by=0,
+    ) == "divide_by must be at least 1."
+    assert module.TS_MultiReference.validate_inputs(
+        max_megapixels=1.0, divide_by=8,
+    ) is True
+
+
+def test_resize_with_custom_divide_by(monkeypatch):
+    module = _load_module(monkeypatch)
+    image = torch.rand((1, 1080, 1920, 3), dtype=torch.float32)
+
+    resized_8 = module._resize_reference_image(
+        image, max_megapixels=1.0, upscale_method="area", size_multiple=8,
+    )
+    resized_64 = module._resize_reference_image(
+        image, max_megapixels=1.0, upscale_method="area", size_multiple=64,
+    )
+
+    assert resized_8.shape[1] % 8 == 0 and resized_8.shape[2] % 8 == 0
+    assert resized_64.shape[1] % 64 == 0 and resized_64.shape[2] % 64 == 0
+
+
+def test_execute_passes_divide_by_through_to_resize(monkeypatch):
+    module = _load_module(monkeypatch)
+
+    img = _make_image(640, 960, value=0.5)
+    conditioning = [["positive", {}]]
+
+    class FakeVAE:
+        def encode(self, image):
+            return torch.zeros((image.shape[0], 4, image.shape[1] // 8, image.shape[2] // 8))
+
+    output = module.TS_MultiReference.execute(
+        max_megapixels=0.4,
+        divide_by=64,
+        conditioning=conditioning,
+        vae=FakeVAE(),
+        image_1=img,
+    )
+    image_1, _image_2, _image_3, _conditioning = _unpack(output)
+
+    assert isinstance(image_1, torch.Tensor)
+    assert image_1.shape[1] % 64 == 0
+    assert image_1.shape[2] % 64 == 0
