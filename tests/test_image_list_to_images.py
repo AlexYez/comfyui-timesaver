@@ -1,0 +1,136 @@
+"""Behaviour tests for TS_ImageListToImages.
+
+The node is intentionally tolerant: it must accept None/empty input,
+single tensors, lists shorter than the output slot count, and lists
+longer than the output slot count, without raising.
+"""
+
+from __future__ import annotations
+
+import importlib
+import sys
+from pathlib import Path
+
+import pytest
+
+torch = pytest.importorskip("torch")
+
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def _load_module(monkeypatch):
+    monkeypatch.syspath_prepend(str(ROOT))
+    sys.modules.pop("nodes.conditioning.ts_image_list_to_images", None)
+    return importlib.import_module("nodes.conditioning.ts_image_list_to_images")
+
+
+def _make_image(height: int = 32, width: int = 32, value: float = 0.5) -> torch.Tensor:
+    return torch.full((1, height, width, 3), value, dtype=torch.float32)
+
+
+def test_v1_contract_is_stable(monkeypatch):
+    module = _load_module(monkeypatch)
+
+    cls = module.TS_ImageListToImages
+    assert cls.INPUT_IS_LIST == (True,)
+    assert cls.RETURN_TYPES == ("IMAGE", "IMAGE", "IMAGE")
+    assert cls.RETURN_NAMES == ("image_1", "image_2", "image_3")
+    assert cls.FUNCTION == "split"
+    assert cls.CATEGORY == "TS/Conditioning"
+
+    assert "images" in cls.INPUT_TYPES().get("optional", {})
+    assert module.NODE_CLASS_MAPPINGS == {
+        "TS_ImageListToImages": module.TS_ImageListToImages,
+    }
+    assert module.NODE_DISPLAY_NAME_MAPPINGS == {
+        "TS_ImageListToImages": "TS Image List to Images",
+    }
+
+
+def test_split_three_images_passes_through(monkeypatch):
+    module = _load_module(monkeypatch)
+
+    a = _make_image(value=0.1)
+    b = _make_image(value=0.2)
+    c = _make_image(value=0.3)
+
+    out = module.TS_ImageListToImages().split(images=[a, b, c])
+
+    assert len(out) == 3
+    assert torch.equal(out[0], a)
+    assert torch.equal(out[1], b)
+    assert torch.equal(out[2], c)
+
+
+def test_split_one_image_fills_remaining_with_zero(monkeypatch):
+    module = _load_module(monkeypatch)
+
+    a = _make_image(value=0.7)
+
+    out = module.TS_ImageListToImages().split(images=[a])
+
+    assert len(out) == 3
+    assert torch.equal(out[0], a)
+    assert out[1].shape == (1, 64, 64, 3)
+    assert out[2].shape == (1, 64, 64, 3)
+    assert torch.all(out[1] == 0.0)
+    assert torch.all(out[2] == 0.0)
+
+
+def test_empty_list_returns_three_zero_images(monkeypatch):
+    module = _load_module(monkeypatch)
+
+    out = module.TS_ImageListToImages().split(images=[])
+
+    assert len(out) == 3
+    for tensor in out:
+        assert tensor.shape == (1, 64, 64, 3)
+        assert torch.all(tensor == 0.0)
+
+
+def test_none_input_does_not_raise(monkeypatch):
+    module = _load_module(monkeypatch)
+
+    out = module.TS_ImageListToImages().split(images=None)
+
+    assert len(out) == 3
+    for tensor in out:
+        assert tensor.shape == (1, 64, 64, 3)
+
+
+def test_more_than_three_inputs_truncates_to_three(monkeypatch):
+    module = _load_module(monkeypatch)
+
+    images = [_make_image(value=v / 10.0) for v in range(5)]
+
+    out = module.TS_ImageListToImages().split(images=images)
+
+    assert len(out) == 3
+    for index, tensor in enumerate(out):
+        assert torch.equal(tensor, images[index])
+
+
+def test_3d_tensor_is_promoted_to_4d(monkeypatch):
+    module = _load_module(monkeypatch)
+
+    image_3d = torch.full((32, 32, 3), 0.4, dtype=torch.float32)
+
+    out = module.TS_ImageListToImages().split(images=[image_3d])
+
+    assert out[0].shape == (1, 32, 32, 3)
+
+
+def test_single_tensor_input_is_treated_as_one_item_list(monkeypatch):
+    """Defensive: if upstream node delivered a single tensor instead of a list."""
+    module = _load_module(monkeypatch)
+
+    a = _make_image(value=0.9)
+
+    # split() guards against non-list input by wrapping
+    out = module.TS_ImageListToImages().split(images=a)
+
+    assert len(out) == 3
+    assert torch.equal(out[0], a)
+    assert torch.all(out[1] == 0.0)
+    assert torch.all(out[2] == 0.0)

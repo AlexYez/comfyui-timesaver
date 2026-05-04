@@ -179,7 +179,8 @@ python -m pip install -r requirements.txt
 
 | Нода | Простое описание | Выходы |
 | --- | --- | --- |
-| `TS_MultiReference` | Передаёт до трёх reference-картинок в conditioning (для qwen-image-edit-multi-reference и совместимых моделей). | `IMAGE`, `CONDITIONING` |
+| `TS_MultiReference` | Передаёт до трёх reference-картинок в conditioning (для qwen-image-edit-multi-reference и совместимых моделей). Drag-and-drop UI с превью и сортировкой. VAE опционален: если ни одна картинка не выбрана, нода просто пропускает conditioning насквозь. | `IMAGE`, `CONDITIONING` |
+| `TS_ImageListToImages` | Парная нода для `TS_MultiReference`: разбивает список изображений на 3 отдельных IMAGE-выхода. Если на вход меньше изображений — пустые слоты возвращают placeholder 64×64, нода не падает. | `IMAGE`, `IMAGE`, `IMAGE` |
 
 ### Файлы, Модели И Служебные Ноды
 
@@ -479,7 +480,8 @@ ComfyUI usually shows which connections are valid, so there is no need to memori
 
 | Node | Plain Description | Outputs |
 | --- | --- | --- |
-| `TS_MultiReference` | Feeds up to three reference images into a CONDITIONING (for qwen-image-edit-multi-reference and similar models). | `IMAGE`, `CONDITIONING` |
+| `TS_MultiReference` | Feeds up to three reference images into a CONDITIONING (for qwen-image-edit-multi-reference and similar models). Drag-and-drop UI with previews and reordering. VAE is optional: when no image is selected, the node passes conditioning through unchanged. | `IMAGE`, `CONDITIONING` |
+| `TS_ImageListToImages` | Companion to `TS_MultiReference`: fans an image list out into 3 individual IMAGE outputs. Missing slots get a 64×64 placeholder so nothing breaks downstream. | `IMAGE`, `IMAGE`, `IMAGE` |
 
 ### Files, Models, And Utilities
 

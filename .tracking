@@ -14,6 +14,7 @@ doc/generate_readme_ru.py
 doc/migration.md
 js/AGENTS.md
 js/audio/ts-audio-loader.js
+js/conditioning/ts-multi-reference.js
 js/image/ts-resolution-selector.js
 js/llm/ts-super-prompt.js
 js/text/ts-prompt-builder.js
@@ -34,6 +35,7 @@ nodes/audio/ts_music_stems.py
 nodes/audio/ts_silero_tts.py
 nodes/audio/ts_whisper.py
 nodes/conditioning/__init__.py
+nodes/conditioning/ts_image_list_to_images.py
 nodes/conditioning/ts_multi_reference.py
 nodes/files/__init__.py
 nodes/files/ts_cpu_lora_merger.py
@@ -148,6 +150,7 @@ requirements.txt
 tests/AGENTS.md
 tests/conftest.py
 tests/test_bgrm_node.py
+tests/test_image_list_to_images.py
 tests/test_multi_reference_node.py
 tests/test_node_contracts.py
 tests/test_pack_imports.py

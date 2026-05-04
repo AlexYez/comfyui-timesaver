@@ -202,6 +202,13 @@
     "display_name": "TS Image List to Image Batch",
     "python_file": "nodes/image/ts_image_list_to_batch.py"
   },
+  "TS_ImageListToImages": {
+    "api": "v1",
+    "category": "TS/Conditioning",
+    "class_name": "TS_ImageListToImages",
+    "display_name": "TS Image List to Images",
+    "python_file": "nodes/conditioning/ts_image_list_to_images.py"
+  },
   "TS_ImagePromptInjector": {
     "api": "v1",
     "category": "TS/Image Tools",
