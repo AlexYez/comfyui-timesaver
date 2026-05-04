@@ -25,6 +25,10 @@ _IMAGE_SLOT_COUNT = 3
 _SIZE_MULTIPLE = 32
 _DEFAULT_MEGAPIXELS = 1.0
 _UPSCALE_METHODS = ["area", "bilinear", "bicubic", "lanczos", "nearest-exact"]
+# Hardcoded resize method used when scaling reference images before VAE
+# encoding. Kept as a module-level constant (not a node input) so the UI
+# stays compact. Edit here if you need a different default.
+_UPSCALE_METHOD = "area"
 
 
 def _list_input_images() -> list[str]:
@@ -201,8 +205,10 @@ class TS_MultiReference(IO.ComfyNode):
             display_name="TS Multi Reference",
             category="TS/Conditioning",
             description=(
-                "Loads up to three reference images, resizes them to a 32-pixel grid, "
-                "encodes them with VAE, and appends ReferenceLatent conditioning."
+                "Loads up to three reference images, resizes them to a 32-pixel "
+                "grid (area downscale), encodes them with VAE, and appends "
+                "ReferenceLatent conditioning. With no images selected, "
+                "conditioning passes through unchanged."
             ),
             inputs=[
                 IO.Conditioning.Input(
@@ -224,12 +230,6 @@ class TS_MultiReference(IO.ComfyNode):
                     max=16.0,
                     step=0.01,
                     tooltip="Maximum size for each reference image before VAE encoding.",
-                ),
-                IO.Combo.Input(
-                    "upscale_method",
-                    options=_UPSCALE_METHODS,
-                    default="area",
-                    tooltip="Native ComfyUI resize method used before VAE encoding.",
                 ),
                 # Combo inputs intentionally omit upload= — the JS extension
                 # ts.multiReference renders its own drag-and-drop UI and
@@ -271,7 +271,6 @@ class TS_MultiReference(IO.ComfyNode):
     def validate_inputs(
         cls,
         max_megapixels: float,
-        upscale_method: str,
         image_1: str = _EMPTY_IMAGE,
         image_2: str = _EMPTY_IMAGE,
         image_3: str = _EMPTY_IMAGE,
@@ -279,8 +278,6 @@ class TS_MultiReference(IO.ComfyNode):
     ):
         if max_megapixels <= 0:
             return "max_megapixels must be greater than zero."
-        if upscale_method not in _UPSCALE_METHODS:
-            return f"Unsupported upscale_method: {upscale_method}"
 
         for image_name in _selected_images(image_1, image_2, image_3):
             if not folder_paths.exists_annotated_filepath(image_name):
@@ -292,7 +289,6 @@ class TS_MultiReference(IO.ComfyNode):
     def fingerprint_inputs(
         cls,
         max_megapixels: float,
-        upscale_method: str,
         image_1: str = _EMPTY_IMAGE,
         image_2: str = _EMPTY_IMAGE,
         image_3: str = _EMPTY_IMAGE,
@@ -301,7 +297,7 @@ class TS_MultiReference(IO.ComfyNode):
         image_names = _selected_images(image_1, image_2, image_3)
         digest = hashlib.sha256()
         digest.update(str(max_megapixels).encode("utf-8"))
-        digest.update(upscale_method.encode("utf-8"))
+        digest.update(_UPSCALE_METHOD.encode("utf-8"))
         digest.update(_hash_files(image_names).encode("utf-8"))
         return digest.hexdigest()
 
@@ -310,7 +306,6 @@ class TS_MultiReference(IO.ComfyNode):
         cls,
         conditioning,
         max_megapixels: float,
-        upscale_method: str,
         vae=None,
         image_1: str = _EMPTY_IMAGE,
         image_2: str = _EMPTY_IMAGE,
@@ -332,7 +327,7 @@ class TS_MultiReference(IO.ComfyNode):
             processed_image = _resize_reference_image(
                 image,
                 max_megapixels=max_megapixels,
-                upscale_method=upscale_method,
+                upscale_method=_UPSCALE_METHOD,
             )
             latent = _encode_reference_latent(vae, processed_image)
             current_conditioning = _append_reference_latent(current_conditioning, latent)

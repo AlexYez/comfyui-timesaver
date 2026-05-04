@@ -479,16 +479,46 @@ function tsMrRender(node) {
     }
 }
 
+function tsMrHideOneWidget(widget) {
+    if (!widget || widget.tsMultiReferenceHidden) return;
+    widget.tsMultiReferenceHidden = true;
+
+    // Save originals so we can still serialize the value into the workflow.
+    const origType = widget.type;
+    widget.tsOrigType = origType;
+    widget.origComputeSize = widget.computeSize;
+    widget.origDraw = widget.draw;
+
+    // Force the type getter to always return "hidden". Some LiteGraph code
+    // paths re-read widget.type on every frame and would otherwise revert
+    // a plain `widget.type = "hidden"` assignment back to "combo".
+    try {
+        Object.defineProperty(widget, "type", {
+            configurable: true,
+            enumerable: true,
+            get() { return "hidden"; },
+            set(_value) { /* swallow — keep hidden */ },
+        });
+    } catch (err) {
+        widget.type = "hidden";
+    }
+
+    // Collapse layout slot.
+    widget.computeSize = () => [0, -4];
+    // Defensive: also no-op the per-widget draw call if the renderer
+    // tries to call it directly.
+    widget.draw = () => {};
+
+    // If a previous version of this code attached a DOM element, hide it.
+    const element = widget.element || widget.el || widget.container;
+    if (element && element.style) {
+        element.style.display = "none";
+    }
+}
+
 function tsMrHideNativeWidgets(node) {
     for (const widgetName of SLOT_WIDGETS) {
-        const widget = tsMrFindWidget(node, widgetName);
-        if (!widget) continue;
-        if (widget.tsMultiReferenceHidden) continue;
-        widget.tsMultiReferenceHidden = true;
-        widget.origType = widget.type;
-        widget.origComputeSize = widget.computeSize;
-        widget.type = "hidden";
-        widget.computeSize = () => [0, -4];
+        tsMrHideOneWidget(tsMrFindWidget(node, widgetName));
     }
 }
 
