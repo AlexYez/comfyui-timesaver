@@ -92,9 +92,26 @@ def _normalize_image_tensor(image: torch.Tensor) -> torch.Tensor:
         # references; without compositing, transparent pixels show as
         # pre-multiplied black (or whatever junk happens to live in the
         # RGB channels under alpha=0), which biases the generation.
-        rgb = image[:, :, :, :3]
+        rgb = image[:, :, :, :3].clamp(0.0, 1.0)
         alpha = image[:, :, :, 3:4].clamp(0.0, 1.0)
-        return (rgb * alpha + (1.0 - alpha)).clamp(0.0, 1.0)
+
+        # ComfyUI loaders may deliver either straight (rgb is the visible
+        # color, independent of alpha) or premultiplied (rgb is already
+        # multiplied by alpha) RGBA. The two require different over-white
+        # composite formulas, and using the wrong one looks like the alpha
+        # is "double applied" — semi-transparent regions come out muddy or
+        # ghosted. Heuristic: in premultiplied data we expect rgb <= alpha
+        # for every channel/pixel (because rgb_straight is in [0,1] so
+        # rgb_pm = rgb_straight * alpha <= alpha). If that holds with a
+        # small tolerance, treat input as premultiplied.
+        rgb_max = rgb.amax(dim=-1, keepdim=True)
+        if torch.all(rgb_max <= alpha + 1e-3):
+            # Premultiplied: out = rgb + (1 - alpha) * white
+            composited = rgb + (1.0 - alpha)
+        else:
+            # Straight: out = rgb * alpha + (1 - alpha) * white
+            composited = rgb * alpha + (1.0 - alpha)
+        return composited.clamp(0.0, 1.0)
     return image[:, :, :, :3].clone()
 
 
