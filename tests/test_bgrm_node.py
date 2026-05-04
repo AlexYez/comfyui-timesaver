@@ -1,0 +1,242 @@
+from __future__ import annotations
+
+import importlib
+import logging
+import sys
+import types
+from pathlib import Path
+
+import pytest
+
+torch = pytest.importorskip("torch")
+pytest.importorskip("PIL")
+pytest.importorskip("cv2")
+
+
+class _ProgressBar:
+    instances = []
+
+    def __init__(self, total):
+        self.total = total
+        self.updates = []
+        self.__class__.instances.append(self)
+
+    def update_absolute(self, value, total=None):
+        self.updates.append((value, total))
+
+
+def _install_stubs(monkeypatch, root: Path) -> None:
+    folder_paths = types.ModuleType("folder_paths")
+    folder_paths.models_dir = str(root / ".test_models")
+    folder_paths.add_model_folder_path = lambda *args, **kwargs: None
+    monkeypatch.setitem(sys.modules, "folder_paths", folder_paths)
+
+    comfy = types.ModuleType("comfy")
+    model_management = types.ModuleType("comfy.model_management")
+    model_management.get_torch_device = lambda: torch.device("cpu")
+    comfy_utils = types.ModuleType("comfy.utils")
+    comfy_utils.ProgressBar = _ProgressBar
+    comfy.model_management = model_management
+    comfy.utils = comfy_utils
+    monkeypatch.setitem(sys.modules, "comfy", comfy)
+    monkeypatch.setitem(sys.modules, "comfy.model_management", model_management)
+    monkeypatch.setitem(sys.modules, "comfy.utils", comfy_utils)
+
+    huggingface_hub = types.ModuleType("huggingface_hub")
+    huggingface_hub.hf_hub_download = lambda *args, **kwargs: str(root / ".test_models" / "unused")
+    monkeypatch.setitem(sys.modules, "huggingface_hub", huggingface_hub)
+
+    safetensors = types.ModuleType("safetensors")
+    safetensors_torch = types.ModuleType("safetensors.torch")
+    safetensors_torch.load_file = lambda *args, **kwargs: {}
+    monkeypatch.setitem(sys.modules, "safetensors", safetensors)
+    monkeypatch.setitem(sys.modules, "safetensors.torch", safetensors_torch)
+
+
+def _load_module(monkeypatch):
+    root = Path(__file__).resolve().parents[1]
+    _install_stubs(monkeypatch, root)
+    monkeypatch.syspath_prepend(str(root))
+    sys.modules.pop("nodes.image.ts_bgrm_birefnet", None)
+    return importlib.import_module("nodes.image.ts_bgrm_birefnet")
+
+
+def test_bgrm_v1_contract_is_stable(monkeypatch):
+    module = _load_module(monkeypatch)
+
+    input_types = module.TS_BGRM_BiRefNet.INPUT_TYPES()
+
+    assert module.NODE_CLASS_MAPPINGS == {"TS_BGRM_BiRefNet": module.TS_BGRM_BiRefNet}
+    assert module.NODE_DISPLAY_NAME_MAPPINGS == {"TS_BGRM_BiRefNet": "TS Remove Background"}
+    assert module.TS_BGRM_BiRefNet.RETURN_TYPES == ("IMAGE", "MASK", "IMAGE")
+    assert module.TS_BGRM_BiRefNet.RETURN_NAMES == ("IMAGE", "MASK", "MASK_IMAGE")
+    assert module.TS_BGRM_BiRefNet.FUNCTION == "process_image"
+    assert module.TS_BGRM_BiRefNet.CATEGORY == "Timesaver/Image Tools"
+    assert list(input_types["required"]) == ["image", "enable", "model"]
+    assert list(input_types["optional"]) == [
+        "use_custom_resolution",
+        "process_resolution",
+        "mask_blur",
+        "mask_offset",
+        "invert_output",
+        "refine_foreground",
+        "background",
+        "background_color",
+    ]
+
+
+def test_bgrm_disabled_path_preserves_batch_and_input(monkeypatch):
+    module = _load_module(monkeypatch)
+    node = module.TS_BGRM_BiRefNet()
+    image = torch.rand((2, 8, 7, 3), dtype=torch.float32)
+    before = image.clone()
+
+    out_image, out_mask, out_mask_image = node.process_image(
+        image,
+        False,
+        "BiRefNet_512x512",
+        False,
+        1024,
+    )
+
+    assert torch.equal(image, before)
+    assert out_image is image
+    assert out_mask.shape == (2, 8, 7)
+    assert out_mask_image.shape == (2, 8, 7, 3)
+    assert torch.all(out_mask == 1.0)
+
+
+def test_bgrm_cpu_uses_float32_not_half(monkeypatch):
+    module = _load_module(monkeypatch)
+
+    assert module._target_dtype(torch.device("cpu")) is torch.float32
+    assert module._target_dtype(torch.device("cuda")) is torch.float16
+
+
+def test_bgrm_process_masks_preserves_batch_on_cpu(monkeypatch):
+    module = _load_module(monkeypatch)
+    monkeypatch.setattr(module.torch.cuda, "is_available", lambda: False)
+
+    class FakeModel:
+        def __init__(self):
+            self.dtypes = []
+
+        def __call__(self, input_tensor):
+            self.dtypes.append(input_tensor.dtype)
+            return [torch.zeros((input_tensor.shape[0], 1, input_tensor.shape[2], input_tensor.shape[3]))]
+
+    model = module.BiRefNetModel()
+    model.model = FakeModel()
+    image = torch.rand((2, 6, 5, 3), dtype=torch.float32)
+
+    masks = model.process_masks(image, {"process_res": 8})
+
+    assert masks.shape == (2, 6, 5)
+    assert model.model.dtypes == [torch.float32, torch.float32]
+
+
+def test_bgrm_prefers_gpu_when_cuda_is_available(monkeypatch):
+    if not torch.cuda.is_available():
+        pytest.skip("CUDA is not available")
+
+    module = _load_module(monkeypatch)
+    monkeypatch.setattr(module.model_management, "get_torch_device", lambda: torch.device("cpu"))
+
+    assert module._get_target_device().type == "cuda"
+
+
+def test_bgrm_process_masks_runs_in_half_on_gpu(monkeypatch):
+    if not torch.cuda.is_available():
+        pytest.skip("CUDA is not available")
+
+    module = _load_module(monkeypatch)
+    monkeypatch.setattr(module.model_management, "get_torch_device", lambda: torch.device("cuda"))
+
+    class FakeModel:
+        def __init__(self):
+            self.dtypes = []
+            self.devices = []
+
+        def __call__(self, input_tensor):
+            self.dtypes.append(input_tensor.dtype)
+            self.devices.append(input_tensor.device.type)
+            return [torch.zeros(
+                (input_tensor.shape[0], 1, input_tensor.shape[2], input_tensor.shape[3]),
+                device=input_tensor.device,
+                dtype=input_tensor.dtype,
+            )]
+
+    model = module.BiRefNetModel()
+    model.model = FakeModel()
+    image = torch.rand((2, 6, 5, 3), dtype=torch.float32)
+
+    masks = model.process_masks(image, {"process_res": 8})
+
+    assert masks.shape == (2, 6, 5)
+    assert masks.device.type == "cpu"
+    assert model.model.devices == ["cuda"]
+    assert model.model.dtypes == [torch.float16]
+
+
+def test_bgrm_process_path_reports_progress_without_model_download(monkeypatch):
+    module = _load_module(monkeypatch)
+    _ProgressBar.instances.clear()
+    node = module.TS_BGRM_BiRefNet()
+
+    monkeypatch.setattr(node.model, "check_model_cache", lambda model: (True, "ok"))
+    monkeypatch.setattr(node.model, "load_model", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        node.model,
+        "process_masks",
+        lambda image, params, progress_bar=None, start_step=55, end_step=80, target_device=None: torch.ones(
+            (image.shape[0], image.shape[1], image.shape[2]),
+            dtype=torch.float32,
+        ),
+    )
+
+    image = torch.rand((2, 6, 5, 3), dtype=torch.float32)
+    out_image, out_mask, out_mask_image = node.process_image(
+        image,
+        True,
+        "BiRefNet_512x512",
+        False,
+        1024,
+        background="Color",
+        background_color="white",
+    )
+
+    assert out_image.shape == (2, 6, 5, 3)
+    assert out_mask.shape == (2, 6, 5)
+    assert out_mask_image.shape == (2, 6, 5, 3)
+    assert _ProgressBar.instances[-1].updates[0] == (1, 100)
+    assert _ProgressBar.instances[-1].updates[-1] == (100, 100)
+
+
+def test_bgrm_logs_processing_device(monkeypatch, caplog):
+    module = _load_module(monkeypatch)
+    monkeypatch.setattr(module.torch.cuda, "is_available", lambda: False)
+    _ProgressBar.instances.clear()
+    node = module.TS_BGRM_BiRefNet()
+
+    monkeypatch.setattr(node.model, "check_model_cache", lambda model: (True, "ok"))
+    monkeypatch.setattr(node.model, "load_model", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        node.model,
+        "process_masks",
+        lambda image, params, progress_bar=None, start_step=55, end_step=80, target_device=None: torch.ones(
+            (image.shape[0], image.shape[1], image.shape[2]),
+            dtype=torch.float32,
+        ),
+    )
+
+    caplog.set_level(logging.INFO, logger=module.__name__)
+    image = torch.rand((1, 4, 4, 3), dtype=torch.float32)
+    node.process_image(
+        image,
+        True,
+        "BiRefNet_512x512",
+        False,
+        1024,
+    )
+
+    assert "Processing device: cpu" in caplog.text
