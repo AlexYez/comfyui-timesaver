@@ -6,11 +6,12 @@ fixed slots so downstream nodes can consume each reference separately.
 
 Behaviour:
 - Always exposes 3 outputs (image_1, image_2, image_3).
-- If the input list has fewer items than outputs, the missing slots get
-  a 1x64x64x3 zero IMAGE so downstream connections never fail with a
-  None/empty error.
-- Empty input list (e.g. text-to-image with no references) returns three
-  zero IMAGEs and does NOT raise.
+- For each output slot, if no real image is available, returns
+  ExecutionBlocker so downstream consumers connected to that slot are
+  silently skipped (no fake placeholder image that could confuse a
+  reference-aware model).
+- Empty input list (e.g. text-to-image with no references) means all
+  three outputs become ExecutionBlocker — safe pass-through, no error.
 - INPUT_IS_LIST=(True,) so a list-output upstream node is delivered as a
   Python list rather than triggering per-item iteration.
 
@@ -26,28 +27,20 @@ from __future__ import annotations
 
 import torch
 
+from comfy_execution.graph_utils import ExecutionBlocker
+
 
 _OUTPUT_SLOT_COUNT = 3
-_FALLBACK_HEIGHT = 64
-_FALLBACK_WIDTH = 64
-_FALLBACK_CHANNELS = 3
 
 
-def _zero_image() -> torch.Tensor:
-    return torch.zeros(
-        (1, _FALLBACK_HEIGHT, _FALLBACK_WIDTH, _FALLBACK_CHANNELS),
-        dtype=torch.float32,
-    )
-
-
-def _ensure_bhwc(image: torch.Tensor) -> torch.Tensor:
-    """Normalize a single IMAGE tensor to [B, H, W, C]."""
+def _ensure_bhwc(image):
+    """Normalize a single IMAGE tensor to [B, H, W, C], or pass through anything we cannot use."""
     if not isinstance(image, torch.Tensor):
-        return _zero_image()
+        return None
     if image.ndim == 3:
         image = image.unsqueeze(0)
     if image.ndim != 4:
-        return _zero_image()
+        return None
     return image
 
 
@@ -65,7 +58,8 @@ class TS_ImageListToImages:
                     {
                         "tooltip": (
                             "IMAGE list (e.g. multi_images output from TS_MultiReference). "
-                            "Empty input is allowed; missing slots fall back to a zero IMAGE."
+                            "Empty/short input is allowed: missing slots become "
+                            "ExecutionBlocker so downstream consumers are silently skipped."
                         ),
                     },
                 ),
@@ -78,9 +72,10 @@ class TS_ImageListToImages:
     CATEGORY = "TS/Conditioning"
     DESCRIPTION = (
         "Pairs with TS_MultiReference: receives the multi_images list and "
-        f"splits it into {_OUTPUT_SLOT_COUNT} individual IMAGE outputs. Missing "
-        "slots return a 1x64x64 zero IMAGE so downstream connections never "
-        "fail. Empty / missing input is a normal state and does not raise."
+        f"splits it into {_OUTPUT_SLOT_COUNT} individual IMAGE outputs. "
+        "Missing slots emit ExecutionBlocker — downstream consumers are "
+        "silently skipped instead of receiving a placeholder image. Empty "
+        "or unconnected input is a normal state and does not raise."
     )
 
     def split(self, images=None):
@@ -95,12 +90,15 @@ class TS_ImageListToImages:
         else:
             entries = [images]
 
-        outputs: list[torch.Tensor] = []
+        outputs: list = []
         for index in range(_OUTPUT_SLOT_COUNT):
             if index < len(entries):
-                outputs.append(_ensure_bhwc(entries[index]))
-            else:
-                outputs.append(_zero_image())
+                normalized = _ensure_bhwc(entries[index])
+                if normalized is not None:
+                    outputs.append(normalized)
+                    continue
+            # No real image for this slot — block downstream silently.
+            outputs.append(ExecutionBlocker(None))
 
         return tuple(outputs)
 
