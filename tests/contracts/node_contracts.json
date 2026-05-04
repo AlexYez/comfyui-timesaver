@@ -286,6 +286,13 @@
     "display_name": "TS Model Scanner",
     "python_file": "nodes/files/ts_model_scanner.py"
   },
+  "TS_MultiReference": {
+    "api": "v3",
+    "category": "TS/Conditioning",
+    "class_name": "TS_MultiReference",
+    "display_name": "TS Multi Reference",
+    "python_file": "nodes/conditioning/ts_multi_reference.py"
+  },
   "TS_MusicStems": {
     "api": "v1",
     "category": "TS/Audio",

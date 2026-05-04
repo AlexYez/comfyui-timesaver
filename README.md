@@ -175,6 +175,12 @@ python -m pip install -r requirements.txt
 | `TS_BatchPromptLoader` | Берет одну строку из многострочного списка по индексу. | `STRING`, `INT` |
 | `TS_StylePromptSelector` | Подставляет готовый стиль из локальной библиотеки стилей. | `STRING` |
 
+### Conditioning
+
+| Нода | Простое описание | Выходы |
+| --- | --- | --- |
+| `TS_MultiReference` | Передаёт до трёх reference-картинок в conditioning (для qwen-image-edit-multi-reference и совместимых моделей). | `IMAGE`, `CONDITIONING` |
+
 ### Файлы, Модели И Служебные Ноды
 
 | Нода | Простое описание | Выходы |
@@ -468,6 +474,12 @@ ComfyUI usually shows which connections are valid, so there is no need to memori
 | `TS_PromptBuilder` | Builds a prompt from reusable categories and supports seeds. | `STRING` |
 | `TS_BatchPromptLoader` | Selects one line from a multiline prompt list by index. | `STRING`, `INT` |
 | `TS_StylePromptSelector` | Inserts a ready-made style from the local style library. | `STRING` |
+
+### Conditioning
+
+| Node | Plain Description | Outputs |
+| --- | --- | --- |
+| `TS_MultiReference` | Feeds up to three reference images into a CONDITIONING (for qwen-image-edit-multi-reference and similar models). | `IMAGE`, `CONDITIONING` |
 
 ### Files, Models, And Utilities
 
