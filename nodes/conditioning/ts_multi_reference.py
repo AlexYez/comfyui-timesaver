@@ -16,6 +16,7 @@ import comfy.utils
 import folder_paths
 import node_helpers
 from comfy_api.latest import IO
+from comfy_execution.graph_utils import ExecutionBlocker
 
 
 logger = logging.getLogger(__name__)
@@ -348,13 +349,12 @@ class TS_MultiReference(IO.ComfyNode):
         output_conditioning = current_conditioning if current_conditioning is not None else []
 
         if not processed_images:
-            # Pure text-to-image case: no reference. Emit a single 1x1x1x3
-            # zero placeholder for the IMAGE list output so downstream
-            # nodes (Preview, TS_ImageListToImages) never receive an empty
-            # list, which can crash some consumers.
+            # No references — emit ExecutionBlocker for multi_images so
+            # any downstream consumer is silently skipped (no fake
+            # placeholder image that could confuse a reference-aware
+            # model). Conditioning still passes through.
             logger.debug("[TS Multi Reference] No reference images selected.")
-            placeholder = torch.zeros((1, 1, 1, 3), dtype=torch.float32)
-            return IO.NodeOutput([placeholder], output_conditioning)
+            return IO.NodeOutput(ExecutionBlocker(None), output_conditioning)
 
         return IO.NodeOutput(processed_images, output_conditioning)
 

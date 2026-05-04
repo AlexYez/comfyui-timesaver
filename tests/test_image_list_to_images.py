@@ -3,6 +3,9 @@
 The node is intentionally tolerant: it must accept None/empty input,
 single tensors, lists shorter than the output slot count, and lists
 longer than the output slot count, without raising.
+
+Missing slots emit ExecutionBlocker (NOT a zero tensor placeholder) so
+downstream reference-aware models are not fed a fake image.
 """
 
 from __future__ import annotations
@@ -27,6 +30,10 @@ def _load_module(monkeypatch):
 
 def _make_image(height: int = 32, width: int = 32, value: float = 0.5) -> torch.Tensor:
     return torch.full((1, height, width, 3), value, dtype=torch.float32)
+
+
+def _is_blocker(value, blocker_cls) -> bool:
+    return isinstance(value, blocker_cls)
 
 
 def test_v1_contract_is_stable(monkeypatch):
@@ -63,7 +70,7 @@ def test_split_three_images_passes_through(monkeypatch):
     assert torch.equal(out[2], c)
 
 
-def test_split_one_image_fills_remaining_with_zero(monkeypatch):
+def test_split_one_image_blocks_remaining_outputs(monkeypatch):
     module = _load_module(monkeypatch)
 
     a = _make_image(value=0.7)
@@ -72,31 +79,28 @@ def test_split_one_image_fills_remaining_with_zero(monkeypatch):
 
     assert len(out) == 3
     assert torch.equal(out[0], a)
-    assert out[1].shape == (1, 64, 64, 3)
-    assert out[2].shape == (1, 64, 64, 3)
-    assert torch.all(out[1] == 0.0)
-    assert torch.all(out[2] == 0.0)
+    assert _is_blocker(out[1], module.ExecutionBlocker)
+    assert _is_blocker(out[2], module.ExecutionBlocker)
 
 
-def test_empty_list_returns_three_zero_images(monkeypatch):
+def test_empty_list_blocks_all_outputs(monkeypatch):
     module = _load_module(monkeypatch)
 
     out = module.TS_ImageListToImages().split(images=[])
 
     assert len(out) == 3
-    for tensor in out:
-        assert tensor.shape == (1, 64, 64, 3)
-        assert torch.all(tensor == 0.0)
+    for value in out:
+        assert _is_blocker(value, module.ExecutionBlocker)
 
 
-def test_none_input_does_not_raise(monkeypatch):
+def test_none_input_blocks_all_outputs(monkeypatch):
     module = _load_module(monkeypatch)
 
     out = module.TS_ImageListToImages().split(images=None)
 
     assert len(out) == 3
-    for tensor in out:
-        assert tensor.shape == (1, 64, 64, 3)
+    for value in out:
+        assert _is_blocker(value, module.ExecutionBlocker)
 
 
 def test_more_than_three_inputs_truncates_to_three(monkeypatch):
@@ -127,10 +131,24 @@ def test_single_tensor_input_is_treated_as_one_item_list(monkeypatch):
 
     a = _make_image(value=0.9)
 
-    # split() guards against non-list input by wrapping
     out = module.TS_ImageListToImages().split(images=a)
 
     assert len(out) == 3
     assert torch.equal(out[0], a)
-    assert torch.all(out[1] == 0.0)
-    assert torch.all(out[2] == 0.0)
+    assert _is_blocker(out[1], module.ExecutionBlocker)
+    assert _is_blocker(out[2], module.ExecutionBlocker)
+
+
+def test_invalid_tensor_in_list_becomes_blocker(monkeypatch):
+    """Defensive: an entry that is not a usable IMAGE tensor is blocked."""
+    module = _load_module(monkeypatch)
+
+    valid = _make_image(value=0.5)
+    invalid_shape = torch.zeros((10,), dtype=torch.float32)
+    not_a_tensor = "not an image"
+
+    out = module.TS_ImageListToImages().split(images=[valid, invalid_shape, not_a_tensor])
+
+    assert torch.equal(out[0], valid)
+    assert _is_blocker(out[1], module.ExecutionBlocker)
+    assert _is_blocker(out[2], module.ExecutionBlocker)
