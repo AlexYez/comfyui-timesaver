@@ -34,16 +34,16 @@ function ensureStyles() {
     style.id = STYLE_ID;
     style.textContent = `
 .ts-lama{--tslc-bg:#0e1218;--tslc-text:#e9eef6;--tslc-muted:#9aa6b8;--tslc-accent:#7aa2ff;--tslc-accent-strong:#3a72ff;--tslc-danger:#ef6f6c;--tslc-success:#82d6a8;--tslc-toolbar:rgba(12,16,22,.72);--tslc-toolbar-border:rgba(255,255,255,.08);position:relative;width:100%;height:100%;min-height:0;box-sizing:border-box;color:var(--tslc-text);font-family:"Segoe UI",Tahoma,Geneva,Verdana,sans-serif;background:repeating-conic-gradient(#1a2030 0% 25%,#0f141a 0% 50%) 50%/24px 24px;border:1px solid #28303c;border-radius:10px;overflow:hidden;user-select:none}
-.ts-lama__canvas{position:absolute;inset:0;display:block;width:100%;height:100%;cursor:default;touch-action:none}
+.ts-lama__canvas{position:absolute;top:56px;left:8px;right:8px;bottom:44px;display:block;cursor:default;touch-action:none}
 .ts-lama__canvas.has-image{cursor:none}
-.ts-lama__empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:16px;color:#cdd6e6;font-size:12px;pointer-events:none;background:linear-gradient(180deg,rgba(0,0,0,.45),rgba(0,0,0,.7))}
+.ts-lama__empty{position:absolute;top:56px;left:8px;right:8px;bottom:44px;display:flex;align-items:center;justify-content:center;text-align:center;padding:16px;color:#cdd6e6;font-size:12px;pointer-events:none;background:linear-gradient(180deg,rgba(0,0,0,.45),rgba(0,0,0,.7));border-radius:6px}
 .ts-lama__overlay{position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:rgba(8,12,18,.6);backdrop-filter:blur(2px);color:var(--tslc-text);font-size:12px;pointer-events:none;flex-direction:column;gap:10px;z-index:5}
 .ts-lama__overlay.is-active{display:flex}
 .ts-lama__spinner{width:28px;height:28px;border-radius:999px;border:3px solid rgba(255,255,255,.14);border-top-color:var(--tslc-accent);animation:tslc-spin .9s linear infinite}
 @keyframes tslc-spin{to{transform:rotate(360deg)}}
 .ts-lama__toolbar{position:absolute;top:8px;left:8px;right:8px;display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:10px;background:var(--tslc-toolbar);border:1px solid var(--tslc-toolbar-border);backdrop-filter:blur(8px);z-index:6}
 .ts-lama__group{display:flex;align-items:center;gap:6px}
-.ts-lama__group--brush{flex:1 1 auto;min-width:0;justify-content:center}
+.ts-lama__group--brush{flex:1 1 auto;min-width:0;justify-content:flex-start}
 .ts-lama__btn{display:inline-flex;align-items:center;gap:5px;border:1px solid rgba(255,255,255,.12);background:rgba(20,26,36,.85);color:var(--tslc-text);border-radius:8px;padding:6px 11px;font-size:11px;cursor:pointer;font-weight:600;letter-spacing:.02em;white-space:nowrap}
 .ts-lama__btn:hover{background:rgba(40,54,76,.95)}
 .ts-lama__btn[disabled]{opacity:.4;cursor:not-allowed}
