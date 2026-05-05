@@ -22,6 +22,12 @@ const MIN_NODE_HEIGHT = 320;
 const TITLE_BAR_HEIGHT = 30;
 const STATUS_POLL_INTERVAL_MS = 1500;
 const SOURCE_POLL_INTERVAL_MS = 300;
+// Pixel margins inside the canvas reserved for the floating toolbar / status
+// bar overlays. The image fit-letterboxes inside the area minus these so it
+// never sits underneath the controls.
+const IMAGE_PAD_TOP = 56;
+const IMAGE_PAD_BOTTOM = 44;
+const IMAGE_PAD_SIDE = 8;
 // Cap how many edits the Undo stack remembers. Older entries are evicted FIFO
 // and their backing temp files are removed via /cleanup_paths so disk usage
 // stays bounded.
@@ -34,9 +40,9 @@ function ensureStyles() {
     style.id = STYLE_ID;
     style.textContent = `
 .ts-lama{--tslc-bg:#0e1218;--tslc-text:#e9eef6;--tslc-muted:#9aa6b8;--tslc-accent:#7aa2ff;--tslc-accent-strong:#3a72ff;--tslc-danger:#ef6f6c;--tslc-success:#82d6a8;--tslc-toolbar:rgba(12,16,22,.72);--tslc-toolbar-border:rgba(255,255,255,.08);position:relative;width:100%;height:100%;min-height:0;box-sizing:border-box;color:var(--tslc-text);font-family:"Segoe UI",Tahoma,Geneva,Verdana,sans-serif;background:repeating-conic-gradient(#1a2030 0% 25%,#0f141a 0% 50%) 50%/24px 24px;border:1px solid #28303c;border-radius:10px;overflow:hidden;user-select:none}
-.ts-lama__canvas{position:absolute;top:56px;left:8px;right:8px;bottom:44px;display:block;cursor:default;touch-action:none}
+.ts-lama__canvas{position:absolute;inset:0;display:block;width:100%;height:100%;cursor:default;touch-action:none}
 .ts-lama__canvas.has-image{cursor:none}
-.ts-lama__empty{position:absolute;top:56px;left:8px;right:8px;bottom:44px;display:flex;align-items:center;justify-content:center;text-align:center;padding:16px;color:#cdd6e6;font-size:12px;pointer-events:none;background:linear-gradient(180deg,rgba(0,0,0,.45),rgba(0,0,0,.7));border-radius:6px}
+.ts-lama__empty{position:absolute;left:8px;right:8px;top:56px;bottom:44px;display:flex;align-items:center;justify-content:center;text-align:center;padding:16px;color:#cdd6e6;font-size:12px;pointer-events:none;background:linear-gradient(180deg,rgba(0,0,0,.45),rgba(0,0,0,.7));border-radius:6px}
 .ts-lama__overlay{position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:rgba(8,12,18,.6);backdrop-filter:blur(2px);color:var(--tslc-text);font-size:12px;pointer-events:none;flex-direction:column;gap:10px;z-index:5}
 .ts-lama__overlay.is-active{display:flex}
 .ts-lama__spinner{width:28px;height:28px;border-radius:999px;border:3px solid rgba(255,255,255,.14);border-top-color:var(--tslc-accent);animation:tslc-spin .9s linear infinite}
@@ -661,13 +667,18 @@ export function setupLamaCleanup(node) {
             canvas.height = height;
             imageCacheValid = false;
         }
-        // Keep cached transform fresh so cursor positioning stays accurate
-        // between redraws (cursor element doesn't trigger redraws on its own).
+        // Compute the usable image area inside canvas, accounting for the
+        // toolbar (top) and statusbar (bottom) overlays so the image fit-
+        // letterboxes between them. state.offsetX/Y are kept fresh between
+        // redraws so cursor positioning, mask compositing and image cache
+        // stay aligned.
         if (state.imageWidth > 0 && state.imageHeight > 0 && rect.width > 0 && rect.height > 0) {
-            const scale = Math.min(rect.width / state.imageWidth, rect.height / state.imageHeight);
+            const usableWidth = Math.max(1, rect.width - IMAGE_PAD_SIDE * 2);
+            const usableHeight = Math.max(1, rect.height - IMAGE_PAD_TOP - IMAGE_PAD_BOTTOM);
+            const scale = Math.min(usableWidth / state.imageWidth, usableHeight / state.imageHeight);
             state.scale = scale;
-            state.offsetX = (rect.width - state.imageWidth * scale) / 2;
-            state.offsetY = (rect.height - state.imageHeight * scale) / 2;
+            state.offsetX = IMAGE_PAD_SIDE + (usableWidth - state.imageWidth * scale) / 2;
+            state.offsetY = IMAGE_PAD_TOP + (usableHeight - state.imageHeight * scale) / 2;
         }
         return { rectWidth: rect.width, rectHeight: rect.height, dpr };
     }
@@ -685,12 +696,12 @@ export function setupLamaCleanup(node) {
         }
         imageCacheCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
         imageCacheCtx.clearRect(0, 0, rectWidth, rectHeight);
-        const scale = Math.min(rectWidth / state.imageWidth, rectHeight / state.imageHeight);
-        const drawWidth = state.imageWidth * scale;
-        const drawHeight = state.imageHeight * scale;
-        const offsetX = (rectWidth - drawWidth) / 2;
-        const offsetY = (rectHeight - drawHeight) / 2;
-        imageCacheCtx.drawImage(state.image, offsetX, offsetY, drawWidth, drawHeight);
+        // Use the padded transform that resizeCanvas just stored on `state`,
+        // so the cached image matches the placement assumed by mask blits and
+        // pointer→image math.
+        const drawWidth = state.imageWidth * state.scale;
+        const drawHeight = state.imageHeight * state.scale;
+        imageCacheCtx.drawImage(state.image, state.offsetX, state.offsetY, drawWidth, drawHeight);
         imageCacheValid = true;
     }
 
