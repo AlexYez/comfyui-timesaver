@@ -1083,6 +1083,48 @@
       }
     }
   },
+  "TS_LamaCleanup": {
+    "api": "v3",
+    "category": "TS/Image",
+    "class_name": "TS_LamaCleanup",
+    "display_name": "TS Lama Cleanup",
+    "python_file": "nodes/image/lama_cleanup/ts_lama_cleanup.py",
+    "widgets": {
+      "brush_size": {
+        "default": 40,
+        "max": 400,
+        "min": 1,
+        "step": 1
+      },
+      "feather": {
+        "default": 4,
+        "max": 64,
+        "min": 0,
+        "step": 1
+      },
+      "mask_padding": {
+        "default": 64,
+        "max": 512,
+        "min": 0,
+        "step": 8
+      },
+      "max_resolution": {
+        "default": 512,
+        "max": 2048,
+        "min": 128,
+        "step": 64
+      },
+      "session_id": {
+        "default": ""
+      },
+      "source_path": {
+        "default": ""
+      },
+      "working_path": {
+        "default": ""
+      }
+    }
+  },
   "TS_Math_Int": {
     "api": "v1",
     "category": "TS/Utils",

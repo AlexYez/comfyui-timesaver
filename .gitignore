@@ -3,6 +3,7 @@
 /__pycache__/
 **/__pycache__/
 /.cache/
+**/.cache/
 /.pytest_cache/
 /pip/
 /.codex_tmp/

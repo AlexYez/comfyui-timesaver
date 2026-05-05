@@ -126,6 +126,7 @@ python -m pip install -r requirements.txt
 | `TS_Keyer` | Вырезает объект с зеленого, синего или красного фона. | `IMAGE`, `MASK`, `IMAGE` |
 | `TS_Despill` | Убирает цветные засветки по краям после хромакея. | `IMAGE`, `MASK`, `IMAGE` |
 | `TS_BGRM_BiRefNet` | Удаляет фон с помощью BiRefNet. | `IMAGE`, `MASK`, `IMAGE` |
+| `TS_LamaCleanup` | Интерактивная in-node ретушь: рисуете кистью по дефектам, LaMa их убирает на отпускании мыши. Drag-and-drop, Ctrl+V, Undo/Redo. | `IMAGE` |
 | `TSCropToMask` | Обрезает изображение вокруг маски, чтобы быстрее обрабатывать нужную область. | `IMAGE`, `MASK`, `CROP_DATA`, `INT`, `INT` |
 | `TSRestoreFromCrop` | Возвращает обработанный фрагмент обратно в исходный кадр. | `IMAGE` |
 | `TS_ImageBatchToImageList` | Разбирает пачку изображений на отдельные элементы. | `IMAGE` |
@@ -424,6 +425,7 @@ ComfyUI usually shows which connections are valid, so there is no need to memori
 | `TS_Keyer` | Cuts out an object from a green, blue, or red screen. | `IMAGE`, `MASK`, `IMAGE` |
 | `TS_Despill` | Cleans colored edge spill after keying. | `IMAGE`, `MASK`, `IMAGE` |
 | `TS_BGRM_BiRefNet` | Removes the background with BiRefNet. | `IMAGE`, `MASK`, `IMAGE` |
+| `TS_LamaCleanup` | Interactive in-node defect removal: paint over defects, LaMa cleans them up on mouse release. Drag-and-drop, Ctrl+V, Undo/Redo. | `IMAGE` |
 | `TSCropToMask` | Crops around a mask so only the important area is processed. | `IMAGE`, `MASK`, `CROP_DATA`, `INT`, `INT` |
 | `TSRestoreFromCrop` | Places a processed crop back into the original frame. | `IMAGE` |
 | `TS_ImageBatchToImageList` | Splits an image batch into separate items. | `IMAGE` |

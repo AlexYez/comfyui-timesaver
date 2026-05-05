@@ -62,6 +62,7 @@ comfyui-timesaver/
 | `TS_Keyer` | ???????????????? color-difference keyer ??? green/blue/red screen ? ?????? ?????? ? ?????????? despill. | `TS/image` | `IMAGE, MASK, IMAGE` |
 | `TS_Despill` | ????????? ???? ?????????? spill ? ??????????? classic, balanced, adaptive ? hue_preserve. | `TS/image` | `IMAGE, MASK, IMAGE` |
 | `TS_BGRM_BiRefNet` | AI-удаление фона через BiRefNet: быстро, чисто и удобно для прозрачных композиций. | `Timesaver/Image Tools` | `IMAGE` |
+| `TS_LamaCleanup` | Интерактивная in-node ретушь дефектов: рисуете кистью по картинке, LaMa убирает выделенное по mouse-up. | `TS/Image` | `IMAGE` |
 | `TSCropToMask` | Кадрирует область вокруг маски, чтобы ускорить локальные правки и сэкономить память. | `image/processing` | `IMAGE` |
 | `TSRestoreFromCrop` | Возвращает обработанный crop обратно в исходный кадр с опциональным смешиванием. | `image/processing` | `IMAGE` |
 | `TS_ImageBatchToImageList` | Преобразует batched IMAGE tensor в покадровый list-поток. | `TS/Image Tools` | `IMAGE` |
@@ -723,6 +724,64 @@ AI-удаление фона через BiRefNet: быстро, чисто и у
 - Category: `Timesaver/Image Tools`
 - Function: `process_image`
 - Примечание по зависимостям: Requires BiRefNet model files (auto-download when available).
+
+</details>
+
+<details>
+<summary><strong>TS_LamaCleanup</strong> - Интерактивная in-node ретушь дефектов с моделью LaMa.</summary>
+
+![Плейсхолдер скриншота для TS_LamaCleanup](docs/img/placeholders/ts-lama-cleanup.png)
+
+> Плейсхолдер: замените этот блок скриншотом ноды.
+
+**Что делает эта нода**
+Полностью интерактивная нода для удаления мелких дефектов (царапин, пылинок, лого, прыщиков, watermark) с фотографий. Работает прямо внутри ноды:
+
+1. Загружаете изображение через кнопку **Load Image**, drag-and-drop файла на ноду или Ctrl+V из буфера обмена.
+2. Рисуете кисточкой по дефектам — пока зажата левая кнопка мыши на canvas видна полупрозрачная тёмная маска.
+3. На отпускании кнопки мыши нода автоматически делает crop по bounding-box маски, ресайзит до оптимального для LaMa разрешения (`max_resolution`, default 512), прогоняет через модель и аккуратно вписывает результат обратно в полное изображение с soft-blend по краю.
+4. Каждое такое действие создаёт новый шаг в истории. Кнопки **Undo / Redo** возвращают/восстанавливают предыдущие состояния (последние 30 шагов).
+5. **Save Image** сохраняет финальное изображение в `output/lama-cleanup/`. Файл назван `<source>_lama-cleanup_<timestamp>.png`.
+6. На IMAGE выходе нода всегда отдаёт текущее состояние очищенного изображения для дальнейших шагов в графе.
+
+Workflow не запускается на каждое действие кистью — всё происходит локально через JS frontend и aiohttp routes. ComfyUI Run отдаёт текущее состояние через стандартный output.
+
+**Загрузка модели**
+- Репозиторий: [`1038lab/Lama`](https://huggingface.co/1038lab/Lama).
+- Файл: `big-lama.pt` (~196 МБ, TorchScript JIT).
+- Папка: `ComfyUI/models/lama/big-lama.pt` (зарегистрировано в `folder_paths`, поддерживается `extra_model_paths.yaml`).
+- Скачивается **автоматически** через `huggingface_hub` при первом нажатии mouse-up на маске. Прогресс показывается в overlay над canvas.
+- Если модель уже лежит в `models/lama/`, повторно не скачивается.
+
+**Шорткаты и взаимодействия**
+- **Левая кнопка мыши**: рисовать маску.
+- **Slider Brush** (в верхнем меню): диаметр кисти в image-пикселях (1–400).
+- **⚙ Settings popover**: дополнительные параметры — Max LaMa resolution (128–2048), Mask context padding (0–512 px), Composite feather (0–64 px).
+- **Drag-and-drop**: бросьте файл изображения на ноду — загрузится без открытия диалога.
+- **Ctrl+V** (если мышь над нодой): paste изображения из буфера обмена.
+- **Undo / Redo**: переключают между шагами истории (30 шагов).
+- **Reset**: откат к исходному изображению, очищает всю историю.
+- **Save Image**: сохранить текущий результат в `output/lama-cleanup/`.
+
+**Тонкие настройки (когда менять)**
+- `max_resolution` — больше = качественнее, медленнее. 512 хватает для большинства мелких дефектов; для крупных областей подними до 1024.
+- `mask_padding` — pixels контекста вокруг маски. Если LaMa плохо вписывает результат — увеличьте до 96–128, особенно для текстурированных областей.
+- `feather` — мягкость seam'а при композите обратно. 0 = жёсткая граница (видно). 4 (default) — обычно достаточно. До 16 для сильно отличающихся регионов.
+
+**Предсказуемость и производительность**
+- Crop+resize+inpaint + composite back делается на full-resolution, в temp-файл, после чего и фронтенд получает новое working_path.
+- Каждый inpaint = новый файл `temp/ts_lama_cleanup/{session}_edit_{nanos}.png`. Старые файлы автоматически чистятся при Reset, при загрузке нового изображения и при превышении лимита истории.
+- Per-session asyncio.Lock на бэкенде сериализует параллельные inpaint-запросы — двойные клики безопасны.
+- Image render cache + incremental tinted mask + HTML cursor → курсор и рисование плавны даже на 4K+ изображениях.
+
+**Технические подробности**
+- Internal id: `TS_LamaCleanup`
+- Class: `TS_LamaCleanup`
+- File: `nodes/image/lama_cleanup/ts_lama_cleanup.py`
+- Category: `TS/Image`
+- API: V3 (`comfy_api.latest.IO.ComfyNode`)
+- aiohttp routes: `/ts_lama_cleanup/{view,model_status,inpaint,save,reset,seed,cleanup_paths}`
+- Зависимости: `huggingface_hub` (скачивание модели), `torch` (inference), `Pillow`, `numpy`, опционально `opencv-python` для feather. Все, кроме `huggingface_hub`, обычно уже есть в ComfyUI.
 
 </details>
 
