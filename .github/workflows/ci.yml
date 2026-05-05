@@ -25,12 +25,12 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Install pytest only
+      - name: Install pytest and ruff
         # The pack itself ships heavy optional dependencies (torch, demucs,
         # whisper, etc.) that cannot reliably install on every CI matrix
         # entry. The smoke and contract tests are designed to run without
         # those — they parse files and verify discovery logic.
-        run: python -m pip install --upgrade pip pytest
+        run: python -m pip install --upgrade pip pytest ruff
 
       - name: Compile every Python file
         run: python -m compileall -q .
@@ -40,3 +40,9 @@ jobs:
 
       - name: Verify node contract snapshot is up to date
         run: python tools/build_node_contracts.py --check
+
+      - name: Lint with ruff (non-blocking)
+        # Surfaces style/quality regressions without blocking merge. Drop
+        # `continue-on-error` once the existing baseline is fixed.
+        continue-on-error: true
+        run: python -m ruff check .

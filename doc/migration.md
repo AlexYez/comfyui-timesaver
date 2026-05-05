@@ -107,3 +107,17 @@ python tools/build_node_contracts.py --check
 
 - `python tools/build_node_contracts.py --check` покажет, какой контракт сломан.
 - `tests/contracts/node_contracts.json` содержит точное соответствие `node_id → python_file`.
+
+---
+
+## Disk cleanup notes (после удалённых нод)
+
+После удаления некоторых нод на диске пользователя могут остаться кэш-каталоги, не покрытые `.gitignore`. Они безвредны, но занимают место. Удалить вручную при необходимости:
+
+| Каталог | Откуда | Безопасно удалить |
+| --- | --- | --- |
+| `nodes/.cache/tsfb_thumbnails/` | `TS_FileBrowser` (удалена ранее) | Да |
+| `nodes/files/.cache/tsfb_thumbnails/` | `TS_FileBrowser` (старое расположение) | Да |
+| `nodes/.cache/ts_audio_loader/` | `TS_AudioLoader` preview cache | Да, пересоздастся при первом использовании |
+
+`TS_DeflickerNode` удалена в одной из revision'ов после 8.8 (импорт `nodes/rife/` отсутствовал и был сломан). Соответствующих кэш-каталогов на диске нода не оставляла. Сохранённые workflow с этой нодой теперь покажут «missing node» — ремап не предусмотрен.
