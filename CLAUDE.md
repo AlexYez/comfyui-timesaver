@@ -173,6 +173,54 @@ Loader-правила:
 
 ---
 
+## 4.5. Обязательные инструменты (skills + ComfyUI Python)
+
+### 4.5.1. Skill `comfyui-custom-nodes`
+
+Перед любой нетривиальной работой над нодой подключай skill **`/comfyui-custom-nodes`** (плагин). Это база знаний по ComfyUI custom nodes API:
+
+- `comfyui-custom-nodes:comfyui-node-basics` — базовая структура V3 ноды.
+- `comfyui-custom-nodes:comfyui-node-frontend` — JS extensions: hooks, widgets, sidebar tabs, commands, settings, DOM widgets, V2 (Vue) layout, addDOMWidget options (`getMinHeight`/`getHeight`/`computeSize`), suppressing default previews.
+- `comfyui-custom-nodes:comfyui-node-inputs` — типы входов, виджеты, скрытые/опциональные/lazy.
+- `comfyui-custom-nodes:comfyui-node-outputs` — `IO.NodeOutput`, UI outputs, preview-ноды.
+- `comfyui-custom-nodes:comfyui-node-datatypes` — IMAGE / MASK / LATENT / AUDIO / VIDEO / 3D conventions.
+- `comfyui-custom-nodes:comfyui-node-lifecycle` — caching, fingerprint_inputs, validate_inputs, check_lazy_status.
+- `comfyui-custom-nodes:comfyui-node-advanced` — MatchType, Autogrow, DynamicCombo, MultiType, wildcard inputs.
+- `comfyui-custom-nodes:comfyui-node-packaging` — структура пакета, `__init__.py`, registration, WEB_DIRECTORY.
+- `comfyui-custom-nodes:comfyui-node-migration` — миграция V1 → V3.
+
+Используй skill **до** того, как писать код, особенно при работе с frontend (DOM widgets, Vue render, V2 layout, IMAGEUPLOAD виджеты, image preview suppression).
+
+### 4.5.2. ComfyUI Python для GPU-тестов
+
+Тестовый Python (`C:/Users/Sanchez/Documents/Apps/EnvPortable/python/python.exe`) **не содержит** numpy/torch/PIL — тесты, которые требуют этих зависимостей, под ним просто скипаются.
+
+Чтобы реально прогнать тесты ноды (особенно с GPU/inference/тензорами), используй ComfyUI-овский portable Python:
+
+```bash
+D:/AiApps/ComfyUI/comfyui/python/python.exe -m pytest tests/test_<node>.py -v
+D:/AiApps/ComfyUI/comfyui/python/python.exe -m compileall .
+D:/AiApps/ComfyUI/comfyui/python/python.exe tools/build_node_contracts.py
+```
+
+Этот Python:
+
+- Содержит `numpy`, `torch` (с CUDA), `PIL`, `comfy_api`, `folder_paths` и весь runtime ComfyUI.
+- Используется для регенерации `tests/contracts/node_contracts.json`.
+- Должен использоваться для всех verification-команд, которые касаются GPU/inference/contract snapshot.
+
+Для чисто CPU-тестов (схема, paths, fingerprint без torch) подойдёт и обычный test Python — там тесты с numpy/torch скипаются через `pytest.importorskip`.
+
+В verification summary всегда указывай, под каким Python запускались тесты:
+
+```text
+Проверено (под D:/AiApps/ComfyUI/comfyui/python/python.exe):
+- python -m compileall .
+- python -m pytest tests/test_lama_cleanup_contract.py
+```
+
+---
+
 ## 5. API: V3 по умолчанию, V1 — frozen
 
 Состояние пака: смешанное. Часть нод уже на V3 (`comfy_api.latest.IO`), часть остаётся V1.
@@ -359,16 +407,22 @@ V1:
 Минимум backend перед заявлением «готово»:
 
 ```bash
-python -m compileall .
-python -m pytest tests
+D:/AiApps/ComfyUI/comfyui/python/python.exe -m compileall .
+D:/AiApps/ComfyUI/comfyui/python/python.exe -m pytest tests
+```
+
+Используй именно ComfyUI-овский Python (см. §4.5.2). Под обычным test Python тесты, требующие numpy/torch/PIL, скипаются — это **не** настоящая проверка. Для регенерации `tests/contracts/node_contracts.json` после изменения схем используй тот же Python:
+
+```bash
+D:/AiApps/ComfyUI/comfyui/python/python.exe tools/build_node_contracts.py
 ```
 
 Если доступны:
 
 ```bash
-python -m ruff check .
-python -m ruff format --check .
-python -m mypy .
+D:/AiApps/ComfyUI/comfyui/python/python.exe -m ruff check .
+D:/AiApps/ComfyUI/comfyui/python/python.exe -m ruff format --check .
+D:/AiApps/ComfyUI/comfyui/python/python.exe -m mypy .
 ```
 
 Frontend (npm tooling в репо отсутствует — добавлять только если действительно нужно):
