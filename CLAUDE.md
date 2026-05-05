@@ -472,7 +472,7 @@ Verification summary в ответе пользователю — обязате
 `WEB_DIRECTORY = "./js"` в `__init__.py`. Каждый `.js` подключается автоматически.
 
 - Используй `app.registerExtension({ name: "ts.<id>", ... })` через `import { app } from "/scripts/app.js"`.
-- Стабильные extension IDs (НЕ менять): `ts.bookmark`, `ts.resolutionselector`, `ts.audioLoader`, `ts.animationpreview`, `ts.prompt_builder`, `ts_suite.style_prompt_selector`, `ts.superPrompt`, `ts.float-slider`, `ts.int-slider`.
+- Стабильные extension IDs (НЕ менять): `ts.bookmark`, `ts.resolutionselector`, `ts.audioLoader`, `ts.lamaCleanup`, `ts.animationpreview`, `ts.prompt_builder`, `ts_suite.style_prompt_selector`, `ts.superPrompt`, `ts.float-slider`, `ts.int-slider`.
 - Один публичный узел с фронтендом = один `.js`. Не дроби на `menu.js / widgets.js / state.js`.
 - Никаких глобалов, monkey-patch, eval, `new Function`, blind `innerHTML` с пользовательским текстом.
 - Логи: `console.warn("[TS ModuleName] ...")` / `console.error("[TS ModuleName] ...", err)` — без эмоджи и спама.
@@ -480,6 +480,154 @@ Verification summary в ответе пользователю — обязате
 - Когда задеваешь UI и ComfyUI запущен — проверь browser console на чистоту.
 
 См. полные правила в [js/AGENTS.md](js/AGENTS.md).
+
+---
+
+## 12.5. Интерактивные ноды с DOM widgets
+
+Если делаешь полноценный in-node UI (canvas, кисти, drag-drop и т.п.) через `addDOMWidget` — соблюдай эти правила. Каждое — реальная ошибка из истории. Полные объяснения и code snippets — в memory `reference_dom_widget_pitfalls.md`.
+
+### 12.5.1. Layout: НЕ переопределять `widget.computeSize`
+
+ComfyUI core (>=1.34) для DOM widgets использует `computeLayoutSize()`. Установка `widget.computeSize` **выталкивает** widget в фиксированную ветку и ломает layout, давая infinite height growth в V2 Vue.
+
+```javascript
+const widgetOptions = {
+    serialize: false,
+    hideOnZoom: false,
+    getMinHeight: () => 220,
+    getMaxHeight: () => 8192,
+    afterResize: () => requestRedraw(),
+};
+const domWidget = node.addDOMWidget(name, "div", container, widgetOptions);
+// НЕ делать domWidget.computeSize = ... !
+```
+
+### 12.5.2. Не использовать IMAGEUPLOAD/upload= если есть свой UI
+
+`IO.Combo.Input(..., upload=IO.UploadType.image)` добавляет нежелательные UI-элементы в обоих режимах:
+- V1: кнопку "choose file to upload" над нодой.
+- V2 Vue: image preview **под** нодой (через `node.imgs`, который Vue render не пропускает через `Object.defineProperty`).
+
+Решение: `IO.String.Input("source_path", default="", socketless=True)` + ручной upload через `/upload/image` из JS. Также убирай `advanced=True` с inputs скрытых JS — иначе V2 показывает "Show advanced inputs" toggle.
+
+### 12.5.3. Координаты курсора: viewport vs local CSS pixels
+
+`event.clientX` и `getBoundingClientRect()` — viewport (post-transform). `cursor.style.left` — local CSS pixels (pre-transform). Parent `transform: scale(s)` (LiteGraph zoom, Vue node scale) разводит эти системы → cursor drifts.
+
+Compensation через ratio offsetWidth:
+
+```javascript
+const containerRect = container.getBoundingClientRect();
+const layoutWidth = container.offsetWidth || containerRect.width;
+const parentScale = layoutWidth > 0 ? containerRect.width / layoutWidth : 1;
+const inverseScale = parentScale > 0.001 ? 1 / parentScale : 1;
+const xLocal = (clientX - containerRect.left) * inverseScale - (container.clientLeft || 0);
+const yLocal = (clientY - containerRect.top) * inverseScale - (container.clientTop || 0);
+cursor.style.left = `${xLocal - radius}px`;  // НЕ transform: translate — sub-pixel ошибки
+cursor.style.top = `${yLocal - radius}px`;
+```
+
+### 12.5.4. Mask compositing: НЕ использовать `source-in` с fillRect
+
+Антипаттерн: `drawImage(image)` → `drawImage(maskCanvas)` → `globalCompositeOperation = "source-in"` → `fillRect(...)`. Это **стирает image** даже когда маска пустая, потому что source-in fillRect полностью покрывает destination.
+
+Правильно: tinted mask — отдельный offscreen canvas с тем же paint operations что и mask, но dark color. Redraw делает простой `drawImage(tintedMaskCanvas, ...)` без compositing трюков.
+
+### 12.5.5. Image padding под floating overlays — через JS scale, НЕ CSS canvas inset
+
+Для in-node UI с floating toolbar/statusbar: НЕ позиционировать canvas через `top:56px;bottom:44px` — `<canvas>` это replaced element, нестабилен на resize.
+
+Канвас держать full-bleed (`inset:0`), padding делать в `state.scale/offsetX/offsetY`:
+
+```javascript
+const IMAGE_PAD_TOP = 56;
+const IMAGE_PAD_BOTTOM = 44;
+const IMAGE_PAD_SIDE = 8;
+
+function resizeCanvas() {
+    const rect = canvas.getBoundingClientRect();
+    if (state.imageWidth > 0 && rect.width > 0) {
+        const usableWidth = Math.max(1, rect.width - IMAGE_PAD_SIDE * 2);
+        const usableHeight = Math.max(1, rect.height - IMAGE_PAD_TOP - IMAGE_PAD_BOTTOM);
+        state.scale = Math.min(usableWidth / state.imageWidth, usableHeight / state.imageHeight);
+        state.offsetX = IMAGE_PAD_SIDE + (usableWidth - state.imageWidth * state.scale) / 2;
+        state.offsetY = IMAGE_PAD_TOP + (usableHeight - state.imageHeight * state.scale) / 2;
+    }
+}
+```
+
+`rebuildImageCache` должен использовать `state.offsetX/Y/scale` (не пересчитывать) — иначе cache и mask blit рассинхронизируются.
+
+### 12.5.6. Performance recipe для big images
+
+Три ключевых паттерна, дающих плавную работу даже на 8K:
+
+1. **Image render cache** — pre-rendered image at display resolution в offscreen canvas, rebuild только на resize/image-change. Каждый redraw — cheap blit.
+2. **Incremental tinted mask** — рисовать в обе offscreen canvas (mask + tintedMask) во время `drawSegment`/`drawBrushAt`. Redraw = blit готового tinted без full rebuild.
+3. **HTML cursor element** — `<div class="cursor">` с `position:absolute; pointer-events:none`. Обновлять через style.left/top на pointer move. Cursor-only движения **НЕ** вызывают `requestRedraw`.
+
+### 12.5.7. Cursor visibility
+
+`cursor:none` на canvas скрывает native cursor. Если custom HTML cursor показывается только при `state.image` — без image над canvas получается "мёртвая зона". Решение: условный CSS класс:
+
+```css
+.ts-lama__canvas{cursor:default}
+.ts-lama__canvas.has-image{cursor:none}
+```
+
+```javascript
+canvas.classList.toggle("has-image", Boolean(state.image));
+```
+
+### 12.5.8. Backend для интерактивных нод
+
+- **Per-session asyncio.Lock** для длительных jobs:
+  ```python
+  _session_locks: dict[str, asyncio.Lock] = {}
+  def _get_session_lock(session_id):
+      lock = _session_locks.get(session_id)
+      if lock is None:
+          lock = asyncio.Lock()
+          _session_locks[session_id] = lock
+      return lock
+  
+  async def handler(request):
+      lock = _get_session_lock(safe_session_id)
+      async with lock:
+          # serialised per session
+  ```
+- **Versioned working files** — `{session}_{tag}_{nanos:020d}.png`. Никогда не overwrite — нужно для undo/redo.
+- **Cleanup** на `/seed`, `/reset`, history overflow. Только `path.name.startswith(f"{safe_session}_")` — защита от удаления чужих файлов.
+
+### 12.5.9. Output organization
+
+Сохранять результаты в подпапку с тегом в имени:
+- `output/<feature_name>/<source_stem>_<feature_name>_<timestamp>.png`.
+- Response `{"subfolder": "<feature_name>", "type": "output"}`.
+
+### 12.5.10. Folder registration для моделей
+
+```python
+def _register_model_folder():
+    base = Path(folder_paths.models_dir) / MODEL_FOLDER_NAME
+    base.mkdir(parents=True, exist_ok=True)
+    if hasattr(folder_paths, "add_model_folder_path"):
+        folder_paths.add_model_folder_path(MODEL_FOLDER_NAME, str(base))
+
+_register_model_folder()  # на module import — поддержка extra_model_paths.yaml
+```
+
+### 12.5.11. Hidden file input + drag-drop + paste
+
+- `<input type="file">` скрыть через `position:fixed; left:-9999px; top:-9999px;` (НЕ `width:1px;height:1px` — некоторые браузеры блокируют программный `.click()`).
+- Container-level dragenter/dragover/dragleave/drop для drag-and-drop.
+- Document-level paste с проверкой `pointerOverContainer()` чтобы избежать конфликта между несколькими нодами одного типа.
+- В `node._tsCleanup` обязательно `document.removeEventListener("paste", ...)` — иначе утечка listener'ов.
+
+### 12.5.12. Эталонная реализация
+
+`nodes/image/lama_cleanup/` + `js/image/lama_cleanup/` — TS_LamaCleanup, наиболее полный пример всех паттернов из этого раздела.
 
 ---
 
