@@ -6,6 +6,11 @@ node_id: TS_ImageTileMerger
 from typing import Any, Dict, Optional
 
 import torch
+import logging
+
+
+logger = logging.getLogger("comfyui_timesaver.ts_image_tile_merger")
+LOG_PREFIX = "[TS Image Tile Merger]"
 
 
 class TS_ImageTileMerger:
@@ -21,11 +26,11 @@ class TS_ImageTileMerger:
     RETURN_TYPES = ("IMAGE",)
     RETURN_NAMES = ("image",)
     FUNCTION = "execute"
-    CATEGORY = "TS/Image Tools"
+    CATEGORY = "TS/Image"
 
     @staticmethod
     def _log(message: str) -> None:
-        print(f"[TS Image Tile Merger] {message}")
+        logger.info("%s %s", LOG_PREFIX, message)
 
     @classmethod
     def _log_tensor(cls, label: str, tensor: Optional[torch.Tensor]) -> None:

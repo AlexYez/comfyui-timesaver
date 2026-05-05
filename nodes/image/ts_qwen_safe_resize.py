@@ -49,7 +49,7 @@ class TS_QwenSafeResize:
 
     RETURN_TYPES = ("IMAGE",)
     FUNCTION = "safe_resize"
-    CATEGORY = "image/resize"
+    CATEGORY = "TS/Image"
 
     def safe_resize(self, image):
         # image: torch.Tensor, shape (B,H,W,C), dtype float32, range 0..1

@@ -9,7 +9,7 @@ import torch
 
 
 class TS_Film_Emulation:
-    CATEGORY = "Image/Color"
+    CATEGORY = "TS/Image"
 
     @classmethod
     def _resolve_luts_dir(cls):

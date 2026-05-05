@@ -3,10 +3,11 @@
 node_id: TS_ModelConverter
 """
 
-import os
-import json
-import glob
 import gc
+import glob
+import json
+import logging
+import os
 import uuid
 from collections import OrderedDict
 
@@ -20,6 +21,9 @@ import comfy.sd
 from safetensors.torch import save_file, load_file
 from safetensors import safe_open
 
+logger = logging.getLogger("comfyui_timesaver.ts_model_converter")
+LOG_PREFIX = "[TS Model Converter]"
+
 
 class TS_ModelConverterNode:
     @classmethod
@@ -32,7 +36,7 @@ class TS_ModelConverterNode:
 
     RETURN_TYPES = ("MODEL",)
     FUNCTION = "convert_to_fp8"
-    CATEGORY = "conversion"
+    CATEGORY = "TS/Files"
 
     def convert_to_fp8(self, model):
         try:
@@ -50,8 +54,8 @@ class TS_ModelConverterNode:
                 
             return (model,)
         except Exception as e:
-            print(f"FP8 Conversion Error: {str(e)}")
-            return (model,) 
+            logger.error("%s FP8 Conversion Error: %s", LOG_PREFIX, e)
+            return (model,)
 
 # ==========================
 # Advanced Converter (On-Disk)

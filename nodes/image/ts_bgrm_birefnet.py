@@ -567,7 +567,7 @@ class TS_BGRM_BiRefNet:
     RETURN_TYPES = ("IMAGE", "MASK", "IMAGE")
     RETURN_NAMES = ("IMAGE", "MASK", "MASK_IMAGE")
     FUNCTION = "process_image"
-    CATEGORY = "Timesaver/Image Tools"
+    CATEGORY = "TS/Image"
 
     def process_image(self, image, enable, model, use_custom_resolution, process_resolution, **params):
         params = {

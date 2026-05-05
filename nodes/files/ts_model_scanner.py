@@ -45,7 +45,7 @@ class TS_ModelScanner:
     RETURN_TYPES = ("STRING",)
     RETURN_NAMES = ("model_info",)
     FUNCTION = "scan_model"
-    CATEGORY = "utils/model_analysis"
+    CATEGORY = "TS/Files"
 
     def _scan_loaded_model(self, model, summary_only=False):
         real_model = None

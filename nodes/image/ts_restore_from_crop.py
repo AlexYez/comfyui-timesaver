@@ -3,10 +3,15 @@
 node_id: TSRestoreFromCrop
 """
 
+import logging
+
 import torch
 import torch.nn.functional as F
 
 import comfy
+
+logger = logging.getLogger("comfyui_timesaver.ts_restore_from_crop")
+LOG_PREFIX = "[TS Restore From Crop]"
 
 
 def _gaussian_blur_mask(mask_tensor_batch, blur_amount, device):
@@ -75,11 +80,11 @@ class TSRestoreFromCrop:
 
     RETURN_TYPES = ("IMAGE",)
     FUNCTION = "restore"
-    CATEGORY = "image/processing"
+    CATEGORY = "TS/Image"
 
     def restore(self, original_images, cropped_images, crop_data, blur, blur_type, force_gpu):
         target_device = comfy.model_management.get_torch_device() if force_gpu and torch.cuda.is_available() else torch.device("cpu")
-        print(f"TSRestoreFromCrop: Using device {target_device}")
+        logger.info("%s Using device %s", LOG_PREFIX, target_device)
         original_images, cropped_images = original_images.to(target_device), cropped_images.to(target_device)
         restored_images = []
 

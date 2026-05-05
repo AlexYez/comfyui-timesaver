@@ -26,7 +26,7 @@ class TS_ModelConverterAdvancedDirectNode(TS_ModelConverterAdvancedNode):
     RETURN_TYPES = ("STRING",)
     RETURN_NAMES = ("log",)
     FUNCTION = "convert_model"
-    CATEGORY = "TS/Model Conversion"
+    CATEGORY = "TS/Files"
 
     def convert_model(self, model, fp8_mode, conversion_preset, shard_subdir, final_filename):
         return self._convert_loaded_model(model, fp8_mode, conversion_preset, shard_subdir, final_filename)

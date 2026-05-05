@@ -1,13 +1,17 @@
-﻿import os
+﻿import logging
+import os
+import threading
 
 import comfy.model_management as mm
 import comfy.utils
 import folder_paths
-import threading
 import torch
 import torchaudio
 
 from ..ts_dependency_manager import TSDependencyManager
+
+logger = logging.getLogger("comfyui_timesaver.ts_music_stems")
+LOG_PREFIX = "[TS Music Stems]"
 
 _demucs_pretrained = TSDependencyManager.import_optional("demucs.pretrained")
 _demucs_apply = TSDependencyManager.import_optional("demucs.apply")
@@ -43,13 +47,15 @@ class TS_MusicStems:
     def _prepare_demucs_waveform(waveform):
         original_channels = int(waveform.shape[1])
         if original_channels == 1:
-            print("[TS Music Stems] Mono input detected, duplicating channel to stereo for Demucs compatibility.")
+            logger.info("%s Mono input detected, duplicating channel to stereo for Demucs compatibility.", LOG_PREFIX)
             return waveform.repeat(1, 2, 1), original_channels
         if original_channels == 2:
             return waveform, original_channels
 
-        print(
-            f"[TS Music Stems] Input has {original_channels} channels, using the first two channels for Demucs."
+        logger.info(
+            "%s Input has %d channels, using the first two channels for Demucs.",
+            LOG_PREFIX,
+            original_channels,
         )
         return waveform[:, :2, :], original_channels
 
@@ -114,7 +120,7 @@ class TS_MusicStems:
         else:
             target_device = torch.device(device)
 
-        print(f"[TS Music Stems] Initializing model: {model_name}")
+        logger.info("%s Initializing model: %s", LOG_PREFIX, model_name)
 
         models_base_path = folder_paths.models_dir
         demucs_model_path = os.path.join(models_base_path, "demucs")
@@ -128,9 +134,11 @@ class TS_MusicStems:
                 self.model_cache[model_name] = model
                 submodels = getattr(model, "models", None)
                 if submodels is not None and len(submodels) > 1:
-                    print(
-                        f"[TS Music Stems] Model '{model_name}' is a Demucs bag model; "
-                        f"the first run downloads {len(submodels)} checkpoints once."
+                    logger.info(
+                        "%s Model '%s' is a Demucs bag model; the first run downloads %d checkpoints once.",
+                        LOG_PREFIX,
+                        model_name,
+                        len(submodels),
                     )
             else:
                 model = self.model_cache[model_name]
@@ -149,7 +157,7 @@ class TS_MusicStems:
 
         work_waveform = waveform.clone()
         if sample_rate != target_sr:
-            print(f"[TS Music Stems] Resampling {sample_rate} -> {target_sr} Hz")
+            logger.info("%s Resampling %s -> %s Hz", LOG_PREFIX, sample_rate, target_sr)
             resampler = torchaudio.transforms.Resample(orig_freq=sample_rate, new_freq=target_sr).to(waveform.device)
             work_waveform = resampler(work_waveform)
 
@@ -162,7 +170,7 @@ class TS_MusicStems:
         normalized_waveform = ((work_waveform - wav_mean) / wav_std).to(target_device)
 
         sys_jobs = jobs if jobs > 0 else 0
-        print(f"[TS Music Stems] Processing (shifts={shifts}, overlap={overlap})")
+        logger.info("%s Processing (shifts=%s, overlap=%s)", LOG_PREFIX, shifts, overlap)
         pbar, progress_stop_event, progress_thread = self._start_ui_progress(
             total_steps=total_progress_steps,
             warmup_step=25,
@@ -215,7 +223,7 @@ class TS_MusicStems:
         out_inst = {"waveform": instrumental, "sample_rate": target_sr}
 
         pbar.update_absolute(total_progress_steps, total=total_progress_steps)
-        print(f"[TS Music Stems] Done. Output shape: {vocals.shape}")
+        logger.info("%s Done. Output shape: %s", LOG_PREFIX, tuple(vocals.shape))
         return (out_vocal, out_bass, out_drums, out_others, out_inst)
 
 

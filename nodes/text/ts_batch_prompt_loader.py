@@ -26,7 +26,7 @@ class TS_BatchPromptLoader:
     OUTPUT_IS_LIST = (True, False)
     
     FUNCTION = "process_prompts"
-    CATEGORY = "utils/text"
+    CATEGORY = "TS/Text"
 
     def process_prompts(self, text):
         # 1. Нормализация переносов строк (Windows/Unix)

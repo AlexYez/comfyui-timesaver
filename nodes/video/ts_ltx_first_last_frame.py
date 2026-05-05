@@ -1,8 +1,12 @@
+import logging
 import traceback
 
 import torch
 
 from comfy_extras.nodes_lt import LTXVAddGuide
+
+logger = logging.getLogger("comfyui_timesaver.ts_ltx_first_last_frame")
+LOG_PREFIX = "[TS LTX First/Last Frame]"
 
 
 class TS_LTX_FirstLastFrame:
@@ -34,7 +38,7 @@ class TS_LTX_FirstLastFrame:
     RETURN_TYPES = ("CONDITIONING", "CONDITIONING", "LATENT")
     RETURN_NAMES = ("positive", "negative", "latent")
     FUNCTION = "execute"
-    CATEGORY = "conditioning/video_models"
+    CATEGORY = "TS/Video"
 
     @staticmethod
     def _is_valid_image(value) -> bool:
@@ -42,7 +46,7 @@ class TS_LTX_FirstLastFrame:
 
     @staticmethod
     def _log(message: str) -> None:
-        print(f"[TS_LTX_FirstLastFrame] {message}")
+        logger.info("%s %s", LOG_PREFIX, message)
 
     @staticmethod
     def _clone_latent(latent: dict) -> dict:
@@ -124,8 +128,7 @@ class TS_LTX_FirstLastFrame:
 
             return (positive_out, negative_out, latent_out)
         except Exception as exc:
-            print(f"[TS_LTX_FirstLastFrame] {exc}")
-            traceback.print_exc()
+            logger.error("%s %s\n%s", LOG_PREFIX, exc, traceback.format_exc())
             return (positive, negative, latent)
 
 

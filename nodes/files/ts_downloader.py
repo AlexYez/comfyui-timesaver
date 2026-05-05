@@ -1,12 +1,13 @@
 ﻿# Standard library imports
+import hashlib
+import json
+import logging
 import os
-import time
-import traceback
 import re
 import socket
+import time
+import traceback
 import zipfile
-import json
-import hashlib
 from urllib.parse import urlparse # Added for domain extraction
 
 # Third-party imports
@@ -19,6 +20,9 @@ try:
     from requests.utils import unquote as requests_unquote
 except ImportError:
     from urllib.parse import unquote as requests_unquote
+
+logger = logging.getLogger("comfyui_timesaver.ts_downloader")
+LOG_PREFIX = "[TS Downloader]"
 
 # ComfyUI Imports
 try:
@@ -44,7 +48,7 @@ class TS_DownloadFilesNode:
     RETURN_TYPES = ()
     FUNCTION = "execute_downloads"
     OUTPUT_NODE = True
-    CATEGORY = "Tools/TS_IO"
+    CATEGORY = "TS/Files"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -125,7 +129,7 @@ class TS_DownloadFilesNode:
         })
 
         if proxy_url and proxy_url.strip():
-            print(f"[INFO] TS_DownloadNode: Proxy enabled: {proxy_url}")
+            logger.info(f"{LOG_PREFIX} TS_DownloadNode: Proxy enabled: {proxy_url}")
             session.proxies = {
                 'http': proxy_url.strip(),
                 'https': proxy_url.strip(),
@@ -168,19 +172,18 @@ class TS_DownloadFilesNode:
         if not unique_bases:
             return True # No URLs to check, assume OK to proceed (or fail later)
 
-        print(f"[INFO] Checking connectivity to targets: {list(unique_bases)} ...")
-        
+        logger.info(f"{LOG_PREFIX} Checking connectivity to targets: {list(unique_bases)} ...")
         # 3. Check them
         is_online = False
         for base_url in unique_bases:
             try:
                 # Fast timeout: 2 seconds connect, 2 seconds read
                 session.head(base_url, timeout=(2, 2), allow_redirects=True)
-                print(f"[INFO] Target '{base_url}' is REACHABLE.")
+                logger.info(f"{LOG_PREFIX} Target '{base_url}' is REACHABLE.")
                 is_online = True
                 break # If at least one is up, we proceed
             except requests.RequestException:
-                print(f"[WARN] Target '{base_url}' is UNREACHABLE.")
+                logger.warning(f"{LOG_PREFIX} Target '{base_url}' is UNREACHABLE.")
                 continue
         
         return is_online
@@ -271,11 +274,11 @@ class TS_DownloadFilesNode:
             if len(parts) == 2:
                 url, target_path = parts[0].strip(), parts[1].strip()
                 if not url.startswith(('http://', 'https://')):
-                    print(f"[WARN] Line {i+1}: Invalid URL.")
+                    logger.warning(f"{LOG_PREFIX} Line {i+1}: Invalid URL.")
                     continue
                 target_path = self._resolve_target_directory(target_path)
                 if not target_path:
-                    print(f"[WARN] Line {i+1}: Invalid target path.")
+                    logger.warning(f"{LOG_PREFIX} Line {i+1}: Invalid target path.")
                     continue
                 files.append({'url': url, 'target_dir': target_path})
         return files
@@ -420,7 +423,7 @@ class TS_DownloadFilesNode:
             if response is not None:
                 response.close()
                 response = None
-            print(f"[WARN] HEAD probe failed: {head_error}. Trying lightweight GET probe...")
+            logger.warning(f"{LOG_PREFIX} HEAD probe failed: {head_error}. Trying lightweight GET probe...")
             probe_headers = domain_headers.copy()
             probe_headers["Range"] = "bytes=0-0"
             try:
@@ -436,7 +439,7 @@ class TS_DownloadFilesNode:
             except requests.RequestException as get_error:
                 if response is not None:
                     response.close()
-                print(f"[ERROR] Remote probe failed: {get_error}")
+                logger.error(f"{LOG_PREFIX} Remote probe failed: {get_error}")
                 return None
 
         try:
@@ -463,11 +466,11 @@ class TS_DownloadFilesNode:
             response.close()
 
     def _extract_zip(self, zip_path, extract_to):
-        print(f"[INFO] Auto-Unzip: Extracting '{os.path.basename(zip_path)}' to '{extract_to}'...")
+        logger.info(f"{LOG_PREFIX} Auto-Unzip: Extracting '{os.path.basename(zip_path)}' to '{extract_to}'...")
         try:
             with zipfile.ZipFile(zip_path, 'r') as zip_ref:
                 zip_ref.extractall(extract_to)
-            print(f"[OK] Extraction complete. Deleting archive.")
+            logger.info(f"{LOG_PREFIX} Extraction complete. Deleting archive.")
             try:
                 os.remove(zip_path)
             except OSError: pass
@@ -476,7 +479,7 @@ class TS_DownloadFilesNode:
             self._remove_file_silent(zip_path + ".part.tsmeta.json")
             return True
         except Exception as e:
-            print(f"[ERROR] Extraction failed: {e}")
+            logger.error(f"{LOG_PREFIX} Extraction failed: {e}")
             return False
 
     def _download_single_file(self, session, url, target_dir, skip_existing, verify_size, chunk_size_bytes, hf_domain_active, hf_token, ms_token, unzip_after_download, integrity_mode):
@@ -488,7 +491,7 @@ class TS_DownloadFilesNode:
             os.makedirs(target_dir, exist_ok=True)
             domain_headers = self._get_headers_for_url(processed_url, hf_token, ms_token)
 
-            print(f"[INFO] Connecting to: {processed_url}")
+            logger.info(f"{LOG_PREFIX} Connecting to: {processed_url}")
             remote_info = self._probe_remote_file(session, processed_url, domain_headers)
             if not remote_info:
                 return False
@@ -515,12 +518,11 @@ class TS_DownloadFilesNode:
 
             size_label = remote_file_size if remote_file_size > 0 else "Unknown"
             etag_label = remote_etag if remote_etag else "n/a"
-            print(f"[INFO] File: '{final_filename}' | Size: {size_label} | ETag: {etag_label} | Range: {'yes' if supports_ranges else 'no'} | Integrity: {integrity_mode}")
-
+            logger.info(f"{LOG_PREFIX} File: '{final_filename}' | Size: {size_label} | ETag: {etag_label} | Range: {'yes' if supports_ranges else 'no'} | Integrity: {integrity_mode}")
             # Phase 2: Validate Existing Complete File
             if skip_existing and os.path.exists(local_file_path):
                 if not verify_size:
-                    print(f"[OK] File exists. Skipping (size verification disabled).")
+                    logger.info(f"{LOG_PREFIX} File exists. Skipping (size verification disabled).")
                     if unzip_after_download and local_file_path.lower().endswith('.zip'):
                         self._extract_zip(local_file_path, target_dir)
                     return True
@@ -531,15 +533,15 @@ class TS_DownloadFilesNode:
                         cached_meta = self._read_json_file(final_meta_path) or {}
                         cached_sha = str(cached_meta.get("sha256", "")).lower()
                         if cached_sha == hf_expected_sha256:
-                            print(f"[OK] Verified existing HF file by cached SHA256. Skipping.")
+                            logger.info(f"{LOG_PREFIX} Verified existing HF file by cached SHA256. Skipping.")
                             if unzip_after_download and local_file_path.lower().endswith('.zip'):
                                 self._extract_zip(local_file_path, target_dir)
                             return True
 
-                        print(f"[INFO] Verifying existing HF file SHA256 (one-time check)...")
+                        logger.info(f"{LOG_PREFIX} Verifying existing HF file SHA256 (one-time check)...")
                         actual_sha256 = self._compute_sha256(local_file_path).lower()
                         if actual_sha256 == hf_expected_sha256:
-                            print(f"[OK] Existing HF file SHA256 verified. Skipping.")
+                            logger.info(f"{LOG_PREFIX} Existing HF file SHA256 verified. Skipping.")
                             self._write_json_file(final_meta_path, {
                                 "source_url": url,
                                 "resolved_url": processed_url,
@@ -553,10 +555,10 @@ class TS_DownloadFilesNode:
                                 self._extract_zip(local_file_path, target_dir)
                             return True
 
-                        print(f"[WARN] Existing HF file failed SHA256 verification. Re-downloading.")
+                        logger.warning(f"{LOG_PREFIX} Existing HF file failed SHA256 verification. Re-downloading.")
                         self._remove_file_silent(local_file_path)
                     else:
-                        print(f"[OK] Verified existing file by size. Skipping.")
+                        logger.info(f"{LOG_PREFIX} Verified existing file by size. Skipping.")
                         self._write_json_file(final_meta_path, {
                             "source_url": url,
                             "resolved_url": processed_url,
@@ -580,11 +582,11 @@ class TS_DownloadFilesNode:
                             "remote_etag": remote_etag,
                             "updated_at": int(time.time()),
                         })
-                        print(f"[INFO] Found truncated final file. Moved to .part for resume.")
+                        logger.info(f"{LOG_PREFIX} Found truncated final file. Moved to .part for resume.")
                     except OSError as move_error:
-                        print(f"[WARN] Could not promote truncated file to .part: {move_error}")
+                        logger.warning(f"{LOG_PREFIX} Could not promote truncated file to .part: {move_error}")
                 elif remote_file_size > 0 and local_file_size > remote_file_size:
-                    print(f"[WARN] Existing file is larger than remote. Re-downloading.")
+                    logger.warning(f"{LOG_PREFIX} Existing file is larger than remote. Re-downloading.")
                     self._remove_file_silent(local_file_path)
 
             # Phase 3: Decide Resume Strategy
@@ -593,7 +595,7 @@ class TS_DownloadFilesNode:
             if os.path.exists(temp_file_path):
                 temp_meta = self._read_json_file(temp_meta_path)
                 if not self._is_partial_meta_compatible(temp_meta, url, remote_file_size, remote_etag):
-                    print(f"[WARN] Existing .part belongs to a different file. Removing stale partial.")
+                    logger.warning(f"{LOG_PREFIX} Existing .part belongs to a different file. Removing stale partial.")
                     self._remove_file_silent(temp_file_path)
                     self._remove_file_silent(temp_meta_path)
                 else:
@@ -602,17 +604,17 @@ class TS_DownloadFilesNode:
                         self._remove_file_silent(temp_file_path)
                         self._remove_file_silent(temp_meta_path)
                     elif remote_file_size > 0 and temp_file_size > remote_file_size:
-                        print(f"[WARN] .part is larger than remote file. Removing stale partial.")
+                        logger.warning(f"{LOG_PREFIX} .part is larger than remote file. Removing stale partial.")
                         self._remove_file_silent(temp_file_path)
                         self._remove_file_silent(temp_meta_path)
                     elif remote_file_size > 0 and temp_file_size == remote_file_size:
-                        print(f"[INFO] .part size matches remote. Finalizing without re-download.")
+                        logger.info(f"{LOG_PREFIX} .part size matches remote. Finalizing without re-download.")
                         part_is_valid = True
                         if use_hf_sha256:
-                            print(f"[INFO] Verifying completed .part with HF SHA256...")
+                            logger.info(f"{LOG_PREFIX} Verifying completed .part with HF SHA256...")
                             part_sha256 = self._compute_sha256(temp_file_path).lower()
                             if part_sha256 != hf_expected_sha256:
-                                print(f"[ERROR] .part SHA256 mismatch. Removing corrupt partial.")
+                                logger.error(f"{LOG_PREFIX} .part SHA256 mismatch. Removing corrupt partial.")
                                 self._remove_file_silent(temp_file_path)
                                 self._remove_file_silent(temp_meta_path)
                                 part_is_valid = False
@@ -628,15 +630,14 @@ class TS_DownloadFilesNode:
                                 "sha256": hf_expected_sha256 if use_hf_sha256 else None,
                                 "verified_at": int(time.time()),
                             })
-                            print(f"[OK] Saved: {local_file_path}")
+                            logger.info(f"{LOG_PREFIX} Saved: {local_file_path}")
                             if unzip_after_download and local_file_path.lower().endswith('.zip'):
                                 self._extract_zip(local_file_path, target_dir)
                             return True
                     elif temp_file_size > 0:
                         resume_byte_pos = temp_file_size
                         file_mode = "ab"
-                        print(f"[INFO] Resuming from {resume_byte_pos} bytes.")
-
+                        logger.info(f"{LOG_PREFIX} Resuming from {resume_byte_pos} bytes.")
             # Phase 4: Open Download Stream
             request_headers = domain_headers.copy()
             if resume_byte_pos > 0:
@@ -654,7 +655,7 @@ class TS_DownloadFilesNode:
                 # Requested range is invalid (typically stale/incompatible partial).
                 response_get.close()
                 response_get = None
-                print(f"[WARN] Server rejected resume range (416). Restarting full download.")
+                logger.warning(f"{LOG_PREFIX} Server rejected resume range (416). Restarting full download.")
                 self._remove_file_silent(temp_file_path)
                 self._remove_file_silent(temp_meta_path)
                 resume_byte_pos = 0
@@ -670,7 +671,7 @@ class TS_DownloadFilesNode:
                 # Range was ignored (200). Restart cleanly to avoid corruption.
                 response_get.close()
                 response_get = None
-                print(f"[WARN] Server ignored resume request. Restarting full download.")
+                logger.warning(f"{LOG_PREFIX} Server ignored resume request. Restarting full download.")
                 self._remove_file_silent(temp_file_path)
                 self._remove_file_silent(temp_meta_path)
                 resume_byte_pos = 0
@@ -738,19 +739,19 @@ class TS_DownloadFilesNode:
             temp_final_size = self._safe_int(os.path.getsize(temp_file_path), -1)
             if verify_size and remote_file_size > 0 and temp_final_size != remote_file_size:
                 if temp_final_size < remote_file_size:
-                    print(f"[WARN] Download incomplete ({temp_final_size}/{remote_file_size}). Keeping .part for resume.")
+                    logger.warning(f"{LOG_PREFIX} Download incomplete ({temp_final_size}/{remote_file_size}). Keeping .part for resume.")
                 else:
-                    print(f"[ERROR] Downloaded file is larger than expected. Removing .part.")
+                    logger.error(f"{LOG_PREFIX} Downloaded file is larger than expected. Removing .part.")
                     self._remove_file_silent(temp_file_path)
                     self._remove_file_silent(temp_meta_path)
                 return False
 
             verified_sha256 = None
             if use_hf_sha256:
-                print(f"[INFO] Verifying HF SHA256...")
+                logger.info(f"{LOG_PREFIX} Verifying HF SHA256...")
                 verified_sha256 = self._compute_sha256(temp_file_path).lower()
                 if verified_sha256 != hf_expected_sha256:
-                    print(f"[ERROR] HF SHA256 mismatch. Removing corrupted file.")
+                    logger.error(f"{LOG_PREFIX} HF SHA256 mismatch. Removing corrupted file.")
                     self._remove_file_silent(temp_file_path)
                     self._remove_file_silent(temp_meta_path)
                     return False
@@ -767,34 +768,33 @@ class TS_DownloadFilesNode:
                 "sha256": verified_sha256,
                 "verified_at": int(time.time()),
             })
-            print(f"[OK] Saved: {local_file_path}")
-
+            logger.info(f"{LOG_PREFIX} Saved: {local_file_path}")
             if unzip_after_download and local_file_path.lower().endswith('.zip'):
                 self._extract_zip(local_file_path, target_dir)
 
             return True
 
         except Exception as e:
-            print(f"[ERROR] Download failed: {e}")
+            logger.error(f"{LOG_PREFIX} Download failed: {e}")
             return False
         finally:
             if response_get is not None:
                 try:
                     response_get.close()
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("%s Closing GET probe response failed: %s", LOG_PREFIX, exc)
 
     def execute_downloads(self, file_list: str, skip_existing: bool = True, verify_size: bool = True, chunk_size_kb: int = 4096, hf_token: str = "", hf_domain: str = "huggingface.co, hf-mirror.com", proxy_url: str = "", modelscope_token: str = "", unzip_after_download: bool = False, enable: bool = True, integrity_mode: str = "hf_sha256_auto"):
         
         if not enable:
-            print(f"\n--- TS_DownloadNode v2.12 Skipped (Disabled) ---")
+            logger.info("%s Skipped (disabled).", LOG_PREFIX)
             return ()
             
-        print(f"\n--- TS_DownloadNode v2.12 Started ---")
+        logger.info("%s Started.", LOG_PREFIX)
         chunk_size_bytes = max(1024, chunk_size_kb * 1024) 
         integrity_mode_value = str(integrity_mode).strip().lower()
         if integrity_mode_value not in {"hf_sha256_auto", "size_only"}:
-            print(f"[WARN] Unknown integrity_mode '{integrity_mode}'. Fallback to 'hf_sha256_auto'.")
+            logger.warning(f"{LOG_PREFIX} Unknown integrity_mode '{integrity_mode}'. Fallback to 'hf_sha256_auto'.")
             integrity_mode_value = "hf_sha256_auto"
 
         # 1. Parse files first
@@ -806,13 +806,12 @@ class TS_DownloadFilesNode:
 
         # 3. Check connectivity ONLY to targets found in file_list
         if not self._check_connectivity_to_targets(files_to_download, session, hf_domain):
-            print("[WARN] All target servers are unreachable. Switching to OFFLINE MODE. Execution finished.")
+            logger.warning(f"{LOG_PREFIX} All target servers are unreachable. Switching to OFFLINE MODE. Execution finished.")
             return ()
 
         # 4. Determine Active Mirror (if applicable)
         active_mirror = self._select_best_mirror(session, hf_domain)
-        print(f"[INFO] Using HF Mirror: '{active_mirror}'")
-        
+        logger.info(f"{LOG_PREFIX} Using HF Mirror: '{active_mirror}'")
         # 5. Start Downloads
         success = 0; failed = 0
         for file_info in files_to_download:
@@ -821,7 +820,7 @@ class TS_DownloadFilesNode:
             else:
                 failed += 1
         
-        print(f"\n--- Done. Success: {success}, Failed: {failed} ---")
+        logger.info("%s Done. Success: %d, Failed: %d", LOG_PREFIX, success, failed)
         return ()
 
 NODE_CLASS_MAPPINGS = {

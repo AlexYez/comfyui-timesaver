@@ -1,3 +1,4 @@
+import logging
 from enum import Enum
 
 import comfy.model_management as model_management
@@ -11,6 +12,9 @@ except Exception as import_error:
     nvvfx = None
     TS_NVVFX_IMPORT_ERROR = import_error
 
+logger = logging.getLogger("comfyui_timesaver.ts_rtx_upscaler")
+LOG_PREFIX = "[TS RTX Upscaler]"
+
 
 class TS_UpscaleType(str, Enum):
     SCALE_BY = "scale by multiplier"
@@ -21,7 +25,7 @@ class TS_RTX_Upscaler:
     RETURN_TYPES = ("IMAGE",)
     RETURN_NAMES = ("upscaled_images",)
     FUNCTION = "upscale"
-    CATEGORY = "TS/Upscaling"
+    CATEGORY = "TS/Video"
 
     MAX_PIXELS_PER_BATCH = 1024 * 1024 * 16
 
@@ -71,9 +75,14 @@ class TS_RTX_Upscaler:
         quality_level = self._resolve_quality_level(quality)
         batch_size = self._resolve_batch_size(output_width, output_height)
 
-        print(
-            f"[TS RTX Upscaler] input={tuple(images.shape)} target={output_width}x{output_height} "
-            f"quality={quality} batch_size={batch_size}"
+        logger.info(
+            "%s input=%s target=%dx%d quality=%s batch_size=%d",
+            LOG_PREFIX,
+            tuple(images.shape),
+            output_width,
+            output_height,
+            quality,
+            batch_size,
         )
 
         rgb_images, alpha_images = self._split_alpha(images)
@@ -93,7 +102,7 @@ class TS_RTX_Upscaler:
 
         final_images = final_images.clamp(0.0, 1.0).to(torch.float32).cpu()
 
-        print(f"[TS RTX Upscaler] output={tuple(final_images.shape)}")
+        logger.info("%s output=%s", LOG_PREFIX, tuple(final_images.shape))
         return (final_images,)
 
     def _ensure_runtime_ready(self):
@@ -168,9 +177,11 @@ class TS_RTX_Upscaler:
 
         for fallback_name in ("HIGH", "MEDIUM", "LOW", "ULTRA"):
             if mapping.get(fallback_name) is not None:
-                print(
-                    f"[TS RTX Upscaler] quality={quality} not available. "
-                    f"Fallback to {fallback_name}."
+                logger.warning(
+                    "%s quality=%s not available. Fallback to %s.",
+                    LOG_PREFIX,
+                    quality,
+                    fallback_name,
                 )
                 return mapping[fallback_name]
 

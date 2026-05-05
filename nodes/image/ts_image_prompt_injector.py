@@ -8,6 +8,11 @@ import time
 
 import torch
 import comfy.utils
+import logging
+
+
+logger = logging.getLogger("comfyui_timesaver.ts_image_prompt_injector")
+LOG_PREFIX = "[TS Image Prompt Injector]"
 
 
 class TS_ImagePromptInjector:
@@ -26,11 +31,11 @@ class TS_ImagePromptInjector:
     RETURN_TYPES = ("IMAGE",)
     RETURN_NAMES = ("image",)
     FUNCTION = "execute"
-    CATEGORY = "TS/Image Tools"
+    CATEGORY = "TS/Image"
 
     @staticmethod
     def _log(message: str) -> None:
-        print(f"[TS Image Prompt Injector] {message}")
+        logger.info("%s %s", LOG_PREFIX, message)
 
     @classmethod
     def _log_tensor(cls, label: str, tensor: Optional[torch.Tensor]) -> None:

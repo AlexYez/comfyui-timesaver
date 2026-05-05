@@ -158,6 +158,10 @@ PROMPT_TARGETS = ("auto", "image", "video", "music")
 
 _MODEL_LOCK = threading.Lock()
 _QWEN_ENGINE: TS_Qwen3_VL_V3 | None = None
+# Hard cap on /ts_super_prompt/enhance text length. Anything bigger is almost
+# certainly a misuse or DoS attempt — Qwen3.5 has a much smaller context budget
+# in practice and 8 KiB is well above any reasonable creative prompt.
+_ENHANCE_MAX_TEXT_LEN = 8192
 
 
 def _log_info(message: str) -> None:
@@ -1484,8 +1488,8 @@ def _generate_with_qwen(
                 if engine._is_oom_error(exc):
                     try:
                         model.to("cpu")
-                    except Exception:
-                        pass
+                    except Exception as cleanup_exc:
+                        LOGGER.debug("%s OOM cleanup move-to-CPU failed: %s", LOG_PREFIX, cleanup_exc)
                     engine._prepare_memory(force=True)
                     raise RuntimeError("Out of memory during Qwen GPU transfer.") from exc
                 raise
@@ -1521,18 +1525,20 @@ def _generate_with_qwen(
             gen_params["do_sample"] = float(gen_params.get("temperature", 0.0) or 0.0) > 0.0
             gen_params = _normalize_generation_params(gen_params)
 
+            # Local import keeps torch out of module-level eval so contract
+            # tests can stub `nodes.llm.ts_qwen3_vl` without importing torch.
+            import torch
+
             rng_cuda_devices = engine._cuda_indices_for_rng(model, input_device)
             if engine._supports_generator(model):
                 gen_device = engine._select_generator_device(input_device)
-                gen = __import__("torch").Generator(device=gen_device)
+                gen = torch.Generator(device=gen_device)
                 gen.manual_seed(int(SUPER_PROMPT_SEED))
                 gen_params["generator"] = gen
                 rng_context = nullcontext()
             else:
-                torch = __import__("torch")
                 rng_context = torch.random.fork_rng(devices=rng_cuda_devices) if rng_cuda_devices else torch.random.fork_rng()
 
-            torch = __import__("torch")
             dtype = engine._dtype_from_precision(resolved_precision)
             autocast_device = input_device if hasattr(input_device, "type") else getattr(model, "device", None)
             use_autocast = getattr(autocast_device, "type", None) == "cuda" and dtype in (torch.float16, torch.bfloat16)
@@ -1572,8 +1578,8 @@ def _generate_with_qwen(
                 try:
                     model.to("cpu")
                     engine._prepare_memory(force=True)
-                except Exception:
-                    pass
+                except Exception as cleanup_exc:
+                    LOGGER.debug("%s Post-generation soft-offload failed: %s", LOG_PREFIX, cleanup_exc)
             gc.collect()
     finally:
         _MODEL_LOCK.release()
@@ -1588,12 +1594,32 @@ async def enhance_endpoint(request: web.Request) -> web.StreamResponse:
     except Exception:
         data = {}
 
+    text = str(data.get("text") or "")
+    if len(text) > _ENHANCE_MAX_TEXT_LEN:
+        return web.json_response(
+            {"error": f"text exceeds {_ENHANCE_MAX_TEXT_LEN} characters."},
+            status=413,
+        )
+
+    preset = str(data.get("system_preset") or DEFAULT_PRESET)
+    if preset not in _preset_options():
+        return web.json_response({"error": "Unknown system_preset."}, status=400)
+
+    # Racy fast-fail for obviously-busy Qwen. Internal _generate_with_qwen still
+    # acquires _MODEL_LOCK with proper blocking, so this only spares the caller
+    # the trip into the worker thread when the model is already in use.
+    if _MODEL_LOCK.locked():
+        return web.json_response(
+            {"error": "Qwen is busy with another request."},
+            status=429,
+        )
+
     operation_id = str(data.get("operation_id") or "")
     try:
         result = await asyncio.to_thread(
             _generate_with_qwen,
-            str(data.get("text") or ""),
-            str(data.get("system_preset") or DEFAULT_PRESET),
+            text,
+            preset,
             operation_id,
             None,
         )

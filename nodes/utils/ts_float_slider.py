@@ -23,7 +23,7 @@ class TS_FloatSlider:
     RETURN_TYPES = ("FLOAT",)
     RETURN_NAMES = ("float_value",)
     FUNCTION = "get_value"
-    CATEGORY = "TS Tools/Sliders"
+    CATEGORY = "TS/Utils"
     DESCRIPTION = "Float slider (0.0 - 1.0)"
 
     def get_value(self, value):

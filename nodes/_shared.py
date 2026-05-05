@@ -4,14 +4,22 @@ Private module: not registered as a public node by the loader (the
 underscore prefix is honored by `_discover_module_entries` in __init__.py).
 """
 
+import logging
+
+_logger = logging.getLogger("comfyui_timesaver.ts_shared")
+
 
 class TS_Logger:
-    """Minimal logging utility used by interface/animation/utility nodes."""
+    """Thin facade over stdlib logging for slider/switch/math/animation_preview nodes."""
 
     @staticmethod
-    def log(node_name, message, color="cyan"):
-        print(f"[TS {node_name}] {message}")
+    def log(node_name: str, message: str) -> None:
+        _logger.info("[TS %s] %s", node_name, message)
 
     @staticmethod
-    def error(node_name, message):
-        TS_Logger.log(node_name, message, "red")
+    def warn(node_name: str, message: str) -> None:
+        _logger.warning("[TS %s] %s", node_name, message)
+
+    @staticmethod
+    def error(node_name: str, message: str) -> None:
+        _logger.error("[TS %s] %s", node_name, message)

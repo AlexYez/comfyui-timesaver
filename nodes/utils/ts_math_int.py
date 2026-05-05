@@ -32,7 +32,7 @@ class TS_Math_Int:
     RETURN_TYPES = ("INT",)
     RETURN_NAMES = ("result",)
     FUNCTION = "calculate"
-    CATEGORY = "TS/Math"
+    CATEGORY = "TS/Utils"
     DESCRIPTION = "Integer math operations"
 
     def calculate(self, a, b, operation):

@@ -23,7 +23,7 @@ class TS_FilePathLoader:
     RETURN_TYPES = ("STRING", "STRING")
     RETURN_NAMES = ("file_path", "file_name")
     FUNCTION = "get_file_path"
-    CATEGORY = "file_utils"
+    CATEGORY = "TS/Files"
 
     def get_file_path(self, folder_path: str, index: int) -> tuple[str, str]:
         # Нормализуем путь для корректной обработки пробелов и специальных символов

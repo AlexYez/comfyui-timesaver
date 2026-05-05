@@ -275,7 +275,7 @@ class TS_PromptBuilder:
     RETURN_TYPES = ("STRING",)
     RETURN_NAMES = ("prompt",)
     FUNCTION = "build_prompt"
-    CATEGORY = "TS/Prompt"
+    CATEGORY = "TS/Text"
 
     @classmethod
     def IS_CHANGED(cls, seed, config_json):

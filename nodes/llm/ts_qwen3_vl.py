@@ -43,7 +43,7 @@ class TS_Qwen3_VL_V3:
     _CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 
     def __init__(self):
-        self._logger = logging.getLogger("TS_Qwen3_VL_V3")
+        self._logger = logging.getLogger("comfyui_timesaver.ts_qwen3_vl")
         self._cache = {}
         self._cache_order = []
         self._cache_max_items = 1  # Reduced to 1 to prevent OOM when switching models
@@ -370,8 +370,8 @@ class TS_Qwen3_VL_V3:
                     self._logger.info("[TS Qwen3 VL V3] Soft-offloading model to CPU to free VRAM.")
                     model.to("cpu")
                     self._prepare_memory(force=True)
-                except Exception:
-                    pass
+                except Exception as cleanup_exc:
+                    self._logger.debug("[TS Qwen3 VL V3] Soft-offload to CPU failed: %s", cleanup_exc)
 
         out_tensor = self._pil_to_tensor(processed_images)
         return (output_text, out_tensor)
@@ -464,7 +464,7 @@ class TS_Qwen3_VL_V3:
                 if not isinstance(data, dict):
                     data = {}
         except Exception as e:
-            logging.getLogger("TS_Qwen3_VL_V3").warning(f"[TS Qwen3 VL V3] Preset load failed: {e}")
+            logging.getLogger("comfyui_timesaver.ts_qwen3_vl").warning(f"[TS Qwen3 VL V3] Preset load failed: {e}")
             data = {}
         return data, list(data.keys())
 
@@ -647,8 +647,12 @@ class TS_Qwen3_VL_V3:
         if hasattr(inputs, "to"):
             try:
                 return inputs.to(device)
-            except Exception:
-                pass
+            except Exception as exc:
+                logging.getLogger("comfyui_timesaver.ts_qwen3_vl").debug(
+                    "[TS Qwen3 VL V3] inputs.to(%s) failed, falling back to type-specific dispatch: %s",
+                    device,
+                    exc,
+                )
         if isinstance(inputs, torch.Tensor):
             return inputs.to(device)
         if isinstance(inputs, np.ndarray):
@@ -736,8 +740,10 @@ class TS_Qwen3_VL_V3:
         if match:
             try:
                 return float(match.group(1))
-            except Exception:
-                pass
+            except (TypeError, ValueError) as exc:
+                logging.getLogger("comfyui_timesaver.ts_qwen3_vl").debug(
+                    "[TS Qwen3 VL V3] Could not parse model size from %r: %s", match.group(1), exc
+                )
         return 4.0
 
     def _resolve_precision(self, precision, model_id):
@@ -814,8 +820,8 @@ class TS_Qwen3_VL_V3:
                 else:
                     return 0.0
                 return 0.0
-        except Exception:
-            pass
+        except Exception as exc:
+            self._logger.debug("[TS Qwen3 VL V3] VRAM probe failed: %s", exc)
         return 0.0
 
     def _dtype_from_precision(self, precision):
@@ -1130,8 +1136,8 @@ class TS_Qwen3_VL_V3:
             return
         try:
             mm.soft_empty_cache()
-        except Exception:
-            pass
+        except Exception as exc:
+            self._logger.debug("[TS Qwen3 VL V3] mm.soft_empty_cache() failed: %s", exc)
         gc.collect()
         if torch.cuda.is_available():
             torch.cuda.empty_cache()

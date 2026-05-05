@@ -9,7 +9,7 @@ import torch
 
 
 class TS_Color_Grade:
-    CATEGORY = "TS/Color"
+    CATEGORY = "TS/Image"
 
     @staticmethod
     def _ts_slider(default, min_val, max_val, step, round_val=None):

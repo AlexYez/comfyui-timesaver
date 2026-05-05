@@ -4,8 +4,12 @@ node_id: TS_Free_Video_Memory
 """
 
 import gc
+import logging
 
 import torch
+
+logger = logging.getLogger("comfyui_timesaver.ts_free_video_memory")
+LOG_PREFIX = "[TS Free Video Memory]"
 
 
 class TS_Free_Video_Memory:
@@ -21,13 +25,13 @@ class TS_Free_Video_Memory:
 
     RETURN_TYPES = ("IMAGE",)
     FUNCTION = "cleanup_memory"
-    CATEGORY = "video"
+    CATEGORY = "TS/Video"
 
     def cleanup_memory(self, images, aggressive_cleanup="disable", report_memory="enable"):
         if report_memory == "enable" and torch.cuda.is_available():
             allocated = torch.cuda.memory_allocated() / (1024 ** 3)
             reserved = torch.cuda.memory_reserved() / (1024 ** 3)
-            print(f"Before cleanup: {allocated:.2f}GB allocated, {reserved:.2f}GB reserved")
+            logger.info("%s Before cleanup: %.2fGB allocated, %.2fGB reserved", LOG_PREFIX, allocated, reserved)
 
         gc.collect()
 
@@ -39,12 +43,16 @@ class TS_Free_Video_Memory:
                     try:
                         torch.cuda.caching_allocator_delete_caches()
                     except Exception as e:
-                        print(f"Note: torch.cuda.caching_allocator_delete_caches() failed (might be older PyTorch): {e}")
+                        logger.warning(
+                            "%s torch.cuda.caching_allocator_delete_caches() failed (older PyTorch?): %s",
+                            LOG_PREFIX,
+                            e,
+                        )
 
         if report_memory == "enable" and torch.cuda.is_available():
             allocated = torch.cuda.memory_allocated() / (1024 ** 3)
             reserved = torch.cuda.memory_reserved() / (1024 ** 3)
-            print(f"After cleanup: {allocated:.2f}GB allocated, {reserved:.2f}GB reserved")
+            logger.info("%s After cleanup: %.2fGB allocated, %.2fGB reserved", LOG_PREFIX, allocated, reserved)
 
         return (images,)
 

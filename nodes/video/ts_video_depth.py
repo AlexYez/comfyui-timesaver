@@ -1,13 +1,18 @@
-﻿import os
-import torch
-import numpy as np
-import matplotlib.cm as cm
-import cv2
-import gc 
+﻿import gc
+import logging
+import os
 
-import folder_paths
+import cv2
+import matplotlib.cm as cm
+import numpy as np
+import torch
+
 import comfy.model_management as mm
+import folder_paths
 from comfy.utils import ProgressBar, load_torch_file
+
+logger = logging.getLogger("comfyui_timesaver.ts_video_depth")
+LOG_PREFIX = "[TS Video Depth]"
 
 # --- Импорт модели VideoDepthAnything ---
 try:
@@ -22,8 +27,7 @@ except ImportError:
             # Final fallback: global import path
             from video_depth_anything.video_depth import VideoDepthAnything
         except ImportError as e:
-            print(f"[TS_VideoDepth] CRITICAL IMPORT ERROR: Could not import VideoDepthAnything model.")
-            print(f"[TS_VideoDepth] Error details: {e}")
+            logger.error("%s CRITICAL IMPORT ERROR: Could not import VideoDepthAnything model: %s", LOG_PREFIX, e)
             VideoDepthAnything = None
 # --- Конец импорта ---
 
@@ -74,7 +78,7 @@ def postprocess_vda_colormap_internal(depths_np_float32_input, colormap_name="gr
                                       dithering_strength=0.0, apply_median_blur=False, 
                                       target_h=None, target_w=None, upscale_algorithm="Lanczos4"): # Добавлен upscale_algorithm
     if depths_np_float32_input is None or depths_np_float32_input.size == 0:
-        print("[TS_VideoDepth] Warning: Empty depth map received in postprocess.")
+        logger.warning("%s Empty depth map received in postprocess.", LOG_PREFIX)
         return torch.empty((0, 0, 0, 3), dtype=torch.float32)
 
     num_frames, current_h, current_w = depths_np_float32_input.shape
@@ -82,7 +86,7 @@ def postprocess_vda_colormap_internal(depths_np_float32_input, colormap_name="gr
 
     MEDIAN_KERNEL_SIZE = 5 
     if apply_median_blur:
-        print(f"[TS_VideoDepth] Applying Median Blur with kernel size: {MEDIAN_KERNEL_SIZE} on float32 data.")
+        logger.info("%s Applying Median Blur with kernel size %s on float32 data.", LOG_PREFIX, MEDIAN_KERNEL_SIZE)
         processed_depths_list_blur = []
         for i in range(num_frames):
             slice_to_blur = np.ascontiguousarray(current_depths_processed[i], dtype=np.float32)
@@ -90,7 +94,7 @@ def postprocess_vda_colormap_internal(depths_np_float32_input, colormap_name="gr
                 blurred_slice = cv2.medianBlur(slice_to_blur, MEDIAN_KERNEL_SIZE)
                 processed_depths_list_blur.append(blurred_slice)
             except cv2.error as e:
-                print(f"[TS_VideoDepth] OpenCV Error during medianBlur: {e}. Skipping for this frame.")
+                logger.warning("%s OpenCV Error during medianBlur: %s. Skipping for this frame.", LOG_PREFIX, e)
                 processed_depths_list_blur.append(slice_to_blur)
         if processed_depths_list_blur:
             current_depths_processed = np.array(processed_depths_list_blur, dtype=np.float32)
@@ -105,7 +109,15 @@ def postprocess_vda_colormap_internal(depths_np_float32_input, colormap_name="gr
     chosen_interpolation = interpolation_methods.get(upscale_algorithm, cv2.INTER_LANCZOS4) # По умолчанию Lanczos4
 
     if target_h is not None and target_w is not None and (current_h != target_h or current_w != target_w):
-        print(f"[TS_VideoDepth] Upscaling depth map from ({current_h},{current_w}) to ({target_h},{target_w}) using {upscale_algorithm}.")
+        logger.info(
+            "%s Upscaling depth map from (%s,%s) to (%s,%s) using %s.",
+            LOG_PREFIX,
+            current_h,
+            current_w,
+            target_h,
+            target_w,
+            upscale_algorithm,
+        )
         upscaled_depths_list = []
         for i in range(num_frames):
             upscaled_slice = cv2.resize(current_depths_processed[i], (target_w, target_h), interpolation=chosen_interpolation)
@@ -138,7 +150,7 @@ def postprocess_vda_colormap_internal(depths_np_float32_input, colormap_name="gr
         try:
             colormap_fn = cm.get_cmap(colormap_name)
         except ValueError:
-            print(f"[TS_VideoDepth] Warning: Colormap '{colormap_name}' not found. Defaulting to 'gray'.")
+            logger.warning("%s Colormap '%s' not found. Defaulting to 'gray'.", LOG_PREFIX, colormap_name)
             output_array_rgb[..., 0] = normalized_depths; output_array_rgb[..., 1] = normalized_depths; output_array_rgb[..., 2] = normalized_depths
         else:
             for i in range(num_frames):
@@ -180,21 +192,26 @@ class TS_VideoDepth:
     RETURN_TYPES = ("IMAGE",)
     RETURN_NAMES = ("image",)
     FUNCTION = "execute_process_unified" 
-    CATEGORY = "Tools/Video"
+    CATEGORY = "TS/Video"
 
     @classmethod
     def _ensure_model_loaded_on_cpu(cls, model_filename_to_load):
         # ... (код без изменений) ...
         if cls._loaded_model_instance is None or cls._loaded_model_filename != model_filename_to_load or cls._model_on_device_type_str != 'cpu':
             if cls._loaded_model_instance is not None and cls._model_on_device_type_str != 'cpu':
-                print(f"[TS_VideoDepth] Offloading previous model: {cls._loaded_model_filename} from {cls._model_on_device_type_str}")
+                logger.info(
+                    "%s Offloading previous model: %s from %s",
+                    LOG_PREFIX,
+                    cls._loaded_model_filename,
+                    cls._model_on_device_type_str,
+                )
                 try:
                     cls._loaded_model_instance.to('cpu')
                     if cls._model_on_device_type_str == 'cuda' and torch.cuda.is_available():
                         torch.cuda.synchronize() 
                         torch.cuda.empty_cache()
                 except Exception as e:
-                    print(f"[TS_VideoDepth] Minor error during offload of previous model: {e}")
+                    logger.warning("%s Minor error during offload of previous model: %s", LOG_PREFIX, e)
             
             if cls._loaded_model_instance is None or cls._loaded_model_filename != model_filename_to_load:
                 del cls._loaded_model_instance 
@@ -202,7 +219,7 @@ class TS_VideoDepth:
                 gc.collect()
                 if torch.cuda.is_available(): torch.cuda.empty_cache()
 
-                print(f"[TS_VideoDepth] Loading model: {model_filename_to_load} to CPU")
+                logger.info("%s Loading model: %s to CPU", LOG_PREFIX, model_filename_to_load)
                 download_path = os.path.join(folder_paths.models_dir, "videodepthanything")
                 model_path = os.path.join(download_path, model_filename_to_load)
                 if not os.path.exists(model_path):
@@ -228,7 +245,7 @@ class TS_VideoDepth:
                  cls._loaded_model_instance.to('cpu')
 
             cls._model_on_device_type_str = 'cpu'
-            print(f"[TS_VideoDepth] Model {model_filename_to_load} is confirmed on CPU.")
+            logger.info("%s Model %s is confirmed on CPU.", LOG_PREFIX, model_filename_to_load)
         return cls._loaded_model_instance
 
     # Добавлен upscale_algorithm в аргументы
@@ -240,7 +257,7 @@ class TS_VideoDepth:
 
         if current_processing_device.type == 'cuda':
             if not TS_VideoDepth._first_gpu_call_done:
-                print("[TS_VideoDepth] First GPU call for this model in session: Performing VRAM clear.")
+                logger.info("%s First GPU call for this model in session: performing VRAM clear.", LOG_PREFIX)
                 gc.collect(); torch.cuda.empty_cache(); torch.cuda.synchronize() 
             model_to_use.to(current_processing_device)
             TS_VideoDepth._model_on_device_type_str = current_processing_device.type
@@ -251,7 +268,12 @@ class TS_VideoDepth:
             processed_input_size = ((input_size // 14) * 14)
             if processed_input_size == 0 and input_size > 0 : processed_input_size = 14
             if processed_input_size != input_size:
-                 print(f"[TS_VideoDepth] Adjusted input_size from {input_size} to {processed_input_size} (to be multiple of 14).")
+                logger.info(
+                    "%s Adjusted input_size from %s to %s (to be multiple of 14).",
+                    LOG_PREFIX,
+                    input_size,
+                    processed_input_size,
+                )
         else:
             processed_input_size = input_size
 
@@ -262,18 +284,24 @@ class TS_VideoDepth:
         try:
             if current_processing_device.type == 'cuda': torch.cuda.synchronize()
             with torch.no_grad():
-                print(f"[TS_VideoDepth] Starting inference with input_size={processed_input_size}, precision={precision} on {current_processing_device}...")
+                logger.info(
+                    "%s Starting inference with input_size=%s, precision=%s on %s",
+                    LOG_PREFIX,
+                    processed_input_size,
+                    precision,
+                    current_processing_device,
+                )
                 depths_np_raw = model_to_use.infer_video_depth(
                     images_np_uint8, input_size=processed_input_size, device=current_processing_device,
                     pbar=pbar, fp32=(precision == 'fp32')
                 )
             if current_processing_device.type == 'cuda':
                 torch.cuda.synchronize(); TS_VideoDepth._first_gpu_call_done = True 
-            print(f"[TS_VideoDepth] Inference complete.")
+            logger.info("%s Inference complete.", LOG_PREFIX)
         except Exception as e:
-            print(f"[TS_VideoDepth] EXCEPTION DURING MODEL INFERENCE: {type(e).__name__} - {e}")
+            logger.error("%s EXCEPTION DURING MODEL INFERENCE: %s - %s", LOG_PREFIX, type(e).__name__, e)
             if TS_VideoDepth._model_on_device_type_str != 'cpu':
-                print(f"[TS_VideoDepth] Offloading model to CPU due to exception...")
+                logger.info("%s Offloading model to CPU due to exception.", LOG_PREFIX)
                 model_to_use.to('cpu'); TS_VideoDepth._model_on_device_type_str = 'cpu'
                 if current_processing_device.type == 'cuda': torch.cuda.synchronize(); torch.cuda.empty_cache()
             gc.collect(); raise e 
@@ -285,7 +313,7 @@ class TS_VideoDepth:
         del images_np_uint8
 
         if depths_np_raw is None:
-            print("[TS_VideoDepth] Error: Model inference returned None but no exception was raised.")
+            logger.error("%s Model inference returned None but no exception was raised.", LOG_PREFIX)
             return (torch.zeros((images.shape[0], original_h, original_w, 3), dtype=torch.float32, device=images.device),)
 
         if depths_np_raw.dtype != np.float32:
@@ -299,7 +327,7 @@ class TS_VideoDepth:
         )
         
         del depths_np_float32_for_postproc; gc.collect()
-        print(f"[TS_VideoDepth] Processing finished successfully.")
+        logger.info("%s Processing finished successfully.", LOG_PREFIX)
         return (output_tensor,)
 
 # --- Регистрация ноды для ComfyUI ---
