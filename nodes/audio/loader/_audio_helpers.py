@@ -136,8 +136,8 @@ def _get_ffmpeg_executable() -> str:
     if imageio_ffmpeg is not None:
         try:
             return imageio_ffmpeg.get_ffmpeg_exe()
-        except Exception:
-            pass
+        except Exception as exc:
+            LOGGER.debug("%s imageio_ffmpeg.get_ffmpeg_exe() failed, falling back to PATH: %s", LOG_PREFIX, exc)
     return "ffmpeg"
 
 

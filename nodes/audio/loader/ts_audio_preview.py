@@ -17,7 +17,7 @@ class TS_AudioPreview(IO.ComfyNode):
         return IO.Schema(
             node_id="TS_AudioPreview",
             display_name="TS Audio Preview",
-            category="TS/audio",
+            category="TS/Audio",
             description="Preview a standard ComfyUI audio input with waveform playback and looped auditioning.",
             inputs=[
                 IO.Audio.Input("audio"),

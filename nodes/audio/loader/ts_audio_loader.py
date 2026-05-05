@@ -21,7 +21,7 @@ class TS_AudioLoader(IO.ComfyNode):
         return IO.Schema(
             node_id="TS_AudioLoader",
             display_name="TS Audio Loader",
-            category="TS/audio",
+            category="TS/Audio",
             description="Load audio or video audio tracks, preview waveform, record from microphone, and crop visually.",
             inputs=[
                 IO.Combo.Input("mode", options=list(cls._MODES), default="load", tooltip="Load from file or use recorded microphone input.", socketless=True),
