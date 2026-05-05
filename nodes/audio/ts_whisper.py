@@ -986,8 +986,12 @@ class TSWhisper:
                         )
                         try:
                             comfy.model_management.soft_empty_cache()
-                        except Exception:
-                            pass
+                        except Exception as cache_exc:
+                            self.logger.debug(
+                                "%s soft_empty_cache() failed during retry cleanup: %s",
+                                self._LOG_PREFIX,
+                                cache_exc,
+                            )
                         merged_segments, all_text_segments = self._run_chunked_inference(
                             pipe=pipe,
                             prepared_audio_numpy=prepared_audio_numpy,

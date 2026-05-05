@@ -3,11 +3,14 @@ import torch
 import torch.nn.functional as F
 
 import folder_paths
+import logging
+
+
+logger = logging.getLogger("comfyui_timesaver.ts_resolution_selector")
+LOG_PREFIX = "[TS Resolution Selector]"
 
 
 class TS_ResolutionSelector:
-    _LOG_PREFIX = "[TS Resolution Selector]"
-
     ASPECT_PRESETS = [
         ("1:1", 1.0, 1.0),
         ("4:3", 4.0, 3.0),
@@ -24,7 +27,7 @@ class TS_ResolutionSelector:
     RETURN_TYPES = ("IMAGE",)
     RETURN_NAMES = ("img",)
     FUNCTION = "select_resolution"
-    CATEGORY = "TS/Resolution"
+    CATEGORY = "TS/Image"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -49,7 +52,7 @@ class TS_ResolutionSelector:
         return f"{aspect_ratio}-{ratio_value}-{res_value:.3f}-{bool(original_aspect)}"
 
     def _log(self, message):
-        print(f"{self._LOG_PREFIX} {message}")
+        logger.info("%s %s", LOG_PREFIX, message)
 
     def _log_tensor_shape(self, label, tensor):
         if not isinstance(tensor, torch.Tensor):

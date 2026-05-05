@@ -1,11 +1,13 @@
-﻿import os
+﻿import logging
 import math
+import os
 from concurrent.futures import ThreadPoolExecutor
 
 import torch
 import comfy.model_management as model_management
 from comfy.utils import ProgressBar
 
+logger = logging.getLogger("comfyui_timesaver.ts_color_match")
 _LOG_PREFIX = "[TS Color Match]"
 _SUPPORTED_DEVICES = ["auto", "gpu", "cpu"]
 _SINKHORN_MAX_POINTS = 8192
@@ -30,7 +32,7 @@ if _SINKHORN_AVAILABLE:
 def _log_info(message, enabled):
     if not enabled:
         return
-    print(f"{_LOG_PREFIX} {message}")
+    logger.info("%s %s", _LOG_PREFIX, message)
 
 
 def _validate_image_tensor(name, image):
@@ -347,7 +349,7 @@ def _sinkhorn_compute_transform(src_img, ref_img, max_points, blur, seed=-1, ref
 
 
 class TS_Color_Match:
-    CATEGORY = "TS/Color"
+    CATEGORY = "TS/Image"
     RETURN_TYPES = ("IMAGE",)
     RETURN_NAMES = ("image",)
     FUNCTION = "process"

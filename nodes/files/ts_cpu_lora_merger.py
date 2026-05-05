@@ -63,7 +63,7 @@ class TS_CPULoraMergerNode:
     RETURN_TYPES = ("STRING", "STRING")
     RETURN_NAMES = ("log", "saved_model_path")
     FUNCTION = "merge_to_file"
-    CATEGORY = "TS/Model Tools"
+    CATEGORY = "TS/Files"
     OUTPUT_NODE = True
 
     def _log(self, logs, message):

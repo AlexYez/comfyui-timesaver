@@ -36,7 +36,7 @@ class TS_SileroStress(IO.ComfyNode):
         return IO.Schema(
             node_id="TS_SileroStress",
             display_name="TS Silero Stress",
-            category="TS/text",
+            category="TS/Text",
             description=(
                 "Automatic stress marks and yo restoration via silero-stress. "
                 "Outputs Unicode combining acute accents."

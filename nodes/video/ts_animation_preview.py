@@ -3,6 +3,7 @@
 node_id: TS_Animation_Preview
 """
 
+import logging
 import os
 import subprocess
 import time
@@ -15,6 +16,9 @@ import torch
 import folder_paths
 
 from .._shared import TS_Logger
+
+logger = logging.getLogger("comfyui_timesaver.ts_animation_preview")
+LOG_PREFIX = "[TS Animation Preview]"
 
 try:
     import imageio
@@ -40,7 +44,7 @@ class TS_Animation_Preview:
     RETURN_TYPES = ()
     FUNCTION = "preview"
     OUTPUT_NODE = True
-    CATEGORY = "TS/Interface Tools"
+    CATEGORY = "TS/Video"
     DESCRIPTION = "Create a looping H.265 preview video from an image batch."
 
     @classmethod
@@ -91,13 +95,13 @@ class TS_Animation_Preview:
                 if os.path.exists(audio_path):
                     try:
                         os.remove(audio_path)
-                    except Exception:
-                        pass
+                    except OSError as exc:
+                        logger.debug("%s Failed to remove audio temp %s: %s", LOG_PREFIX, audio_path, exc)
                 if os.path.exists(mux_path):
                     try:
                         os.remove(mux_path)
-                    except Exception:
-                        pass
+                    except OSError as exc:
+                        logger.debug("%s Failed to remove mux temp %s: %s", LOG_PREFIX, mux_path, exc)
 
         TS_Logger.log(
             node_name,
@@ -144,13 +148,13 @@ class TS_Animation_Preview:
                 if writer is not None:
                     try:
                         writer.close()
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        logger.debug("%s Writer close after error failed: %s", LOG_PREFIX, exc)
                 if os.path.exists(filepath):
                     try:
                         os.remove(filepath)
-                    except Exception:
-                        pass
+                    except OSError as exc:
+                        logger.debug("%s Failed to remove partial output %s: %s", LOG_PREFIX, filepath, exc)
 
         raise RuntimeError(f"Failed to encode H.265 preview video. Last error: {last_error}")
 
@@ -177,13 +181,13 @@ class TS_Animation_Preview:
         if hasattr(audio, "model_dump") and callable(audio.model_dump):
             try:
                 audio = audio.model_dump()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("%s audio.model_dump() failed: %s", LOG_PREFIX, exc)
         elif hasattr(audio, "dict") and callable(audio.dict):
             try:
                 audio = audio.dict()
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.debug("%s audio.dict() failed: %s", LOG_PREFIX, exc)
 
         if isinstance(audio, (list, tuple)):
             if len(audio) == 2 and isinstance(audio[0], torch.Tensor) and isinstance(audio[1], (int, float)):
@@ -243,7 +247,7 @@ class TS_Animation_Preview:
         if waveform is not None and sample_rate is not None:
             return {"waveform": waveform, "sample_rate": sample_rate}
 
-        TS_Logger.log("AnimationPreview", f"Audio input ignored: unsupported type {type(audio)}.", "yellow")
+        TS_Logger.warn("AnimationPreview", f"Audio input ignored: unsupported type {type(audio)}.")
         return None
 
     def _prepare_audio(self, audio, frame_count, fps_value):
@@ -261,7 +265,7 @@ class TS_Animation_Preview:
             raise ValueError("Audio waveform batch is empty.")
 
         if waveform.shape[0] > 1:
-            TS_Logger.log("AnimationPreview", f"Audio batch size {waveform.shape[0]} detected. Using first item.", "yellow")
+            TS_Logger.warn("AnimationPreview", f"Audio batch size {waveform.shape[0]} detected. Using first item.")
 
         waveform = waveform[0].detach().cpu().float()
         sample_rate = int(sample_rate)

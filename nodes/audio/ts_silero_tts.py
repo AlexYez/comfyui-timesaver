@@ -36,7 +36,7 @@ class TS_SileroTTS(IO.ComfyNode):
         return IO.Schema(
             node_id="TS_SileroTTS",
             display_name="TS Silero TTS",
-            category="TS/audio",
+            category="TS/Audio",
             description="Silero TTS v5_3_ru with ComfyUI AUDIO output.",
             inputs=[
                 IO.String.Input(

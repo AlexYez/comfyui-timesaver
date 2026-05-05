@@ -30,7 +30,7 @@ class TSAutoTileSize:
 
     FUNCTION = "calculate_grid"
 
-    CATEGORY = "utils/Tile Size"
+    CATEGORY = "TS/Image"
 
     def find_best_grid(self, total_tiles, image_aspect_ratio):
         """

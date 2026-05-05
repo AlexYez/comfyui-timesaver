@@ -4,8 +4,8 @@ node_id: TS_Video_Upscale_With_Model
 """
 
 import gc
+import logging
 import os
-import time
 
 import torch
 
@@ -13,10 +13,13 @@ import comfy.model_management as model_management
 import comfy.utils
 import folder_paths
 
+logger = logging.getLogger("comfyui_timesaver.ts_video_upscale_with_model")
+LOG_PREFIX = "[TS Video Upscale]"
+
 try:
     from spandrel import ModelLoader
 except ImportError:
-    print("Spandrel library not found. Please make sure it is installed.")
+    logger.warning("%s Spandrel library not found. Please install spandrel.", LOG_PREFIX)
     ModelLoader = None
 
 
@@ -37,7 +40,7 @@ class TS_Video_Upscale_With_Model:
 
     RETURN_TYPES = ("IMAGE",)
     FUNCTION = "upscale_video"
-    CATEGORY = "video"
+    CATEGORY = "TS/Video"
 
     def __init__(self):
         self.steps = 0
@@ -67,7 +70,7 @@ class TS_Video_Upscale_With_Model:
                     else:
                         device_strategy = "load_unload_each_frame"
                 except Exception as e:
-                    print(f"Could not assess GPU memory for auto strategy, defaulting to load_unload_each_frame. Error: {e}")
+                    logger.warning("%s GPU memory probe failed, defaulting to load_unload_each_frame: %s", LOG_PREFIX, e)
                     device_strategy = "load_unload_each_frame"
             else:
                 device_strategy = "cpu_only"
@@ -81,7 +84,17 @@ class TS_Video_Upscale_With_Model:
         self.steps = num_frames
         self.step = 0
 
-        print(f"Processing video: {num_frames} frames from {old_width}x{old_height} to {new_width}x{new_height} with {device_strategy} strategy using model {model_name}")
+        logger.info(
+            "%s Processing %d frames from %dx%d to %dx%d with %s strategy using model %s",
+            LOG_PREFIX,
+            num_frames,
+            old_width,
+            old_height,
+            new_width,
+            new_height,
+            device_strategy,
+            model_name,
+        )
 
         if device_strategy == "cpu_only":
             upscale_model = upscale_model.to("cpu")
@@ -96,7 +109,7 @@ class TS_Video_Upscale_With_Model:
 
     def load_upscale_model_with_spandrel(self, model_path):
         if ModelLoader is None:
-            print("Spandrel library is not available. Cannot load model.")
+            logger.error("%s Spandrel library is not available. Cannot load model.", LOG_PREFIX)
             return None
 
         try:
@@ -107,7 +120,7 @@ class TS_Video_Upscale_With_Model:
             if not hasattr(upscale_model, 'scale'):
                 if hasattr(model_descriptor, 'scale') and model_descriptor.scale is not None:
                     upscale_model.scale = model_descriptor.scale
-                    print(f"Info: Inferred model scale {upscale_model.scale} from Spandrel descriptor for {model_path}")
+                    logger.info("%s Inferred model scale %s from Spandrel descriptor for %s", LOG_PREFIX, upscale_model.scale, model_path)
                 else:
                     scale_from_name = 1
                     for part in ["x2", "x3", "x4", "x8"]:
@@ -115,20 +128,25 @@ class TS_Video_Upscale_With_Model:
                             scale_from_name = int(part[1:])
                             break
                     upscale_model.scale = scale_from_name
-                    print(f"Warning: Model scale not directly found for {model_path}. Set to {upscale_model.scale} (inferred from name or default 1). This is used by tiled_scale.")
+                    logger.warning(
+                        "%s Model scale not directly found for %s; set to %s (inferred from name or default 1).",
+                        LOG_PREFIX,
+                        model_path,
+                        upscale_model.scale,
+                    )
 
             gc.collect()
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
             return upscale_model
         except Exception as e:
-            print(f"Error loading model '{os.path.basename(model_path)}' with Spandrel: {e}")
+            logger.error("%s Error loading model '%s' with Spandrel: %s", LOG_PREFIX, os.path.basename(model_path), e)
             return None
 
     def _upscale_on_cpu(self, upscale_model, images, upscale_method, new_width, new_height):
         result_frames = []
-        start_time = time.time()
         model_scale_factor = getattr(upscale_model, 'scale', 1)
+        pbar = comfy.utils.ProgressBar(images.shape[0])
 
         for i in range(images.shape[0]):
             frame = images[i:i + 1]
@@ -150,19 +168,17 @@ class TS_Video_Upscale_With_Model:
 
             result_frames.append(s_resized[0])
             self.step += 1
-
-            self._print_progress_line(start_time)
+            pbar.update(1)
 
             del in_img, s, upscaled, samples, s_resized
             gc.collect()
 
-        print()
         return result_frames
 
     def _upscale_batch_keep_loaded(self, upscale_model, images, device, upscale_method, new_width, new_height):
         result_frames = []
-        start_time = time.time()
         model_scale_factor = getattr(upscale_model, 'scale', 1)
+        pbar = comfy.utils.ProgressBar(images.shape[0])
 
         for i in range(images.shape[0]):
             frame = images[i:i + 1]
@@ -184,20 +200,18 @@ class TS_Video_Upscale_With_Model:
 
             result_frames.append(s_resized[0])
             self.step += 1
-
-            self._print_progress_line(start_time)
+            pbar.update(1)
 
             del in_img, s, upscaled, samples, s_resized
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
 
-        print()
         return result_frames
 
     def _upscale_batch_load_unload(self, upscale_model, images, device, upscale_method, new_width, new_height):
         result_frames = []
-        start_time = time.time()
         model_scale_factor = getattr(upscale_model, 'scale', 1)
+        pbar = comfy.utils.ProgressBar(images.shape[0])
 
         for i in range(images.shape[0]):
             if torch.cuda.is_available():
@@ -224,8 +238,7 @@ class TS_Video_Upscale_With_Model:
 
             result_frames.append(s_resized[0])
             self.step += 1
-
-            self._print_progress_line(start_time)
+            pbar.update(1)
 
             del in_img, s, upscaled, samples, s_resized
 
@@ -236,18 +249,7 @@ class TS_Video_Upscale_With_Model:
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
 
-        print()
         return result_frames
-
-    def _print_progress_line(self, start_time):
-        elapsed = time.time() - start_time
-        eta = elapsed / self.step * (self.steps - self.step) if self.step > 0 else 0
-        elapsed_str = time.strftime("%H:%M:%S", time.gmtime(elapsed))
-        eta_str = time.strftime("%H:%M:%S", time.gmtime(eta))
-        percent = (self.step / self.steps) * 100
-        bar = "#" * int(percent / 5)
-        gap = " " * (20 - int(percent / 5))
-        print(f"\r|{bar}{gap}| {self.step}/{self.steps} [{percent:.1f}%] - {elapsed_str}<{eta_str}", end="", flush=True)
 
 
 NODE_CLASS_MAPPINGS = {"TS_Video_Upscale_With_Model": TS_Video_Upscale_With_Model}

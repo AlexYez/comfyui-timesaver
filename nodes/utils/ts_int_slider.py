@@ -23,7 +23,7 @@ class TS_Int_Slider:
     RETURN_TYPES = ("INT",)
     RETURN_NAMES = ("int_value",)
     FUNCTION = "get_value"
-    CATEGORY = "TS Tools/Sliders"
+    CATEGORY = "TS/Utils"
     DESCRIPTION = "Int slider (320 - 2048)"
 
     def get_value(self, value):

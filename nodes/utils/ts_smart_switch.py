@@ -29,7 +29,7 @@ class TS_Smart_Switch:
     RETURN_TYPES = ("*",) 
     RETURN_NAMES = ("output",)
     FUNCTION = "smart_switch"
-    CATEGORY = "TS Tools/Logic"
+    CATEGORY = "TS/Utils"
     DESCRIPTION = "Smart switch for ANY data. Auto-failover if one input is missing."
 
     def _is_valid_image(self, data):
@@ -86,9 +86,9 @@ class TS_Smart_Switch:
             valid_2 = self._is_valid_by_type(input_2, data_type)
 
             if input_1 is not None and not valid_1:
-                TS_Logger.log("SmartSwitch", f"Input 1 ignored: type mismatch for data_type={data_type}", "yellow")
+                TS_Logger.warn("SmartSwitch", f"Input 1 ignored: type mismatch for data_type={data_type}")
             if input_2 is not None and not valid_2:
-                TS_Logger.log("SmartSwitch", f"Input 2 ignored: type mismatch for data_type={data_type}", "yellow")
+                TS_Logger.warn("SmartSwitch", f"Input 2 ignored: type mismatch for data_type={data_type}")
 
             has_input_1 = valid_1
             has_input_2 = valid_2
@@ -111,7 +111,7 @@ class TS_Smart_Switch:
                 selected_source = "Input 2"
                 status_msg = "(Auto-Failover)"
             else:
-                TS_Logger.error("SmartSwitch", "Warning: Both inputs are None.")
+                TS_Logger.warn("SmartSwitch", "Both inputs are None.")
                 return (None,)
 
             # Log info

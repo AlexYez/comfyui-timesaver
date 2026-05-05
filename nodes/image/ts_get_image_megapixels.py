@@ -6,6 +6,11 @@ node_id: TS_GetImageMegapixels
 from typing import Optional
 
 import torch
+import logging
+
+
+logger = logging.getLogger("comfyui_timesaver.ts_get_image_megapixels")
+LOG_PREFIX = "[TS Get Image Megapixels]"
 
 
 class TS_GetImageMegapixels:
@@ -20,11 +25,11 @@ class TS_GetImageMegapixels:
     RETURN_TYPES = ("FLOAT",)
     RETURN_NAMES = ("megapixels",)
     FUNCTION = "execute"
-    CATEGORY = "TS/Image Tools"
+    CATEGORY = "TS/Image"
 
     @staticmethod
     def _log(message: str) -> None:
-        print(f"[TS Get Image Megapixels] {message}")
+        logger.info("%s %s", LOG_PREFIX, message)
 
     @classmethod
     def _log_tensor(cls, label: str, tensor: Optional[torch.Tensor]) -> None:

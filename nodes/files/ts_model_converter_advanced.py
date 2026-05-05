@@ -3,12 +3,16 @@
 node_id: TS_ModelConverterAdvanced
 """
 
-import os
-import json
-import glob
 import gc
+import glob
+import json
+import logging
+import os
 import uuid
 from collections import OrderedDict
+
+logger = logging.getLogger("comfyui_timesaver.ts_model_converter_advanced")
+LOG_PREFIX = "[TS Model Converter Advanced]"
 
 import torch
 from tqdm import tqdm
@@ -74,7 +78,7 @@ class TS_ModelConverterAdvancedNode:
     RETURN_TYPES = ("STRING",)
     RETURN_NAMES = ("log",)
     FUNCTION = "convert_model"
-    CATEGORY = "Model Conversion"
+    CATEGORY = "TS/Files"
 
     def should_convert_to_fp8(self, tensor_name: str, conversion_preset: str = "WAN") -> bool:
         tensor_name = self._normalize_tensor_name(tensor_name)
@@ -214,8 +218,8 @@ class TS_ModelConverterAdvancedNode:
             if os.path.exists(temp_path):
                 try:
                     os.remove(temp_path)
-                except Exception:
-                    pass
+                except OSError as exc:
+                    logger.debug("%s Failed to remove temp file %s: %s", LOG_PREFIX, temp_path, exc)
 
         del shard_state
         gc.collect()

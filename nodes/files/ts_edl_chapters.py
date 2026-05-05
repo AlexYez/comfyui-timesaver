@@ -1,6 +1,11 @@
 ﻿# Standard library imports
+import logging
 import os
 import re
+
+logger = logging.getLogger("comfyui_timesaver.ts_edl_chapters")
+LOG_PREFIX = "[TS YouTube Chapters]"
+
 
 class TS_EDLToYouTubeChaptersNode:
     def __init__(self):
@@ -17,10 +22,10 @@ class TS_EDLToYouTubeChaptersNode:
     RETURN_TYPES = ("STRING",)
     RETURN_NAMES = ("youtube_chapters",)
     FUNCTION = "convert_edl_to_youtube_chapters"
-    CATEGORY = "Tools/TS_Video"
+    CATEGORY = "TS/Files"
 
     def convert_edl_to_youtube_chapters(self, edl_file_path):
-        print("TS_EDLToYouTubeChaptersNode: Input EDL File Path:", edl_file_path)
+        logger.info("%s Input EDL File Path: %s", LOG_PREFIX, edl_file_path)
         edl_file_path = edl_file_path.strip('"')
         if not os.path.exists(edl_file_path):
             raise ValueError(f"TS_EDLToYouTubeChaptersNode: File not found: {edl_file_path}")
@@ -59,7 +64,7 @@ class TS_EDLToYouTubeChaptersNode:
             else:
                 i += 1
         youtube_chapters_output = "\n".join(chapters)
-        print("TS_EDLToYouTubeChaptersNode: YouTube Chapters Output:\n", youtube_chapters_output)
+        logger.info("%s YouTube Chapters Output:\n%s", LOG_PREFIX, youtube_chapters_output)
         return (youtube_chapters_output,)
 
 NODE_CLASS_MAPPINGS = {

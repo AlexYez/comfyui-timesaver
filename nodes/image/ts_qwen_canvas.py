@@ -54,7 +54,7 @@ class TS_QwenCanvas:
     RETURN_TYPES = ("IMAGE", "INT", "INT")
     RETURN_NAMES = ("canvas_image", "width", "height")
     FUNCTION = "make_canvas"
-    CATEGORY = "TS Qwen"
+    CATEGORY = "TS/Image"
 
     def make_canvas(self, resolution="1:1", image=None, mask=None):
         # Получаем target размеры по выбранному имени

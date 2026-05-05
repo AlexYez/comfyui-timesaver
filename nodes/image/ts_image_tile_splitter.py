@@ -7,6 +7,11 @@ import math
 from typing import Any, Dict, List, Optional
 
 import torch
+import logging
+
+
+logger = logging.getLogger("comfyui_timesaver.ts_image_tile_splitter")
+LOG_PREFIX = "[TS Image Tile Splitter]"
 
 
 class TS_ImageTileSplitter:
@@ -25,11 +30,11 @@ class TS_ImageTileSplitter:
     RETURN_TYPES = ("IMAGE", "TILE_INFO")
     RETURN_NAMES = ("tiles", "tile_data")
     FUNCTION = "execute"
-    CATEGORY = "TS/Image Tools"
+    CATEGORY = "TS/Image"
 
     @staticmethod
     def _log(message: str) -> None:
-        print(f"[TS Image Tile Splitter] {message}")
+        logger.info("%s %s", LOG_PREFIX, message)
 
     @classmethod
     def _log_tensor(cls, label: str, tensor: Optional[torch.Tensor]) -> None:

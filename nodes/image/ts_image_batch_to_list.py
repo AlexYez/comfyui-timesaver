@@ -8,6 +8,11 @@ import time
 
 import torch
 import comfy.utils
+import logging
+
+
+logger = logging.getLogger("comfyui_timesaver.ts_image_batch_to_list")
+LOG_PREFIX = "[TS Image Batch to Image List]"
 
 
 class TS_ImageBatchToImageList:
@@ -23,11 +28,11 @@ class TS_ImageBatchToImageList:
     RETURN_NAMES = ("images",)
     OUTPUT_IS_LIST = (True,)
     FUNCTION = "execute"
-    CATEGORY = "TS/Image Tools"
+    CATEGORY = "TS/Image"
 
     @staticmethod
     def _log(message: str) -> None:
-        print(f"[TS Image Batch to Image List] {message}")
+        logger.info("%s %s", LOG_PREFIX, message)
 
     @classmethod
     def _log_tensor(cls, label: str, tensor: Optional[torch.Tensor]) -> None:

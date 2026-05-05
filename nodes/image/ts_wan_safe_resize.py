@@ -63,7 +63,7 @@ class TS_WAN_SafeResize:
     RETURN_TYPES = ("IMAGE", "INT", "INT", "STRING")
     RETURN_NAMES = ("image", "width", "height", "interconnection_out")
     FUNCTION = "safe_resize"
-    CATEGORY = "image/resize"
+    CATEGORY = "TS/Image"
 
     def safe_resize(self, image, quality, interconnection_in=None):
         # Приоритет interconnection

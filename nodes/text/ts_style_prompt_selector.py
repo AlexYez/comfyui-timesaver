@@ -142,7 +142,7 @@ class TS_StylePromptSelector:
     RETURN_TYPES = ("STRING",)
     RETURN_NAMES = ("prompt",)
     FUNCTION = "get_prompt"
-    CATEGORY = "TS/Prompt"
+    CATEGORY = "TS/Text"
 
     @classmethod
     def VALIDATE_INPUTS(cls, style_id):

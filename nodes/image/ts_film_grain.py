@@ -1,8 +1,14 @@
-﻿import torch
+﻿import logging
+
+import torch
 import torch.nn.functional as F
 import kornia.filters # Требуется установка: pip install kornia
 
-class TS_FilmGrain: 
+logger = logging.getLogger("comfyui_timesaver.ts_film_grain")
+LOG_PREFIX = "[TS Film Grain]"
+
+
+class TS_FilmGrain:
     def __init__(self):
         pass
 
@@ -67,7 +73,7 @@ class TS_FilmGrain:
 
     RETURN_TYPES = ("IMAGE",)
     FUNCTION = "apply_grain"
-    CATEGORY = "Image Adjustments/Grain"
+    CATEGORY = "TS/Image"
 
     def _generate_octave_noise(self, batch_dim, target_h, target_w, channels, scale_factor, current_seed, device, dtype):
         """
@@ -107,7 +113,7 @@ class TS_FilmGrain:
             else:
                 target_device = 'cpu'
                 target_dtype = torch.float32 
-                print("Warning: 'force_gpu' is enabled but CUDA is not available. Falling back to CPU/float32.")
+                logger.warning("%s force_gpu enabled but CUDA is not available; falling back to CPU/float32.", LOG_PREFIX)
         else: 
             if images.device.type == 'cpu':
                 target_device = 'cpu'

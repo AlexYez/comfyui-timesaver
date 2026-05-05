@@ -8,6 +8,11 @@ import time
 
 import torch
 import comfy.utils
+import logging
+
+
+logger = logging.getLogger("comfyui_timesaver.ts_get_image_size_side")
+LOG_PREFIX = "[TS Get Image Size Side]"
 
 
 class TS_GetImageSizeSide:
@@ -30,11 +35,11 @@ class TS_GetImageSizeSide:
     RETURN_TYPES = ("INT",)
     RETURN_NAMES = ("size",)
     FUNCTION = "execute"
-    CATEGORY = "TS/Image Tools"
+    CATEGORY = "TS/Image"
 
     @staticmethod
     def _log(message: str) -> None:
-        print(f"[TS Get Image Size Side] {message}")
+        logger.info("%s %s", LOG_PREFIX, message)
 
     @classmethod
     def _log_tensor(cls, label: str, tensor: Optional[torch.Tensor]) -> None:

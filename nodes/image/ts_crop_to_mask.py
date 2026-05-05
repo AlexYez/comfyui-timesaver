@@ -3,10 +3,15 @@
 node_id: TSCropToMask
 """
 
+import logging
+
 import torch
 import torch.nn.functional as F
 
 import comfy
+
+logger = logging.getLogger("comfyui_timesaver.ts_crop_to_mask")
+LOG_PREFIX = "[TS Crop To Mask]"
 
 
 class TSCropToMask:
@@ -31,11 +36,11 @@ class TSCropToMask:
     RETURN_TYPES = ("IMAGE", "MASK", "CROP_DATA", "INT", "INT")
     RETURN_NAMES = ("cropped_images", "cropped_masks", "crop_data", "width", "height")
     FUNCTION = "crop"
-    CATEGORY = "image/processing"
+    CATEGORY = "TS/Image"
 
     def crop(self, images, mask, padding, divide_by, max_resolution, fixed_mask_frame_index, interpolation_window_size, force_gpu, fixed_crop_size=False, fixed_width=1024, fixed_height=1024):
         target_device = comfy.model_management.get_torch_device() if force_gpu and torch.cuda.is_available() else torch.device("cpu")
-        print(f"TSCropToMask: Using device {target_device}")
+        logger.info("%s Using device %s", LOG_PREFIX, target_device)
 
         images = images.to(target_device)
         mask = mask.to(target_device)
@@ -50,12 +55,19 @@ class TSCropToMask:
             pass
         elif mask.shape[0] == 1 and batch_size > 1:
             mask = mask[0].unsqueeze(0).repeat(batch_size, 1, 1)
-            print(f"Info: Single mask repeated for {batch_size} images.")
+            logger.info("%s Single mask repeated for %d images.", LOG_PREFIX, batch_size)
         elif batch_size == 1 and mask.shape[0] > 1:
-            print("Info: Single image provided with batch mask. Will use specified or first mask frame for crop calculation.")
-            pass
+            logger.info(
+                "%s Single image provided with batch mask. Will use specified or first mask frame for crop calculation.",
+                LOG_PREFIX,
+            )
         else:
-            print(f"Warning: Mask batch size ({mask.shape[0]}) and image batch size ({batch_size}) mismatch. Falling back to using first mask for all images in the batch.")
+            logger.warning(
+                "%s Mask batch size (%d) and image batch size (%d) mismatch. Falling back to first mask for all images.",
+                LOG_PREFIX,
+                mask.shape[0],
+                batch_size,
+            )
             mask = mask[0].unsqueeze(0).repeat(batch_size, 1, 1)
 
         all_masks_are_solid = True
@@ -67,7 +79,7 @@ class TSCropToMask:
                     break
 
         if all_masks_are_solid:
-            print("TSCropToMask: All input masks are empty/solid. Skipping crop.")
+            logger.info("%s All input masks are empty/solid. Skipping crop.", LOG_PREFIX)
             crop_data = []
             for i in range(batch_size):
                 crop_data.append({

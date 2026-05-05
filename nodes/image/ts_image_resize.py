@@ -28,7 +28,7 @@ class TS_ImageResize:
     RETURN_TYPES = ("IMAGE", "INT", "INT", "MASK",)
     RETURN_NAMES = ("IMAGE", "width", "height", "MASK",)
     FUNCTION = "resize"
-    CATEGORY = "image"
+    CATEGORY = "TS/Image"
 
     @classmethod
     def INPUT_TYPES(s):

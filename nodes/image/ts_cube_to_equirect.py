@@ -21,7 +21,7 @@ class TS_CubemapFacesToEquirectangularNode:
 
     RETURN_TYPES = ("IMAGE",)
     FUNCTION = "convert"
-    CATEGORY = "Tools/TS_Image"
+    CATEGORY = "TS/Image"
 
     def convert(self, front, right, back, left, top, bottom, output_width, output_height):
         if py360convert is None:
