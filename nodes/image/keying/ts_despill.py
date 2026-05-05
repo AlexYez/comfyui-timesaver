@@ -31,7 +31,7 @@ class TS_Despill(IO.ComfyNode):
         return IO.Schema(
             node_id="TS_Despill",
             display_name="TS Despill",
-            category="TS/image",
+            category="TS/Image",
             description=(
                 "Professional despill node for red/green/blue screens. "
                 "Includes classic, balanced, adaptive edge, and hue-preserving algorithms."

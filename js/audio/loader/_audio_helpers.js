@@ -1,13 +1,17 @@
+// Shared setup for TS_AudioLoader and TS_AudioPreview. Public exports at the
+// bottom; the registerExtension calls live in the per-node entry points
+// (./ts-audio-loader.js, ./ts-audio-preview.js) so each node owns its own
+// stable extension ID.
+
 import { app } from "/scripts/app.js";
 import { api } from "/scripts/api.js";
 
-const EXTENSION_ID = "ts.audioLoader";
-const LOADER_NODE_NAME = "TS_AudioLoader";
-const PREVIEW_NODE_NAME = "TS_AudioPreview";
+export const LOADER_NODE_NAME = "TS_AudioLoader";
+export const PREVIEW_NODE_NAME = "TS_AudioPreview";
 const ROUTE_BASE = "/ts_audio_loader";
 const STYLE_ID = "ts-audio-loader-styles";
-const DOM_WIDGET_NAME = "ts_audio_loader";
-const PREVIEW_UI_KEY = "ts_audio_preview";
+export const DOM_WIDGET_NAME = "ts_audio_loader";
+export const PREVIEW_UI_KEY = "ts_audio_preview";
 const INPUT_MODE = "mode";
 const INPUT_SOURCE_PATH = "source_path";
 const INPUT_CROP_START = "crop_start_seconds";
@@ -81,7 +85,7 @@ function formatSeconds(value) {
     const secondsText = seconds.toFixed(2).padStart(5, "0");
     return hours > 0 ? `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${secondsText}` : `${String(minutes).padStart(2, "0")}:${secondsText}`;
 }
-function getWidget(node, name) { return node?.widgets?.find((widget) => widget?.name === name) || null; }
+export function getWidget(node, name) { return node?.widgets?.find((widget) => widget?.name === name) || null; }
 function hideWidget(node, name) {
     const widget = getWidget(node, name);
     if (widget) {
@@ -121,7 +125,7 @@ function isMediaPlaying(media) {
     return Boolean(media && !media.paused && !media.ended && media.currentTime >= 0);
 }
 
-function setupAudioLoader(node) {
+export function setupAudioLoader(node) {
     if (!node || typeof node.addDOMWidget !== "function") return;
     const nodeName = node.type || node.comfyClass || "";
     const isPreviewNode = nodeName === PREVIEW_NODE_NAME;
@@ -899,33 +903,3 @@ function setupAudioLoader(node) {
     });
 }
 
-app.registerExtension({
-    name: EXTENSION_ID,
-    async beforeRegisterNodeDef(nodeType, nodeData) {
-        if (![LOADER_NODE_NAME, PREVIEW_NODE_NAME].includes(nodeData.name)) return;
-        const onNodeCreated = nodeType.prototype.onNodeCreated;
-        nodeType.prototype.onNodeCreated = function onNodeCreatedWrapper() {
-            const result = onNodeCreated ? onNodeCreated.apply(this, arguments) : undefined;
-            if (!getWidget(this, DOM_WIDGET_NAME)) {
-                setupAudioLoader(this);
-            }
-            return result;
-        };
-        if (nodeData.name === PREVIEW_NODE_NAME) {
-            const onExecuted = nodeType.prototype.onExecuted;
-            nodeType.prototype.onExecuted = function onExecutedWrapper(message) {
-                const result = onExecuted ? onExecuted.apply(this, arguments) : undefined;
-                if (message && message[PREVIEW_UI_KEY]?.[0]) {
-                    this._tsAudioLoaderApplyPayload?.(message[PREVIEW_UI_KEY][0], true);
-                }
-                return result;
-            };
-        }
-    },
-    loadedGraphNode(node) {
-        if (![LOADER_NODE_NAME, PREVIEW_NODE_NAME].includes(node?.type) && ![LOADER_NODE_NAME, PREVIEW_NODE_NAME].includes(node?.comfyClass)) return;
-        if (!getWidget(node, DOM_WIDGET_NAME)) {
-            setupAudioLoader(node);
-        }
-    },
-});
