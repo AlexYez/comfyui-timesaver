@@ -3,7 +3,7 @@ import traceback
 
 import torch
 
-from comfy_api.latest import IO
+from comfy_api.v0_0_2 import IO
 from comfy_extras.nodes_lt import LTXVAddGuide
 
 logger = logging.getLogger("comfyui_timesaver.ts_ltx_first_last_frame")

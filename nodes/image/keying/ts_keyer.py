@@ -7,7 +7,7 @@ import logging
 
 import torch
 
-from comfy_api.latest import IO, UI
+from comfy_api.v0_0_2 import IO, UI
 
 from ._keying_helpers import CHANNEL_TO_INDEX, INDEX_TO_CHANNEL, gaussian_blur_4d
 

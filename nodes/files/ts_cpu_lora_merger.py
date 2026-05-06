@@ -16,7 +16,7 @@ import torch
 import comfy.sd
 import comfy.utils as _ts_comfy_utils
 import folder_paths
-from comfy_api.latest import IO
+from comfy_api.v0_0_2 import IO
 
 
 _SUPPORTED_MODEL_EXTENSIONS = (".safetensors", ".ckpt", ".pt", ".pth")

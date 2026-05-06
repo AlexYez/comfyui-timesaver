@@ -6,7 +6,7 @@ node_id: TS_AudioPreview
 import hashlib
 from typing import Any
 
-from comfy_api.latest import IO
+from comfy_api.v0_0_2 import IO
 
 from ._audio_helpers import (
     _build_generated_audio_preview_payload,

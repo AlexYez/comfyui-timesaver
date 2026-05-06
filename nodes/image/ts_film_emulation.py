@@ -8,7 +8,7 @@ import os
 
 import torch
 
-from comfy_api.latest import IO
+from comfy_api.v0_0_2 import IO
 
 logger = logging.getLogger(__name__)
 

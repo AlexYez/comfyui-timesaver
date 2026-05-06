@@ -14,7 +14,7 @@ from PIL import Image
 import folder_paths
 import comfy.model_management as mm
 
-from comfy_api.latest import IO
+from comfy_api.v0_0_2 import IO
 
 
 class TS_Qwen3_VL_V3(IO.ComfyNode):

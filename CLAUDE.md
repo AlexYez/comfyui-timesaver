@@ -1,6 +1,6 @@
 # CLAUDE.md — Engineering Rules for comfyui-timesaver
 
-Этот файл — операционные правила для Claude (и других AI-ассистентов) при работе над `comfyui-timesaver`. Он построен на основе [AGENTS.md](AGENTS.md) и привязан к ComfyUI custom-node V3 API (`comfy_api.latest.IO`).
+Этот файл — операционные правила для Claude (и других AI-ассистентов) при работе над `comfyui-timesaver`. Он построен на основе [AGENTS.md](AGENTS.md) и привязан к ComfyUI custom-node V3 API (`comfy_api.v0_0_2.IO` — pinned namespace, не `latest`).
 
 Главная цель: **максимальное качество итогового кода без поломки старых ComfyUI workflows**.
 
@@ -272,7 +272,7 @@ context = browser.new_context(
 Новые ноды:
 
 - Только **ComfyUI V3 schema**.
-- Импорт: `from comfy_api.latest import IO` (или `IO, UI`).
+- Импорт: `from comfy_api.v0_0_2 import IO` (или `IO, UI`). **Не использовать `comfy_api.latest`** — это нестабильный alias; production пина к `v0_0_2`.
 - Класс наследует `IO.ComfyNode`.
 - `define_schema(cls)` → `IO.Schema(...)` (`@classmethod`).
 - `execute(cls, ...)` → `IO.NodeOutput(...)` (`@classmethod`).
@@ -288,7 +288,7 @@ V3 шаблон (минимальный, в стиле проекта):
 
 ```python
 import logging
-from comfy_api.latest import IO
+from comfy_api.v0_0_2 import IO
 
 class TS_ExampleNode(IO.ComfyNode):
     _LOGGER = logging.getLogger("comfyui_timesaver.ts_example")
@@ -519,7 +519,7 @@ Verification summary в ответе пользователю — обязате
 
 ## 11. Tests
 
-- `tests/test_super_prompt_contract.py` — образец V3 contract-теста с monkeypatch-стабами для `comfy_api.latest`, `folder_paths`, `aiohttp`. Используй этот паттерн для новых V3 нод.
+- `tests/test_super_prompt_contract.py` — образец V3 contract-теста с monkeypatch-стабами для `comfy_api.v0_0_2`, `folder_paths`, `aiohttp`. Используй этот паттерн для новых V3 нод.
 - `tests/test_voice_recognition_audio.py` — пример behavior-теста подсистемы.
 - Тесты должны быть CPU-safe, без интернета, без скачивания моделей.
 - Tensor-тесты обязаны проверять: shape, batch preservation, dtype/range, **отсутствие мутации входа** (`assert torch.equal(image, before)`).

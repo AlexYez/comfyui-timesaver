@@ -11,7 +11,7 @@ import hashlib
 import os
 
 import folder_paths
-from comfy_api.latest import IO
+from comfy_api.v0_0_2 import IO
 
 from ._lama_helpers import (
     _load_image_tensor,

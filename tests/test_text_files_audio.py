@@ -29,7 +29,7 @@ import pytest
 
 
 def _install_io_stub(monkeypatch):
-    if "comfy_api.latest" in sys.modules:
+    if "comfy_api.v0_0_2" in sys.modules:
         return
 
     class _Input:
@@ -86,10 +86,10 @@ def _install_io_stub(monkeypatch):
         NumberDisplay = _NumberDisplay
 
     comfy_api = types.ModuleType("comfy_api")
-    latest = types.ModuleType("comfy_api.latest")
+    latest = types.ModuleType("comfy_api.v0_0_2")
     latest.IO = _IO
     monkeypatch.setitem(sys.modules, "comfy_api", comfy_api)
-    monkeypatch.setitem(sys.modules, "comfy_api.latest", latest)
+    monkeypatch.setitem(sys.modules, "comfy_api.v0_0_2", latest)
 
 
 def _install_runtime_stubs(monkeypatch, tmp_dir: Path):

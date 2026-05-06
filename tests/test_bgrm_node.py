@@ -52,10 +52,10 @@ def _install_stubs(monkeypatch, root: Path) -> None:
     monkeypatch.setitem(sys.modules, "safetensors", safetensors)
     monkeypatch.setitem(sys.modules, "safetensors.torch", safetensors_torch)
 
-    # Stub comfy_api.latest.IO so the V3 schema declaration in
+    # Stub comfy_api.v0_0_2.IO so the V3 schema declaration in
     # ts_bgrm_birefnet imports without dragging in the full ComfyUI runtime.
     comfy_api_mod = types.ModuleType("comfy_api")
-    latest_mod = types.ModuleType("comfy_api.latest")
+    latest_mod = types.ModuleType("comfy_api.v0_0_2")
 
     class _StubInput:
         def __init__(self, *args, **kwargs):
@@ -96,7 +96,7 @@ def _install_stubs(monkeypatch, root: Path) -> None:
 
     latest_mod.IO = _StubIO
     monkeypatch.setitem(sys.modules, "comfy_api", comfy_api_mod)
-    monkeypatch.setitem(sys.modules, "comfy_api.latest", latest_mod)
+    monkeypatch.setitem(sys.modules, "comfy_api.v0_0_2", latest_mod)
 
 
 def _load_module(monkeypatch):

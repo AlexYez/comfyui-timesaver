@@ -27,7 +27,7 @@ from typing import Any
 
 from aiohttp import web
 
-from comfy_api.latest import IO
+from comfy_api.v0_0_2 import IO
 
 from ._helpers import (
     ACTIVE_MODEL,

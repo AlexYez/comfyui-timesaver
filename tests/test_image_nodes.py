@@ -30,7 +30,7 @@ np = pytest.importorskip("numpy")
 # Real comfy_api is available in ComfyUI Python; if absent, fall back to a
 # minimal stub so the modules import on lighter test runners.
 def _install_stubs(monkeypatch):
-    if "comfy_api.latest" in sys.modules:
+    if "comfy_api.v0_0_2" in sys.modules:
         return
 
     class _Input:
@@ -82,10 +82,10 @@ def _install_stubs(monkeypatch):
         NumberDisplay = _NumberDisplay
 
     comfy_api = types.ModuleType("comfy_api")
-    latest = types.ModuleType("comfy_api.latest")
+    latest = types.ModuleType("comfy_api.v0_0_2")
     latest.IO = _IO
     monkeypatch.setitem(sys.modules, "comfy_api", comfy_api)
-    monkeypatch.setitem(sys.modules, "comfy_api.latest", latest)
+    monkeypatch.setitem(sys.modules, "comfy_api.v0_0_2", latest)
 
 
 def _stub_comfy(monkeypatch):

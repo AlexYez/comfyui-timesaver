@@ -13,7 +13,7 @@ import comfy.model_management as model_management
 import comfy.utils
 import folder_paths
 
-from comfy_api.latest import IO
+from comfy_api.v0_0_2 import IO
 
 logger = logging.getLogger("comfyui_timesaver.ts_video_upscale_with_model")
 LOG_PREFIX = "[TS Video Upscale]"

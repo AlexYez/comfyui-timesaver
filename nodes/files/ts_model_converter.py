@@ -8,7 +8,7 @@ import logging
 import torch
 
 from comfy.model_patcher import ModelPatcher
-from comfy_api.latest import IO
+from comfy_api.v0_0_2 import IO
 
 logger = logging.getLogger("comfyui_timesaver.ts_model_converter")
 LOG_PREFIX = "[TS Model Converter]"

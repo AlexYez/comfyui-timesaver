@@ -226,7 +226,7 @@ Since `8.9` the whole pack is on V3 — `grep RETURN_TYPES nodes/` returns nothi
 All nodes:
 
 - ComfyUI V3 schema.
-- `from comfy_api.latest import IO`.
+- `from comfy_api.v0_0_2 import IO` (pinned namespace; не `comfy_api.latest`).
 - Class inherits from `IO.ComfyNode`.
 - `define_schema(cls) -> IO.Schema(...)` (`@classmethod`).
 - `execute(cls, ...) -> IO.NodeOutput(...)` (`@classmethod`).

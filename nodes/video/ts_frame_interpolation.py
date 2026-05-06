@@ -15,7 +15,7 @@ import comfy.model_management as model_management
 import comfy.utils
 import folder_paths
 
-from comfy_api.latest import IO
+from comfy_api.v0_0_2 import IO
 
 from ..frame_interpolation_models import FILMNet, IFNet, detect_rife_config
 

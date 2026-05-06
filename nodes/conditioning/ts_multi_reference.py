@@ -49,7 +49,7 @@ import torch
 
 import comfy.utils
 import node_helpers
-from comfy_api.latest import IO
+from comfy_api.v0_0_2 import IO
 from comfy_execution.graph_utils import ExecutionBlocker
 
 

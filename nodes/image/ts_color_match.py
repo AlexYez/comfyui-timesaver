@@ -7,7 +7,7 @@ import torch
 import comfy.model_management as model_management
 from comfy.utils import ProgressBar
 
-from comfy_api.latest import IO
+from comfy_api.v0_0_2 import IO
 
 logger = logging.getLogger("comfyui_timesaver.ts_color_match")
 _LOG_PREFIX = "[TS Color Match]"
