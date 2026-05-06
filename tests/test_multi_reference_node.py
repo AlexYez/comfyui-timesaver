@@ -75,9 +75,9 @@ def test_v3_schema_contract(monkeypatch):
     assert inputs["mask_2"].optional is True
     assert inputs["mask_3"].optional is True
 
-    assert inputs["max_megapixels"].kwargs["default"] == 1.0
-    assert inputs["divide_by"].kwargs["default"] == 32
-    assert inputs["divide_by"].kwargs["min"] == 1
+    assert inputs["max_megapixels"].default == 1.0
+    assert inputs["divide_by"].default == 32
+    assert inputs["divide_by"].min == 1
 
     # Per-slot outputs: image_1, image_2, image_3, conditioning.
     output_names = [out.display_name for out in schema.outputs]
@@ -100,8 +100,8 @@ def test_resize_limits_megapixels_and_uses_32_grid(monkeypatch):
 
 
 def _unpack(output):
-    """V3 NodeOutput.values is a flat tuple of every output in schema order."""
-    values = output.values
+    """V3 NodeOutput.args is a flat tuple of every output in schema order."""
+    values = output.args
     assert len(values) == 4, f"expected 4 outputs (image_1/2/3 + conditioning), got {len(values)}"
     image_1, image_2, image_3, conditioning = values
     return image_1, image_2, image_3, conditioning
