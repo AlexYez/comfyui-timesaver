@@ -10,3 +10,13 @@
 /.claude/
 pytest-cache-files-*/
 tests/.cache/
+
+# Internal engineering docs and helper scripts (not for distribution)
+AGENTS.md
+**/AGENTS.md
+CLAUDE.md
+TECH_DEBT_AUDIT.md
+doc/TS_DEPENDENCY_POLICY.md
+doc/migration.md
+doc/generate_readme_ru.py
+doc/img/
