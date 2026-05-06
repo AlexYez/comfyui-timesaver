@@ -95,11 +95,30 @@ def _install_stubs(monkeypatch):
 
 
 def _load_module(monkeypatch):
+    """Return the public shim that aggregates the super_prompt subpackage.
+
+    To monkeypatch behaviour inside the subpackage, patch the originating
+    submodule (`_helpers` / `_voice` / `_qwen`) — `monkeypatch.setattr(shim, …)`
+    only mutates the shim's own dict and does not propagate back into the
+    submodules that already imported the symbol by value.
+    """
     _install_stubs(monkeypatch)
     root = Path(__file__).resolve().parents[1]
     monkeypatch.syspath_prepend(str(root))
-    sys.modules.pop("nodes.llm.ts_super_prompt", None)
+    for cached in (
+        "nodes.llm.ts_super_prompt",
+        "nodes.llm.super_prompt",
+        "nodes.llm.super_prompt._helpers",
+        "nodes.llm.super_prompt._voice",
+        "nodes.llm.super_prompt._qwen",
+        "nodes.llm.super_prompt.ts_super_prompt",
+    ):
+        sys.modules.pop(cached, None)
     return importlib.import_module("nodes.llm.ts_super_prompt")
+
+
+def _load_qwen():
+    return importlib.import_module("nodes.llm.super_prompt._qwen")
 
 
 def test_super_prompt_schema_contract(monkeypatch):
@@ -133,10 +152,14 @@ def test_super_prompt_default_model_has_stock_qwen_option(monkeypatch):
 
 def test_qwen_download_monitor_scales_directory_progress(monkeypatch):
     module = _load_module(monkeypatch)
+    qwen = _load_qwen()
     events = []
 
-    monkeypatch.setattr(module, "_send_progress", lambda op, text, percent=None: events.append((op, text, percent)))
-    monkeypatch.setattr(module, "_directory_size", lambda _path: 50)
+    # QwenDownloadProgressMonitor lives in _qwen.py and resolves
+    # send_progress / directory_size from its own namespace (imported by
+    # value from _helpers). Patches must target _qwen, not the public shim.
+    monkeypatch.setattr(qwen, "send_progress", lambda op, text, percent=None: events.append((op, text, percent)))
+    monkeypatch.setattr(qwen, "directory_size", lambda _path: 50)
 
     monitor = module.QwenDownloadProgressMonitor("op", "test/model", Path("unused"), 100, 20.0, 40.0)
     monitor._emit_progress()

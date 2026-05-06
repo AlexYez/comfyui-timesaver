@@ -90,11 +90,36 @@ def _install_stubs(monkeypatch, root: Path) -> None:
 
 
 def _load_module(monkeypatch):
+    """Return the public shim that aggregates the super_prompt subpackage.
+
+    The shim re-exports symbols from `nodes.llm.super_prompt._helpers`,
+    `_voice`, and `_qwen`. To monkeypatch a symbol such that *behaviour*
+    inside the subpackage actually changes, patch the originating module via
+    `_load_helpers`/`_load_voice`/`_load_qwen` — `monkeypatch.setattr(shim, ...)`
+    only mutates the shim's own dict and does not propagate to the modules
+    that already imported the symbol by value.
+    """
     root = Path(__file__).resolve().parents[1]
     _install_stubs(monkeypatch, root)
     monkeypatch.syspath_prepend(str(root))
-    sys.modules.pop("nodes.llm.ts_super_prompt", None)
+    for cached in (
+        "nodes.llm.ts_super_prompt",
+        "nodes.llm.super_prompt",
+        "nodes.llm.super_prompt._helpers",
+        "nodes.llm.super_prompt._voice",
+        "nodes.llm.super_prompt._qwen",
+        "nodes.llm.super_prompt.ts_super_prompt",
+    ):
+        sys.modules.pop(cached, None)
     return importlib.import_module("nodes.llm.ts_super_prompt")
+
+
+def _load_helpers():
+    return importlib.import_module("nodes.llm.super_prompt._helpers")
+
+
+def _load_voice():
+    return importlib.import_module("nodes.llm.super_prompt._voice")
 
 
 def test_audio_preprocess_trims_and_normalizes_speech(monkeypatch):
@@ -140,6 +165,7 @@ def test_audio_preprocess_rejects_silence(monkeypatch):
 
 def test_initial_prompt_is_prompt_dictation_context(monkeypatch):
     module = _load_module(monkeypatch)
+    voice = _load_voice()
 
     prompt = module._configured_initial_prompt()
 
@@ -149,10 +175,13 @@ def test_initial_prompt_is_prompt_dictation_context(monkeypatch):
     assert "85mm" in prompt
     assert "русский" in prompt
 
-    monkeypatch.setattr(module, "INITIAL_PROMPT_EXTRA", "custom phrase: anamorphic portrait lighting")
+    # _configured_initial_prompt reads INITIAL_PROMPT_* from the _voice module
+    # namespace (where they were imported by value from _helpers), so patches
+    # must target _voice, not the public shim.
+    monkeypatch.setattr(voice, "INITIAL_PROMPT_EXTRA", "custom phrase: anamorphic portrait lighting")
     assert "anamorphic portrait lighting" in module._configured_initial_prompt()
 
-    monkeypatch.setattr(module, "INITIAL_PROMPT_ENABLED", False)
+    monkeypatch.setattr(voice, "INITIAL_PROMPT_ENABLED", False)
     assert module._configured_initial_prompt() is None
 
 
@@ -174,9 +203,12 @@ def test_turbo_uses_actual_whisper_download_filename(monkeypatch):
 
 def test_download_done_keeps_ui_busy_until_memory_load(monkeypatch):
     module = _load_module(monkeypatch)
+    voice = _load_voice()
     events = []
 
-    monkeypatch.setattr(module, "_send_voice_event", lambda event, payload: events.append((event, payload)))
+    # ProgressBroadcaster lives in _voice.py and looks up `send_voice_event`
+    # from its own module namespace (imported by value from _helpers).
+    monkeypatch.setattr(voice, "send_voice_event", lambda event, payload: events.append((event, payload)))
 
     module.ProgressBroadcaster("base").done()
 
@@ -185,15 +217,16 @@ def test_download_done_keeps_ui_busy_until_memory_load(monkeypatch):
 
 def test_memory_load_status_is_short_for_button_label(monkeypatch):
     module = _load_module(monkeypatch)
+    voice = _load_voice()
     events = []
 
-    monkeypatch.setattr(module, "ensure_model", lambda name: module.WHISPER_DIR / f"{name}.pt")
-    monkeypatch.setattr(module, "_send_voice_event", lambda event, payload: events.append((event, payload)))
+    monkeypatch.setattr(voice, "ensure_model", lambda name: module.WHISPER_DIR / f"{name}.pt")
+    monkeypatch.setattr(voice, "send_voice_status", lambda model, text, percent=None: events.append(("status", {"model": model, "text": text, **({"percent": percent} if percent is not None else {})})))
     module._VOICE_MODEL_CACHE.clear()
 
     fake_torch = types.SimpleNamespace()
     fake_whisper = types.SimpleNamespace(load_model=lambda *args, **kwargs: object())
-    monkeypatch.setattr(module, "_load_whisper_runtime", lambda: (fake_torch, fake_whisper))
+    monkeypatch.setattr(voice, "_load_whisper_runtime", lambda: (fake_torch, fake_whisper))
 
     module.load_model("turbo", "cpu", progress_start=42.0, progress_end=64.0)
 

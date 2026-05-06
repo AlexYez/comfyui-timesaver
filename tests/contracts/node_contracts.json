@@ -1585,19 +1585,11 @@
     }
   },
   "TS_SuperPrompt": {
-    "api": "v3",
-    "category": "TS/LLM",
+    "api": "unknown",
+    "category": null,
     "class_name": "TS_SuperPrompt",
     "display_name": "TS Super Prompt",
-    "python_file": "nodes/llm/ts_super_prompt.py",
-    "widgets": {
-      "high_quality": {
-        "default": false
-      },
-      "text": {
-        "default": ""
-      }
-    }
+    "python_file": "nodes/llm/ts_super_prompt.py"
   },
   "TS_VideoDepthNode": {
     "api": "v3",

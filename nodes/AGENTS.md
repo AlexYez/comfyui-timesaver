@@ -60,6 +60,27 @@ utils/tensor_checks.py
 - Повторяемая логика — вынести только reusable часть в `utils/`.
 - Не дробить ноду ради “чистой архитектуры”.
 
+### Big-node exception: `nodes/<категория>/<feature>/`
+
+Если нода стала god-file (~1000+ строк) **или** у неё значительный набор приватных helpers, которые не нужны другим нодам (HTTP routes, DOM widget logic, voice/audio pipelines, model loaders), допустимо вынести её в подпапку:
+
+```text
+nodes/llm/super_prompt/
+├── __init__.py            # пустой
+├── ts_super_prompt.py     # единственный публичный entry: класс + schema + execute
+├── _voice.py              # приватный helper (Whisper/voice pipeline)
+├── _qwen.py               # приватный helper (Qwen prompt enhance)
+├── _routes.py             # приватный helper (aiohttp routes)
+└── _helpers.py            # приватный helper (logger, prompt_server, common)
+```
+
+- Публичный класс ноды — **только в `ts_<name>.py`**, не в `_`-prefixed файлах. Loader игнорирует любой путь с `_`-prefixed компонентом.
+- В одной подпапке могут жить несколько публичных нод (как `nodes/audio/loader/` с `TS_AudioLoader` + `TS_AudioPreview`).
+- Не дробить одну ноду на `schema.py + execute.py + types.py` — публичный класс остаётся одним файлом.
+- Подпапка разрешена только если есть реальная причина (god-file, обширные приватные helpers). Для простой ноды overhead не оправдан.
+
+Существующие примеры: `nodes/image/lama_cleanup/`, `nodes/audio/loader/`, `nodes/image/keying/`. Следуй им.
+
 ---
 
 ## 3. Default Backend Direction

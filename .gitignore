@@ -8,4 +8,6 @@
 /pip/
 /.codex_tmp/
 /.claude/
+/.test_models/
+/.test_input/
 pytest-cache-files-*/
