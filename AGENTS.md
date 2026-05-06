@@ -59,7 +59,7 @@ tests/AGENTS.md
 
 1. **Plan**
    - Изучи релевантные файлы.
-   - Определи API нод: V1 или V3.
+   - Определи API нод (после 8.9 — всегда V3).
    - Выпиши публичные контракты: node_id, inputs, outputs, defaults, category, frontend IDs.
    - До редактирования определи стратегию тестирования.
    - Выбери минимальное безопасное изменение.
@@ -219,22 +219,23 @@ If rename/migration is needed:
 
 ---
 
-## 7. Default API Strategy
+## 7. API Strategy: V3 only
 
-New nodes:
+Since `8.9` the whole pack is on V3 — `grep RETURN_TYPES nodes/` returns nothing, all 57 nodes use `IO.ComfyNode + define_schema + execute`.
 
-- Use ComfyUI V3 schema by default.
-- Prefer `from comfy_api.latest import ComfyExtension, io, ui`.
-- Pin `comfy_api` only if project release target requires it.
-- Return `io.NodeOutput`.
-- Use `ComfyExtension.get_node_list()`.
-- Provide `comfy_entrypoint()`.
+All nodes:
 
-Existing V1 nodes:
-
-- Treat as frozen public contracts.
-- Do not migrate to V3 without explicit request.
-- Do not mix V1 and V3 patterns in one file unless maintaining a transition layer.
+- ComfyUI V3 schema.
+- `from comfy_api.latest import IO`.
+- Class inherits from `IO.ComfyNode`.
+- `define_schema(cls) -> IO.Schema(...)` (`@classmethod`).
+- `execute(cls, ...) -> IO.NodeOutput(...)` (`@classmethod`).
+- All helpers — `@classmethod` / `@staticmethod` (no `__init__`; runtime state lives at class level).
+- `validate_inputs`, `fingerprint_inputs`, `check_lazy_status` when needed.
+- Hidden inputs via `cls.hidden` + `IO.Hidden.<name>`.
+- Custom IO types: `IO.Custom("MY_TYPE")`. Wildcards: `IO.AnyType.Input/Output`.
+- Output node without outputs: `outputs=[]` + `is_output_node=True`.
+- `INPUT_IS_LIST` → `is_input_list=True` in `IO.Schema`. `OUTPUT_IS_LIST` → `IO.X.Output(is_output_list=True)`.
 
 ---
 
@@ -412,7 +413,7 @@ Prefer read-only inspection, dry runs, sandboxed commands, and explicit confirma
 Before editing existing code:
 
 1. Read all relevant files.
-2. Identify V1 vs V3.
+2. Confirm V3 schema (since 8.9 the whole pack is V3).
 3. Map public contracts.
 4. Identify frontend dependencies.
 5. Separate bugs from refactoring opportunities.
@@ -435,7 +436,7 @@ Do not:
 - Add features during refactor.
 - Delete commented-out code without confirmation.
 - Change node identifiers.
-- Migrate V1 to V3 without explicit request.
+- Re-introduce V1 patterns in this pack (legacy V1 only kept as a reading reference for other plugins).
 
 ---
 

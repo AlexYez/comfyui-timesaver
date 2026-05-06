@@ -1,6 +1,6 @@
 # CLAUDE.md — Engineering Rules for comfyui-timesaver
 
-Этот файл — операционные правила для Claude (и других AI-ассистентов) при работе над `comfyui-timesaver`. Он построен на основе [AGENTS.md](AGENTS.md) и привязан к ComfyUI custom-node экосистеме (V1/V3 API).
+Этот файл — операционные правила для Claude (и других AI-ассистентов) при работе над `comfyui-timesaver`. Он построен на основе [AGENTS.md](AGENTS.md) и привязан к ComfyUI custom-node V3 API (`comfy_api.latest.IO`).
 
 Главная цель: **максимальное качество итогового кода без поломки старых ComfyUI workflows**.
 
@@ -41,9 +41,9 @@ tests/AGENTS.md
 
 `comfyui-timesaver` — production-quality пак custom nodes и frontend extensions для ComfyUI.
 
-- Версия: `8.8` (`pyproject.toml`).
+- Версия: `8.9` (`pyproject.toml`).
 - Репозиторий: https://github.com/AlexYez/comfyui-timesaver.
-- 56 нод в категориях: image / video / audio / llm / text / files / utils / conditioning.
+- 57 нод (все на V3) в категориях: image / video / audio / llm / text / files / utils / conditioning.
 - conditioning/ содержит 1 ноду: TS_MultiReference.
 - Корневой загрузчик: [`__init__.py`](__init__.py) — рекурсивно сканирует `nodes/**/*.py`, оборачивает entrypoints через `TSDependencyManager` и печатает startup-таблицу.
 - Dependency guard: [`ts_dependency_manager.py`](ts_dependency_manager.py).
@@ -221,25 +221,24 @@ D:/AiApps/ComfyUI/comfyui/python/python.exe tools/build_node_contracts.py
 
 ---
 
-## 5. API: V3 по умолчанию, V1 — frozen
+## 5. API: только V3
 
-Состояние пака: смешанное. Часть нод уже на V3 (`comfy_api.latest.IO`), часть остаётся V1.
+С релиза `8.9` **весь пак на V3**. V1-нод не осталось — `grep RETURN_TYPES nodes/` пуст, все 57 нод используют `IO.ComfyNode + define_schema + execute`.
 
 Новые ноды:
 
-- По умолчанию **ComfyUI V3 schema**.
+- Только **ComfyUI V3 schema**.
 - Импорт: `from comfy_api.latest import IO` (или `IO, UI`).
 - Класс наследует `IO.ComfyNode`.
 - `define_schema(cls)` → `IO.Schema(...)` (`@classmethod`).
 - `execute(cls, ...)` → `IO.NodeOutput(...)` (`@classmethod`).
-- При необходимости: `validate_inputs`, `fingerprint_inputs`, `check_lazy_status`, скрытые входы через `cls.hidden`.
-- Пинить `comfy_api.v0_0_2` только если этого требует release target.
+- Все вспомогательные методы — `@classmethod` или `@staticmethod` (`__init__` не используется, состояние — class-level).
+- При необходимости: `validate_inputs`, `fingerprint_inputs`, `check_lazy_status`, скрытые входы через `cls.hidden` + `IO.Hidden.<name>`.
+- Custom IO-типы: `IO.Custom("MY_TYPE")`. Wildcard вход/выход: `IO.AnyType.Input/Output`.
+- Output-нода без выходов: `outputs=[]` + `is_output_node=True`.
+- INPUT_IS_LIST: `is_input_list=True` в `IO.Schema(...)`. OUTPUT_IS_LIST: `IO.X.Output(is_output_list=True)`.
 
-Существующие V1 ноды:
-
-- Frozen public contracts.
-- Не мигрировать V1 → V3 без явного запроса пользователя.
-- Не смешивать V1 и V3 паттерны в одном файле без переходного слоя.
+V1 шаблон (раздел ниже) оставлен только как reference на случай чтения чужих legacy-плагинов; новый код в этом паке всегда V3.
 
 V3 шаблон (минимальный, в стиле проекта):
 
