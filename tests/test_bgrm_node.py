@@ -71,7 +71,7 @@ def test_bgrm_v1_contract_is_stable(monkeypatch):
     assert module.TS_BGRM_BiRefNet.RETURN_TYPES == ("IMAGE", "MASK", "IMAGE")
     assert module.TS_BGRM_BiRefNet.RETURN_NAMES == ("IMAGE", "MASK", "MASK_IMAGE")
     assert module.TS_BGRM_BiRefNet.FUNCTION == "process_image"
-    assert module.TS_BGRM_BiRefNet.CATEGORY == "Timesaver/Image Tools"
+    assert module.TS_BGRM_BiRefNet.CATEGORY == "TS/Image"
     assert list(input_types["required"]) == ["image", "enable", "model"]
     assert list(input_types["optional"]) == [
         "use_custom_resolution",
