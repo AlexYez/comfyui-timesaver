@@ -17,15 +17,24 @@ import comfy.model_management as mm
 from comfy_api.v0_0_2 import IO
 
 
-class TS_Qwen3_VL_V3(IO.ComfyNode):
-    _instance = None
+class _Qwen3VLState:
+    """Module-level mutable state. ComfyUI V3 `lock_class` blocks
+    `cls._x = ...` on registered nodes, so the singleton lives here
+    instead of on the node class."""
+    instance: "TS_Qwen3_VL_V3 | None" = None
 
+
+_state = _Qwen3VLState()
+
+
+class TS_Qwen3_VL_V3(IO.ComfyNode):
     @classmethod
     def _get_instance(cls):
-        if cls._instance is None:
-            cls._instance = cls.__new__(cls)
-            cls._instance.__init__()
-        return cls._instance
+        if _state.instance is None:
+            inst = cls.__new__(cls)
+            inst.__init__()
+            _state.instance = inst
+        return _state.instance
 
     _MODEL_LIST = [
         "hfmaster/Qwen3-VL-2B",

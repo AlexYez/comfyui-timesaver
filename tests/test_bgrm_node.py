@@ -244,7 +244,7 @@ def test_bgrm_process_path_reports_progress_without_model_download(monkeypatch):
         def process_masks(self, image, params, progress_bar=None, start_step=55, end_step=80, target_device=None):
             return torch.ones((image.shape[0], image.shape[1], image.shape[2]), dtype=torch.float32)
 
-    monkeypatch.setattr(module.TS_BGRM_BiRefNet, "_model", _FakeBg())
+    monkeypatch.setattr(module._state, "model", _FakeBg())
 
     image = torch.rand((2, 6, 5, 3), dtype=torch.float32)
     output = module.TS_BGRM_BiRefNet.execute(
@@ -280,7 +280,7 @@ def test_bgrm_logs_processing_device(monkeypatch, caplog):
         def process_masks(self, image, params, progress_bar=None, start_step=55, end_step=80, target_device=None):
             return torch.ones((image.shape[0], image.shape[1], image.shape[2]), dtype=torch.float32)
 
-    monkeypatch.setattr(module.TS_BGRM_BiRefNet, "_model", _FakeBg())
+    monkeypatch.setattr(module._state, "model", _FakeBg())
 
     caplog.set_level(logging.INFO, logger=module.__name__)
     image = torch.rand((1, 4, 4, 3), dtype=torch.float32)

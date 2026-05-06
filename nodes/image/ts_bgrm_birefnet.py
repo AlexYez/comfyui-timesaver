@@ -570,14 +570,22 @@ class BiRefNetModel:
         except Exception as e:
             handle_model_error(f"Error in BiRefNet processing: {str(e)}", cause=e)
 
-class TS_BGRM_BiRefNet(IO.ComfyNode):
-    _model = None
+class _BiRefNetState:
+    """Module-level mutable state. ComfyUI V3 `lock_class` blocks
+    `cls._x = ...` on registered nodes, so the cached model lives here
+    instead of on the node class."""
+    model: "BiRefNetModel | None" = None
 
+
+_state = _BiRefNetState()
+
+
+class TS_BGRM_BiRefNet(IO.ComfyNode):
     @classmethod
     def _ensure_model(cls):
-        if cls._model is None:
-            cls._model = BiRefNetModel()
-        return cls._model
+        if _state.model is None:
+            _state.model = BiRefNetModel()
+        return _state.model
 
     @classmethod
     def define_schema(cls) -> IO.Schema:

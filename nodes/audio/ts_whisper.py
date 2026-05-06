@@ -80,33 +80,45 @@ def _resolve_hf_cache_dir():
         return None
 
 
-class TSWhisper(IO.ComfyNode):
-    """V3 Whisper transcription node. State is held at class-level so the
-    HF pipeline persists between executions just like the V1 ``self.*``
-    cache used to."""
-
-    _LOG_NAME = _LOG_NAME
-    _LOG_PREFIX = _LOG_PREFIX
-    _logger = _logger
-
-    _hf_cache_dir = None
-    _hf_cache_initialized = False
-    _model = None
-    _processor = None
-    _pipeline = None
-    _resamplers: dict = {}
-    _current_pipeline_config: dict = {
+class _WhisperState:
+    """Module-level mutable state. ComfyUI V3 `lock_class` blocks
+    `cls._x = ...` on registered nodes, so the cached HF model / pipeline
+    live here instead of on the node class. Persists across executions
+    just like the V1 ``self.*`` cache used to."""
+    hf_cache_dir = None
+    hf_cache_initialized = False
+    model = None
+    processor = None
+    pipeline = None
+    current_pipeline_config: dict = {
         "model_name": None,
         "precision": None,
         "attn_implementation": None,
     }
 
+
+_state = _WhisperState()
+
+
+class TSWhisper(IO.ComfyNode):
+    """V3 Whisper transcription node. Mutable state lives in
+    `_WhisperState` at module scope (V3 `lock_class` blocks class-attr
+    writes). The class itself stays effectively stateless."""
+
+    _LOG_NAME = _LOG_NAME
+    _LOG_PREFIX = _LOG_PREFIX
+    _logger = _logger
+
+    # `_resamplers` mutates only via dict[k] = v (not setattr on the
+    # class), so it is safe to keep as a class attribute.
+    _resamplers: dict = {}
+
     @classmethod
     def _ensure_hf_cache(cls):
-        if not cls._hf_cache_initialized:
-            cls._hf_cache_dir = _resolve_hf_cache_dir()
-            cls._hf_cache_initialized = True
-        return cls._hf_cache_dir
+        if not _state.hf_cache_initialized:
+            _state.hf_cache_dir = _resolve_hf_cache_dir()
+            _state.hf_cache_initialized = True
+        return _state.hf_cache_dir
 
     @staticmethod
     def _safe_float(value, default):
@@ -389,12 +401,12 @@ class TSWhisper(IO.ComfyNode):
 
     @classmethod
     def _should_reload_pipeline(cls, new_config):
-        if cls._pipeline is None:
+        if _state.pipeline is None:
             return True
         for key, value in new_config.items():
-            if cls._current_pipeline_config.get(key) != value:
+            if _state.current_pipeline_config.get(key) != value:
                 _log_info(
-                    f"Pipeline config changed: {key} ('{cls._current_pipeline_config.get(key)}' -> '{value}')"
+                    f"Pipeline config changed: {key} ('{_state.current_pipeline_config.get(key)}' -> '{value}')"
                 )
                 return True
         return False
@@ -440,22 +452,22 @@ class TSWhisper(IO.ComfyNode):
             elif attn_implementation_choice == "sdpa":
                 _log_warning("SDPA not available. Using eager attention.")
 
-            cls._model = AutoModelForSpeechSeq2Seq.from_pretrained(
+            _state.model = AutoModelForSpeechSeq2Seq.from_pretrained(
                 model_name, **model_load_kwargs
             )
-            if cls._model.device != target_device:
-                cls._model.to(target_device)
+            if _state.model.device != target_device:
+                _state.model.to(target_device)
 
-            _log_info(f"Model loaded on {cls._model.device}")
+            _log_info(f"Model loaded on {_state.model.device}")
 
             processor_load_kwargs = {"cache_dir": hf_cache} if hf_cache else {}
-            cls._processor = AutoProcessor.from_pretrained(model_name, **processor_load_kwargs)
+            _state.processor = AutoProcessor.from_pretrained(model_name, **processor_load_kwargs)
 
-            return cls._model, cls._processor, actual_torch_dtype
+            return _state.model, _state.processor, actual_torch_dtype
 
         except Exception as e:
             _log_error(f"Failed to load model/processor: {e}")
-            cls._model, cls._processor, cls._pipeline = None, None, None
+            _state.model, _state.processor, _state.pipeline = None, None, None
             raise
 
     @classmethod
@@ -468,7 +480,7 @@ class TSWhisper(IO.ComfyNode):
 
         if cls._should_reload_pipeline(new_config):
             _log_info("(Re)loading ASR pipeline...")
-            cls._pipeline = None
+            _state.pipeline = None
             model, processor, actual_torch_dtype = cls._load_model_and_processor(
                 target_device, model_name, precision, attn_implementation
             )
@@ -481,11 +493,11 @@ class TSWhisper(IO.ComfyNode):
                 "torch_dtype": actual_torch_dtype,
                 "device": target_device,
             }
-            cls._pipeline = pipeline("automatic-speech-recognition", **pipeline_kwargs)
-            cls._current_pipeline_config = new_config
+            _state.pipeline = pipeline("automatic-speech-recognition", **pipeline_kwargs)
+            _state.current_pipeline_config = new_config
             _log_info(f"ASR pipeline ready: {model_name}")
 
-        return cls._pipeline
+        return _state.pipeline
 
     @staticmethod
     def _seconds_to_ttml_time(seconds_float):
@@ -678,9 +690,9 @@ class TSWhisper(IO.ComfyNode):
         if condition_on_prev_tokens is None:
             condition_on_prev_tokens = False
         generate_kwargs["condition_on_prev_tokens"] = bool(condition_on_prev_tokens)
-        if initial_prompt and cls._processor and hasattr(cls._processor, "get_prompt_ids"):
+        if initial_prompt and _state.processor and hasattr(_state.processor, "get_prompt_ids"):
             try:
-                generate_kwargs["prompt_ids"] = cls._processor.get_prompt_ids(initial_prompt)
+                generate_kwargs["prompt_ids"] = _state.processor.get_prompt_ids(initial_prompt)
             except Exception as e:
                 _log_warning(f"Failed to build prompt_ids: {e}")
         return generate_kwargs

@@ -276,7 +276,8 @@ context = browser.new_context(
 - Класс наследует `IO.ComfyNode`.
 - `define_schema(cls)` → `IO.Schema(...)` (`@classmethod`).
 - `execute(cls, ...)` → `IO.NodeOutput(...)` (`@classmethod`).
-- Все вспомогательные методы — `@classmethod` или `@staticmethod` (`__init__` не используется, состояние — class-level).
+- Все вспомогательные методы — `@classmethod` или `@staticmethod` (`__init__` не используется).
+- **Стейт держим на module level**, не на классе. ComfyUI V3 при регистрации создаёт `<NodeName>Clone` через `comfy_api.internal.lock_class()` — `cls.X = ...` падает с `AttributeError: Cannot modify class attribute '...' on locked class`. Pattern для кэшей моделей / синглтонов / pipeline state: завести в модуле private `class _NodeState: ...` с дефолтами, инстанциировать `_state = _NodeState()` и дёргать через `_state.model = ...` / `_state.model`. Класс ноды остаётся stateless. Примеры: [`nodes/image/ts_bgrm_birefnet.py`](nodes/image/ts_bgrm_birefnet.py), [`nodes/audio/ts_whisper.py`](nodes/audio/ts_whisper.py), [`nodes/video/ts_video_depth.py`](nodes/video/ts_video_depth.py), [`nodes/llm/ts_qwen3_vl.py`](nodes/llm/ts_qwen3_vl.py).
 - При необходимости: `validate_inputs`, `fingerprint_inputs`, `check_lazy_status`, скрытые входы через `cls.hidden` + `IO.Hidden.<name>`.
 - Custom IO-типы: `IO.Custom("MY_TYPE")`. Wildcard вход/выход: `IO.AnyType.Input/Output`.
 - Output-нода без выходов: `outputs=[]` + `is_output_node=True`.

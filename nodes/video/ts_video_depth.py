@@ -184,12 +184,20 @@ def postprocess_vda_colormap_internal(depths_np_float32_input, colormap_name="gr
     return torch.from_numpy(output_array_rgb)
 
 
-class TS_VideoDepth(IO.ComfyNode):
-    _loaded_model_instance = None
-    _loaded_model_filename = None
-    _model_on_device_type_str = None
-    _first_gpu_call_done = False
+class _VideoDepthState:
+    """Module-level mutable state. ComfyUI V3 `lock_class` blocks
+    `cls._x = ...` on registered nodes, so the loaded model and
+    device-tracking flags live here instead of on the node class."""
+    loaded_model_instance = None
+    loaded_model_filename = None
+    model_on_device_type_str = None
+    first_gpu_call_done = False
 
+
+_state = _VideoDepthState()
+
+
+class TS_VideoDepth(IO.ComfyNode):
     @classmethod
     def define_schema(cls) -> IO.Schema:
         upscale_methods_list = ["Lanczos4", "Cubic", "Linear"]
@@ -217,25 +225,25 @@ class TS_VideoDepth(IO.ComfyNode):
 
     @classmethod
     def _ensure_model_loaded_on_cpu(cls, model_filename_to_load):
-        if cls._loaded_model_instance is None or cls._loaded_model_filename != model_filename_to_load or cls._model_on_device_type_str != 'cpu':
-            if cls._loaded_model_instance is not None and cls._model_on_device_type_str != 'cpu':
+        if _state.loaded_model_instance is None or _state.loaded_model_filename != model_filename_to_load or _state.model_on_device_type_str != 'cpu':
+            if _state.loaded_model_instance is not None and _state.model_on_device_type_str != 'cpu':
                 logger.info(
                     "%s Offloading previous model: %s from %s",
                     LOG_PREFIX,
-                    cls._loaded_model_filename,
-                    cls._model_on_device_type_str,
+                    _state.loaded_model_filename,
+                    _state.model_on_device_type_str,
                 )
                 try:
-                    cls._loaded_model_instance.to('cpu')
-                    if cls._model_on_device_type_str == 'cuda' and torch.cuda.is_available():
+                    _state.loaded_model_instance.to('cpu')
+                    if _state.model_on_device_type_str == 'cuda' and torch.cuda.is_available():
                         torch.cuda.synchronize()
                         torch.cuda.empty_cache()
                 except Exception as e:
                     logger.warning("%s Minor error during offload of previous model: %s", LOG_PREFIX, e)
 
-            if cls._loaded_model_instance is None or cls._loaded_model_filename != model_filename_to_load:
-                del cls._loaded_model_instance
-                cls._loaded_model_instance = None
+            if _state.loaded_model_instance is None or _state.loaded_model_filename != model_filename_to_load:
+                del _state.loaded_model_instance
+                _state.loaded_model_instance = None
                 gc.collect()
                 if torch.cuda.is_available():
                     torch.cuda.empty_cache()
@@ -263,15 +271,15 @@ class TS_VideoDepth(IO.ComfyNode):
                 vda_instance.load_state_dict(state_dict)
                 del state_dict
                 gc.collect()
-                cls._loaded_model_instance = vda_instance.eval()
-                cls._loaded_model_filename = model_filename_to_load
+                _state.loaded_model_instance = vda_instance.eval()
+                _state.loaded_model_filename = model_filename_to_load
 
-            if hasattr(cls._loaded_model_instance, 'device') and cls._loaded_model_instance.device.type != 'cpu':
-                cls._loaded_model_instance.to('cpu')
+            if hasattr(_state.loaded_model_instance, 'device') and _state.loaded_model_instance.device.type != 'cpu':
+                _state.loaded_model_instance.to('cpu')
 
-            cls._model_on_device_type_str = 'cpu'
+            _state.model_on_device_type_str = 'cpu'
             logger.info("%s Model %s is confirmed on CPU.", LOG_PREFIX, model_filename_to_load)
-        return cls._loaded_model_instance
+        return _state.loaded_model_instance
 
     @classmethod
     def execute(cls, images, model_filename, input_size, max_res, precision, colormap, dithering_strength, apply_median_blur, upscale_algorithm) -> IO.NodeOutput:
@@ -283,15 +291,15 @@ class TS_VideoDepth(IO.ComfyNode):
         current_processing_device = mm.get_torch_device()
 
         if current_processing_device.type == 'cuda':
-            if not cls._first_gpu_call_done:
+            if not _state.first_gpu_call_done:
                 logger.info("%s First GPU call for this model in session: performing VRAM clear.", LOG_PREFIX)
                 gc.collect()
                 torch.cuda.empty_cache()
                 torch.cuda.synchronize()
             model_to_use.to(current_processing_device)
-            cls._model_on_device_type_str = current_processing_device.type
+            _state.model_on_device_type_str = current_processing_device.type
         else:
-            cls._model_on_device_type_str = 'cpu'
+            _state.model_on_device_type_str = 'cpu'
 
         if input_size % 14 != 0:
             processed_input_size = ((input_size // 14) * 14)
@@ -328,23 +336,23 @@ class TS_VideoDepth(IO.ComfyNode):
                 )
             if current_processing_device.type == 'cuda':
                 torch.cuda.synchronize()
-                cls._first_gpu_call_done = True
+                _state.first_gpu_call_done = True
             logger.info("%s Inference complete.", LOG_PREFIX)
         except Exception as e:
             logger.error("%s EXCEPTION DURING MODEL INFERENCE: %s - %s", LOG_PREFIX, type(e).__name__, e)
-            if cls._model_on_device_type_str != 'cpu':
+            if _state.model_on_device_type_str != 'cpu':
                 logger.info("%s Offloading model to CPU due to exception.", LOG_PREFIX)
                 model_to_use.to('cpu')
-                cls._model_on_device_type_str = 'cpu'
+                _state.model_on_device_type_str = 'cpu'
                 if current_processing_device.type == 'cuda':
                     torch.cuda.synchronize()
                     torch.cuda.empty_cache()
             gc.collect()
             raise e
         finally:
-            if cls._model_on_device_type_str != 'cpu':
+            if _state.model_on_device_type_str != 'cpu':
                 model_to_use.to('cpu')
-                cls._model_on_device_type_str = 'cpu'
+                _state.model_on_device_type_str = 'cpu'
             gc.collect()
 
         del images_np_uint8
