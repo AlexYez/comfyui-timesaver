@@ -13,7 +13,6 @@ from PIL import Image
 
 import folder_paths
 import comfy.model_management as mm
-from huggingface_hub import snapshot_download
 
 from comfy_api.latest import IO
 
@@ -1185,6 +1184,9 @@ class TS_Qwen3_VL_V3(IO.ComfyNode):
         raise RuntimeError(f"All mirrors failed. Last error: {last_error}")
 
     def _snapshot_download(self, model_id, local_dir, token, endpoint_url):
+        # Lazy: huggingface_hub pulls in HTTP/auth/cache infra. Load only when
+        # actually downloading.
+        from huggingface_hub import snapshot_download
         kwargs = {
             "repo_id": model_id,
             "local_dir": local_dir,

@@ -1,10 +1,16 @@
-accelerate>=0.21.0
-bitsandbytes>=0.40.0
+# Core runtime — every node pack install pulls this.
+# Heavy / platform-specific extras live in pyproject.toml under
+# [project.optional-dependencies]. Install via:
+#   pip install -r requirements.txt
+#   pip install bitsandbytes        # for TS_Qwen3_VL_V3 int4/int8
+#   pip install demucs geomloss pykeops  # for TS_Music_Stems
+#   pip install openai-whisper      # legacy whisper.load_audio fallback
+#   pip install silero silero-stress  # Russian TTS / stress marks
 huggingface_hub>=0.20.0
 transformers>=4.57.0
+accelerate>=0.21.0
 srt>=3.5.0
 opencv-python>=4.5.0
-openai-whisper>=20231117
 matplotlib>=3.4.0
 imageio>=2.20.0
 imageio-ffmpeg>=0.4.0
@@ -13,8 +19,3 @@ urllib3>=1.26.0
 easydict>=1.10.0
 qwen-vl-utils>=0.0.8
 tiktoken
-demucs
-geomloss
-pykeops
-silero
-silero-stress

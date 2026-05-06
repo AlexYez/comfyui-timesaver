@@ -10,7 +10,6 @@ import threading
 import types
 from contextlib import contextmanager
 
-import cv2
 import comfy.model_management as model_management
 import folder_paths
 import numpy as np
@@ -18,9 +17,7 @@ import torch
 import torch.nn.functional as F
 from comfy.utils import ProgressBar
 from comfy_api.latest import IO
-from huggingface_hub import hf_hub_download
 from PIL import Image, ImageFilter
-from safetensors.torch import load_file
 
 logger = logging.getLogger(__name__)
 _LOG_PREFIX = "[TS Remove Background]"
@@ -308,6 +305,8 @@ def refine_foreground(image_bchw, masks_b1hw):
         thresh = 0.45
         mask_binary = (mask > thresh).astype(np.float32)
 
+        # Lazy: cv2 is only needed when actually refining a foreground mask.
+        import cv2
         edge_blur = cv2.GaussianBlur(mask_binary, (3, 3), 0)
         transition_mask = np.logical_and(mask > 0.05, mask < 0.95)
 
@@ -366,6 +365,9 @@ class BiRefNetModel:
             filenames = list(MODEL_CONFIG[model_name]["files"].keys())
             logger.info("%s Downloading %s model files", _LOG_PREFIX, model_name)
 
+            # Lazy: huggingface_hub pulls in HTTP/auth/cache infra. Only
+            # imported on the first download attempt.
+            from huggingface_hub import hf_hub_download
             current_step = start_step
             for index, filename in enumerate(filenames, start=1):
                 next_step = start_step + int((end_step - start_step) * index / max(1, len(filenames)))
@@ -447,6 +449,8 @@ class BiRefNetModel:
                 self.model = model_module.BiRefNet(config_module.BiRefNetConfig())
 
                 with _progress_pulse(progress_bar, start_step + 12, end_step - 8):
+                    # Lazy: safetensors only needed at first model load.
+                    from safetensors.torch import load_file
                     state_dict = load_file(weights_path)
                 self.model.load_state_dict(state_dict)
 

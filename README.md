@@ -86,14 +86,17 @@ Then restart ComfyUI.
 
 A few nodes need extra packages — they fail gracefully and tell you what's missing if you try to run them without:
 
-| Node | Needs |
-|---|---|
-| TS Cube ↔ Equirectangular | `py360convert` |
-| TS Music Stems | `demucs`, `geomloss`, `pykeops` |
-| TS Whisper | `openai-whisper` |
-| TS Silero TTS / Stress | `silero`, `silero-stress` |
-| TS RTX Upscaler | `nvvfx` (NVIDIA RTX only) |
-| TS Video Upscale With Model | `spandrel` |
+| Node | Needs | Install via extra |
+|---|---|---|
+| TS Cube ↔ Equirectangular | `py360convert` | (bundled in core) |
+| TS Qwen 3 VL int4/int8 | `bitsandbytes` | `pip install -e .[llm-quant]` |
+| TS Music Stems | `demucs`, `geomloss`, `pykeops` | `pip install -e .[audio-stems]` |
+| TS Whisper (legacy fallback) | `openai-whisper` | `pip install -e .[audio-whisper]` |
+| TS Silero TTS / Stress | `silero`, `silero-stress` | `pip install -e .[audio-silero]` |
+| TS RTX Upscaler | `nvvfx` (NVIDIA RTX only) | install manually |
+| TS Video Upscale With Model | `spandrel` | install manually |
+
+> Want everything in one go? `pip install -e .[all]`
 
 ---
 
