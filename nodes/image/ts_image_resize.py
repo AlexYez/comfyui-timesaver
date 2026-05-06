@@ -9,7 +9,7 @@ import torch
 import numpy as np
 from PIL import Image
 
-from comfy_api.latest import IO
+from comfy_api.v0_0_2 import IO
 
 try:
     import torchvision.transforms.functional as TF  # noqa: F401

@@ -89,10 +89,10 @@ def _install_stubs(monkeypatch, tmp_path_obj: Path) -> None:
         path.mkdir(parents=True, exist_ok=True)
 
     comfy_api = types.ModuleType("comfy_api")
-    latest = types.ModuleType("comfy_api.latest")
+    latest = types.ModuleType("comfy_api.v0_0_2")
     latest.IO = _IO
     monkeypatch.setitem(sys.modules, "comfy_api", comfy_api)
-    monkeypatch.setitem(sys.modules, "comfy_api.latest", latest)
+    monkeypatch.setitem(sys.modules, "comfy_api.v0_0_2", latest)
 
     folder_paths = types.ModuleType("folder_paths")
     folder_paths.models_dir = str(models_dir)

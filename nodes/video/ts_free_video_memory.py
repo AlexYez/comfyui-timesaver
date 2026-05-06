@@ -8,7 +8,7 @@ import logging
 
 import torch
 
-from comfy_api.latest import IO
+from comfy_api.v0_0_2 import IO
 
 logger = logging.getLogger("comfyui_timesaver.ts_free_video_memory")
 LOG_PREFIX = "[TS Free Video Memory]"

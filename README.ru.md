@@ -34,7 +34,7 @@
 | 🛠️ | **[Утилиты](#utils)** | 4 | Кастомные слайдеры, математика, умный type-aware свитч |
 | 🎨 | **[Conditioning](#conditioning)** | 1 | Multi-reference кондиционинг изображений |
 
-> Все 57 нод переведены на **ComfyUI V3 API** (`comfy_api.latest.IO`).
+> Все 57 нод используют **ComfyUI V3 API** (`comfy_api.v0_0_2.IO` — pinned namespace для стабильности).
 
 ---
 

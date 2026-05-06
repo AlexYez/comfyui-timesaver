@@ -7,7 +7,7 @@ import tempfile
 
 import folder_paths
 from aiohttp import web
-from comfy_api.latest import IO
+from comfy_api.v0_0_2 import IO
 
 try:
     from server import PromptServer

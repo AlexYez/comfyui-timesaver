@@ -83,11 +83,11 @@ def _install_stubs(monkeypatch, ts_tmp_path):
         tqdm_mod.tqdm = lambda iterable=None, **kw: iterable if iterable is not None else iter([])
         monkeypatch.setitem(sys.modules, "tqdm", tqdm_mod)
 
-    # Stub comfy_api.latest.IO so the V3 schema declaration in
+    # Stub comfy_api.v0_0_2.IO so the V3 schema declaration in
     # ts_downloader imports without dragging in the full ComfyUI runtime
     # (real comfy_api needs comfy.cli_args, which the test does not stub).
     comfy_api_mod = types.ModuleType("comfy_api")
-    latest_mod = types.ModuleType("comfy_api.latest")
+    latest_mod = types.ModuleType("comfy_api.v0_0_2")
 
     class _StubInput:
         def __init__(self, *args, **kwargs):
@@ -124,7 +124,7 @@ def _install_stubs(monkeypatch, ts_tmp_path):
 
     latest_mod.IO = _StubIO
     monkeypatch.setitem(sys.modules, "comfy_api", comfy_api_mod)
-    monkeypatch.setitem(sys.modules, "comfy_api.latest", latest_mod)
+    monkeypatch.setitem(sys.modules, "comfy_api.v0_0_2", latest_mod)
 
 
 @pytest.fixture

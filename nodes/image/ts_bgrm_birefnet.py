@@ -16,7 +16,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from comfy.utils import ProgressBar
-from comfy_api.latest import IO
+from comfy_api.v0_0_2 import IO
 from PIL import Image, ImageFilter
 
 logger = logging.getLogger(__name__)

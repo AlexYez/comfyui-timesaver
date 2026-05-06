@@ -7,7 +7,7 @@ import math
 
 import torch
 
-from comfy_api.latest import IO
+from comfy_api.v0_0_2 import IO
 
 
 class TS_Color_Grade(IO.ComfyNode):

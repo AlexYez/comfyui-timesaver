@@ -22,13 +22,13 @@ import pytest
 
 
 def _install_stubs(monkeypatch):
-    """Stub comfy_api.latest.IO if the real one is not importable.
+    """Stub comfy_api.v0_0_2.IO if the real one is not importable.
 
     On the maintainer machine the real one is reachable from ComfyUI
     Python, but contributor CI may run with no ComfyUI checkout on
     sys.path — fall back to a minimal stub so the module imports.
     """
-    if "comfy_api.latest" in sys.modules:
+    if "comfy_api.v0_0_2" in sys.modules:
         return  # real one already loaded — keep it
 
     class _Input:
@@ -88,10 +88,10 @@ def _install_stubs(monkeypatch):
         NumberDisplay = _NumberDisplay
 
     comfy_api = types.ModuleType("comfy_api")
-    latest = types.ModuleType("comfy_api.latest")
+    latest = types.ModuleType("comfy_api.v0_0_2")
     latest.IO = _IO
     monkeypatch.setitem(sys.modules, "comfy_api", comfy_api)
-    monkeypatch.setitem(sys.modules, "comfy_api.latest", latest)
+    monkeypatch.setitem(sys.modules, "comfy_api.v0_0_2", latest)
 
 
 def _load(monkeypatch, module_path: str):

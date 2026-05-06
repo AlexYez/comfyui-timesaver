@@ -26,7 +26,7 @@ np = pytest.importorskip("numpy")
 
 
 def _install_io_stub_with_ui(monkeypatch):
-    if "comfy_api.latest" in sys.modules:
+    if "comfy_api.v0_0_2" in sys.modules:
         return  # already loaded — keep real one
 
     class _Input:
@@ -99,11 +99,11 @@ def _install_io_stub_with_ui(monkeypatch):
         def PreviewImage(image, cls=None): return {"image": image}
 
     comfy_api = types.ModuleType("comfy_api")
-    latest = types.ModuleType("comfy_api.latest")
+    latest = types.ModuleType("comfy_api.v0_0_2")
     latest.IO = _IO
     latest.UI = _UI
     monkeypatch.setitem(sys.modules, "comfy_api", comfy_api)
-    monkeypatch.setitem(sys.modules, "comfy_api.latest", latest)
+    monkeypatch.setitem(sys.modules, "comfy_api.v0_0_2", latest)
 
 
 def _stub_comfy(monkeypatch):

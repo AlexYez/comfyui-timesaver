@@ -34,7 +34,7 @@ Whether you build pipelines for image generation, video, audio, or just want to 
 | 🛠️ | **[Utils](#utils)** | 4 | Custom sliders, math, smart type-aware switch |
 | 🎨 | **[Conditioning](#conditioning)** | 1 | Multi-reference image conditioning |
 
-> All 57 nodes are migrated to the **ComfyUI V3 API** (`comfy_api.latest.IO`).
+> All 57 nodes use the **ComfyUI V3 API** (`comfy_api.v0_0_2.IO` — pinned namespace for stability).
 
 ---
 

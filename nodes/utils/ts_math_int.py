@@ -3,7 +3,7 @@
 node_id: TS_Math_Int
 """
 
-from comfy_api.latest import IO
+from comfy_api.v0_0_2 import IO
 
 from .._shared import TS_Logger
 

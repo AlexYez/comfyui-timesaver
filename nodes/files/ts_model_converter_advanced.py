@@ -14,7 +14,7 @@ from tqdm import tqdm
 
 import folder_paths
 import comfy.sd
-from comfy_api.latest import IO
+from comfy_api.v0_0_2 import IO
 from safetensors.torch import save_file
 from safetensors import safe_open
 

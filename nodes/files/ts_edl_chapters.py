@@ -2,7 +2,7 @@ import logging
 import os
 import re
 
-from comfy_api.latest import IO
+from comfy_api.v0_0_2 import IO
 
 logger = logging.getLogger("comfyui_timesaver.ts_edl_chapters")
 LOG_PREFIX = "[TS YouTube Chapters]"

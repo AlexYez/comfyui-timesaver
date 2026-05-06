@@ -9,7 +9,7 @@ import comfy.model_management as mm
 import folder_paths
 from comfy.utils import ProgressBar, load_torch_file
 
-from comfy_api.latest import IO
+from comfy_api.v0_0_2 import IO
 
 logger = logging.getLogger("comfyui_timesaver.ts_video_depth")
 LOG_PREFIX = "[TS Video Depth]"
