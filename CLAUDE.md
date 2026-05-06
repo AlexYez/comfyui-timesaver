@@ -219,6 +219,50 @@ D:/AiApps/ComfyUI/comfyui/python/python.exe tools/build_node_contracts.py
 - python -m pytest tests/test_lama_cleanup_contract.py
 ```
 
+### 4.5.3. Playwright + Chromium для frontend GUI testing
+
+В ComfyUI Python (`D:/AiApps/ComfyUI/comfyui/python/python.exe`) установлен **`playwright` + Chromium** (браузер уже загружен). Используй его как **default** для всего, что требует автоматического GUI рендера:
+
+- Headless screenshots для документации (canvas + DOM widgets composited корректно — `canvas.toDataURL()` теряет DOM widgets).
+- Frontend smoke tests: создание ноды → проверка console → snapshot.
+- E2E workflow прогон.
+
+**Готовый helper:** [`tools/screenshot_nodes.py`](tools/screenshot_nodes.py).
+
+```bash
+# Все 57 нод
+D:/AiApps/ComfyUI/comfyui/python/python.exe tools/screenshot_nodes.py
+
+# Конкретные (по node_id или file stem)
+D:/AiApps/ComfyUI/comfyui/python/python.exe tools/screenshot_nodes.py TS_Keyer ts_audio_loader
+
+# Видимое окно для отладки
+D:/AiApps/ComfyUI/comfyui/python/python.exe tools/screenshot_nodes.py --no-headless
+```
+
+**Critical: всегда forced `locale='en-US'`** — иначе Chromium берёт OS-locale (русский) и ComfyUI переведёт UI labels (например, `IMAGE` → `ИЗОБРАЖЕНИЕ`):
+
+```python
+context = browser.new_context(
+    viewport={"width": 1920, "height": 1080},
+    device_scale_factor=1,
+    locale="en-US",
+    extra_http_headers={"Accept-Language": "en-US,en;q=0.9"},
+)
+```
+
+**Playwright vs Chrome MCP:**
+
+| Сценарий | Используй |
+|---|---|
+| Headless screenshot для README/docs | Playwright |
+| Frontend smoke test после изменений (createNode + console) | Playwright |
+| E2E workflow runs | Playwright |
+| Проверка поведения в реальном браузере пользователя | Chrome MCP |
+| Интерактивная отладка с user state/cookies | Chrome MCP |
+
+**Default для frontend automation — Playwright, не Chrome MCP.** Chrome MCP оставляй для случаев, где явно нужен реальный браузер пользователя со всеми его расширениями/настройками.
+
 ---
 
 ## 5. API: только V3
