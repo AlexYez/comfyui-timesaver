@@ -176,17 +176,19 @@ MODEL_CONFIG = {
 
 # Utility functions
 def _get_target_device():
+    """Resolve the inference device strictly via ComfyUI's model_management.
+
+    Previously this function silently overrode CPU back to cuda whenever CUDA
+    was physically present, which broke `--cpu`, lowvram fallback, and
+    multi-GPU index selection. Trusting `model_management.get_torch_device()`
+    matches the documented ComfyUI contract — if the user asked for CPU, they
+    get CPU; if ComfyUI chose `cuda:N`, that index is preserved.
+    """
     try:
-        target_device = model_management.get_torch_device()
+        return model_management.get_torch_device()
     except Exception as exc:
         logger.warning("%s Could not resolve ComfyUI device, using CPU: %s", _LOG_PREFIX, exc)
-        target_device = torch.device("cpu")
-
-    if torch.cuda.is_available() and getattr(target_device, "type", str(target_device)) == "cpu":
-        logger.info("%s CUDA is available; using GPU for BiRefNet inference", _LOG_PREFIX)
-        return torch.device("cuda")
-
-    return target_device
+        return torch.device("cpu")
 
 
 def _target_dtype(target_device):
