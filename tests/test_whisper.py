@@ -115,11 +115,15 @@ def _make_node(module, monkeypatch):
     return node
 
 
-def test_v1_contract_matches_snapshot(whisper_module):
+def test_v3_contract_matches_snapshot(whisper_module):
     cls = whisper_module.TSWhisper
-    assert cls.RETURN_TYPES == ("STRING", "STRING", "STRING")
-    assert cls.FUNCTION == "generate_srt_and_text"
-    assert cls.CATEGORY == "TS/Audio"
+    schema = cls.define_schema()
+    assert schema.node_id == "TSWhisper"
+    assert schema.display_name == "TS Whisper"
+    assert schema.category == "TS/Audio"
+    assert [out.display_name for out in schema.outputs] == [
+        "srt_content", "text_content", "ttml_content",
+    ]
 
 
 def test_safe_float_returns_default_on_garbage(whisper_module, monkeypatch):

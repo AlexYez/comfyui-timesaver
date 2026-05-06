@@ -202,7 +202,7 @@
     }
   },
   "TSWhisper": {
-    "api": "v1",
+    "api": "v3",
     "category": "TS/Audio",
     "class_name": "TSWhisper",
     "display_name": "TS Whisper",
@@ -1232,7 +1232,7 @@
     }
   },
   "TS_MusicStems": {
-    "api": "v1",
+    "api": "v3",
     "category": "TS/Audio",
     "class_name": "TS_MusicStems",
     "display_name": "TS Music Stems",

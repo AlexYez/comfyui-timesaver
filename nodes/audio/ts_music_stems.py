@@ -1,4 +1,4 @@
-﻿import logging
+import logging
 import os
 import threading
 
@@ -7,6 +7,8 @@ import comfy.utils
 import folder_paths
 import torch
 import torchaudio
+
+from comfy_api.latest import IO
 
 from ..ts_dependency_manager import TSDependencyManager
 
@@ -19,15 +21,14 @@ _demucs_get_model = getattr(_demucs_pretrained, "get_model", None) if _demucs_pr
 _demucs_apply_model = getattr(_demucs_apply, "apply_model", None) if _demucs_apply is not None else None
 
 
-class TS_MusicStems:
+class TS_MusicStems(IO.ComfyNode):
     """
     TS_MusicStems v1.5 (Stable High-Fidelity)
     - Reverted `segment` parameter causing tensor mismatch in transformer models.
     - Optimized for quality via overlap/shifts logic.
     """
 
-    def __init__(self):
-        self.model_cache = {}
+    _model_cache: dict = {}
 
     @staticmethod
     def _normalize_waveform_shape(waveform):
@@ -79,33 +80,30 @@ class TS_MusicStems:
         return pbar, stop_event, worker
 
     @classmethod
-    def INPUT_TYPES(cls):
-        return {
-            "required": {
-                "audio": ("AUDIO",),
-                "model_name": (["htdemucs", "htdemucs_ft", "hdemucs_mmi"], {"default": "htdemucs_ft"}),
-                "device": (["cuda", "cpu", "auto"], {"default": "auto"}),
-                "shifts": (
-                    "INT",
-                    {"default": 2, "min": 0, "max": 10, "tooltip": "TTA passes. 2 = high quality, 4 = very slow."},
-                ),
-                "overlap": (
-                    "FLOAT",
-                    {"default": 0.5, "min": 0.0, "max": 0.9, "tooltip": "Chunk overlap for smoother stitching."},
-                ),
-                "jobs": (
-                    "INT",
-                    {"default": 0, "min": 0, "max": 16, "tooltip": "CPU workers for pre-processing. 0 = auto."},
-                ),
-            }
-        }
+    def define_schema(cls) -> IO.Schema:
+        return IO.Schema(
+            node_id="TS_MusicStems",
+            display_name="TS Music Stems",
+            category="TS/Audio",
+            inputs=[
+                IO.Audio.Input("audio"),
+                IO.Combo.Input("model_name", options=["htdemucs", "htdemucs_ft", "hdemucs_mmi"], default="htdemucs_ft"),
+                IO.Combo.Input("device", options=["cuda", "cpu", "auto"], default="auto"),
+                IO.Int.Input("shifts", default=2, min=0, max=10, tooltip="TTA passes. 2 = high quality, 4 = very slow."),
+                IO.Float.Input("overlap", default=0.5, min=0.0, max=0.9, tooltip="Chunk overlap for smoother stitching."),
+                IO.Int.Input("jobs", default=0, min=0, max=16, tooltip="CPU workers for pre-processing. 0 = auto."),
+            ],
+            outputs=[
+                IO.Audio.Output(display_name="vocal"),
+                IO.Audio.Output(display_name="bass"),
+                IO.Audio.Output(display_name="drums"),
+                IO.Audio.Output(display_name="others"),
+                IO.Audio.Output(display_name="instrumental"),
+            ],
+        )
 
-    RETURN_TYPES = ("AUDIO", "AUDIO", "AUDIO", "AUDIO", "AUDIO")
-    RETURN_NAMES = ("vocal", "bass", "drums", "others", "instrumental")
-    FUNCTION = "process_stems"
-    CATEGORY = "TS/Audio"
-
-    def process_stems(self, audio, model_name, device, shifts, overlap, jobs):
+    @classmethod
+    def execute(cls, audio, model_name, device, shifts, overlap, jobs) -> IO.NodeOutput:
         total_progress_steps = 100
         pbar = comfy.utils.ProgressBar(total_progress_steps)
         pbar.update_absolute(1, total=total_progress_steps)
@@ -129,9 +127,9 @@ class TS_MusicStems:
         original_hub_dir = torch.hub.get_dir()
         torch.hub.set_dir(demucs_model_path)
         try:
-            if model_name not in self.model_cache:
+            if model_name not in cls._model_cache:
                 model = _demucs_get_model(model_name)
-                self.model_cache[model_name] = model
+                cls._model_cache[model_name] = model
                 submodels = getattr(model, "models", None)
                 if submodels is not None and len(submodels) > 1:
                     logger.info(
@@ -141,7 +139,7 @@ class TS_MusicStems:
                         len(submodels),
                     )
             else:
-                model = self.model_cache[model_name]
+                model = cls._model_cache[model_name]
         except Exception as exc:
             raise RuntimeError(f"[TS Music Stems] Model load failed: {exc}") from exc
         finally:
@@ -151,7 +149,7 @@ class TS_MusicStems:
         model.eval()
         pbar.update_absolute(12, total=total_progress_steps)
 
-        waveform = self._normalize_waveform_shape(audio["waveform"])  # [batch, channels, samples]
+        waveform = cls._normalize_waveform_shape(audio["waveform"])
         sample_rate = audio["sample_rate"]
         target_sr = 44100
 
@@ -161,7 +159,7 @@ class TS_MusicStems:
             resampler = torchaudio.transforms.Resample(orig_freq=sample_rate, new_freq=target_sr).to(waveform.device)
             work_waveform = resampler(work_waveform)
 
-        work_waveform, original_channels = self._prepare_demucs_waveform(work_waveform)
+        work_waveform, original_channels = cls._prepare_demucs_waveform(work_waveform)
         pbar.update_absolute(20, total=total_progress_steps)
 
         ref = work_waveform.mean(0)
@@ -171,7 +169,7 @@ class TS_MusicStems:
 
         sys_jobs = jobs if jobs > 0 else 0
         logger.info("%s Processing (shifts=%s, overlap=%s)", LOG_PREFIX, shifts, overlap)
-        pbar, progress_stop_event, progress_thread = self._start_ui_progress(
+        pbar, progress_stop_event, progress_thread = cls._start_ui_progress(
             total_steps=total_progress_steps,
             warmup_step=25,
             processing_start_step=25,
@@ -224,7 +222,7 @@ class TS_MusicStems:
 
         pbar.update_absolute(total_progress_steps, total=total_progress_steps)
         logger.info("%s Done. Output shape: %s", LOG_PREFIX, tuple(vocals.shape))
-        return (out_vocal, out_bass, out_drums, out_others, out_inst)
+        return IO.NodeOutput(out_vocal, out_bass, out_drums, out_others, out_inst)
 
 
 NODE_CLASS_MAPPINGS = {
@@ -234,4 +232,3 @@ NODE_CLASS_MAPPINGS = {
 NODE_DISPLAY_NAME_MAPPINGS = {
     "TS_MusicStems": "TS Music Stems",
 }
-
