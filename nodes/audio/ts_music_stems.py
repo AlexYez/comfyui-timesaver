@@ -6,7 +6,6 @@ import comfy.model_management as mm
 import comfy.utils
 import folder_paths
 import torch
-import torchaudio
 
 from comfy_api.latest import IO
 
@@ -156,6 +155,8 @@ class TS_MusicStems(IO.ComfyNode):
         work_waveform = waveform.clone()
         if sample_rate != target_sr:
             logger.info("%s Resampling %s -> %s Hz", LOG_PREFIX, sample_rate, target_sr)
+            # Lazy: torchaudio pulls in sox/ffmpeg adapters; load only when actually resampling.
+            import torchaudio
             resampler = torchaudio.transforms.Resample(orig_freq=sample_rate, new_freq=target_sr).to(waveform.device)
             work_waveform = resampler(work_waveform)
 

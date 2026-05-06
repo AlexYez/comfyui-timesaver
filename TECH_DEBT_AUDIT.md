@@ -72,7 +72,7 @@ heavy-imports на module-level, утечки во фронтенде, дыры 
    изменение: вернуть `tests/` (smoke-тесты не содержат секретов, они полезны юзерам
    для отладки своей установки).
 
-2. **[High · M] Heavy import-on-startup в ноде Whisper грузит `transformers` + `torchaudio` при каждом запуске ComfyUI**
+2. **[High · M] [RESOLVED] Heavy import-on-startup в ноде Whisper грузит `transformers` + `torchaudio` при каждом запуске ComfyUI**
 
    Files: `nodes/audio/ts_whisper.py:9`
           `nodes/audio/ts_whisper.py:10`
@@ -122,7 +122,7 @@ heavy-imports на module-level, утечки во фронтенде, дыры 
    };
    ```
 
-4. **[High · M] `requirements.txt` форсирует платформо-специфичные пакеты как hard deps**
+4. **[High · M] [RESOLVED] `requirements.txt` форсирует платформо-специфичные пакеты как hard deps**
 
    Files: `requirements.txt:2`
           `requirements.txt:7`
@@ -519,7 +519,7 @@ heavy-imports на module-level, утечки во фронтенде, дыры 
     Recommendation: переключить на `logger.info(...)` (logger уже создан на line 15).
     `_render_table` оставить как есть — он вернёт строку. Просто `logger.info(table_string)`.
 
-32. **[Low · S] `bitsandbytes` упомянут в `pyproject.toml` deps, но условно загружается через `_is_bitsandbytes_available`**
+32. **[Low · S] [RESOLVED — moved to llm-quant extra] `bitsandbytes` упомянут в `pyproject.toml` deps, но условно загружается через `_is_bitsandbytes_available`**
 
     Files: `pyproject.toml:8`
            `nodes/llm/ts_qwen3_vl.py:70`

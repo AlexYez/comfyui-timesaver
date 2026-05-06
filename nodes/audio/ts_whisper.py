@@ -6,8 +6,6 @@ import xml.etree.ElementTree as ET
 
 import numpy as np
 import torch
-from torchaudio.transforms import Resample
-from transformers import AutoModelForSpeechSeq2Seq, AutoProcessor, pipeline
 
 import comfy.model_management
 import comfy.utils
@@ -15,6 +13,22 @@ import folder_paths
 import srt
 
 from comfy_api.latest import IO
+
+
+# Lazy heavy imports — `transformers` and `torchaudio.transforms` pull in
+# tokenizers / sox adapters / huge model registries. Importing them at
+# module top adds ~1–3 s to every ComfyUI startup, even when the user
+# never opens the TS Whisper node. Resolved on first use instead.
+def _torchaudio_resample_cls():
+    from torchaudio.transforms import Resample as _Resample
+    return _Resample
+
+
+def _transformers_speech_api():
+    from transformers import AutoModelForSpeechSeq2Seq as _AutoModel
+    from transformers import AutoProcessor as _AutoProcessor
+    from transformers import pipeline as _pipeline
+    return _AutoModel, _AutoProcessor, _pipeline
 
 
 _LOG_NAME = "comfyui_ts_whisper"
@@ -262,6 +276,7 @@ class TSWhisper(IO.ComfyNode):
             lowpass_filter_width = 6
             rolloff = 0.99
 
+        Resample = _torchaudio_resample_cls()
         resampler = Resample(
             orig_freq=int(orig_freq),
             new_freq=int(new_freq),
@@ -391,6 +406,8 @@ class TSWhisper(IO.ComfyNode):
                 f"Loading model: {model_name} (precision={precision}, attn={attn_implementation_choice})"
             )
 
+            AutoModelForSpeechSeq2Seq, AutoProcessor, _ = _transformers_speech_api()
+
             actual_torch_dtype = torch.float32
             target_device_type = target_device.type
             if target_device_type == "cuda":
@@ -456,6 +473,7 @@ class TSWhisper(IO.ComfyNode):
                 target_device, model_name, precision, attn_implementation
             )
 
+            _, _, pipeline = _transformers_speech_api()
             pipeline_kwargs = {
                 "model": model,
                 "tokenizer": processor.tokenizer,

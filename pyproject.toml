@@ -3,27 +3,65 @@ name = "comfyui-timesaver"
 description = "ComfyUI nodes from [Timesaver](https://github.com/AlexYez/comfyui-timesaver)."
 version = "9.1"
 license = { file = "LICENSE.txt" }
+# Core runtime: pulled by every node pack on every install. Things that
+# fail-gracefully via TSDependencyManager.import_optional or `try / except
+# ImportError` belong in [project.optional-dependencies] below, not here.
 dependencies = [
-    "accelerate>=0.21.0",
-    "bitsandbytes>=0.40.0",
-    "easydict>=1.10.0",
     "huggingface_hub>=0.20.0",
     "transformers>=4.57.0",
+    "accelerate>=0.21.0",
     "imageio>=2.20.0",
     "imageio-ffmpeg>=0.4.0",
     "matplotlib>=3.4.0",
     "opencv-python>=4.5.0",
-    "openai-whisper>=20231117",
     "py360convert>=0.1.0",
     "srt>=3.5.0",
     "urllib3>=1.26.0",
+    "easydict>=1.10.0",
     "tiktoken",
     "qwen-vl-utils>=0.0.8",
+]
+
+[project.optional-dependencies]
+# bitsandbytes provides int4 / int8 quantisation for TS_Qwen3_VL_V3.
+# Hard-pinned previously, which broke installs on Apple Silicon, ROCm and
+# CPU-only setups; the node falls back to fp16 / bf16 / fp32 when the import
+# fails. Install with `pip install comfyui-timesaver[llm-quant]` if you want
+# int4 / int8 precision options to appear in the dropdown.
+llm-quant = ["bitsandbytes>=0.40.0"]
+
+# Demucs source separation (TS_Music_Stems). geomloss / pykeops compile from
+# C++ source and frequently fail on Windows portable builds, so they are
+# opt-in. `pip install comfyui-timesaver[audio-stems]` to enable.
+audio-stems = [
     "demucs",
     "geomloss",
     "pykeops",
+]
+
+# Whisper-based transcription (TS_Whisper, TS_SuperPrompt voice). The
+# OpenAI whisper package itself is small but pulls a chain of native deps;
+# transformers (already in core) handles modern Whisper variants directly,
+# so this is only needed for the legacy whisper.load_audio fallback path.
+audio-whisper = ["openai-whisper>=20231117"]
+
+# Russian TTS / stress-marking (TS_Silero_TTS, TS_Silero_Stress). Optional
+# even on a working CUDA box because the Silero packages require specific
+# torch versions that may conflict with the user's ComfyUI install.
+audio-silero = [
     "silero",
-    "silero-stress"
+    "silero-stress",
+]
+
+# Convenience meta-extra: install everything optional in one go.
+all = [
+    "bitsandbytes>=0.40.0",
+    "demucs",
+    "geomloss",
+    "pykeops",
+    "openai-whisper>=20231117",
+    "silero",
+    "silero-stress",
 ]
 
 [project.urls]

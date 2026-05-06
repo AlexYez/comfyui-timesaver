@@ -2,8 +2,6 @@ import gc
 import logging
 import os
 
-import cv2
-import matplotlib.cm as cm
 import numpy as np
 import torch
 
@@ -15,6 +13,19 @@ from comfy_api.latest import IO
 
 logger = logging.getLogger("comfyui_timesaver.ts_video_depth")
 LOG_PREFIX = "[TS Video Depth]"
+
+
+# Lazy heavy deps: `cv2` and `matplotlib.cm` are only needed when the user
+# actually runs the depth node. Importing them at module top added ~300 ms to
+# every ComfyUI startup.
+def _cv2():
+    import cv2
+    return cv2
+
+
+def _matplotlib_cm():
+    import matplotlib.cm as cm
+    return cm
 
 # --- Импорт модели VideoDepthAnything ---
 try:
@@ -59,6 +70,7 @@ def preprocess_vda_internal(tensor_images, max_res=-1):
     final_frames_np = current_frames_np
 
     if max_res > 0 and max(original_height, original_width) > max_res:
+        cv2 = _cv2()
         scale = max_res / max(original_height, original_width)
         target_height = ensure_even_vda(original_height * scale)
         target_width = ensure_even_vda(original_width * scale)
@@ -86,6 +98,8 @@ def postprocess_vda_colormap_internal(depths_np_float32_input, colormap_name="gr
 
     num_frames, current_h, current_w = depths_np_float32_input.shape
     current_depths_processed = depths_np_float32_input.copy()
+
+    cv2 = _cv2()
 
     MEDIAN_KERNEL_SIZE = 5
     if apply_median_blur:
@@ -154,7 +168,7 @@ def postprocess_vda_colormap_internal(depths_np_float32_input, colormap_name="gr
         output_array_rgb[..., 2] = normalized_depths
     else:
         try:
-            colormap_fn = cm.get_cmap(colormap_name)
+            colormap_fn = _matplotlib_cm().get_cmap(colormap_name)
         except ValueError:
             logger.warning("%s Colormap '%s' not found. Defaulting to 'gray'.", LOG_PREFIX, colormap_name)
             output_array_rgb[..., 0] = normalized_depths
