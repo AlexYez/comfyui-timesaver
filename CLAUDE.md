@@ -41,7 +41,7 @@ tests/AGENTS.md
 
 `comfyui-timesaver` — production-quality пак custom nodes и frontend extensions для ComfyUI.
 
-- Версия: `8.9` (`pyproject.toml`).
+- Версия: `9.0` (`pyproject.toml`).
 - Репозиторий: https://github.com/AlexYez/comfyui-timesaver.
 - 57 нод (все на V3) в категориях: image / video / audio / llm / text / files / utils / conditioning.
 - conditioning/ содержит 1 ноду: TS_MultiReference.

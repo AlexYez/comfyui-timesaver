@@ -1,1784 +1,839 @@
-# ComfyUI Timesaver Nodes
+<div align="center">
 
-[English](README.md) | [Русский](README.ru.md)
+<img src="icon.png" alt="Timesaver Icon" width="120" />
 
-Полное и дружелюбное описание **всех нод текущего пака**. Каждая нода оформлена отдельной раскрывающейся карточкой, чтобы README было удобно читать даже новичку.
+# 🚀 Timesaver Nodes для ComfyUI
 
-Репозиторий: https://github.com/AlexYez/comfyui-timesaver
+**Дружелюбный набор из 57 нод, чтобы убрать рутину из ваших ComfyUI-графов.**
 
-## Установка
+Ресайз, цветокоррекция, кеинг, инпейнтинг, транскрипция, переводы, конструкторы промптов, менеджмент моделей — всё прямо на канвасе.
 
-1. Поместите папку в `ComfyUI/custom_nodes/comfyui-timesaver`.
-2. При необходимости установите зависимости из `requirements.txt`.
+[![Версия](https://img.shields.io/badge/version-9.0-blue.svg)](pyproject.toml)
+[![ComfyUI](https://img.shields.io/badge/ComfyUI-V3%20API-orange.svg)](https://github.com/comfyanonymous/ComfyUI)
+[![Python](https://img.shields.io/badge/python-3.10+-green.svg)](https://www.python.org/)
+[![Лицензия](https://img.shields.io/badge/license-see%20LICENSE.txt-lightgrey.svg)](LICENSE.txt)
+
+🇬🇧 [README in English](README.md)
+
+</div>
+
+---
+
+## ✨ Что Внутри
+
+Не важно, что вы строите — пайплайн для генерации изображений, видео, аудио или просто хотите облагородить промпты — у Timesaver есть подходящая нода.
+
+|  | Категория | Сколько | Чем хороша |
+|---|---|---|---|
+| 🖼️ | **[Изображения](#image)** | 26 | Resize, цвет, маски, кеер, тайлы, 360°, Lama-инпейнтинг, удаление фона BiRefNet |
+| 🎬 | **[Видео](#video)** | 7 | Интерполяция кадров, RTX/Spandrel апскейл, глубина, превью анимации |
+| 🎵 | **[Аудио](#audio)** | 5 | Whisper-транскрипция, Silero TTS, разделение на стемы Demucs, обрезка аудио |
+| 🤖 | **[LLM](#llm)** | 2 | Qwen 3 VL мультимодальный чат, Super Prompt с голосовым вводом |
+| 📝 | **[Текст и промпты](#text)** | 4 | Конструктор промптов, batch-загрузчик, выбор стиля, ударения для русского |
+| 📁 | **[Файлы и модели](#files)** | 8 | Сканер моделей, FP8-конвертер, загрузчик путей, EDL→YouTube главы |
+| 🛠️ | **[Утилиты](#utils)** | 4 | Кастомные слайдеры, математика, умный type-aware свитч |
+| 🎨 | **[Conditioning](#conditioning)** | 1 | Multi-reference кондиционинг изображений |
+
+> Все 57 нод переведены на **ComfyUI V3 API** (`comfy_api.latest.IO`).
+
+---
+
+## 📑 Оглавление
+
+- [Установка](#-установка)
+- [Быстрый старт](#-быстрый-старт)
+- [Обновление](#-обновление)
+- [Справочник нод](#-справочник-нод)
+  - [🖼️ Изображения](#image)
+  - [🎬 Видео](#video)
+  - [🎵 Аудио](#audio)
+  - [🤖 LLM](#llm)
+  - [📝 Текст и промпты](#text)
+  - [📁 Файлы и модели](#files)
+  - [🛠️ Утилиты](#utils)
+  - [🎨 Conditioning](#conditioning)
+- [Подсказки для новичков](#-подсказки-для-новичков)
+- [Если что-то сломалось](#-если-что-то-сломалось)
+- [Разработка](#-разработка)
+- [Лицензия и благодарности](#-лицензия-и-благодарности)
+
+---
+
+## 📦 Установка
+
+### Вариант 1 — ComfyUI Manager (рекомендуется)
+
+1. Откройте ComfyUI Manager → **Custom Nodes Manager**.
+2. Найдите `Timesaver` и нажмите Install.
 3. Перезапустите ComfyUI.
 
-## ????????? ???????
+### Вариант 2 — Вручную
+
+```bash
+cd ComfyUI/custom_nodes
+git clone https://github.com/AlexYez/comfyui-timesaver
+cd comfyui-timesaver
+python -m pip install -r requirements.txt
+```
+
+Перезапустите ComfyUI.
+
+> 🪟 **Windows portable**: запускайте `pip` из встроенного Python (`python_embeded\python.exe`), иначе зависимости установятся не туда.
+
+> 🍎 **macOS / Linux**: используйте тот же Python, с которым запускается ComfyUI. Активируйте venv перед `pip install`.
+
+### Опциональные зависимости
+
+Несколько нод требуют дополнительных пакетов. Они мягко падают и сообщают, чего не хватает, если вы попробуете их запустить:
+
+| Нода | Нужно поставить |
+|---|---|
+| TS Cube ↔ Equirectangular | `py360convert` |
+| TS Music Stems | `demucs`, `geomloss`, `pykeops` |
+| TS Whisper | `openai-whisper` |
+| TS Silero TTS / Stress | `silero`, `silero-stress` |
+| TS RTX Upscaler | `nvvfx` (только NVIDIA RTX) |
+| TS Video Upscale With Model | `spandrel` |
+
+---
+
+## 🎯 Быстрый старт
+
+1. Запустите ComfyUI.
+2. **ПКМ → Add Node** или двойной клик по пустому месту канваса.
+3. В строке поиска начните печатать `TS` — у каждой ноды Timesaver есть префикс `TS`.
+4. Выберите ноду, подключите входы/выходы, запустите.
+
+**Соглашение об именовании:**
+
+```
+TS_<NodeName>     ← id класса (используется в воркфлоу и поиске)
+TS <Display Name> ← то, что вы видите на ноде
+TS/<Категория>    ← путь в меню ПКМ
+```
+
+**Самые частые типы выходов:**
+
+| Тип | Что это |
+|---|---|
+| `IMAGE` | Батч кадров `[B, H, W, 3]`, значения `[0, 1]` |
+| `MASK` | Одноканальная маска `[B, H, W]`, значения `[0, 1]` |
+| `AUDIO` | `{"waveform": [B, C, T], "sample_rate": int}` |
+| `LATENT` | Латент `{"samples": ...}` |
+| `CONDITIONING` | Список пар `(cond, meta)` для семплеров |
+| `STRING` / `INT` / `FLOAT` | Обычные значения |
+
+ComfyUI сам подсвечивает совместимые сокеты при перетаскивании — типы запоминать не обязательно.
+
+---
+
+## 🔄 Обновление
+
+Уже установлен через git?
+
+```bash
+cd ComfyUI/custom_nodes/comfyui-timesaver
+git pull
+python -m pip install -r requirements.txt
+```
+
+Перезапустите ComfyUI. Существующие воркфлоу продолжат работать — id нод и входы заморожены между версиями.
+
+---
+
+<a id="-справочник-нод"></a>
+## 📚 Справочник нод
+
+Под каждой нодой — её реальный вид в ComfyUI (английский UI). Кликните по любой картинке, чтобы открыть в полном размере.
+
+---
+
+<a id="image"></a>
+### 🖼️ Изображения (26 нод)
+
+Всё, что касается пикселей: ресайз, цвет, маски, удаление фона, кеер, тайлы, панорамы и инпейнтинг.
+
+#### TS Image Resize
+<img src="doc/screenshots/ts_image_resize.png" alt="TS Image Resize" width="450" />
+
+Тот самый ресайз, который вам действительно нужен. Выбирайте один из режимов: точные размеры (`target_width` × `target_height`), одна сторона (`smaller_side` / `larger_side`), мегапиксели или коэффициент масштаба. Опция `divisible_by` подгоняет результат под кратность, нужную семплерам (8, 16, 32, …). `dont_enlarge` запрещает увеличение, если исходник уже меньше цели.
+
+**Когда использовать:** подготовка входов для SDXL / Flux / WAN, batch-ресайз фото к максимальной стороне, унификация размеров видео.
+
+---
+
+#### TS Resolution Selector
+<img src="doc/screenshots/ts_resolution_selector.png" alt="TS Resolution Selector" width="450" />
+
+Визуальный выбор соотношения сторон. Доступны 1:1, 4:3, 3:2, 16:9, 21:9, 3:4, 2:3, 9:16, 9:21 или произвольное соотношение, плюс целевой бюджет в мегапикселях (0.5 – 4 МП). На выходе — пустое полотно с размерами, кратными 32, идеально как `latent_image`. Если подключить картинку, нода впишет её на полотно; с `original_aspect=True` соотношение берётся из картинки, а не пресета.
+
+**Когда использовать:** старт генерации с фиксированной пропорцией, нормализация произвольной картинки в latent-сетку.
+
+---
+
+#### TS Qwen Safe Resize
+<img src="doc/screenshots/ts_qwen_safe_resize.png" alt="TS Qwen Safe Resize" width="450" />
+
+Ресайз в один клик к ближайшему официальному разрешению Qwen-Image (1344×1344, 1792×1008 и т.п.). Подбирает поддерживаемый размер по ближайшему соотношению сторон и центр-кропит.
+
+**Когда использовать:** перед подачей в Qwen-Image / Qwen-Edit, чтобы избежать ошибок несовпадения разрешения.
+
+---
+
+#### TS Qwen Canvas
+<img src="doc/screenshots/ts_qwen_canvas.png" alt="TS Qwen Canvas" width="450" />
+
+Создаёт пустое Qwen-Image-полотно в одном из поддерживаемых разрешений и опционально вставляет вашу картинку в центр (с mask-aware кропом, если подать маску).
+
+**Когда использовать:** нужен Qwen-friendly размер полотна и автоматическая вставка референса.
+
+---
+
+#### TS WAN Safe Resize
+<img src="doc/screenshots/ts_wan_safe_resize.png" alt="TS WAN Safe Resize" width="450" />
+
+Аналог Qwen Safe Resize, но для WAN-Video. Определяет ближайшую пропорцию (16:9, 9:16, 1:1) и выбирает один из трёх пресетов качества: Fast (240p), Standard (480p / 832p), High (720p / 1280p). Строка `interconnection_in/out` позволяет нескольким WAN-нодам делиться одним уровнем качества.
+
+**Когда использовать:** подготовка кадров для WAN i2v / t2v моделей.
+
+---
+
+#### TS Color Grade
+<img src="doc/screenshots/ts_color_grade.png" alt="TS Color Grade" width="450" />
+
+Восемь ручек цветокоррекции в одной ноде: `hue`, `temperature`, `saturation`, `contrast`, `gain`, `lift`, `gamma`, `brightness`. По функционалу ≈ базовая страница в DaVinci Resolve.
+
+**Когда использовать:** подгонка кадров под общий тон, "согревание" холодных рендеров, исправление плоских картинок, стилизация.
+
+---
+
+#### TS Color Match
+<img src="doc/screenshots/ts_color_match.png" alt="TS Color Match" width="450" />
+
+Перенос цветовой палитры с `reference` на `target` батч. Два алгоритма:
+
+- **MKL** (по умолчанию) — быстро, стабильно, дружелюбно к видео с временным сглаживанием.
+- **Sinkhorn** — медленнее, но точнее (на основе оптимального транспорта).
+
+В комплекте: маски совпадения (`rectangle` / `ellipse` для стабилизации только по краям), VRAM-aware чанкинг, флаг `reuse_reference` для видео.
+
+**Когда использовать:** колор-грейдинг видео по одному ключевому кадру, сведение кадров из разных источников, вписывание CG в plate-видео.
+
+---
+
+#### TS Film Emulation
+<img src="doc/screenshots/ts_film_emulation.png" alt="TS Film Emulation" width="450" />
+
+Встроенные пресеты плёнки (Kodak Portra/Vision3, Fuji, Cineon-style, …) плюс возможность подгрузить свой `.cube` LUT из `models/luts/`. Гамма-коррекция, кривая контраста и регулируемая `lut_strength`.
+
+**Когда использовать:** придание рендерам кинематографичного оттенка, не уходя из графа.
+
+---
+
+#### TS Film Grain
+<img src="doc/screenshots/ts_film_grain.png" alt="TS Film Grain" width="450" />
+
+Трёхоктавное органичное плёночное зерно. Регулируйте `grain_size`, `intensity`, `softness` и `mid_tone_grain_bias` для реалистичного распределения (больше зерна в полутонах, меньше в светах/тенях). `grain_speed` управляет тем, насколько паттерн зерна меняется от кадра к кадру в видео.
+
+**Когда использовать:** разрушить "чистый ИИ-вид" или подогнать под плёночную эстетику.
+
+---
+
+#### TS Remove Background (BiRefNet)
+<img src="doc/screenshots/ts_bgrm_birefnet.png" alt="TS Remove Background" width="450" />
+
+State-of-the-art удаление фона через BiRefNet. На выходе: вырезанная картинка, альфа-маска и "preview" маски. Опции: `process_resolution`, `mask_blur`, `mask_offset`, `refine_foreground`, цвет фона или прозрачность.
+
+**Когда использовать:** изоляция объектов, продуктовая съёмка, чистые альфа-маски для композа.
+
+---
+
+#### TS Keyer
+<img src="doc/screenshots/ts_keyer.png" alt="TS Keyer" width="450" />
+
+Профессиональный chroma keyer для зелёного/синего/красного фона. Color-difference matte, despill, сглаживание краёв, matte gamma и инверсия. На выходе RGBA-foreground, alpha-маска и despilled RGB — готово к композу.
+
+**Когда использовать:** вытащить актёра с зелёного фона, убрать однотонный фон, вписать CG.
+
+---
+
+#### TS Despill
+<img src="doc/screenshots/ts_despill.png" alt="TS Despill" width="450" />
+
+Отдельный despill с четырьмя алгоритмами: `classic`, `balanced`, `adaptive` (edge-aware), `hue_preserve`. Поддерживает опциональную маску спилла, защиту телесных оттенков и восстановление насыщенности. Применяется после отдельного keyer'а или прямо на plate-видео с цветовой засветкой.
+
+**Когда использовать:** убрать зелёные/синие/красные блики на волосах или коже без потери цветопередачи.
+
+---
+
+#### TS Lama Cleanup
+<img src="doc/screenshots/ts_lama_cleanup.png" alt="TS Lama Cleanup" width="450" />
+
+Встроенный инпейнтинг через LaMa — рисуйте маску прямо на канвасе ноды (кисть + undo/redo + reset), затем запускайте, чтобы заполнить. Хранит промежуточные правки по сессиям, не нужно ходить в Photoshop.
+
+**Когда использовать:** убрать туристов с фото, стереть водяные знаки, починить артефакты, прототипировать чистку перед тяжёлым inpainter'ом.
+
+---
+
+#### TS Crop To Mask
+<img src="doc/screenshots/ts_crop_to_mask.png" alt="TS Crop To Mask" width="450" />
+
+Кропит батч изображений вокруг маски с настраиваемым padding'ом, ограничением максимального разрешения, фиксированным aspect и межкадровым сглаживанием для стабильности видео. На выходе кроп + блоб `crop_data` для…
+
+---
+
+#### TS Restore From Crop
+<img src="doc/screenshots/ts_restore_from_crop.png" alt="TS Restore From Crop" width="450" />
+
+…этой ноды, которая возвращает обработанный кроп обратно в исходный кадр с feathered Gaussian/box blur'ом по швам. Классический crop-and-restore для обработки только интересующей области тяжёлой моделью.
+
+**Когда использовать в паре:** прогнать апскейлер или face-restorer на маленьком ROI большого изображения без расхода VRAM на весь кадр.
+
+---
+
+#### TS Image Tile Splitter
+<img src="doc/screenshots/ts_image_tile_splitter.png" alt="TS Image Tile Splitter" width="450" />
+
+Режет большое изображение на перекрывающиеся тайлы для тайловой обработки. Настраивается размер тайла, перекрытие и feather. На выходе батч тайлов + метаданные `TILE_INFO`.
+
+---
+
+#### TS Image Tile Merger
+<img src="doc/screenshots/ts_image_tile_merger.png" alt="TS Image Tile Merger" width="450" />
+
+Вторая половинка пары: берёт обработанные тайлы и `TILE_INFO`, склеивает обратно в одно изображение с feathered-смешиванием в зонах перекрытия.
+
+**Когда использовать в паре:** тайловый апскейл, шумоподавление или любой процесс, для которого 4K кадр не помещается в VRAM.
+
+---
+
+#### TS Auto Tile Size
+<img src="doc/screenshots/ts_auto_tile_size.png" alt="TS Auto Tile Size" width="450" />
+
+Выберите `tile_count` (4, 8, 16) — нода вычислит оптимальные `tile_width` × `tile_height` с учётом padding'а и `divide_by`. Отлично сочетается со splitter'ом/merger'ом выше.
+
+---
+
+#### TS Cube to Equirectangular
+<img src="doc/screenshots/ts_cube_to_equirect.png" alt="TS Cube to Equirectangular" width="450" />
+
+Шесть граней куба (front/right/back/left/top/bottom) → одна эквиректангулярная 360° панорама нужного размера.
+
+---
+
+#### TS Equirectangular to Cube
+<img src="doc/screenshots/ts_equirect_to_cube.png" alt="TS Equirectangular to Cube" width="450" />
+
+Обратное преобразование: эквиректангулярная панорама → шесть граней куба заданного `cube_size`.
+
+**Когда использовать в паре:** генерация 360°-контента (Skybox AI, equirect-aware diffusion) с конвертацией между форматами.
+
+---
+
+#### TS Image Batch Cut
+<img src="doc/screenshots/ts_image_batch_cut.png" alt="TS Image Batch Cut" width="450" />
+
+Обрежьте N кадров с начала (`first_cut`) и N кадров с конца (`last_cut`) у батча изображений. Отрицательные значения → ноль; over-cut возвращает пустой батч.
+
+**Когда использовать:** обрезать вступление/окончание видео, выкинуть warm-up кадры семплера, разделить батч на сегменты.
+
+---
+
+#### TS Image Batch to Image List / TS Image List to Image Batch
+<table>
+<tr>
+<td><img src="doc/screenshots/ts_image_batch_to_list.png" alt="Batch to List" width="300" /></td>
+<td><img src="doc/screenshots/ts_image_list_to_batch.png" alt="List to Batch" width="300" /></td>
+</tr>
+</table>
+
+Конвертация между `IMAGE` (один батчевый тензор) и `IMAGE`-list (Python-список одиночных тензоров). Нужно, когда одна нода ожидает батч, а следующая хочет покадровую итерацию.
+
+---
+
+#### TS Get Image Megapixels
+<img src="doc/screenshots/ts_get_image_megapixels.png" alt="TS Get Image Megapixels" width="450" />
+
+Возвращает количество мегапикселей `IMAGE` как `FLOAT`. Двухстрочная нода, но незаменима для роутинга ("если картинка > 4 МП, сначала уменьшить").
+
+---
+
+#### TS Get Image Size
+<img src="doc/screenshots/ts_get_image_size_side.png" alt="TS Get Image Size" width="450" />
+
+Возвращает большую или меньшую сторону изображения как `INT`. Переключатель меняет режим.
+
+---
+
+#### TS Image Prompt Injector
+<img src="doc/screenshots/ts_image_prompt_injector.png" alt="TS Image Prompt Injector" width="450" />
+
+Вставляет произвольную строку в позитивный промпт workflow'а во время выполнения — полезно, когда промпт генерируется динамически (LLM-ноды) и должен попасть в реальный `CLIPTextEncode`, подключённый к семплеру. Работает с графом workflow'а, изображение не меняет.
+
+**Когда использовать:** связка LLM, который пишет промпт, → семплер должен использовать результат без ручной перепроводки text encoder'ов.
+
+---
+
+<a id="video"></a>
+### 🎬 Видео (7 нод)
+
+Интерполяция кадров, model-based апскейл, глубина, превью анимации и гигиена VRAM.
+
+#### TS Animation Preview
+<img src="doc/screenshots/ts_animation_preview.png" alt="TS Animation Preview" width="450" />
+
+Готовая нода-превью для батчей изображений. Прямо в ноде показывает зацикленный H.265-ролик с опциональной звуковой дорожкой. Лучше, чем гонять семплер второй раз ради просмотра анимации.
+
+**Когда использовать:** превью видео-выдачи перед тем, как тратить VRAM на финальный энкод; QA результатов интерполяции.
+
+---
+
+#### TS Frame Interpolation
+<img src="doc/screenshots/ts_frame_interpolation.png" alt="TS Frame Interpolation" width="450" />
+
+Плавная интерполяция кадров через RIFE / FILM. Поднимите 12 fps анимацию до 24/48/60 fps или сгладьте дёрганое видео.
+
+**Когда использовать:** выдача модели "рваная", и вы хотите кинематографичной плавности.
+
+---
+
+#### TS Video Upscale With Model
+<img src="doc/screenshots/ts_video_upscale_with_model.png" alt="TS Video Upscale With Model" width="450" />
+
+Покадровый апскейл любой моделью, поддерживаемой spandrel (RealESRGAN, 4x-Ultrasharp и т.п.). Три стратегии устройства: `auto`, `load_unload_each_frame` (мало VRAM, медленно), `keep_loaded` (быстро, больше VRAM), `cpu_only`.
+
+**Когда использовать:** апскейл видео без OOM или batch-апскейл с контролируемым расходом VRAM.
+
+---
+
+#### TS RTX Upscaler
+<img src="doc/screenshots/ts_rtx_upscaler.png" alt="TS RTX Upscaler" width="450" />
+
+Аппаратный апскейл через NVIDIA RTX Video Super Resolution (`nvvfx`). Четыре уровня качества (LOW/MEDIUM/HIGH/ULTRA), батчевая обработка. **Требуется RTX-видеокарта.**
+
+**Когда использовать:** есть RTX и нужна скорость света для видео-апскейла.
+
+---
+
+#### TS Video Depth
+<img src="doc/screenshots/ts_video_depth.png" alt="TS Video Depth" width="450" />
+
+Покадровое определение глубины через Depth-Anything, оптимизированное для видео (временна́я согласованность).
+
+**Когда использовать:** depth-aware ControlNet, parallax-эффекты, 3D-репроекция.
+
+---
+
+#### TS LTX First/Last Frame
+<img src="doc/screenshots/ts_ltx_first_last_frame.png" alt="TS LTX First/Last Frame" width="450" />
+
+Применяет LTX-Video keyframe conditioning для первого и (опционально) последнего кадра в одной ноде — эквивалент цепочки из двух `LTXVAddGuide`, но без визуальной каши.
+
+**Когда использовать:** есть конкретные начальный/конечный кадры, хотите чтобы LTX интерполировал между ними.
+
+---
+
+#### TS Free Video Memory
+<img src="doc/screenshots/ts_free_video_memory.png" alt="TS Free Video Memory" width="450" />
+
+Pass-through нода, которая запускает `gc.collect()` + `torch.cuda.empty_cache()` (опционально `caching_allocator_delete_caches()`) между тяжёлыми шагами. Сообщает память до/после.
+
+**Когда использовать:** в цепочке нескольких VRAM-голодных видео-нод нужна явная очистка между ними.
+
+---
+
+<a id="audio"></a>
+### 🎵 Аудио (5 нод)
+
+Speech-to-text, text-to-speech, разделение на стемы плюс дружелюбный загрузчик и превью аудио.
+
+#### TS Audio Loader
+<img src="doc/screenshots/ts_audio_loader.png" alt="TS Audio Loader" width="450" />
+
+Аудио-загрузчик, который вы бы написали сами, будь у вас время. Грузит аудио из любого медиа (mp3/wav/mp4/mov/…), показывает реальную waveform-волну, позволяет визуально кропать перетаскиванием по волне и даже записывать с микрофона прямо в ноде. На выходе — `AUDIO` waveform и `duration` в int.
+
+**Когда использовать:** подготовка озвучки, музыкальной подложки или любого аудио, которое нужно подрезать.
+
+---
+
+#### TS Audio Preview
+<img src="doc/screenshots/ts_audio_preview.png" alt="TS Audio Preview" width="450" />
+
+Та же waveform-UI, что и у Audio Loader, но для прослушивания аудио-выхода upstream-ноды. Зацикленное воспроизведение, диапазоны кропа, persistent state.
+
+**Когда использовать:** прослушать результат TTS / разделения стемов / обработки без сохранения файла.
+
+---
+
+#### TS Whisper
+<img src="doc/screenshots/ts_whisper.png" alt="TS Whisper" width="450" />
+
+Speech-to-text через OpenAI Whisper. Сразу три формата: SRT (с тайм-кодами), plain text, TTML. Настраиваемый beam search, язык, temperature fallbacks и OOM-aware retries.
+
+**Когда использовать:** транскрипция озвучки, генерация субтитров, выдёргивание текста из подкастов перед LLM-обработкой.
+
+---
+
+#### TS Silero TTS
+<img src="doc/screenshots/ts_silero_tts.png" alt="TS Silero TTS" width="450" />
+
+Русский text-to-speech через Silero TTS v5_3. Пять голосов (aidar, baya, kseniya, xenia, eugene), text или SSML на входе, автоматическая нарезка длинных текстов на куски.
+
+**Когда использовать:** русскоязычная озвучка, черновики аудиокниг, нарезка для YouTube.
+
+---
+
+#### TS Music Stems
+<img src="doc/screenshots/ts_music_stems.png" alt="TS Music Stems" width="450" />
+
+Разделение музыки на источники через Demucs. Любое аудио → четыре `AUDIO`-выхода: `vocal`, `bass`, `drums`, `others`. Три модели на выбор (`htdemucs`, `htdemucs_ft`, `hdemucs_mmi`), TTA shifts и overlap для повышения качества.
+
+**Когда использовать:** изоляция вокала для ремикса, караоке-инструментал, чистые стемы для другой модели.
+
+---
+
+<a id="llm"></a>
+### 🤖 LLM (2 ноды)
+
+Мультимодальный prompt-enhancement и понимание изображений через локальные LLM.
+
+#### TS Qwen 3 VL V3
+<img src="doc/screenshots/ts_qwen3_vl.png" alt="TS Qwen 3 VL V3" width="450" />
+
+Мультимодальный Qwen 3 VL (image + video + text) локально. Встроенный выбор модели (Qwen 2B / 4B / 8B и uncensored-варианты), пресеты системных промптов ("Image Edit Command Translation", "Prompt Enhancement", …), 4-bit/8-bit квантование через `bitsandbytes`, поддержка FlashAttention-2, скачивание с HuggingFace на лету.
+
+**Когда использовать:** описание изображений для промптов, перевод намерений пользователя в команды редактирования, VLM-driven пайплайны.
+
+---
+
+#### TS Super Prompt
+<img src="doc/screenshots/ts_super_prompt.png" alt="TS Super Prompt" width="450" />
+
+Нода-улучшайзер промптов со встроенной **голосовой кнопкой** — скажите идею, Whisper её транскрибирует (с грамматикой, заточенной под cinematography), маленький Qwen3 раскрывает в насыщенный промпт. Опциональный image input для image-conditioned промптов. Два режима: быстрый turbo и high-quality.
+
+**Когда использовать:** быстрый брейншторм промптов, голосовые workflow'ы, превращение сырой идеи в production-ready промпт.
+
+---
+
+<a id="text"></a>
+### 📝 Текст и промпты (4 ноды)
+
+Сборка, рандомизация и менеджмент промптов в масштабе.
+
+#### TS Prompt Builder
+<img src="doc/screenshots/ts_prompt_builder.png" alt="TS Prompt Builder" width="450" />
+
+Composable prompt builder. Редактируйте промпт как список переключаемых блоков (light, camera-angle, lens, film, face, …), которые лежат в `.txt` файлах в `nodes/prompts/`. Drag-перетаскивание для порядка, клик — включить/выключить, seed выбирает случайную строку из каждого включённого блока. Сохраняет порядок и состояние блоков между сессиями.
+
+**Когда использовать:** прогон батча с контролируемой вариацией промпта — каждый блок это категория, каждая строка — вариант.
+
+---
+
+#### TS Batch Prompt Loader
+<img src="doc/screenshots/ts_batch_prompt_loader.png" alt="TS Batch Prompt Loader" width="450" />
+
+Вставьте многострочный текст, где промпты разделены пустыми строками — на выходе список промптов и их количество.
+
+```
+Промпт 1: кот на подоконнике
+
+Промпт 2: собака на пляже
+
+Промпт 3: птица на ветке
+```
+
+**Когда использовать:** прогон батча разных промптов через один и тот же workflow без ручной подачи каждого.
+
+---
+
+#### TS Style Prompt Selector
+<img src="doc/screenshots/ts_style_prompt_selector.png" alt="TS Style Prompt Selector" width="450" />
+
+Визуальный выбор стиля. Готовые стили (Photorealistic, Cinematic, Anime, Impressionist, Watercolor, Digital Concept Art, …) с превью. Выбираете один — получаете соответствующий фрагмент промпта как `STRING`.
+
+**Когда использовать:** быстрая стилизация генерации без переписывания одной и той же фразы "in the style of …".
+
+---
+
+#### TS Silero Stress
+<img src="doc/screenshots/ts_silero_stress.png" alt="TS Silero Stress" width="450" />
+
+Препроцессор русского текста: расставляет ударения (Unicode acute или Silero `+`-нотация) и восстанавливает буквы `ё`. Два алгоритма (правила-based accentor + нейросеть-разрешитель омографов), которые можно включать независимо.
+
+**Когда использовать:** подготовка русского текста для TTS, чтобы избежать неправильного произношения; учебные материалы с проставленными ударениями.
+
+---
+
+<a id="files"></a>
+### 📁 Файлы и модели (8 нод)
+
+Инструменты для управления модельными файлами, скачиваниями, EDL и инспекции весов.
+
+#### TS Files Downloader (Ultimate)
+<img src="doc/screenshots/ts_downloader.png" alt="TS Files Downloader" width="450" />
+
+Multi-file загрузчик, который принимает список строк формата `URL <пробел> target_path` и скачивает их параллельно. Автоматически подменяет HuggingFace-зеркала, поддерживает `models/<subdir>` алиасы, ретраит при ошибках, показывает прогресс. Удобно отдавать workflow с готовым списком моделей.
+
+**Когда использовать:** распространение workflow'а, которому нужны N конкретных моделей — пользователю достаточно подать готовую ноду с URL-ами.
+
+---
+
+#### TS Model Scanner
+<img src="doc/screenshots/ts_model_scanner.png" alt="TS Model Scanner" width="450" />
+
+Инспекция любого `.safetensors` (из `models/diffusion_models/`) или загруженного `MODEL`. Печатает подробный отчёт: имя, shape, dtype, device каждого параметра + сводная статистика по dtype.
+
+**Когда использовать:** дебаг загрузки модели, проверка точности (fp16 vs fp8 vs bf16), знакомство с незнакомым чекпоинтом.
+
+---
+
+#### TS Model Converter
+<img src="doc/screenshots/ts_model_converter.png" alt="TS Model Converter" width="450" />
+
+In-memory FP8-конвертация (`float8_e4m3fn`) загруженной `MODEL`. Сокращает VRAM вдвое на поддерживаемых GPU.
+
+---
+
+#### TS Model Converter Advanced
+<img src="doc/screenshots/ts_model_converter_advanced.png" alt="TS Model Converter Advanced" width="450" />
+
+Та же идея с тонкой настройкой: выбор целевого dtype (fp8 e4m3 / e5m2, bf16, fp16, fp32), keyword-фильтры по слоям и опции загрузки/сохранения.
+
+---
+
+#### TS Model Converter Advanced Direct
+<img src="doc/screenshots/ts_model_converter_advanced_direct.png" alt="TS Model Converter Advanced Direct" width="450" />
+
+То же, что Advanced, но пишет конвертированные веса напрямую на диск — без in-memory roundtrip.
+
+**Когда использовать тройку:** подготовка FP8 / mixed-precision вариантов больших моделей для слабого железа; тестирование влияния точности на качество.
+
+---
+
+#### TS CPU LoRA Merger
+<img src="doc/screenshots/ts_cpu_lora_merger.png" alt="TS CPU LoRA Merger" width="450" />
+
+Слияние LoRA-весов в базовую модель на CPU — VRAM не нужна, подходит для огромных моделей, не помещающихся в GPU.
+
+**Когда использовать:** запекание LoRA в чекпоинт для распространения; слияние нескольких LoRA без GPU.
+
+---
+
+#### TS File Path Loader
+<img src="doc/screenshots/ts_file_path_loader.png" alt="TS File Path Loader" width="450" />
+
+Берёт N-й файл из папки в порядке сортировки. На выходе полный путь и имя без расширения. Фильтрует по поддерживаемым ComfyUI расширениям (`.safetensors`, `.ckpt`, `.pt`, `.mp4`, `.mov`, …). Индексы зацикливаются.
+
+**Когда использовать:** итерация по папке входов в очереди; выбор последнего чекпоинта по индексу.
+
+---
+
+#### TS YouTube Chapters
+<img src="doc/screenshots/ts_edl_chapters.png" alt="TS YouTube Chapters" width="450" />
+
+Конвертирует EDL (Edit Decision List) экспорт DaVinci Resolve в YouTube-friendly список глав. Читает тайм-коды маркеров, нормализует к часовой baseline, форматирует как `MM:SS Имя маркера`.
+
+**Когда использовать:** публикация туториал-видео, для которых главы уже размечены в монтажке.
+
+---
+
+<a id="utils"></a>
+### 🛠️ Утилиты (4 ноды)
+
+Маленькие помощники, чтобы граф меньше захламлялся.
+
+#### TS Int Slider
+<img src="doc/screenshots/ts_int_slider.png" alt="TS Int Slider" width="450" />
+
+Чистый integer-слайдер, возвращающий `INT`. Кастомный UI оптимизирован под ручки разрешения / количества.
+
+---
+
+#### TS Float Slider
+<img src="doc/screenshots/ts_float_slider.png" alt="TS Float Slider" width="450" />
+
+Float-аналог, диапазон −1e9 … +1e9 с точностью 0.01 по умолчанию.
+
+**Когда использовать пару:** нужен чистый виджет параметра без перетаскивания полноценной math-ноды на граф.
+
+---
+
+#### TS Math Int
+<img src="doc/screenshots/ts_math_int.png" alt="TS Math Int" width="450" />
+
+Двухвходовая integer-математика: `+`, `-`, `*`, `/`, `//`, `%`, `**`, `min`, `max`. Деление на ноль возвращает 0 (с error-логом) вместо падения графа.
+
+**Когда использовать:** вычисление количества тайлов, индексов кадров, размеров батча или любой целочисленной арифметики, неудобной через Primitive-ноды.
+
+---
+
+#### TS Smart Switch
+<img src="doc/screenshots/ts_smart_switch.png" alt="TS Smart Switch" width="450" />
+
+Type-aware булев свитч между двумя `ANY`-входами. Выбираете `data_type` (images / video / audio / mask / string / int / float), нода валидирует, что входы соответствуют. **Auto-failover**: если выбранный вход отсутствует — fallback на другой. Идеально для опциональных веток.
+
+**Когда использовать:** ветвление workflow по флагу или опциональный вход с разумным fallback'ом.
+
+---
+
+<a id="conditioning"></a>
+### 🎨 Conditioning (1 нода)
+
+#### TS Multi Reference
+<img src="doc/screenshots/ts_multi_reference.png" alt="TS Multi Reference" width="450" />
+
+Добавляет до трёх референсных изображений в conditioning как `reference_latents`. Сделана для Qwen-Image-Edit и подобных multi-reference пайплайнов. Per-slot выходы (`image_1` / `image_2` / `image_3`) с `ExecutionBlocker` для неподключённых слотов, автоматический resize к мегапиксельному бюджету с выравниванием по делителю (по умолчанию 32). Корректно обрабатывает RGBA + MASK-входы (композит на белый фон).
+
+**Когда использовать:** Qwen-Edit / Flux-with-references пайплайны, принимающие несколько референсов.
+
+---
+
+## 🔰 Подсказки для новичков
+
+### Только начинаете?
+
+1. **Ищите по категориям** в правом клике: каждая нода живёт под `TS/<Категория>`.
+2. **Доверяйте дефолтам**: у каждого входа есть разумное значение по умолчанию. Меняйте по одному параметру, чтобы понять, что он делает.
+3. **Используйте [TS Resolution Selector](#image)** как источник latent-изображения — он всегда возвращает sampler-friendly размер.
+4. **Бросьте [TS Animation Preview](#video) в конец** любого видео-графа, чтобы делать QA без перезапуска.
+5. **Нужен быстрый голосовой промпт?** [TS Super Prompt](#llm) — кликнули по микрофону, описали идею, получили готовый промпт.
+
+### VRAM не хватает, что использовать?
+
+| Задача | Решение |
+|---|---|
+| Апскейл 4K-картинки | TS Image Tile Splitter → апскейлер → TS Image Tile Merger |
+| Обработать только лицо/объект | TS Crop To Mask → апскейл/restore → TS Restore From Crop |
+| Освободить VRAM посреди графа | TS Free Video Memory между тяжёлыми шагами |
+| FP8 модель | TS Model Converter Advanced |
+
+### Где модели лежат?
+
+| Нода | Папка по умолчанию |
+|---|---|
+| TS Lama Cleanup | `models/lama/` |
+| TS Whisper | `models/whisper/` |
+| TS Silero TTS | `models/silerotts/` |
+| TS Silero Stress | `models/silero-stress/` |
+| TS Qwen 3 VL | `models/LLM/` |
+| TS Super Prompt | `models/LLM/` |
+| TS Music Stems | demucs default cache |
+
+Можно переопределить через `extra_model_paths.yaml` — Timesaver уважает path-resolution ComfyUI.
+
+---
+
+## 🛟 Если что-то сломалось
+
+<details>
+<summary><b>"Module not found" при старте</b></summary>
+
+Смотрите startup-лог — Timesaver печатает load report. Отсутствующие опциональные зависимости появляются под **Optional missing imports** с указанием, какому файлу они нужны. Установите:
+
+```bash
+python -m pip install <missing_module>
+```
+
+Используйте тот же Python, что запускает ComfyUI. На Windows portable: `python_embeded\python.exe -m pip install <module>`.
+</details>
+
+<details>
+<summary><b>Нода не появилась в меню</b></summary>
+
+В startup-логе ищите **Module load issues**. Самая частая причина — отсутствие опциональной зависимости (например `py360convert` нужен для cube/equirect нод). Установите её и перезапустите.
+</details>
+
+<details>
+<summary><b>Workflow ломается после обновления</b></summary>
+
+Timesaver специально замораживает id нод и входы между версиями. Если что-то сломалось после `git pull`:
+1. Проверьте `doc/migration.md` на breaking changes.
+2. Убедитесь, что `pip install -r requirements.txt` запускался.
+3. Полностью перезапустите ComfyUI — не просто обновите вкладку браузера.
+</details>
+
+<details>
+<summary><b>OOM (out of memory)</b></summary>
+
+- Вставьте `TS Free Video Memory` между тяжёлыми нодами.
+- Уменьшите `process_resolution` (BiRefNet) или `compute_max_side` (Color Match).
+- Для апскейла используйте `TS Image Tile Splitter` + тайловую обработку.
+- Для LLM понизьте точность до int8 или int4 (`TS Qwen 3 VL V3` → `precision=int8`).
+- `unload_after_generation=True` освобождает VRAM модели после каждого запуска.
+</details>
+
+---
+
+## 🧪 Разработка
+
+### Запуск тестов
+
+```bash
+# 263 теста, все CPU-safe
+D:/AiApps/ComfyUI/comfyui/python/python.exe -m pytest tests
+D:/AiApps/ComfyUI/comfyui/python/python.exe -m compileall .
+D:/AiApps/ComfyUI/comfyui/python/python.exe tools/build_node_contracts.py --check
+```
+
+Тестовый набор покрывает schema-контракты, тензорные инварианты (нет мутации входов, сохранение батча, dtype/range) и live `127.0.0.1:8188` smoke, который проверяет регистрацию каждой ноды с правильным display name и категорией.
+
+### Перегенерация скриншотов
+
+Нужны свежие скриншоты после изменения UI?
+
+```bash
+D:/AiApps/ComfyUI/comfyui/python/python.exe -m pip install playwright
+D:/AiApps/ComfyUI/comfyui/python/python.exe -m playwright install chromium
+
+# Все 57 нод
+D:/AiApps/ComfyUI/comfyui/python/python.exe tools/screenshot_nodes.py
+
+# Только одну или несколько
+D:/AiApps/ComfyUI/comfyui/python/python.exe tools/screenshot_nodes.py TS_Keyer ts_audio_loader
+```
+
+### Структура репозитория
 
 ```text
 comfyui-timesaver/
-?? nodes/                     # ??? ???? ? node-related ???????
-?  ?? *.py                    # ?????????? ???
-?  ?? luts/                   # LUT-?????
-?  ?? prompts/                # ????? Prompt Builder
-?  ?? styles/                 # ?????? style-????????
-?  ?? video_depth_anything/   # ????? depth-??????
-?  ?? qwen_3_vl_presets.json  # ??????? ??? Qwen-????
-?? js/                        # Frontend-??????????
-?? doc/                       # ?????????? ????????????
-?? requirements.txt
-?? pyproject.toml
-?? __init__.py                # ????????? + startup audit
+├─ nodes/                  # 57 модулей нод по категориям
+├─ js/                     # frontend extensions для DOM-widget нод
+├─ tools/                  # build_node_contracts.py, screenshot_nodes.py
+├─ tests/                  # 263 pytest-теста
+├─ doc/screenshots/        # 57 скриншотов нод (этот README их использует)
+├─ AGENTS.md               # инженерные правила для людей-контрибьюторов
+├─ CLAUDE.md               # инженерные правила для Claude Code агентов
+└─ pyproject.toml          # версия + ComfyRegistry-метаданные
 ```
 
+См. [AGENTS.md](AGENTS.md) для соглашений и [doc/](doc/) для migration-нот и dependency policy.
 
-## Что есть в этом README
+---
 
-- Задокументировано нод: **53**
-- Для каждой ноды есть раскрывающаяся карточка `<details>`
-- Для каждой ноды добавлен плейсхолдер скриншота
-- Описание написано простым языком, без перегруза терминами
+## 📜 Лицензия и благодарности
 
-## Каталог нод
+Лицензия — см. [LICENSE.txt](LICENSE.txt).
 
-| Node ID | Для чего нужна | Категория | Типы выходов |
-| --- | --- | --- | --- |
-| `TS_Qwen3_VL_V3` | Основная мультимодальная нода Qwen (текст + изображение/видео) с пресетами, управлением precision и offline-режимом. | `TS/LLM` | `STRING` |
-| `TS_SuperPrompt` | Нода для диктовки идеи и улучшения промпта через Qwen/Qwen3.5-2B с пресетами из `qwen_3_vl_presets.json` и опциональным image-входом. | `TS/LLM` | `STRING` |
-| `TSWhisper` | Нода Whisper для транскрибации и перевода аудио с выводом SRT и обычного текста. | `TS/Audio` | `STRING` |
-| `TS_SileroTTS` | Русская TTS-нода на базе Silero с чанкингом и выходом AUDIO. | `TS/audio` | `AUDIO` |
-| `TS_MusicStems` | Разделяет музыку на стемы (vocals, bass, drums, others, instrumental). | `TS/Audio` | `AUDIO` |
-| `TS_PromptBuilder` | Собирает структурированные промпты из JSON-конфига и seed для воспроизводимых вариаций. | `TS/Prompt` | `STRING` |
-| `TS_BatchPromptLoader` | Читает многострочные промпты и выдаёт один промпт по индексу/шагу. | `utils/text` | `STRING` |
-| `TS_StylePromptSelector` | Загружает текст style-промпта из библиотеки по ID или имени. | `TS/Prompt` | `STRING` |
-| `TS_ImageResize` | Гибкая нода resize: точный размер, масштаб по стороне, scale factor или целевые мегапиксели. | `image` | `IMAGE` |
-| `TS_QwenSafeResize` | Безопасный resize-пресет под ограничения препроцессинга Qwen. | `image/resize` | `IMAGE` |
-| `TS_WAN_SafeResize` | Safe-resize для WAN-пайплайнов с размером, дружелюбным к моделям. | `image/resize` | `IMAGE` |
-| `TS_QwenCanvas` | Создаёт canvas с разрешением, удобным для Qwen, и при необходимости размещает image/mask. | `TS Qwen` | `IMAGE` |
-| `TS_ResolutionSelector` | Выбирает целевое разрешение по aspect-пресетам или custom ratio и может вернуть подготовленный canvas. | `TS/Resolution` | `IMAGE` |
-| `TS_Color_Grade` | Быстрый первичный color grading: hue, temperature, saturation, contrast, gamma и tone-контроли. | `TS/Color` | `IMAGE` |
-| `TS_Film_Emulation` | Нода для киношной стилизации: пресеты, LUT, warmth, fade и контроль зерна. | `Image/Color` | `IMAGE` |
-| `TS_FilmGrain` | Добавляет управляемое плёночное зерно с настройкой размера, интенсивности, цвета и движения. | `Image Adjustments/Grain` | `IMAGE` |
-| `TS_Color_Match` | Переносит цветовое настроение с референса на целевое изображение, сохраняя структуру сцены. | `TS/Color` | `IMAGE` |
-| `TS_Keyer` | ???????????????? color-difference keyer ??? green/blue/red screen ? ?????? ?????? ? ?????????? despill. | `TS/image` | `IMAGE, MASK, IMAGE` |
-| `TS_Despill` | ????????? ???? ?????????? spill ? ??????????? classic, balanced, adaptive ? hue_preserve. | `TS/image` | `IMAGE, MASK, IMAGE` |
-| `TS_BGRM_BiRefNet` | AI-удаление фона через BiRefNet: быстро, чисто и удобно для прозрачных композиций. | `Timesaver/Image Tools` | `IMAGE` |
-| `TS_LamaCleanup` | Интерактивная in-node ретушь дефектов: рисуете кистью по картинке, LaMa убирает выделенное по mouse-up. | `TS/Image` | `IMAGE` |
-| `TSCropToMask` | Кадрирует область вокруг маски, чтобы ускорить локальные правки и сэкономить память. | `image/processing` | `IMAGE` |
-| `TSRestoreFromCrop` | Возвращает обработанный crop обратно в исходный кадр с опциональным смешиванием. | `image/processing` | `IMAGE` |
-| `TS_ImageBatchToImageList` | Преобразует batched IMAGE tensor в покадровый list-поток. | `TS/Image Tools` | `IMAGE` |
-| `TS_ImageListToImageBatch` | Собирает list-поток изображений обратно в batched IMAGE tensor. | `TS/Image Tools` | `IMAGE` |
-| `TS_ImageBatchCut` | Обрезает кадры с начала и/или конца image batch. | `TS/Image Tools` | `IMAGE` |
-| `TS_GetImageMegapixels` | Возвращает значение мегапикселей для быстрой оценки качества и производительности. | `TS/Image Tools` | `FLOAT` |
-| `TS_GetImageSizeSide` | Возвращает размер выбранной стороны изображения для логики графа и автоконфигурации. | `TS/Image Tools` | `INT` |
-| `TS_ImagePromptInjector` | Встраивает текст промпта в image-flow, чтобы контекст шёл вместе с веткой изображения. | `TS/Image Tools` | `IMAGE` |
-| `TS_ImageTileSplitter` | Делит изображение на перекрывающиеся тайлы для тяжёлой обработки в высоком качестве. | `TS/Image Tools` | `IMAGE` |
-| `TS_ImageTileMerger` | Склеивает тайлы обратно в целое изображение по tile metadata и blending. | `TS/Image Tools` | `IMAGE` |
-| `TSAutoTileSize` | Автоматически рассчитывает размер тайлов (width/height) под вашу целевую сетку. | `utils/Tile Size` | `INT` |
-| `TS Cube to Equirectangular` | Конвертирует шесть граней куба в одну equirectangular 360-панораму. | `Tools/TS_Image` | `IMAGE` |
-| `TS Equirectangular to Cube` | Конвертирует 360-панораму в шесть граней куба для редактирования и проекций. | `Tools/TS_Image` | `IMAGE` |
-| `TS_VideoDepthNode` | Строит depth maps по последовательности кадров для композитинга, relighting и depth-эффектов. | `Tools/Video` | `IMAGE` |
-| `TS_Video_Upscale_With_Model` | Апскейлит последовательность кадров с выбранной моделью апскейла и memory-стратегиями. | `video` | `IMAGE` |
-| `TS_RTX_Upscaler` | Нода NVIDIA RTX Upscaler для быстрого и качественного апскейла на поддерживаемых системах. | `TS/Upscaling` | `IMAGE` |
-| `TS_DeflickerNode` | Снижает временное мерцание яркости и цвета в видеопоследовательностях. | `Video PostProcessing` | `IMAGE` |
-| `TS_Free_Video_Memory` | Pass-through нода, которая агрессивно освобождает RAM/VRAM между тяжёлыми видео-шагами. | `video` | `IMAGE` |
-| `TS_LTX_FirstLastFrame` | Добавляет guidance первого и последнего кадра в latent-пайплайн (полезно для LTX video control). | `conditioning/video_models` | `LATENT` |
-| `TS_Animation_Preview` | Создаёт быстрый превью-ролик из кадров с опциональным объединением аудио. | `TS/Interface Tools` | `-` |
-| `TS_FilePathLoader` | Возвращает путь к файлу и имя файла по индексу из списка папки. | `file_utils` | `STRING` |
-| `TS Files Downloader` | Массово скачивает модели и ассеты: resume, mirrors, proxy и опциональная распаковка. | `Tools/TS_IO` | `-` |
-| `TS Youtube Chapters` | Конвертирует EDL-тайминги в готовые timestamp-главы для YouTube. | `Tools/TS_Video` | `STRING` |
-| `TS_ModelScanner` | Сканирует файлы моделей и возвращает читаемую сводку структуры и метаданных. | `utils/model_analysis` | `STRING` |
-| `TS_ModelConverter` | Конвертер модели в один клик для сценариев смены precision. | `conversion` | `MODEL` |
-| `TS_ModelConverterAdvanced` | Расширенный конвертер моделей с детальным контролем формата, пресета и результата. | `Model Conversion` | `STRING` |
-| `TS_ModelConverterAdvancedDirect` | Расширенный конвертер, работающий напрямую от подключённого входа MODEL. | `TS/Model Conversion` | `STRING` |
-| `TS_CPULoraMerger` | ?????????? ?? ??????? LoRA ? ??????? ?????? ?? CPU ? ????????? ????? safetensors-????. | `TS/Model Tools` | `STRING, STRING` |
-| `TS_FloatSlider` | Простой UI float slider для аккуратного управления параметрами графа. | `TS Tools/Sliders` | `FLOAT` |
-| `TS_Int_Slider` | Простой UI integer slider для детерминированных целочисленных параметров. | `TS Tools/Sliders` | `INT` |
-| `TS_Smart_Switch` | Переключает между двумя входами по режиму и помогает держать граф компактным. | `TS Tools/Logic` | `*` |
-| `TS_Math_Int` | Нода целочисленной математики для счётчиков, смещений и простой логики графа. | `TS/Math` | `INT` |
+**Построено на:**
+- [ComfyUI](https://github.com/comfyanonymous/ComfyUI) — graph engine и V3 API.
+- [BiRefNet](https://github.com/zhengpeng7/BiRefNet) — удаление фона.
+- [LaMa](https://github.com/advimman/lama) — image inpainting.
+- [Whisper](https://github.com/openai/whisper) — распознавание речи.
+- [Demucs](https://github.com/facebookresearch/demucs) — разделение музыки на источники.
+- [Silero](https://github.com/snakers4/silero-models) — русский TTS / ударения.
+- [Qwen](https://github.com/QwenLM/Qwen3-VL) — vision-language модель.
+- [Spandrel](https://github.com/chaiNNer-org/spandrel) — загрузка апскейлеров.
+- [py360convert](https://github.com/sunset1995/py360convert) — 360° конвертация.
+- [RIFE](https://github.com/megvii-research/ECCV2022-RIFE) / [FILM](https://github.com/google-research/frame-interpolation) — интерполяция кадров.
 
-## Подробные карточки нод
+**Мейнтейнер:** [@AlexYez](https://github.com/AlexYez)
 
-### Все ноды
+**Issues / feature requests:** https://github.com/AlexYez/comfyui-timesaver/issues
 
-<details>
-<summary><strong>TS_Qwen3_VL_V3</strong> - Основная мультимодальная нода Qwen (текст + изображение/видео) с пресетами, управлением precision и offline-режимом.</summary>
+---
 
-![Плейсхолдер скриншота для TS_Qwen3_VL_V3](docs/img/placeholders/ts-qwen3-vl-v3.png)
+<div align="center">
 
-> Плейсхолдер: замените этот блок вашим скриншотом ноды.
+**Понравилось?** ⭐ Поставьте звезду, чтобы помочь другим найти проект.
 
-**Что делает эта нода**
-Основная мультимодальная нода Qwen (текст + изображение/видео) с пресетами, управлением precision и offline-режимом.
-
-**Быстрый старт**
-1. Добавьте ноду в граф и подключите обязательные входы.
-2. Сначала оставьте дефолты и меняйте параметры постепенно.
-3. Подключите выход к следующей ноде и сравните результат.
-
-**Основные параметры**
-- Обязательные: `model_name`, `custom_model_id`, `hf_token`, `system_preset`, `prompt`, `seed`, `max_new_tokens`, `precision`, `attention_mode`, `offline_mode`, `unload_after_generation`, `enable`, `max_image_size`, `video_max_frames`
-- Опциональные: `image`, `video`, `custom_system_prompt`
-
-**Выходы**
-- `STRING`
-
-**Техническая информация**
-- Internal id: `TS_Qwen3_VL_V3`
-- Class: `TS_Qwen3_VL_V3`
-- File: `nodes/ts_qwen3_vl_v3_node.py`
-- Category: `TS/LLM`
-- Function: `process`
-- Примечание по зависимостям: Использует `transformers` и опционально acceleration libraries.
-
-</details>
-
-<details>
-<summary><strong>TS_SuperPrompt</strong> - Нода для диктовки идеи и улучшения промпта через Qwen/Qwen3.5-2B.</summary>
-
-![Плейсхолдер скриншота для TS_SuperPrompt](docs/img/placeholders/ts-super-prompt.png)
-
-> Плейсхолдер: замените этот блок вашим скриншотом ноды.
-
-**Что делает эта нода**
-Записывает речь с микрофона в текстовое поле, а кнопка `Ai prompt` улучшает исходный текст в prompt для image, video или music generation. Qwen работает в non-thinking режиме; пресеты берутся из `nodes/qwen_3_vl_presets.json`. В ноде есть progressbar для записи, распознавания, загрузки модели и Ai prompt.
-
-**Быстрый старт**
-1. Добавьте ноду в граф и введите или наговорите идею.
-2. Выберите `system_preset`.
-3. Нажмите `Ai prompt` для замены текста улучшенным prompt.
-
-**Основные параметры**
-- В интерфейсе: `text`, `system_preset`, кнопки `Start Recording` и `Ai prompt`
-- Опциональные входы: `image`
-- Расширенные настройки: переменные `SUPER_PROMPT_*` в начале `nodes/ts_super_prompt_node.py`
-
-**Выходы**
-- `STRING`
-
-**Техническая информация**
-- Internal id: `TS_SuperPrompt`
-- Class: `TS_SuperPrompt`
-- File: `nodes/ts_super_prompt_node.py`
-- Category: `TS/LLM`
-- Function: `execute`
-- Примечание по зависимостям: Использует `openai-whisper`, `transformers`, `torch`, `huggingface_hub` и `Qwen/Qwen3.5-2B`.
-
-</details>
-
-<details>
-<summary><strong>TSWhisper</strong> - Нода Whisper для транскрибации и перевода аудио с выводом SRT и обычного текста.</summary>
-
-![Плейсхолдер скриншота для TSWhisper](docs/img/placeholders/tswhisper.png)
-
-> Плейсхолдер: замените этот блок вашим скриншотом ноды.
-
-**Что делает эта нода**
-Нода Whisper для транскрибации и перевода аудио с выводом SRT и обычного текста.
-
-**Быстрый старт**
-1. Добавьте ноду в граф и подключите обязательные входы.
-2. Сначала оставьте дефолты и меняйте параметры постепенно.
-3. Подключите выход к следующей ноде и сравните результат.
-
-**Основные параметры**
-- Обязательные: `audio`, `model`, `output_filename_prefix`, `task`, `source_language`, `timestamps`, `save_srt_file`, `precision`
-- Опциональные: `output_dir`
-
-**Выходы**
-- `STRING`
-
-**Техническая информация**
-- Internal id: `TSWhisper`
-- Class: `TSWhisper`
-- File: `nodes/ts_whisper_node.py`
-- Category: `TS/Audio`
-- Function: `generate_srt_and_text`
-- Примечание по зависимостям: Использует `transformers` and `torchaudio`.
-
-</details>
-
-
-<details>
-<summary><strong>TS_SileroTTS</strong> - Русская TTS-нода на базе Silero с чанкингом и выходом AUDIO.</summary>
-
-![Плейсхолдер скриншота для TS_SileroTTS](docs/img/placeholders/ts-silerotts.png)
-
-> Плейсхолдер: замените этот блок вашим скриншотом ноды.
-
-**Что делает эта нода**
-Русская TTS-нода на базе Silero с чанкингом и выходом AUDIO.
-
-**Быстрый старт**
-1. Добавьте ноду в граф и подключите обязательные входы.
-2. Сначала оставьте дефолты и меняйте параметры постепенно.
-3. Подключите выход к следующей ноде и сравните результат.
-
-**Основные параметры**
-- Обязательные: `text`, `input_format`, `speaker`, `run_device`, `enable_chunking`, `max_chunk_chars`, `chunk_pause_ms`, `put_accent`, `put_yo`, `put_stress_homo`, `put_yo_homo`
-- Опциональные: *(none)*
-
-**Выходы**
-- `AUDIO`
-
-**Техническая информация**
-- Internal id: `TS_SileroTTS`
-- Class: `TS_SileroTTS`
-- File: `nodes/ts_silero_tts_node.py`
-- Category: `TS/audio`
-- Function: `execute`
-
-</details>
-
-<details>
-<summary><strong>TS_MusicStems</strong> - Разделяет музыку на стемы (vocals, bass, drums, others, instrumental).</summary>
-
-![Плейсхолдер скриншота для TS_MusicStems](docs/img/placeholders/ts-musicstems.png)
-
-> Плейсхолдер: замените этот блок вашим скриншотом ноды.
-
-**Что делает эта нода**
-Разделяет музыку на стемы (vocals, bass, drums, others, instrumental).
-
-**Быстрый старт**
-1. Добавьте ноду в граф и подключите обязательные входы.
-2. Сначала оставьте дефолты и меняйте параметры постепенно.
-3. Подключите выход к следующей ноде и сравните результат.
-
-**Основные параметры**
-- Обязательные: `audio`, `model_name`, `device`, `shifts`, `overlap`, `jobs`
-- Опциональные: *(none)*
-
-**Выходы**
-- `AUDIO`
-
-**Техническая информация**
-- Internal id: `TS_MusicStems`
-- Class: `TS_MusicStems`
-- File: `nodes/ts_music_stems_node.py`
-- Category: `TS/Audio`
-- Function: `process_stems`
-- Примечание по зависимостям: Requires `demucs`.
-
-</details>
-
-<details>
-<summary><strong>TS_PromptBuilder</strong> - Собирает структурированные промпты из JSON-конфига и seed для воспроизводимых вариаций.</summary>
-
-![Плейсхолдер скриншота для TS_PromptBuilder](docs/img/placeholders/ts-promptbuilder.png)
-
-> Плейсхолдер: замените этот блок вашим скриншотом ноды.
-
-**Что делает эта нода**
-Собирает структурированные промпты из JSON-конфига и seed для воспроизводимых вариаций.
-
-**Быстрый старт**
-1. Добавьте ноду в граф и подключите обязательные входы.
-2. Сначала оставьте дефолты и меняйте параметры постепенно.
-3. Подключите выход к следующей ноде и сравните результат.
-
-**Основные параметры**
-- Обязательные: `seed`, `config_json`
-- Опциональные: *(none)*
-
-**Выходы**
-- `STRING`
-
-**Техническая информация**
-- Internal id: `TS_PromptBuilder`
-- Class: `TS_PromptBuilder`
-- File: `nodes/ts_prompt_builder_node.py`
-- Category: `TS/Prompt`
-- Function: `build_prompt`
-
-</details>
-
-<details>
-<summary><strong>TS_BatchPromptLoader</strong> - Читает многострочные промпты и выдаёт один промпт по индексу/шагу.</summary>
-
-![Плейсхолдер скриншота для TS_BatchPromptLoader](docs/img/placeholders/ts-batchpromptloader.png)
-
-> Плейсхолдер: замените этот блок вашим скриншотом ноды.
-
-**Что делает эта нода**
-Читает многострочные промпты и выдаёт один промпт по индексу/шагу.
-
-**Быстрый старт**
-1. Добавьте ноду в граф и подключите обязательные входы.
-2. Сначала оставьте дефолты и меняйте параметры постепенно.
-3. Подключите выход к следующей ноде и сравните результат.
-
-**Основные параметры**
-- Обязательные: `text`
-- Опциональные: *(none)*
-
-**Выходы**
-- `STRING`
-
-**Техническая информация**
-- Internal id: `TS_BatchPromptLoader`
-- Class: `TS_BatchPromptLoader`
-- File: `nodes/ts_text_tools_node.py`
-- Category: `utils/text`
-- Function: `process_prompts`
-
-</details>
-
-<details>
-<summary><strong>TS_StylePromptSelector</strong> - Загружает текст style-промпта из библиотеки по ID или имени.</summary>
-
-![Плейсхолдер скриншота для TS_StylePromptSelector](docs/img/placeholders/ts-stylepromptselector.png)
-
-> Плейсхолдер: замените этот блок вашим скриншотом ноды.
-
-**Что делает эта нода**
-Загружает текст style-промпта из библиотеки по ID или имени.
-
-**Быстрый старт**
-1. Добавьте ноду в граф и подключите обязательные входы.
-2. Сначала оставьте дефолты и меняйте параметры постепенно.
-3. Подключите выход к следующей ноде и сравните результат.
-
-**Основные параметры**
-- Обязательные: `style_id`
-- Опциональные: *(none)*
-
-**Выходы**
-- `STRING`
-
-**Техническая информация**
-- Internal id: `TS_StylePromptSelector`
-- Class: `TS_StylePromptSelector`
-- File: `nodes/ts_style_prompt_node.py`
-- Category: `TS/Prompt`
-- Function: `get_prompt`
-
-</details>
-
-<details>
-<summary><strong>TS_ImageResize</strong> - Гибкая нода resize: точный размер, масштаб по стороне, scale factor или целевые мегапиксели.</summary>
-
-![Плейсхолдер скриншота для TS_ImageResize](docs/img/placeholders/ts-imageresize.png)
-
-> Плейсхолдер: замените этот блок вашим скриншотом ноды.
-
-**Что делает эта нода**
-Гибкая нода resize: точный размер, масштаб по стороне, scale factor или целевые мегапиксели.
-
-**Быстрый старт**
-1. Добавьте ноду в граф и подключите обязательные входы.
-2. Сначала оставьте дефолты и меняйте параметры постепенно.
-3. Подключите выход к следующей ноде и сравните результат.
-
-**Основные параметры**
-- Обязательные: `pixels`, `target_width`, `target_height`, `smaller_side`, `larger_side`, `scale_factor`, `keep_proportion`, `upscale_method`, `divisible_by`, `megapixels`, `dont_enlarge`
-- Опциональные: `mask`
-
-**Выходы**
-- `IMAGE`
-
-**Техническая информация**
-- Internal id: `TS_ImageResize`
-- Class: `TS_ImageResize`
-- File: `nodes/ts_image_resize_node.py`
-- Category: `image`
-- Function: `resize`
-
-</details>
-
-<details>
-<summary><strong>TS_QwenSafeResize</strong> - Безопасный resize-пресет под ограничения препроцессинга Qwen.</summary>
-
-![Плейсхолдер скриншота для TS_QwenSafeResize](docs/img/placeholders/ts-qwensaferesize.png)
-
-> Плейсхолдер: замените этот блок вашим скриншотом ноды.
-
-**Что делает эта нода**
-Безопасный resize-пресет под ограничения препроцессинга Qwen.
-
-**Быстрый старт**
-1. Добавьте ноду в граф и подключите обязательные входы.
-2. Сначала оставьте дефолты и меняйте параметры постепенно.
-3. Подключите выход к следующей ноде и сравните результат.
-
-**Основные параметры**
-- Обязательные: `image`
-- Опциональные: *(none)*
-
-**Выходы**
-- `IMAGE`
-
-**Техническая информация**
-- Internal id: `TS_QwenSafeResize`
-- Class: `TS_QwenSafeResize`
-- File: `nodes/ts_image_resize_node.py`
-- Category: `image/resize`
-- Function: `safe_resize`
-
-</details>
-
-<details>
-<summary><strong>TS_WAN_SafeResize</strong> - Safe-resize для WAN-пайплайнов с размером, дружелюбным к моделям.</summary>
-
-![Плейсхолдер скриншота для TS_WAN_SafeResize](docs/img/placeholders/ts-wan-saferesize.png)
-
-> Плейсхолдер: замените этот блок вашим скриншотом ноды.
-
-**Что делает эта нода**
-Safe-resize для WAN-пайплайнов с размером, дружелюбным к моделям.
-
-**Быстрый старт**
-1. Добавьте ноду в граф и подключите обязательные входы.
-2. Сначала оставьте дефолты и меняйте параметры постепенно.
-3. Подключите выход к следующей ноде и сравните результат.
-
-**Основные параметры**
-- Обязательные: `image`, `quality`
-- Опциональные: `interconnection_in`
-
-**Выходы**
-- `IMAGE`
-
-**Техническая информация**
-- Internal id: `TS_WAN_SafeResize`
-- Class: `TS_WAN_SafeResize`
-- File: `nodes/ts_image_resize_node.py`
-- Category: `image/resize`
-- Function: `safe_resize`
-
-</details>
-
-<details>
-<summary><strong>TS_QwenCanvas</strong> - Создаёт canvas с разрешением, удобным для Qwen, и при необходимости размещает image/mask.</summary>
-
-![Плейсхолдер скриншота для TS_QwenCanvas](docs/img/placeholders/ts-qwencanvas.png)
-
-> Плейсхолдер: замените этот блок вашим скриншотом ноды.
-
-**Что делает эта нода**
-Создаёт canvas с разрешением, удобным для Qwen, и при необходимости размещает image/mask.
-
-**Быстрый старт**
-1. Добавьте ноду в граф и подключите обязательные входы.
-2. Сначала оставьте дефолты и меняйте параметры постепенно.
-3. Подключите выход к следующей ноде и сравните результат.
-
-**Основные параметры**
-- Обязательные: `resolution`
-- Опциональные: `image`, `mask`
-
-**Выходы**
-- `IMAGE`
-
-**Техническая информация**
-- Internal id: `TS_QwenCanvas`
-- Class: `TS_QwenCanvas`
-- File: `nodes/ts_image_resize_node.py`
-- Category: `TS Qwen`
-- Function: `make_canvas`
-
-</details>
-
-<details>
-<summary><strong>TS_ResolutionSelector</strong> - Выбирает целевое разрешение по aspect-пресетам или custom ratio и может вернуть подготовленный canvas.</summary>
-
-![Плейсхолдер скриншота для TS_ResolutionSelector](docs/img/placeholders/ts-resolutionselector.png)
-
-> Плейсхолдер: замените этот блок вашим скриншотом ноды.
-
-**Что делает эта нода**
-Выбирает целевое разрешение по aspect-пресетам или custom ratio и может вернуть подготовленный canvas.
-
-**Быстрый старт**
-1. Добавьте ноду в граф и подключите обязательные входы.
-2. Сначала оставьте дефолты и меняйте параметры постепенно.
-3. Подключите выход к следующей ноде и сравните результат.
-
-**Основные параметры**
-- Обязательные: `aspect_ratio`, `resolution`, `custom_ratio`, `original_aspect`
-- Опциональные: `image`
-
-**Выходы**
-- `IMAGE`
-
-**Техническая информация**
-- Internal id: `TS_ResolutionSelector`
-- Class: `TS_ResolutionSelector`
-- File: `nodes/ts_resolution_selector.py`
-- Category: `TS/Resolution`
-- Function: `select_resolution`
-
-</details>
-
-<details>
-<summary><strong>TS_Color_Grade</strong> - Быстрый первичный color grading: hue, temperature, saturation, contrast, gamma и tone-контроли.</summary>
-
-![Плейсхолдер скриншота для TS_Color_Grade](docs/img/placeholders/ts-color-grade.png)
-
-> Плейсхолдер: замените этот блок вашим скриншотом ноды.
-
-**Что делает эта нода**
-Быстрый первичный color grading: hue, temperature, saturation, contrast, gamma и tone-контроли.
-
-**Быстрый старт**
-1. Добавьте ноду в граф и подключите обязательные входы.
-2. Сначала оставьте дефолты и меняйте параметры постепенно.
-3. Подключите выход к следующей ноде и сравните результат.
-
-**Основные параметры**
-- Обязательные: `image`, `hue`, `temperature`, `saturation`, `contrast`, `gain`, `lift`, `gamma`, `brightness`
-- Опциональные: *(none)*
-
-**Выходы**
-- `IMAGE`
-
-**Техническая информация**
-- Internal id: `TS_Color_Grade`
-- Class: `TS_Color_Grade`
-- File: `nodes/ts_color_node.py`
-- Category: `TS/Color`
-- Function: `process`
-
-</details>
-
-<details>
-<summary><strong>TS_Film_Emulation</strong> - Нода для киношной стилизации: пресеты, LUT, warmth, fade и контроль зерна.</summary>
-
-![Плейсхолдер скриншота для TS_Film_Emulation](docs/img/placeholders/ts-film-emulation.png)
-
-> Плейсхолдер: замените этот блок вашим скриншотом ноды.
-
-**Что делает эта нода**
-Нода для киношной стилизации: пресеты, LUT, warmth, fade и контроль зерна.
-
-**Быстрый старт**
-1. Добавьте ноду в граф и подключите обязательные входы.
-2. Сначала оставьте дефолты и меняйте параметры постепенно.
-3. Подключите выход к следующей ноде и сравните результат.
-
-**Основные параметры**
-- Обязательные: `image`, `enable`, `film_preset`, `lut_choice`, `lut_strength`, `gamma_correction`, `film_strength`, `contrast_curve`, `warmth`, `grain_intensity`, `grain_size`, `fade`, `shadow_saturation`, `highlight_saturation`
-- Опциональные: *(none)*
-
-**Выходы**
-- `IMAGE`
-
-**Техническая информация**
-- Internal id: `TS_Film_Emulation`
-- Class: `TS_Film_Emulation`
-- File: `nodes/ts_color_node.py`
-- Category: `Image/Color`
-- Function: `process`
-
-</details>
-
-<details>
-<summary><strong>TS_FilmGrain</strong> - Добавляет управляемое плёночное зерно с настройкой размера, интенсивности, цвета и движения.</summary>
-
-![Плейсхолдер скриншота для TS_FilmGrain](docs/img/placeholders/ts-filmgrain.png)
-
-> Плейсхолдер: замените этот блок вашим скриншотом ноды.
-
-**Что делает эта нода**
-Добавляет управляемое плёночное зерно с настройкой размера, интенсивности, цвета и движения.
-
-**Быстрый старт**
-1. Добавьте ноду в граф и подключите обязательные входы.
-2. Сначала оставьте дефолты и меняйте параметры постепенно.
-3. Подключите выход к следующей ноде и сравните результат.
-
-**Основные параметры**
-- Обязательные: `images`, `force_gpu`, `grain_size`, `grain_intensity`, `grain_speed`, `grain_softness`, `color_grain_strength`, `mid_tone_grain_bias`, `seed`
-- Опциональные: *(none)*
-
-**Выходы**
-- `IMAGE`
-
-**Техническая информация**
-- Internal id: `TS_FilmGrain`
-- Class: `TS_FilmGrain`
-- File: `nodes/ts_film_grain_node.py`
-- Category: `Image Adjustments/Grain`
-- Function: `apply_grain`
-
-</details>
-
-<details>
-<summary><strong>TS_Color_Match</strong> - Переносит цветовое настроение с референса на целевое изображение, сохраняя структуру сцены.</summary>
-
-![Плейсхолдер скриншота для TS_Color_Match](docs/img/placeholders/ts-color-match.png)
-
-> Плейсхолдер: замените этот блок вашим скриншотом ноды.
-
-**Что делает эта нода**
-Переносит цветовое настроение с референса на целевое изображение, сохраняя структуру сцены.
-
-**Быстрый старт**
-1. Добавьте ноду в граф и подключите обязательные входы.
-2. Сначала оставьте дефолты и меняйте параметры постепенно.
-3. Подключите выход к следующей ноде и сравните результат.
-
-**Основные параметры**
-- Обязательные: `reference`, `target`, `mode`, `device`, `strength`, `enable`, `match_mask`, `mask_size`, `compute_max_side`, `mkl_sample_points`, `sinkhorn_max_points`, `reuse_reference`, `chunk_size`, `logging`
-- Опциональные: *(none)*
-
-**Выходы**
-- `IMAGE`
-
-**Техническая информация**
-- Internal id: `TS_Color_Match`
-- Class: `TS_Color_Match`
-- File: `nodes/ts_color_match_node.py`
-- Category: `TS/Color`
-- Function: `process`
-
-</details>
-
-<details>
-<summary><strong>TS_Keyer</strong> - ???????????????? color-difference keyer ??? green/blue/red screen ? ?????? ?????? ? ?????????? despill.</summary>
-
-![Плейсхолдер скриншота для TS_Keyer](docs/img/placeholders/ts-keyer.png)
-
-> Плейсхолдер: замените этот блок вашим скриншотом ноды.
-
-**Что делает эта нода**
-???????????????? color-difference keyer ??? green/blue/red screen ? ?????? ?????? ? ?????????? despill.
-
-**Быстрый старт**
-1. Добавьте ноду в граф и подключите обязательные входы.
-2. Сначала оставьте дефолты и меняйте параметры постепенно.
-3. Подключите выход к следующей ноде и сравните результат.
-
-**Основные параметры**
-- Обязательные: `image`, `enable`, `key_color`, `key_channel`, `screen_balance`, `key_strength`, `black_point`, `white_point`, `matte_gamma`, `matte_preblur`, `edge_softness`, `despill_strength`, `despill_edge_only`, `despill_compensate`, `invert_alpha`
-- Опциональные: *(none)*
-
-**Выходы**
-- `IMAGE, MASK, IMAGE`
-
-**Техническая информация**
-- Internal id: `TS_Keyer`
-- Class: `TS_Keyer`
-- File: `nodes/ts_keyer_node.py`
-- Category: `TS/image`
-- Function: `execute`
-
-</details>
-
-<details>
-<summary><strong>TS_Despill</strong> - ????????? ???? ?????????? spill ? ??????????? classic, balanced, adaptive ? hue_preserve.</summary>
-
-![Плейсхолдер скриншота для TS_Despill](docs/img/placeholders/ts-despill.png)
-
-> Плейсхолдер: замените этот блок вашим скриншотом ноды.
-
-**Что делает эта нода**
-????????? ???? ?????????? spill ? ??????????? classic, balanced, adaptive ? hue_preserve.
-
-**Быстрый старт**
-1. Добавьте ноду в граф и подключите обязательные входы.
-2. Сначала оставьте дефолты и меняйте параметры постепенно.
-3. Подключите выход к следующей ноде и сравните результат.
-
-**Основные параметры**
-- Обязательные: `image`, `enable`, `screen_color`, `algorithm`, `strength`, `spill_threshold`, `spill_softness`, `compensation`, `preserve_luma`, `use_input_alpha_for_edges`, `edge_boost`, `edge_blur`, `skin_protection`, `saturation_restore`, `invert_spill_mask`
-- Опциональные: `spill_mask`
-
-**Выходы**
-- `IMAGE, MASK, IMAGE`
-
-**Техническая информация**
-- Internal id: `TS_Despill`
-- Class: `TS_Despill`
-- File: `nodes/ts_keyer_node.py`
-- Category: `TS/image`
-- Function: `execute`
-
-</details>
-
-<details>
-<summary><strong>TS_BGRM_BiRefNet</strong> - AI-удаление фона через BiRefNet: быстро, чисто и удобно для прозрачных композиций.</summary>
-
-![Плейсхолдер скриншота для TS_BGRM_BiRefNet](docs/img/placeholders/ts-bgrm-birefnet.png)
-
-> Плейсхолдер: замените этот блок вашим скриншотом ноды.
-
-**Что делает эта нода**
-AI-удаление фона через BiRefNet: быстро, чисто и удобно для прозрачных композиций.
-
-**Быстрый старт**
-1. Добавьте ноду в граф и подключите обязательные входы.
-2. Сначала оставьте дефолты и меняйте параметры постепенно.
-3. Подключите выход к следующей ноде и сравните результат.
-
-**Основные параметры**
-- Обязательные: `image`, `enable`, `model`
-- Опциональные: `use_custom_resolution`, `process_resolution`, `mask_blur`, `mask_offset`, `invert_output`, `refine_foreground`, `background`, `background_color`
-
-**Выходы**
-- `IMAGE`
-
-**Техническая информация**
-- Internal id: `TS_BGRM_BiRefNet`
-- Class: `TS_BGRM_BiRefNet`
-- File: `nodes/ts_bgrm_node.py`
-- Category: `Timesaver/Image Tools`
-- Function: `process_image`
-- Примечание по зависимостям: Requires BiRefNet model files (auto-download when available).
-
-</details>
-
-<details>
-<summary><strong>TS_LamaCleanup</strong> - Интерактивная in-node ретушь дефектов с моделью LaMa.</summary>
-
-![Плейсхолдер скриншота для TS_LamaCleanup](docs/img/placeholders/ts-lama-cleanup.png)
-
-> Плейсхолдер: замените этот блок скриншотом ноды.
-
-**Что делает эта нода**
-Полностью интерактивная нода для удаления мелких дефектов (царапин, пылинок, лого, прыщиков, watermark) с фотографий. Работает прямо внутри ноды:
-
-1. Загружаете изображение через кнопку **Load Image**, drag-and-drop файла на ноду или Ctrl+V из буфера обмена.
-2. Рисуете кисточкой по дефектам — пока зажата левая кнопка мыши на canvas видна полупрозрачная тёмная маска.
-3. На отпускании кнопки мыши нода автоматически делает crop по bounding-box маски, ресайзит до оптимального для LaMa разрешения (`max_resolution`, default 512), прогоняет через модель и аккуратно вписывает результат обратно в полное изображение с soft-blend по краю.
-4. Каждое такое действие создаёт новый шаг в истории. Кнопки **Undo / Redo** возвращают/восстанавливают предыдущие состояния (последние 30 шагов).
-5. **Save Image** сохраняет финальное изображение в `output/lama-cleanup/`. Файл назван `<source>_lama-cleanup_<timestamp>.png`.
-6. На IMAGE выходе нода всегда отдаёт текущее состояние очищенного изображения для дальнейших шагов в графе.
-
-Workflow не запускается на каждое действие кистью — всё происходит локально через JS frontend и aiohttp routes. ComfyUI Run отдаёт текущее состояние через стандартный output.
-
-**Загрузка модели**
-- Репозиторий: [`1038lab/Lama`](https://huggingface.co/1038lab/Lama).
-- Файл: `big-lama.pt` (~196 МБ, TorchScript JIT).
-- Папка: `ComfyUI/models/lama/big-lama.pt` (зарегистрировано в `folder_paths`, поддерживается `extra_model_paths.yaml`).
-- Скачивается **автоматически** через `huggingface_hub` при первом нажатии mouse-up на маске. Прогресс показывается в overlay над canvas.
-- Если модель уже лежит в `models/lama/`, повторно не скачивается.
-
-**Шорткаты и взаимодействия**
-- **Левая кнопка мыши**: рисовать маску.
-- **Slider Brush** (в верхнем меню): диаметр кисти в image-пикселях (1–400).
-- **⚙ Settings popover**: дополнительные параметры — Max LaMa resolution (128–2048), Mask context padding (0–512 px), Composite feather (0–64 px).
-- **Drag-and-drop**: бросьте файл изображения на ноду — загрузится без открытия диалога.
-- **Ctrl+V** (если мышь над нодой): paste изображения из буфера обмена.
-- **Undo / Redo**: переключают между шагами истории (30 шагов).
-- **Reset**: откат к исходному изображению, очищает всю историю.
-- **Save Image**: сохранить текущий результат в `output/lama-cleanup/`.
-
-**Тонкие настройки (когда менять)**
-- `max_resolution` — больше = качественнее, медленнее. 512 хватает для большинства мелких дефектов; для крупных областей подними до 1024.
-- `mask_padding` — pixels контекста вокруг маски. Если LaMa плохо вписывает результат — увеличьте до 96–128, особенно для текстурированных областей.
-- `feather` — мягкость seam'а при композите обратно. 0 = жёсткая граница (видно). 4 (default) — обычно достаточно. До 16 для сильно отличающихся регионов.
-
-**Предсказуемость и производительность**
-- Crop+resize+inpaint + composite back делается на full-resolution, в temp-файл, после чего и фронтенд получает новое working_path.
-- Каждый inpaint = новый файл `temp/ts_lama_cleanup/{session}_edit_{nanos}.png`. Старые файлы автоматически чистятся при Reset, при загрузке нового изображения и при превышении лимита истории.
-- Per-session asyncio.Lock на бэкенде сериализует параллельные inpaint-запросы — двойные клики безопасны.
-- Image render cache + incremental tinted mask + HTML cursor → курсор и рисование плавны даже на 4K+ изображениях.
-
-**Технические подробности**
-- Internal id: `TS_LamaCleanup`
-- Class: `TS_LamaCleanup`
-- File: `nodes/image/lama_cleanup/ts_lama_cleanup.py`
-- Category: `TS/Image`
-- API: V3 (`comfy_api.latest.IO.ComfyNode`)
-- aiohttp routes: `/ts_lama_cleanup/{view,model_status,inpaint,save,reset,seed,cleanup_paths}`
-- Зависимости: `huggingface_hub` (скачивание модели), `torch` (inference), `Pillow`, `numpy`, опционально `opencv-python` для feather. Все, кроме `huggingface_hub`, обычно уже есть в ComfyUI.
-
-</details>
-
-<details>
-<summary><strong>TSCropToMask</strong> - Кадрирует область вокруг маски, чтобы ускорить локальные правки и сэкономить память.</summary>
-
-![Плейсхолдер скриншота для TSCropToMask](docs/img/placeholders/tscroptomask.png)
-
-> Плейсхолдер: замените этот блок вашим скриншотом ноды.
-
-**Что делает эта нода**
-Кадрирует область вокруг маски, чтобы ускорить локальные правки и сэкономить память.
-
-**Быстрый старт**
-1. Добавьте ноду в граф и подключите обязательные входы.
-2. Сначала оставьте дефолты и меняйте параметры постепенно.
-3. Подключите выход к следующей ноде и сравните результат.
-
-**Основные параметры**
-- Обязательные: `images`, `mask`, `padding`, `divide_by`, `max_resolution`, `fixed_mask_frame_index`, `interpolation_window_size`, `force_gpu`, `fixed_crop_size`, `fixed_width`, `fixed_height`
-- Опциональные: *(none)*
-
-**Выходы**
-- `IMAGE`
-
-**Техническая информация**
-- Internal id: `TSCropToMask`
-- Class: `TSCropToMask`
-- File: `nodes/ts_crop_to_mask_node.py`
-- Category: `image/processing`
-- Function: `crop`
-
-</details>
-
-<details>
-<summary><strong>TSRestoreFromCrop</strong> - Возвращает обработанный crop обратно в исходный кадр с опциональным смешиванием.</summary>
-
-![Плейсхолдер скриншота для TSRestoreFromCrop](docs/img/placeholders/tsrestorefromcrop.png)
-
-> Плейсхолдер: замените этот блок вашим скриншотом ноды.
-
-**Что делает эта нода**
-Возвращает обработанный crop обратно в исходный кадр с опциональным смешиванием.
-
-**Быстрый старт**
-1. Добавьте ноду в граф и подключите обязательные входы.
-2. Сначала оставьте дефолты и меняйте параметры постепенно.
-3. Подключите выход к следующей ноде и сравните результат.
-
-**Основные параметры**
-- Обязательные: `original_images`, `cropped_images`, `crop_data`, `blur`, `blur_type`, `force_gpu`
-- Опциональные: *(none)*
-
-**Выходы**
-- `IMAGE`
-
-**Техническая информация**
-- Internal id: `TSRestoreFromCrop`
-- Class: `TSRestoreFromCrop`
-- File: `nodes/ts_crop_to_mask_node.py`
-- Category: `image/processing`
-- Function: `restore`
-
-</details>
-
-<details>
-<summary><strong>TS_ImageBatchToImageList</strong> - Преобразует batched IMAGE tensor в покадровый list-поток.</summary>
-
-![Плейсхолдер скриншота для TS_ImageBatchToImageList](docs/img/placeholders/ts-imagebatchtoimagelist.png)
-
-> Плейсхолдер: замените этот блок вашим скриншотом ноды.
-
-**Что делает эта нода**
-Преобразует batched IMAGE tensor в покадровый list-поток.
-
-**Быстрый старт**
-1. Добавьте ноду в граф и подключите обязательные входы.
-2. Сначала оставьте дефолты и меняйте параметры постепенно.
-3. Подключите выход к следующей ноде и сравните результат.
-
-**Основные параметры**
-- Обязательные: `image`
-- Опциональные: *(none)*
-
-**Выходы**
-- `IMAGE`
-
-**Техническая информация**
-- Internal id: `TS_ImageBatchToImageList`
-- Class: `TS_ImageBatchToImageList`
-- File: `nodes/ts_image_tools_node.py`
-- Category: `TS/Image Tools`
-- Function: `execute`
-
-</details>
-
-<details>
-<summary><strong>TS_ImageListToImageBatch</strong> - Собирает list-поток изображений обратно в batched IMAGE tensor.</summary>
-
-![Плейсхолдер скриншота для TS_ImageListToImageBatch](docs/img/placeholders/ts-imagelisttoimagebatch.png)
-
-> Плейсхолдер: замените этот блок вашим скриншотом ноды.
-
-**Что делает эта нода**
-Собирает list-поток изображений обратно в batched IMAGE tensor.
-
-**Быстрый старт**
-1. Добавьте ноду в граф и подключите обязательные входы.
-2. Сначала оставьте дефолты и меняйте параметры постепенно.
-3. Подключите выход к следующей ноде и сравните результат.
-
-**Основные параметры**
-- Обязательные: `images`
-- Опциональные: *(none)*
-
-**Выходы**
-- `IMAGE`
-
-**Техническая информация**
-- Internal id: `TS_ImageListToImageBatch`
-- Class: `TS_ImageListToImageBatch`
-- File: `nodes/ts_image_tools_node.py`
-- Category: `TS/Image Tools`
-- Function: `execute`
-
-</details>
-
-<details>
-<summary><strong>TS_ImageBatchCut</strong> - Обрезает кадры с начала и/или конца image batch.</summary>
-
-![Плейсхолдер скриншота для TS_ImageBatchCut](docs/img/placeholders/ts-imagebatchcut.png)
-
-> Плейсхолдер: замените этот блок вашим скриншотом ноды.
-
-**Что делает эта нода**
-Обрезает кадры с начала и/или конца image batch.
-
-**Быстрый старт**
-1. Добавьте ноду в граф и подключите обязательные входы.
-2. Сначала оставьте дефолты и меняйте параметры постепенно.
-3. Подключите выход к следующей ноде и сравните результат.
-
-**Основные параметры**
-- Обязательные: `image`, `first_cut`, `last_cut`
-- Опциональные: *(none)*
-
-**Выходы**
-- `IMAGE`
-
-**Техническая информация**
-- Internal id: `TS_ImageBatchCut`
-- Class: `TS_ImageBatchCut`
-- File: `nodes/ts_image_tools_node.py`
-- Category: `TS/Image Tools`
-- Function: `execute`
-
-</details>
-
-<details>
-<summary><strong>TS_GetImageMegapixels</strong> - Возвращает значение мегапикселей для быстрой оценки качества и производительности.</summary>
-
-![Плейсхолдер скриншота для TS_GetImageMegapixels](docs/img/placeholders/ts-getimagemegapixels.png)
-
-> Плейсхолдер: замените этот блок вашим скриншотом ноды.
-
-**Что делает эта нода**
-Возвращает значение мегапикселей для быстрой оценки качества и производительности.
-
-**Быстрый старт**
-1. Добавьте ноду в граф и подключите обязательные входы.
-2. Сначала оставьте дефолты и меняйте параметры постепенно.
-3. Подключите выход к следующей ноде и сравните результат.
-
-**Основные параметры**
-- Обязательные: `image`
-- Опциональные: *(none)*
-
-**Выходы**
-- `FLOAT`
-
-**Техническая информация**
-- Internal id: `TS_GetImageMegapixels`
-- Class: `TS_GetImageMegapixels`
-- File: `nodes/ts_image_tools_node.py`
-- Category: `TS/Image Tools`
-- Function: `execute`
-
-</details>
-
-<details>
-<summary><strong>TS_GetImageSizeSide</strong> - Возвращает размер выбранной стороны изображения для логики графа и автоконфигурации.</summary>
-
-![Плейсхолдер скриншота для TS_GetImageSizeSide](docs/img/placeholders/ts-getimagesizeside.png)
-
-> Плейсхолдер: замените этот блок вашим скриншотом ноды.
-
-**Что делает эта нода**
-Возвращает размер выбранной стороны изображения для логики графа и автоконфигурации.
-
-**Быстрый старт**
-1. Добавьте ноду в граф и подключите обязательные входы.
-2. Сначала оставьте дефолты и меняйте параметры постепенно.
-3. Подключите выход к следующей ноде и сравните результат.
-
-**Основные параметры**
-- Обязательные: `image`, `large_side`
-- Опциональные: *(none)*
-
-**Выходы**
-- `INT`
-
-**Техническая информация**
-- Internal id: `TS_GetImageSizeSide`
-- Class: `TS_GetImageSizeSide`
-- File: `nodes/ts_image_tools_node.py`
-- Category: `TS/Image Tools`
-- Function: `execute`
-
-</details>
-
-<details>
-<summary><strong>TS_ImagePromptInjector</strong> - Встраивает текст промпта в image-flow, чтобы контекст шёл вместе с веткой изображения.</summary>
-
-![Плейсхолдер скриншота для TS_ImagePromptInjector](docs/img/placeholders/ts-imagepromptinjector.png)
-
-> Плейсхолдер: замените этот блок вашим скриншотом ноды.
-
-**Что делает эта нода**
-Встраивает текст промпта в image-flow, чтобы контекст шёл вместе с веткой изображения.
-
-**Быстрый старт**
-1. Добавьте ноду в граф и подключите обязательные входы.
-2. Сначала оставьте дефолты и меняйте параметры постепенно.
-3. Подключите выход к следующей ноде и сравните результат.
-
-**Основные параметры**
-- Обязательные: `image`, `prompt`
-- Опциональные: *(none)*
-
-**Выходы**
-- `IMAGE`
-
-**Техническая информация**
-- Internal id: `TS_ImagePromptInjector`
-- Class: `TS_ImagePromptInjector`
-- File: `nodes/ts_image_tools_node.py`
-- Category: `TS/Image Tools`
-- Function: `execute`
-
-</details>
-
-<details>
-<summary><strong>TS_ImageTileSplitter</strong> - Делит изображение на перекрывающиеся тайлы для тяжёлой обработки в высоком качестве.</summary>
-
-![Плейсхолдер скриншота для TS_ImageTileSplitter](docs/img/placeholders/ts-imagetilesplitter.png)
-
-> Плейсхолдер: замените этот блок вашим скриншотом ноды.
-
-**Что делает эта нода**
-Делит изображение на перекрывающиеся тайлы для тяжёлой обработки в высоком качестве.
-
-**Быстрый старт**
-1. Добавьте ноду в граф и подключите обязательные входы.
-2. Сначала оставьте дефолты и меняйте параметры постепенно.
-3. Подключите выход к следующей ноде и сравните результат.
-
-**Основные параметры**
-- Обязательные: `image`, `tile_width`, `tile_height`, `overlap`, `feather`
-- Опциональные: *(none)*
-
-**Выходы**
-- `IMAGE`
-
-**Техническая информация**
-- Internal id: `TS_ImageTileSplitter`
-- Class: `TS_ImageTileSplitter`
-- File: `nodes/ts_image_tile_node.py`
-- Category: `TS/Image Tools`
-- Function: `execute`
-
-</details>
-
-<details>
-<summary><strong>TS_ImageTileMerger</strong> - Склеивает тайлы обратно в целое изображение по tile metadata и blending.</summary>
-
-![Плейсхолдер скриншота для TS_ImageTileMerger](docs/img/placeholders/ts-imagetilemerger.png)
-
-> Плейсхолдер: замените этот блок вашим скриншотом ноды.
-
-**Что делает эта нода**
-Склеивает тайлы обратно в целое изображение по tile metadata и blending.
-
-**Быстрый старт**
-1. Добавьте ноду в граф и подключите обязательные входы.
-2. Сначала оставьте дефолты и меняйте параметры постепенно.
-3. Подключите выход к следующей ноде и сравните результат.
-
-**Основные параметры**
-- Обязательные: `images`, `tile_data`
-- Опциональные: *(none)*
-
-**Выходы**
-- `IMAGE`
-
-**Техническая информация**
-- Internal id: `TS_ImageTileMerger`
-- Class: `TS_ImageTileMerger`
-- File: `nodes/ts_image_tile_node.py`
-- Category: `TS/Image Tools`
-- Function: `execute`
-
-</details>
-
-<details>
-<summary><strong>TSAutoTileSize</strong> - Автоматически рассчитывает размер тайлов (width/height) под вашу целевую сетку.</summary>
-
-![Плейсхолдер скриншота для TSAutoTileSize](docs/img/placeholders/tsautotilesize.png)
-
-> Плейсхолдер: замените этот блок вашим скриншотом ноды.
-
-**Что делает эта нода**
-Автоматически рассчитывает размер тайлов (width/height) под вашу целевую сетку.
-
-**Быстрый старт**
-1. Добавьте ноду в граф и подключите обязательные входы.
-2. Сначала оставьте дефолты и меняйте параметры постепенно.
-3. Подключите выход к следующей ноде и сравните результат.
-
-**Основные параметры**
-- Обязательные: `tile_count`, `padding`, `divide_by`
-- Опциональные: `image`, `width`, `height`
-
-**Выходы**
-- `INT`
-
-**Техническая информация**
-- Internal id: `TSAutoTileSize`
-- Class: `TSAutoTileSize`
-- File: `nodes/ts_image_resize_node.py`
-- Category: `utils/Tile Size`
-- Function: `calculate_grid`
-
-</details>
-
-<details>
-<summary><strong>TS Cube to Equirectangular</strong> - Конвертирует шесть граней куба в одну equirectangular 360-панораму.</summary>
-
-![Плейсхолдер скриншота для TS Cube to Equirectangular](docs/img/placeholders/ts-cube-to-equirectangular.png)
-
-> Плейсхолдер: замените этот блок вашим скриншотом ноды.
-
-**Что делает эта нода**
-Конвертирует шесть граней куба в одну equirectangular 360-панораму.
-
-**Быстрый старт**
-1. Добавьте ноду в граф и подключите обязательные входы.
-2. Сначала оставьте дефолты и меняйте параметры постепенно.
-3. Подключите выход к следующей ноде и сравните результат.
-
-**Основные параметры**
-- Обязательные: `front`, `right`, `back`, `left`, `top`, `bottom`, `output_width`, `output_height`
-- Опциональные: *(none)*
-
-**Выходы**
-- `IMAGE`
-
-**Техническая информация**
-- Internal id: `TS Cube to Equirectangular`
-- Class: `TS_CubemapFacesToEquirectangularNode`
-- File: `nodes/ts_cube_to_equirect_node.py`
-- Category: `Tools/TS_Image`
-- Function: `convert`
-- Примечание по зависимостям: Requires `py360convert`.
-
-</details>
-
-<details>
-<summary><strong>TS Equirectangular to Cube</strong> - Конвертирует 360-панораму в шесть граней куба для редактирования и проекций.</summary>
-
-![Плейсхолдер скриншота для TS Equirectangular to Cube](docs/img/placeholders/ts-equirectangular-to-cube.png)
-
-> Плейсхолдер: замените этот блок вашим скриншотом ноды.
-
-**Что делает эта нода**
-Конвертирует 360-панораму в шесть граней куба для редактирования и проекций.
-
-**Быстрый старт**
-1. Добавьте ноду в граф и подключите обязательные входы.
-2. Сначала оставьте дефолты и меняйте параметры постепенно.
-3. Подключите выход к следующей ноде и сравните результат.
-
-**Основные параметры**
-- Обязательные: `image`, `cube_size`
-- Опциональные: *(none)*
-
-**Выходы**
-- `IMAGE`
-
-**Техническая информация**
-- Internal id: `TS Equirectangular to Cube`
-- Class: `TS_EquirectangularToCubemapFacesNode`
-- File: `nodes/ts_equirect_to_cube_node.py`
-- Category: `Tools/TS_Image`
-- Function: `convert`
-- Примечание по зависимостям: Requires `py360convert`.
-
-</details>
-
-<details>
-<summary><strong>TS_VideoDepthNode</strong> - Строит depth maps по последовательности кадров для композитинга, relighting и depth-эффектов.</summary>
-
-![Плейсхолдер скриншота для TS_VideoDepthNode](docs/img/placeholders/ts-videodepthnode.png)
-
-> Плейсхолдер: замените этот блок вашим скриншотом ноды.
-
-**Что делает эта нода**
-Строит depth maps по последовательности кадров для композитинга, relighting и depth-эффектов.
-
-**Быстрый старт**
-1. Добавьте ноду в граф и подключите обязательные входы.
-2. Сначала оставьте дефолты и меняйте параметры постепенно.
-3. Подключите выход к следующей ноде и сравните результат.
-
-**Основные параметры**
-- Обязательные: `images`, `model_filename`, `input_size`, `max_res`, `precision`, `colormap`, `dithering_strength`, `apply_median_blur`, `upscale_algorithm`
-- Опциональные: *(none)*
-
-**Выходы**
-- `IMAGE`
-
-**Техническая информация**
-- Internal id: `TS_VideoDepthNode`
-- Class: `TS_VideoDepth`
-- File: `nodes/ts_video_depth_node.py`
-- Category: `Tools/Video`
-- Function: `execute_process_unified`
-
-</details>
-
-<details>
-<summary><strong>TS_Video_Upscale_With_Model</strong> - Апскейлит последовательность кадров с выбранной моделью апскейла и memory-стратегиями.</summary>
-
-![Плейсхолдер скриншота для TS_Video_Upscale_With_Model](docs/img/placeholders/ts-video-upscale-with-model.png)
-
-> Плейсхолдер: замените этот блок вашим скриншотом ноды.
-
-**Что делает эта нода**
-Апскейлит последовательность кадров с выбранной моделью апскейла и memory-стратегиями.
-
-**Быстрый старт**
-1. Добавьте ноду в граф и подключите обязательные входы.
-2. Сначала оставьте дефолты и меняйте параметры постепенно.
-3. Подключите выход к следующей ноде и сравните результат.
-
-**Основные параметры**
-- Обязательные: `model_name`, `images`, `upscale_method`, `factor`, `device_strategy`
-- Опциональные: *(none)*
-
-**Выходы**
-- `IMAGE`
-
-**Техническая информация**
-- Internal id: `TS_Video_Upscale_With_Model`
-- Class: `TS_Video_Upscale_With_Model`
-- File: `nodes/ts_video_upscale_node.py`
-- Category: `video`
-- Function: `upscale_video`
-- Примечание по зависимостям: Requires `spandrel` for model loading.
-
-</details>
-
-<details>
-<summary><strong>TS_RTX_Upscaler</strong> - Нода NVIDIA RTX Upscaler для быстрого и качественного апскейла на поддерживаемых системах.</summary>
-
-![Плейсхолдер скриншота для TS_RTX_Upscaler](docs/img/placeholders/ts-rtx-upscaler.png)
-
-> Плейсхолдер: замените этот блок вашим скриншотом ноды.
-
-**Что делает эта нода**
-Нода NVIDIA RTX Upscaler для быстрого и качественного апскейла на поддерживаемых системах.
-
-**Быстрый старт**
-1. Добавьте ноду в граф и подключите обязательные входы.
-2. Сначала оставьте дефолты и меняйте параметры постепенно.
-3. Подключите выход к следующей ноде и сравните результат.
-
-**Основные параметры**
-- Обязательные: `images`, `resize_type`, `scale`, `width`, `height`, `quality`
-- Опциональные: *(none)*
-
-**Выходы**
-- `IMAGE`
-
-**Техническая информация**
-- Internal id: `TS_RTX_Upscaler`
-- Class: `TS_RTX_Upscaler`
-- File: `nodes/ts_rtx_upscaler_node.py`
-- Category: `TS/Upscaling`
-- Function: `upscale`
-- Примечание по зависимостям: Requires RTX/VFX runtime components in your environment.
-
-</details>
-
-<details>
-<summary><strong>TS_DeflickerNode</strong> - Снижает временное мерцание яркости и цвета в видеопоследовательностях.</summary>
-
-![Плейсхолдер скриншота для TS_DeflickerNode](docs/img/placeholders/ts-deflickernode.png)
-
-> Плейсхолдер: замените этот блок вашим скриншотом ноды.
-
-**Что делает эта нода**
-Снижает временное мерцание яркости и цвета в видеопоследовательностях.
-
-**Быстрый старт**
-1. Добавьте ноду в граф и подключите обязательные входы.
-2. Сначала оставьте дефолты и меняйте параметры постепенно.
-3. Подключите выход к следующей ноде и сравните результат.
-
-**Основные параметры**
-- Обязательные: `images`, `method`, `window_size`, `intensity`, `preserve_details`
-- Опциональные: *(none)*
-
-**Выходы**
-- `IMAGE`
-
-**Техническая информация**
-- Internal id: `TS_DeflickerNode`
-- Class: `TS_DeflickerNode`
-- File: `nodes/ts_deflicker_node.py`
-- Category: `Video PostProcessing`
-- Function: `deflicker`
-
-</details>
-
-<details>
-<summary><strong>TS_Free_Video_Memory</strong> - Pass-through нода, которая агрессивно освобождает RAM/VRAM между тяжёлыми видео-шагами.</summary>
-
-![Плейсхолдер скриншота для TS_Free_Video_Memory](docs/img/placeholders/ts-free-video-memory.png)
-
-> Плейсхолдер: замените этот блок вашим скриншотом ноды.
-
-**Что делает эта нода**
-Pass-through нода, которая агрессивно освобождает RAM/VRAM между тяжёлыми видео-шагами.
-
-**Быстрый старт**
-1. Добавьте ноду в граф и подключите обязательные входы.
-2. Сначала оставьте дефолты и меняйте параметры постепенно.
-3. Подключите выход к следующей ноде и сравните результат.
-
-**Основные параметры**
-- Обязательные: `images`, `aggressive_cleanup`, `report_memory`
-- Опциональные: *(none)*
-
-**Выходы**
-- `IMAGE`
-
-**Техническая информация**
-- Internal id: `TS_Free_Video_Memory`
-- Class: `TS_Free_Video_Memory`
-- File: `nodes/ts_video_upscale_node.py`
-- Category: `video`
-- Function: `cleanup_memory`
-
-</details>
-
-<details>
-<summary><strong>TS_LTX_FirstLastFrame</strong> - Добавляет guidance первого и последнего кадра в latent-пайплайн (полезно для LTX video control).</summary>
-
-![Плейсхолдер скриншота для TS_LTX_FirstLastFrame](docs/img/placeholders/ts-ltx-firstlastframe.png)
-
-> Плейсхолдер: замените этот блок вашим скриншотом ноды.
-
-**Что делает эта нода**
-Добавляет guidance первого и последнего кадра в latent-пайплайн (полезно для LTX video control).
-
-**Быстрый старт**
-1. Добавьте ноду в граф и подключите обязательные входы.
-2. Сначала оставьте дефолты и меняйте параметры постепенно.
-3. Подключите выход к следующей ноде и сравните результат.
-
-**Основные параметры**
-- Обязательные: `vae`, `latent`, `first_strength`, `last_strength`, `enable_last_frame`
-- Опциональные: `first_image`, `last_image`
-
-**Выходы**
-- `LATENT`
-
-**Техническая информация**
-- Internal id: `TS_LTX_FirstLastFrame`
-- Class: `TS_LTX_FirstLastFrame`
-- File: `nodes/ts_ltx_tools_node.py`
-- Category: `conditioning/video_models`
-- Function: `execute`
-
-</details>
-
-<details>
-<summary><strong>TS_Animation_Preview</strong> - Создаёт быстрый превью-ролик из кадров с опциональным объединением аудио.</summary>
-
-![Плейсхолдер скриншота для TS_Animation_Preview](docs/img/placeholders/ts-animation-preview.png)
-
-> Плейсхолдер: замените этот блок вашим скриншотом ноды.
-
-**Что делает эта нода**
-Создаёт быстрый превью-ролик из кадров с опциональным объединением аудио.
-
-**Быстрый старт**
-1. Добавьте ноду в граф и подключите обязательные входы.
-2. Сначала оставьте дефолты и меняйте параметры постепенно.
-3. Подключите выход к следующей ноде и сравните результат.
-
-**Основные параметры**
-- Обязательные: `images`, `fps`
-- Опциональные: `audio`
-
-**Выходы**
-- `-`
-
-**Техническая информация**
-- Internal id: `TS_Animation_Preview`
-- Class: `TS_Animation_Preview`
-- File: `nodes/ts_interface_tools_node.py`
-- Category: `TS/Interface Tools`
-- Function: `preview`
-- Примечание по зависимостям: Использует `imageio` / `imageio-ffmpeg` for video writing.
-
-</details>
-
-<details>
-<summary><strong>TS_FilePathLoader</strong> - Возвращает путь к файлу и имя файла по индексу из списка папки.</summary>
-
-![Плейсхолдер скриншота для TS_FilePathLoader](docs/img/placeholders/ts-filepathloader.png)
-
-> Плейсхолдер: замените этот блок вашим скриншотом ноды.
-
-**Что делает эта нода**
-Возвращает путь к файлу и имя файла по индексу из списка папки.
-
-**Быстрый старт**
-1. Добавьте ноду в граф и подключите обязательные входы.
-2. Сначала оставьте дефолты и меняйте параметры постепенно.
-3. Подключите выход к следующей ноде и сравните результат.
-
-**Основные параметры**
-- Обязательные: `folder_path`, `index`
-- Опциональные: *(none)*
-
-**Выходы**
-- `STRING`
-
-**Техническая информация**
-- Internal id: `TS_FilePathLoader`
-- Class: `TS_FilePathLoader`
-- File: `nodes/ts_file_path_node.py`
-- Category: `file_utils`
-- Function: `get_file_path`
-
-</details>
-
-<details>
-<summary><strong>TS Files Downloader</strong> - Массово скачивает модели и ассеты: resume, mirrors, proxy и опциональная распаковка.</summary>
-
-![Плейсхолдер скриншота для TS Files Downloader](docs/img/placeholders/ts-files-downloader.png)
-
-> Плейсхолдер: замените этот блок вашим скриншотом ноды.
-
-**Что делает эта нода**
-Массово скачивает модели и ассеты: resume, mirrors, proxy и опциональная распаковка.
-
-**Быстрый старт**
-1. Добавьте ноду в граф и подключите обязательные входы.
-2. Сначала оставьте дефолты и меняйте параметры постепенно.
-3. Подключите выход к следующей ноде и сравните результат.
-
-**Основные параметры**
-- Обязательные: `file_list`, `skip_existing`, `verify_size`, `chunk_size_kb`
-- Опциональные: `hf_token`, `hf_domain`, `proxy_url`, `modelscope_token`, `unzip_after_download`, `enable`
-
-**Выходы**
-- `-`
-
-**Техническая информация**
-- Internal id: `TS Files Downloader`
-- Class: `TS_DownloadFilesNode`
-- File: `nodes/ts_downloader_node.py`
-- Category: `Tools/TS_IO`
-- Function: `execute_downloads`
-
-</details>
-
-<details>
-<summary><strong>TS Youtube Chapters</strong> - Конвертирует EDL-тайминги в готовые timestamp-главы для YouTube.</summary>
-
-![Плейсхолдер скриншота для TS Youtube Chapters](docs/img/placeholders/ts-youtube-chapters.png)
-
-> Плейсхолдер: замените этот блок вашим скриншотом ноды.
-
-**Что делает эта нода**
-Конвертирует EDL-тайминги в готовые timestamp-главы для YouTube.
-
-**Быстрый старт**
-1. Добавьте ноду в граф и подключите обязательные входы.
-2. Сначала оставьте дефолты и меняйте параметры постепенно.
-3. Подключите выход к следующей ноде и сравните результат.
-
-**Основные параметры**
-- Обязательные: `edl_file_path`
-- Опциональные: *(none)*
-
-**Выходы**
-- `STRING`
-
-**Техническая информация**
-- Internal id: `TS Youtube Chapters`
-- Class: `TS_EDLToYouTubeChaptersNode`
-- File: `nodes/ts_edl_chapters_node.py`
-- Category: `Tools/TS_Video`
-- Function: `convert_edl_to_youtube_chapters`
-
-</details>
-
-<details>
-<summary><strong>TS_ModelScanner</strong> - Сканирует файлы моделей и возвращает читаемую сводку структуры и метаданных.</summary>
-
-![Плейсхолдер скриншота для TS_ModelScanner](docs/img/placeholders/ts-modelscanner.png)
-
-> Плейсхолдер: замените этот блок вашим скриншотом ноды.
-
-**Что делает эта нода**
-Сканирует файлы моделей и возвращает читаемую сводку структуры и метаданных.
-
-**Быстрый старт**
-1. Добавьте ноду в граф и подключите обязательные входы.
-2. Сначала оставьте дефолты и меняйте параметры постепенно.
-3. Подключите выход к следующей ноде и сравните результат.
-
-**Основные параметры**
-- Обязательные: `model_name`
-- Опциональные: `model`, `summary_only`
-
-**Выходы**
-- `STRING`
-
-**Техническая информация**
-- Internal id: `TS_ModelScanner`
-- Class: `TS_ModelScanner`
-- File: `nodes/ts_models_tools_node.py`
-- Category: `utils/model_analysis`
-- Function: `scan_model`
-
-</details>
-
-<details>
-<summary><strong>TS_ModelConverter</strong> - Конвертер модели в один клик для сценариев смены precision.</summary>
-
-![Плейсхолдер скриншота для TS_ModelConverter](docs/img/placeholders/ts-modelconverter.png)
-
-> Плейсхолдер: замените этот блок вашим скриншотом ноды.
-
-**Что делает эта нода**
-Конвертер модели в один клик для сценариев смены precision.
-
-**Быстрый старт**
-1. Добавьте ноду в граф и подключите обязательные входы.
-2. Сначала оставьте дефолты и меняйте параметры постепенно.
-3. Подключите выход к следующей ноде и сравните результат.
-
-**Основные параметры**
-- Обязательные: `model`
-- Опциональные: *(none)*
-
-**Выходы**
-- `MODEL`
-
-**Техническая информация**
-- Internal id: `TS_ModelConverter`
-- Class: `TS_ModelConverterNode`
-- File: `nodes/ts_models_tools_node.py`
-- Category: `conversion`
-- Function: `convert_to_fp8`
-
-</details>
-
-<details>
-<summary><strong>TS_ModelConverterAdvanced</strong> - Расширенный конвертер моделей с детальным контролем формата, пресета и результата.</summary>
-
-![Плейсхолдер скриншота для TS_ModelConverterAdvanced](docs/img/placeholders/ts-modelconverteradvanced.png)
-
-> Плейсхолдер: замените этот блок вашим скриншотом ноды.
-
-**Что делает эта нода**
-Расширенный конвертер моделей с детальным контролем формата, пресета и результата.
-
-**Быстрый старт**
-1. Добавьте ноду в граф и подключите обязательные входы.
-2. Сначала оставьте дефолты и меняйте параметры постепенно.
-3. Подключите выход к следующей ноде и сравните результат.
-
-**Основные параметры**
-- Обязательные: `model_name`, `fp8_mode`, `conversion_preset`, `shard_subdir`, `final_filename`
-- Опциональные: `model`
-
-**Выходы**
-- `STRING`
-
-**Техническая информация**
-- Internal id: `TS_ModelConverterAdvanced`
-- Class: `TS_ModelConverterAdvancedNode`
-- File: `nodes/ts_models_tools_node.py`
-- Category: `Model Conversion`
-- Function: `convert_model`
-
-</details>
-
-<details>
-<summary><strong>TS_ModelConverterAdvancedDirect</strong> - Расширенный конвертер, работающий напрямую от подключённого входа MODEL.</summary>
-
-![Плейсхолдер скриншота для TS_ModelConverterAdvancedDirect](docs/img/placeholders/ts-modelconverteradvanceddirect.png)
-
-> Плейсхолдер: замените этот блок вашим скриншотом ноды.
-
-**Что делает эта нода**
-Расширенный конвертер, работающий напрямую от подключённого входа MODEL.
-
-**Быстрый старт**
-1. Добавьте ноду в граф и подключите обязательные входы.
-2. Сначала оставьте дефолты и меняйте параметры постепенно.
-3. Подключите выход к следующей ноде и сравните результат.
-
-**Основные параметры**
-- Обязательные: `model`, `fp8_mode`, `conversion_preset`, `shard_subdir`, `final_filename`
-- Опциональные: *(none)*
-
-**Выходы**
-- `STRING`
-
-**Техническая информация**
-- Internal id: `TS_ModelConverterAdvancedDirect`
-- Class: `TS_ModelConverterAdvancedDirectNode`
-- File: `nodes/ts_models_tools_node.py`
-- Category: `TS/Model Conversion`
-- Function: `convert_model`
-
-</details>
-
-<details>
-<summary><strong>TS_CPULoraMerger</strong> - ?????????? ?? ??????? LoRA ? ??????? ?????? ?? CPU ? ????????? ????? safetensors-????.</summary>
-
-![Плейсхолдер скриншота для TS_CPULoraMerger](docs/img/placeholders/ts-cpu-lora-merger.png)
-
-> Плейсхолдер: замените этот блок вашим скриншотом ноды.
-
-**Что делает эта нода**
-?????????? ?? ??????? LoRA ? ??????? ?????? ?? CPU ? ????????? ????? safetensors-????.
-
-**Быстрый старт**
-1. Добавьте ноду в граф и подключите обязательные входы.
-2. Сначала оставьте дефолты и меняйте параметры постепенно.
-3. Подключите выход к следующей ноде и сравните результат.
-
-**Основные параметры**
-- Обязательные: `base_model`, `lora_1_name`, `lora_1_strength`, `lora_2_name`, `lora_2_strength`, `lora_3_name`, `lora_3_strength`, `lora_4_name`, `lora_4_strength`, `output_model_name`
-- Опциональные: *(none)*
-
-**Выходы**
-- `STRING, STRING`
-
-**Техническая информация**
-- Internal id: `TS_CPULoraMerger`
-- Class: `TS_CPULoraMergerNode`
-- File: `nodes/ts_models_tools_node.py`
-- Category: `TS/Model Tools`
-- Function: `merge_to_file`
-- Примечание по зависимостям: Использует ComfyUI model loading and `safetensors` for CPU-side merge and save.
-
-</details>
-
-<details>
-<summary><strong>TS_FloatSlider</strong> - Простой UI float slider для аккуратного управления параметрами графа.</summary>
-
-![Плейсхолдер скриншота для TS_FloatSlider](docs/img/placeholders/ts-floatslider.png)
-
-> Плейсхолдер: замените этот блок вашим скриншотом ноды.
-
-**Что делает эта нода**
-Простой UI float slider для аккуратного управления параметрами графа.
-
-**Быстрый старт**
-1. Добавьте ноду в граф и подключите обязательные входы.
-2. Сначала оставьте дефолты и меняйте параметры постепенно.
-3. Подключите выход к следующей ноде и сравните результат.
-
-**Основные параметры**
-- Обязательные: `value`
-- Опциональные: *(none)*
-
-**Выходы**
-- `FLOAT`
-
-**Техническая информация**
-- Internal id: `TS_FloatSlider`
-- Class: `TS_FloatSlider`
-- File: `nodes/ts_interface_tools_node.py`
-- Category: `TS Tools/Sliders`
-- Function: `get_value`
-
-</details>
-
-<details>
-<summary><strong>TS_Int_Slider</strong> - Простой UI integer slider для детерминированных целочисленных параметров.</summary>
-
-![Плейсхолдер скриншота для TS_Int_Slider](docs/img/placeholders/ts-int-slider.png)
-
-> Плейсхолдер: замените этот блок вашим скриншотом ноды.
-
-**Что делает эта нода**
-Простой UI integer slider для детерминированных целочисленных параметров.
-
-**Быстрый старт**
-1. Добавьте ноду в граф и подключите обязательные входы.
-2. Сначала оставьте дефолты и меняйте параметры постепенно.
-3. Подключите выход к следующей ноде и сравните результат.
-
-**Основные параметры**
-- Обязательные: `value`
-- Опциональные: *(none)*
-
-**Выходы**
-- `INT`
-
-**Техническая информация**
-- Internal id: `TS_Int_Slider`
-- Class: `TS_Int_Slider`
-- File: `nodes/ts_interface_tools_node.py`
-- Category: `TS Tools/Sliders`
-- Function: `get_value`
-
-</details>
-
-<details>
-<summary><strong>TS_Smart_Switch</strong> - Переключает между двумя входами по режиму и помогает держать граф компактным.</summary>
-
-![Плейсхолдер скриншота для TS_Smart_Switch](docs/img/placeholders/ts-smart-switch.png)
-
-> Плейсхолдер: замените этот блок вашим скриншотом ноды.
-
-**Что делает эта нода**
-Переключает между двумя входами по режиму и помогает держать граф компактным.
-
-**Быстрый старт**
-1. Добавьте ноду в граф и подключите обязательные входы.
-2. Сначала оставьте дефолты и меняйте параметры постепенно.
-3. Подключите выход к следующей ноде и сравните результат.
-
-**Основные параметры**
-- Обязательные: `data_type`, `switch`
-- Опциональные: `input_1`, `input_2`
-
-**Выходы**
-- `*`
-
-**Техническая информация**
-- Internal id: `TS_Smart_Switch`
-- Class: `TS_Smart_Switch`
-- File: `nodes/ts_interface_tools_node.py`
-- Category: `TS Tools/Logic`
-- Function: `smart_switch`
-
-</details>
-
-<details>
-<summary><strong>TS_Math_Int</strong> - Нода целочисленной математики для счётчиков, смещений и простой логики графа.</summary>
-
-![Плейсхолдер скриншота для TS_Math_Int](docs/img/placeholders/ts-math-int.png)
-
-> Плейсхолдер: замените этот блок вашим скриншотом ноды.
-
-**Что делает эта нода**
-Нода целочисленной математики для счётчиков, смещений и простой логики графа.
-
-**Быстрый старт**
-1. Добавьте ноду в граф и подключите обязательные входы.
-2. Сначала оставьте дефолты и меняйте параметры постепенно.
-3. Подключите выход к следующей ноде и сравните результат.
-
-**Основные параметры**
-- Обязательные: `a`, `b`, `operation`
-- Опциональные: *(none)*
-
-**Выходы**
-- `INT`
-
-**Техническая информация**
-- Internal id: `TS_Math_Int`
-- Class: `TS_Math_Int`
-- File: `nodes/ts_interface_tools_node.py`
-- Category: `TS/Math`
-- Function: `calculate`
-
-</details>
+</div>
