@@ -4,74 +4,80 @@ node_id: TS_CPULoraMerger
 """
 
 import gc
+import json
 import logging as _ts_logging
 import os
 import re as _ts_re
 import traceback as _ts_traceback
+from collections import OrderedDict
 
 import torch
-from tqdm import tqdm
 
 import comfy.sd
 import comfy.utils as _ts_comfy_utils
 import folder_paths
-from safetensors.torch import save_file
+from comfy_api.latest import IO
 
 
-class TS_CPULoraMergerNode:
-    _SUPPORTED_MODEL_EXTENSIONS = (".safetensors", ".ckpt", ".pt", ".pth")
-    _LORA_NONE = "None"
-    _LOG_PREFIX = "[TS CPULoraMerger]"
-    _logger = _ts_logging.getLogger("TS_CPULoraMerger")
+_SUPPORTED_MODEL_EXTENSIONS = (".safetensors", ".ckpt", ".pt", ".pth")
+_LORA_NONE = "None"
+_LOG_PREFIX = "[TS CPULoraMerger]"
+_logger = _ts_logging.getLogger("TS_CPULoraMerger")
 
+
+def _build_model_choices():
+    model_choices = []
+    for model_type in ("checkpoints", "diffusion_models"):
+        for filename in folder_paths.get_filename_list(model_type):
+            if filename.lower().endswith(_SUPPORTED_MODEL_EXTENSIONS):
+                model_choices.append(f"{model_type} | {filename}")
+
+    if not model_choices:
+        model_choices = ["No compatible models found"]
+    return sorted(model_choices)
+
+
+def _build_lora_choices():
+    loras = sorted(folder_paths.get_filename_list("loras"))
+    return [_LORA_NONE] + loras
+
+
+class TS_CPULoraMergerNode(IO.ComfyNode):
     @classmethod
-    def _build_model_choices(cls):
-        model_choices = []
-        for model_type in ("checkpoints", "diffusion_models"):
-            for filename in folder_paths.get_filename_list(model_type):
-                if filename.lower().endswith(cls._SUPPORTED_MODEL_EXTENSIONS):
-                    model_choices.append(f"{model_type} | {filename}")
+    def define_schema(cls) -> IO.Schema:
+        model_choices = _build_model_choices()
+        lora_choices = _build_lora_choices()
+        return IO.Schema(
+            node_id="TS_CPULoraMerger",
+            display_name="TS CPU LoRA Merger",
+            category="TS/Files",
+            is_output_node=True,
+            inputs=[
+                IO.Combo.Input("base_model", options=model_choices),
+                IO.Combo.Input("lora_1_name", options=lora_choices, default=_LORA_NONE),
+                IO.Float.Input("lora_1_strength", default=1.0, min=-100.0, max=100.0, step=0.01),
+                IO.Combo.Input("lora_2_name", options=lora_choices, default=_LORA_NONE),
+                IO.Float.Input("lora_2_strength", default=1.0, min=-100.0, max=100.0, step=0.01),
+                IO.Combo.Input("lora_3_name", options=lora_choices, default=_LORA_NONE),
+                IO.Float.Input("lora_3_strength", default=1.0, min=-100.0, max=100.0, step=0.01),
+                IO.Combo.Input("lora_4_name", options=lora_choices, default=_LORA_NONE),
+                IO.Float.Input("lora_4_strength", default=1.0, min=-100.0, max=100.0, step=0.01),
+                IO.String.Input("output_model_name", default="ts_merged_model.safetensors", multiline=False),
+            ],
+            outputs=[
+                IO.String.Output(display_name="log"),
+                IO.String.Output(display_name="saved_model_path"),
+            ],
+        )
 
-        if not model_choices:
-            model_choices = ["No compatible models found"]
-        return sorted(model_choices)
-
-    @classmethod
-    def _build_lora_choices(cls):
-        loras = sorted(folder_paths.get_filename_list("loras"))
-        return [cls._LORA_NONE] + loras
-
-    @classmethod
-    def INPUT_TYPES(cls):
-        model_choices = cls._build_model_choices()
-        lora_choices = cls._build_lora_choices()
-        return {
-            "required": {
-                "base_model": (model_choices,),
-                "lora_1_name": (lora_choices, {"default": cls._LORA_NONE}),
-                "lora_1_strength": ("FLOAT", {"default": 1.0, "min": -100.0, "max": 100.0, "step": 0.01}),
-                "lora_2_name": (lora_choices, {"default": cls._LORA_NONE}),
-                "lora_2_strength": ("FLOAT", {"default": 1.0, "min": -100.0, "max": 100.0, "step": 0.01}),
-                "lora_3_name": (lora_choices, {"default": cls._LORA_NONE}),
-                "lora_3_strength": ("FLOAT", {"default": 1.0, "min": -100.0, "max": 100.0, "step": 0.01}),
-                "lora_4_name": (lora_choices, {"default": cls._LORA_NONE}),
-                "lora_4_strength": ("FLOAT", {"default": 1.0, "min": -100.0, "max": 100.0, "step": 0.01}),
-                "output_model_name": ("STRING", {"multiline": False, "default": "ts_merged_model.safetensors"}),
-            }
-        }
-
-    RETURN_TYPES = ("STRING", "STRING")
-    RETURN_NAMES = ("log", "saved_model_path")
-    FUNCTION = "merge_to_file"
-    CATEGORY = "TS/Files"
-    OUTPUT_NODE = True
-
-    def _log(self, logs, message):
-        msg = f"{self._LOG_PREFIX} {message}"
+    @staticmethod
+    def _log(logs, message):
+        msg = f"{_LOG_PREFIX} {message}"
         logs.append(msg)
-        self._logger.info(msg)
+        _logger.info(msg)
 
-    def _resolve_model_path(self, selected_model):
+    @staticmethod
+    def _resolve_model_path(selected_model):
         if " | " not in selected_model:
             raise ValueError(f"Invalid model selector: {selected_model}")
 
@@ -81,7 +87,8 @@ class TS_CPULoraMergerNode:
             raise FileNotFoundError(f"Model file not found: {model_name}")
         return model_type, model_path
 
-    def _sanitize_output_filename(self, output_model_name):
+    @staticmethod
+    def _sanitize_output_filename(output_model_name):
         filename = (output_model_name or "").strip()
         if not filename:
             filename = "ts_merged_model"
@@ -91,7 +98,8 @@ class TS_CPULoraMergerNode:
             filename = f"{filename}.safetensors"
         return filename
 
-    def _unique_path(self, target_path):
+    @staticmethod
+    def _unique_path(target_path):
         if not os.path.exists(target_path):
             return target_path
 
@@ -103,7 +111,8 @@ class TS_CPULoraMergerNode:
                 return candidate
             index += 1
 
-    def _prepare_output_path(self, model_type, output_model_name):
+    @classmethod
+    def _prepare_output_path(cls, model_type, output_model_name):
         if model_type == "checkpoints":
             target_dirs = folder_paths.get_folder_paths("checkpoints")
         else:
@@ -115,13 +124,14 @@ class TS_CPULoraMergerNode:
             target_dir = os.path.join(folder_paths.get_output_directory(), "diffusion_models")
 
         os.makedirs(target_dir, exist_ok=True)
-        filename = self._sanitize_output_filename(output_model_name)
-        return self._unique_path(os.path.join(target_dir, filename))
+        filename = cls._sanitize_output_filename(output_model_name)
+        return cls._unique_path(os.path.join(target_dir, filename))
 
-    def _collect_lora_requests(self, lora_names, lora_strengths):
+    @staticmethod
+    def _collect_lora_requests(lora_names, lora_strengths):
         requests = []
         for index, (name, strength) in enumerate(zip(lora_names, lora_strengths), start=1):
-            if not name or name == self._LORA_NONE:
+            if not name or name == _LORA_NONE:
                 continue
             strength = float(strength)
             if strength == 0.0:
@@ -133,7 +143,8 @@ class TS_CPULoraMergerNode:
             })
         return requests
 
-    def _load_base_assets(self, model_type, model_path):
+    @staticmethod
+    def _load_base_assets(model_type, model_path):
         if model_type == "checkpoints":
             text_encoder_options = {
                 "load_device": torch.device("cpu"),
@@ -152,13 +163,14 @@ class TS_CPULoraMergerNode:
         model = comfy.sd.load_diffusion_model(model_path)
         return model, None, None, None
 
-    def _apply_loras(self, model, clip, lora_requests, logs):
+    @classmethod
+    def _apply_loras(cls, model, clip, lora_requests, logs):
         for request in lora_requests:
             lora_path = folder_paths.get_full_path("loras", request["name"])
             if not lora_path or not os.path.exists(lora_path):
                 raise FileNotFoundError(f"LoRA file not found: {request['name']}")
 
-            self._log(
+            cls._log(
                 logs,
                 f"Loading LoRA #{request['slot']}: {request['name']} (strength={request['strength']:.4f})",
             )
@@ -175,7 +187,8 @@ class TS_CPULoraMergerNode:
             gc.collect()
         return model, clip
 
-    def _build_cpu_state_dict(self, model, clip=None, vae=None, clip_vision=None):
+    @staticmethod
+    def _build_cpu_state_dict(model, clip=None, vae=None, clip_vision=None):
         cpu_device = torch.device("cpu")
         unet_sd = model.model.diffusion_model.state_dict()
         unet_sd_cpu = OrderedDict()
@@ -217,7 +230,6 @@ class TS_CPULoraMergerNode:
                     out_tensor = out_tensor.contiguous()
                 clip_sd[key] = out_tensor
 
-            # Preserve tokenizer state like native CLIP save path.
             clip_sd.update(clip.tokenizer.state_dict())
 
         vae_sd = vae.get_sd() if vae is not None else None
@@ -241,8 +253,9 @@ class TS_CPULoraMergerNode:
 
         return raw_state_dict
 
-    def merge_to_file(
-        self,
+    @classmethod
+    def execute(
+        cls,
         base_model,
         lora_1_name,
         lora_1_strength,
@@ -253,7 +266,7 @@ class TS_CPULoraMergerNode:
         lora_4_name,
         lora_4_strength,
         output_model_name,
-    ):
+    ) -> IO.NodeOutput:
         logs = []
         model = None
         clip = None
@@ -263,30 +276,30 @@ class TS_CPULoraMergerNode:
 
         try:
             if base_model == "No compatible models found":
-                return ("Error: no compatible models were found in checkpoints/diffusion_models.", "")
+                return IO.NodeOutput("Error: no compatible models were found in checkpoints/diffusion_models.", "")
 
-            model_type, model_path = self._resolve_model_path(base_model)
-            output_path = self._prepare_output_path(model_type, output_model_name)
+            model_type, model_path = cls._resolve_model_path(base_model)
+            output_path = cls._prepare_output_path(model_type, output_model_name)
 
-            lora_requests = self._collect_lora_requests(
+            lora_requests = cls._collect_lora_requests(
                 [lora_1_name, lora_2_name, lora_3_name, lora_4_name],
                 [lora_1_strength, lora_2_strength, lora_3_strength, lora_4_strength],
             )
 
-            self._log(logs, f"Base model: {model_path}")
-            self._log(logs, f"Output file: {output_path}")
-            self._log(logs, "Loading base model on CPU-oriented path...")
+            cls._log(logs, f"Base model: {model_path}")
+            cls._log(logs, f"Output file: {output_path}")
+            cls._log(logs, "Loading base model on CPU-oriented path...")
 
-            model, clip, vae, clip_vision = self._load_base_assets(model_type, model_path)
+            model, clip, vae, clip_vision = cls._load_base_assets(model_type, model_path)
 
             if lora_requests:
-                self._log(logs, f"Applying {len(lora_requests)} LoRA file(s) with native ComfyUI mechanism...")
-                model, clip = self._apply_loras(model, clip, lora_requests, logs)
+                cls._log(logs, f"Applying {len(lora_requests)} LoRA file(s) with native ComfyUI mechanism...")
+                model, clip = cls._apply_loras(model, clip, lora_requests, logs)
             else:
-                self._log(logs, "No LoRA selected. Saving base model as-is.")
+                cls._log(logs, "No LoRA selected. Saving base model as-is.")
 
-            self._log(logs, "Baking patches on CPU RAM and preparing state dict...")
-            merged_state_dict = self._build_cpu_state_dict(model, clip=clip, vae=vae, clip_vision=clip_vision)
+            cls._log(logs, "Baking patches on CPU RAM and preparing state dict...")
+            merged_state_dict = cls._build_cpu_state_dict(model, clip=clip, vae=vae, clip_vision=clip_vision)
 
             metadata = {
                 "ts.node": "TS_CPULoraMerger",
@@ -294,20 +307,20 @@ class TS_CPULoraMergerNode:
                 "ts.base_model": base_model,
                 "ts.lora_stack": json.dumps(lora_requests, ensure_ascii=True),
             }
-            self._log(logs, f"Saving {len(merged_state_dict)} tensors to safetensors...")
+            cls._log(logs, f"Saving {len(merged_state_dict)} tensors to safetensors...")
             _ts_comfy_utils.save_torch_file(merged_state_dict, output_path, metadata=metadata)
-            self._log(logs, "Merge completed successfully.")
-            return ("\n".join(logs), output_path)
+            cls._log(logs, "Merge completed successfully.")
+            return IO.NodeOutput("\n".join(logs), output_path)
 
         except Exception as e:
             error_text = str(e).strip()
             if not error_text:
                 error_text = e.__class__.__name__
-            self._log(logs, f"ERROR: {error_text}")
+            cls._log(logs, f"ERROR: {error_text}")
             traceback_text = _ts_traceback.format_exc()
             logs.append(traceback_text.rstrip())
-            self._logger.error("%s %s\n%s", self._LOG_PREFIX, error_text, traceback_text)
-            return ("\n".join(logs), "")
+            _logger.error("%s %s\n%s", _LOG_PREFIX, error_text, traceback_text)
+            return IO.NodeOutput("\n".join(logs), "")
         finally:
             if merged_state_dict is not None:
                 del merged_state_dict
@@ -318,7 +331,6 @@ class TS_CPULoraMergerNode:
             gc.collect()
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
-
 
 
 NODE_CLASS_MAPPINGS = {"TS_CPULoraMerger": TS_CPULoraMergerNode}

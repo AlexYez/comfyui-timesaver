@@ -83,6 +83,49 @@ def _install_stubs(monkeypatch, ts_tmp_path):
         tqdm_mod.tqdm = lambda iterable=None, **kw: iterable if iterable is not None else iter([])
         monkeypatch.setitem(sys.modules, "tqdm", tqdm_mod)
 
+    # Stub comfy_api.latest.IO so the V3 schema declaration in
+    # ts_downloader imports without dragging in the full ComfyUI runtime
+    # (real comfy_api needs comfy.cli_args, which the test does not stub).
+    comfy_api_mod = types.ModuleType("comfy_api")
+    latest_mod = types.ModuleType("comfy_api.latest")
+
+    class _StubInput:
+        def __init__(self, *args, **kwargs):
+            self.args = args
+            self.kwargs = kwargs
+
+    class _StubOutput:
+        def __init__(self, *args, **kwargs):
+            self.args = args
+            self.kwargs = kwargs
+
+    class _StubComfyType:
+        Input = _StubInput
+        Output = _StubOutput
+
+    class _StubSchema:
+        def __init__(self, **kwargs):
+            self.__dict__.update(kwargs)
+
+    class _StubNodeOutput:
+        def __init__(self, *args, **kwargs):
+            self.args = args
+            self.kwargs = kwargs
+
+    class _StubIO:
+        class ComfyNode:
+            pass
+        Schema = _StubSchema
+        NodeOutput = _StubNodeOutput
+        String = _StubComfyType
+        Boolean = _StubComfyType
+        Combo = _StubComfyType
+        Int = _StubComfyType
+
+    latest_mod.IO = _StubIO
+    monkeypatch.setitem(sys.modules, "comfy_api", comfy_api_mod)
+    monkeypatch.setitem(sys.modules, "comfy_api.latest", latest_mod)
+
 
 @pytest.fixture
 def downloader_module(monkeypatch, ts_tmp_path):

@@ -36,7 +36,7 @@
     }
   },
   "TS Files Downloader": {
-    "api": "v1",
+    "api": "v3",
     "category": "TS/Files",
     "class_name": "TS_DownloadFilesNode",
     "display_name": "TS Files Downloader (Ultimate)",
@@ -81,7 +81,7 @@
     }
   },
   "TS Youtube Chapters": {
-    "api": "v1",
+    "api": "v3",
     "category": "TS/Files",
     "class_name": "TS_EDLToYouTubeChaptersNode",
     "display_name": "TS YouTube Chapters",
@@ -408,17 +408,23 @@
     }
   },
   "TS_CPULoraMerger": {
-    "api": "v1",
+    "api": "v3",
     "category": "TS/Files",
     "class_name": "TS_CPULoraMergerNode",
     "display_name": "TS CPU LoRA Merger",
     "python_file": "nodes/files/ts_cpu_lora_merger.py",
     "widgets": {
+      "lora_1_name": {
+        "default": "None"
+      },
       "lora_1_strength": {
         "default": 1.0,
         "max": 100.0,
         "min": -100.0,
         "step": 0.01
+      },
+      "lora_2_name": {
+        "default": "None"
       },
       "lora_2_strength": {
         "default": 1.0,
@@ -426,11 +432,17 @@
         "min": -100.0,
         "step": 0.01
       },
+      "lora_3_name": {
+        "default": "None"
+      },
       "lora_3_strength": {
         "default": 1.0,
         "max": 100.0,
         "min": -100.0,
         "step": 0.01
+      },
+      "lora_4_name": {
+        "default": "None"
       },
       "lora_4_strength": {
         "default": 1.0,
@@ -589,7 +601,7 @@
     }
   },
   "TS_FilePathLoader": {
-    "api": "v1",
+    "api": "v3",
     "category": "TS/Files",
     "class_name": "TS_FilePathLoader",
     "display_name": "TS File Path Loader",
@@ -1147,14 +1159,14 @@
     }
   },
   "TS_ModelConverter": {
-    "api": "v1",
+    "api": "v3",
     "category": "TS/Files",
     "class_name": "TS_ModelConverterNode",
     "display_name": "TS Model Converter",
     "python_file": "nodes/files/ts_model_converter.py"
   },
   "TS_ModelConverterAdvanced": {
-    "api": "v1",
+    "api": "v3",
     "category": "TS/Files",
     "class_name": "TS_ModelConverterAdvancedNode",
     "display_name": "TS Model Converter Advanced",
@@ -1175,7 +1187,7 @@
     }
   },
   "TS_ModelConverterAdvancedDirect": {
-    "api": "v1",
+    "api": "v3",
     "category": "TS/Files",
     "class_name": "TS_ModelConverterAdvancedDirectNode",
     "display_name": "TS Model Converter Advanced Direct",
@@ -1196,7 +1208,7 @@
     }
   },
   "TS_ModelScanner": {
-    "api": "v1",
+    "api": "v3",
     "category": "TS/Files",
     "class_name": "TS_ModelScanner",
     "display_name": "TS Model Scanner",
