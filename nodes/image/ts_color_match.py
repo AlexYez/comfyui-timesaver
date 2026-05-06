@@ -7,6 +7,8 @@ import torch
 import comfy.model_management as model_management
 from comfy.utils import ProgressBar
 
+from comfy_api.latest import IO
+
 logger = logging.getLogger("comfyui_timesaver.ts_color_match")
 _LOG_PREFIX = "[TS Color Match]"
 _SUPPORTED_DEVICES = ["auto", "gpu", "cpu"]
@@ -348,34 +350,34 @@ def _sinkhorn_compute_transform(src_img, ref_img, max_points, blur, seed=-1, ref
     return _fit_affine(src_sample, transported)
 
 
-class TS_Color_Match:
-    CATEGORY = "TS/Image"
-    RETURN_TYPES = ("IMAGE",)
-    RETURN_NAMES = ("image",)
-    FUNCTION = "process"
+class TS_Color_Match(IO.ComfyNode):
+    @classmethod
+    def define_schema(cls) -> IO.Schema:
+        return IO.Schema(
+            node_id="TS_Color_Match",
+            display_name="TS Color Match",
+            category="TS/Image",
+            inputs=[
+                IO.Image.Input("reference", tooltip="Эталон, к которому приводится цвет. При batch=1 можно переиспользовать статистики для всего видео."),
+                IO.Image.Input("target", tooltip="Кадры/изображения, которые будут перекрашены по референсу."),
+                IO.Combo.Input("mode", options=_SUPPORTED_MODES, default="mkl", tooltip="mkl быстрее и стабильнее; sinkhorn точнее, но тяжелее по памяти и времени."),
+                IO.Combo.Input("device", options=_SUPPORTED_DEVICES, default="auto", tooltip="auto = GPU если есть, иначе CPU. В режиме GPU большие тензоры остаются на CPU для защиты от OOM."),
+                IO.Float.Input("strength", default=1.0, min=0.0, max=1.0, step=0.1, tooltip="Позволяет мягко смешивать исходник и скорректированный цвет."),
+                IO.Boolean.Input("enable", default=True, tooltip="Если выключено, нода возвращает входной target без коррекции."),
+                IO.Combo.Input("match_mask", options=_SUPPORTED_MASK_MODES, default="none", tooltip="rectangle/ellipse берут только края изображения шириной mask_size, для стабилизации."),
+                IO.Int.Input("mask_size", default=32, min=0, max=512, step=1, tooltip="Используется только при match_mask = rectangle или ellipse."),
+                IO.Int.Input("compute_max_side", default=_DEFAULT_COMPUTE_MAX_SIDE, min=0, max=4096, step=1, tooltip="Считать A,b на уменьшенной копии (например 512–1024). Экономит память при 4K, качество почти не страдает."),
+                IO.Int.Input("mkl_sample_points", default=_DEFAULT_MKL_SAMPLE_POINTS, min=0, max=2000000, step=1, tooltip="Рекомендуется 200k–500k. При 0 берутся все пиксели, что может вызвать OOM на 4K."),
+                IO.Int.Input("sinkhorn_max_points", default=_DEFAULT_SINKHORN_MAX_POINTS, min=0, max=65536, step=1, tooltip="Для 4K обычно 1024–2048. Слишком большое значение может дать OOM."),
+                IO.Boolean.Input("reuse_reference", default=True, tooltip="Ускоряет и стабилизирует видео, когда референс один на весь батч."),
+                IO.Int.Input("chunk_size", default=4, min=0, max=256, step=1, tooltip="Рекомендуется 4–8 для длинных 4K видео. 0 обрабатывает весь батч разом."),
+                IO.Boolean.Input("logging", default=False, tooltip="При включении пишет в консоль стадии обработки, номер чанка и состояние памяти GPU."),
+            ],
+            outputs=[IO.Image.Output(display_name="image")],
+        )
 
     @classmethod
-    def INPUT_TYPES(cls):
-        return {
-            "required": {
-                "reference": ("IMAGE", {"description": "Референс для подбора цвета. Можно батч; при batch=1 и включенном reuse_reference статистики переиспользуются.", "tooltip": "Эталон, к которому приводится цвет. При batch=1 можно переиспользовать статистики для всего видео."}),
-                "target": ("IMAGE", {"description": "Изображение(я), к которому применяется перенос цвета.", "tooltip": "Кадры/изображения, которые будут перекрашены по референсу."}),
-                "mode": (_SUPPORTED_MODES, {"default": "mkl", "description": "Алгоритм матчинга: mkl (средние/ковариация) или sinkhorn (OT по сэмплам).", "tooltip": "mkl быстрее и стабильнее; sinkhorn точнее, но тяжелее по памяти и времени."}),
-                "device": (_SUPPORTED_DEVICES, {"default": "auto", "description": "Устройство вычислений: auto использует GPU при наличии, иначе CPU.", "tooltip": "auto = GPU если есть, иначе CPU. В режиме GPU большие тензоры остаются на CPU для защиты от OOM."}),
-                "strength": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.1, "description": "Сила применения цветокоррекции (0 = без изменений, 1 = полная коррекция).", "tooltip": "Позволяет мягко смешивать исходник и скорректированный цвет."}),
-                "enable": ("BOOLEAN", {"default": True, "description": "Включить обработку (false = вернуть target без изменений).", "tooltip": "Если выключено, нода возвращает входной target без коррекции."}),
-                "match_mask": (_SUPPORTED_MASK_MODES, {"default": "none", "description": "Область, по которой считается матчинг (none/rectangle/ellipse).", "tooltip": "rectangle/ellipse берут только края изображения шириной mask_size, для стабилизации."}),
-                "mask_size": ("INT", {"default": 32, "min": 0, "max": 512, "step": 1, "description": "Толщина рамки в пикселях для match_mask.", "tooltip": "Используется только при match_mask = rectangle или ellipse."}),
-                "compute_max_side": ("INT", {"default": _DEFAULT_COMPUTE_MAX_SIDE, "min": 0, "max": 4096, "step": 1, "description": "Максимальная сторона для расчёта трансформации. 0 = без даунскейла. Применяется и к fix, и к reference.", "tooltip": "Считать A,b на уменьшенной копии (например 512–1024). Экономит память при 4K, качество почти не страдает."}),
-                "mkl_sample_points": ("INT", {"default": _DEFAULT_MKL_SAMPLE_POINTS, "min": 0, "max": 2000000, "step": 1, "description": "Сэмплирование пикселей для MKL. 0 = все пиксели. Меньше = быстрее и меньше память.", "tooltip": "Рекомендуется 200k–500k. При 0 берутся все пиксели, что может вызвать OOM на 4K."}),
-                "sinkhorn_max_points": ("INT", {"default": _DEFAULT_SINKHORN_MAX_POINTS, "min": 0, "max": 65536, "step": 1, "description": "Жёсткий лимит точек для Sinkhorn. 0 = дефолтный лимит.", "tooltip": "Для 4K обычно 1024–2048. Слишком большое значение может дать OOM."}),
-                "reuse_reference": ("BOOLEAN", {"default": True, "description": "Если reference batch=1, считать его статистики/сэмплы один раз и использовать для всех кадров.", "tooltip": "Ускоряет и стабилизирует видео, когда референс один на весь батч."}),
-                "chunk_size": ("INT", {"default": 4, "min": 0, "max": 256, "step": 1, "description": "Обработка батча по чанкам. 0 = весь батч. Меньше - ниже пик памяти, но медленнее.", "tooltip": "Рекомендуется 4–8 для длинных 4K видео. 0 обрабатывает весь батч разом."}),
-                "logging": ("BOOLEAN", {"default": False, "description": "Включить подробное логирование стадий и памяти (для отладки OOM).", "tooltip": "При включении пишет в консоль стадии обработки, номер чанка и состояние памяти GPU."}),
-            },
-        }
-
-    def _resolve_device(self, device_choice, log_enabled):
+    def _resolve_device(cls, device_choice, log_enabled):
         if device_choice == "auto":
             return model_management.get_torch_device()
         if device_choice == "gpu":
@@ -385,8 +387,9 @@ class TS_Color_Match:
             return device
         return torch.device("cpu")
 
+    @classmethod
     def _compute_transform(
-        self,
+        cls,
         fix_img,
         ref_img,
         mode,
@@ -433,8 +436,9 @@ class TS_Color_Match:
             )
         raise ValueError(f"{_LOG_PREFIX} Unknown mode: {mode}")
 
+    @classmethod
     def _process_sequence(
-        self,
+        cls,
         fix_image,
         reference_image,
         mode,
@@ -505,7 +509,7 @@ class TS_Color_Match:
                     ref_compute_cpu = _resize_max_side_single(ref_img, compute_max_side)
                     ref_compute_local = _move_to_device(ref_compute_cpu, compute_device)
 
-                return self._compute_transform(
+                return cls._compute_transform(
                     fix_compute,
                     ref_compute_local,
                     mode,
@@ -558,8 +562,9 @@ class TS_Color_Match:
 
         return output
 
-    def process(
-        self,
+    @classmethod
+    def execute(
+        cls,
         reference,
         target,
         mode,
@@ -574,20 +579,20 @@ class TS_Color_Match:
         reuse_reference,
         chunk_size,
         logging,
-    ):
+    ) -> IO.NodeOutput:
         _validate_image_tensor("reference", reference)
         _validate_image_tensor("target", target)
 
         log_enabled = bool(logging)
 
         if not enable:
-            return (target.clamp(0.0, 1.0),)
+            return IO.NodeOutput(target.clamp(0.0, 1.0))
 
         if mode == "sinkhorn" and not _SINKHORN_AVAILABLE:
             _log_info("Sinkhorn selected but not available. Falling back to MKL.", log_enabled)
             mode = "mkl"
 
-        target_device = self._resolve_device(device, log_enabled)
+        target_device = cls._resolve_device(device, log_enabled)
 
         original_ref_batch = reference.shape[0]
         original_target_batch = target.shape[0]
@@ -633,7 +638,7 @@ class TS_Color_Match:
 
         use_threads = target_device.type == "cpu"
 
-        output = self._process_sequence(
+        output = cls._process_sequence(
             target,
             reference,
             mode,
@@ -652,7 +657,7 @@ class TS_Color_Match:
             log_enabled,
         )
 
-        return (output.clamp(0.0, 1.0),)
+        return IO.NodeOutput(output.clamp(0.0, 1.0))
 
 
 NODE_CLASS_MAPPINGS = {

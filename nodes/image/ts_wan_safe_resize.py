@@ -3,37 +3,41 @@
 node_id: TS_WAN_SafeResize
 """
 
-import math
-
 import torch
 import numpy as np
 from PIL import Image
 
+from comfy_api.latest import IO
 
-class TS_WAN_SafeResize:
-    WAN_RESOLUTIONS = {
-        "high quality": {
-            "16:9": (1280, 720),
-            "9:16": (720, 1280),
-            "1:1": (720, 720),
-        },
-        "standard quality": {
-            "16:9": (832, 480),
-            "9:16": (480, 832),
-            "1:1": (480, 480),
-        },
-        "low quality": {
-            "16:9": (426, 240),
-            "9:16": (240, 426),
-            "1:1": (240, 240),
-        },
-    }
 
-    QUALITY_MAP = {
-        "Fast quality": "low quality",
-        "Standard quality": "standard quality",
-        "High quality": "high quality",
-    }
+_WAN_RESOLUTIONS = {
+    "high quality": {
+        "16:9": (1280, 720),
+        "9:16": (720, 1280),
+        "1:1": (720, 720),
+    },
+    "standard quality": {
+        "16:9": (832, 480),
+        "9:16": (480, 832),
+        "1:1": (480, 480),
+    },
+    "low quality": {
+        "16:9": (426, 240),
+        "9:16": (240, 426),
+        "1:1": (240, 240),
+    },
+}
+
+_QUALITY_MAP = {
+    "Fast quality": "low quality",
+    "Standard quality": "standard quality",
+    "High quality": "high quality",
+}
+
+
+class TS_WAN_SafeResize(IO.ComfyNode):
+    WAN_RESOLUTIONS = _WAN_RESOLUTIONS
+    QUALITY_MAP = _QUALITY_MAP
 
     @staticmethod
     def detect_aspect_ratio(width, height):
@@ -46,37 +50,36 @@ class TS_WAN_SafeResize:
             return "1:1"
 
     @classmethod
-    def INPUT_TYPES(cls):
-        return {
-            "required": {
-                "image": ("IMAGE",),
-                "quality": (
-                    ["Fast quality", "Standard quality", "High quality"],
-                    {"default": "Standard quality"},
-                ),
-            },
-            "optional": {
-                "interconnection_in": ("STRING",),
-            },
-        }
+    def define_schema(cls) -> IO.Schema:
+        return IO.Schema(
+            node_id="TS_WAN_SafeResize",
+            display_name="TS WAN Safe Resize",
+            category="TS/Image",
+            inputs=[
+                IO.Image.Input("image"),
+                IO.Combo.Input("quality", options=["Fast quality", "Standard quality", "High quality"], default="Standard quality"),
+                IO.String.Input("interconnection_in", optional=True),
+            ],
+            outputs=[
+                IO.Image.Output(display_name="image"),
+                IO.Int.Output(display_name="width"),
+                IO.Int.Output(display_name="height"),
+                IO.String.Output(display_name="interconnection_out"),
+            ],
+        )
 
-    RETURN_TYPES = ("IMAGE", "INT", "INT", "STRING")
-    RETURN_NAMES = ("image", "width", "height", "interconnection_out")
-    FUNCTION = "safe_resize"
-    CATEGORY = "TS/Image"
-
-    def safe_resize(self, image, quality, interconnection_in=None):
-        # Приоритет interconnection
-        if interconnection_in in self.WAN_RESOLUTIONS:
+    @classmethod
+    def execute(cls, image, quality, interconnection_in=None) -> IO.NodeOutput:
+        if interconnection_in in _WAN_RESOLUTIONS:
             internal_quality = interconnection_in
         else:
-            internal_quality = self.QUALITY_MAP[quality]
+            internal_quality = _QUALITY_MAP[quality]
 
         b, h, w, c = image.shape
         assert c in [3, 4], f"Expected 3 or 4 channels, got {c}"
 
-        aspect_key = self.detect_aspect_ratio(w, h)
-        target_w, target_h = self.WAN_RESOLUTIONS[internal_quality][aspect_key]
+        aspect_key = cls.detect_aspect_ratio(w, h)
+        target_w, target_h = _WAN_RESOLUTIONS[internal_quality][aspect_key]
 
         output_images = []
 
@@ -98,9 +101,7 @@ class TS_WAN_SafeResize:
 
         output = torch.cat(output_images, dim=0)
 
-        return (output, target_w, target_h, internal_quality)
-
-
+        return IO.NodeOutput(output, target_w, target_h, internal_quality)
 
 
 NODE_CLASS_MAPPINGS = {"TS_WAN_SafeResize": TS_WAN_SafeResize}

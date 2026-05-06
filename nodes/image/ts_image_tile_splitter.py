@@ -5,32 +5,39 @@ node_id: TS_ImageTileSplitter
 
 import math
 from typing import Any, Dict, List, Optional
+import logging
 
 import torch
-import logging
+
+from comfy_api.latest import IO
 
 
 logger = logging.getLogger("comfyui_timesaver.ts_image_tile_splitter")
 LOG_PREFIX = "[TS Image Tile Splitter]"
 
 
-class TS_ImageTileSplitter:
-    @classmethod
-    def INPUT_TYPES(cls):
-        return {
-            "required": {
-                "image": ("IMAGE",),
-                "tile_width": ("INT", {"default": 1024, "min": 64, "max": 8192, "step": 8}),
-                "tile_height": ("INT", {"default": 1024, "min": 64, "max": 8192, "step": 8}),
-                "overlap": ("INT", {"default": 128, "min": 0, "max": 512, "step": 8}),
-                "feather": ("FLOAT", {"default": 0.1, "min": 0.0, "max": 0.5, "step": 0.01}),
-            }
-        }
+_TileInfo = IO.Custom("TILE_INFO")
 
-    RETURN_TYPES = ("IMAGE", "TILE_INFO")
-    RETURN_NAMES = ("tiles", "tile_data")
-    FUNCTION = "execute"
-    CATEGORY = "TS/Image"
+
+class TS_ImageTileSplitter(IO.ComfyNode):
+    @classmethod
+    def define_schema(cls) -> IO.Schema:
+        return IO.Schema(
+            node_id="TS_ImageTileSplitter",
+            display_name="TS Image Tile Splitter",
+            category="TS/Image",
+            inputs=[
+                IO.Image.Input("image"),
+                IO.Int.Input("tile_width", default=1024, min=64, max=8192, step=8),
+                IO.Int.Input("tile_height", default=1024, min=64, max=8192, step=8),
+                IO.Int.Input("overlap", default=128, min=0, max=512, step=8),
+                IO.Float.Input("feather", default=0.1, min=0.0, max=0.5, step=0.01),
+            ],
+            outputs=[
+                IO.Image.Output(display_name="tiles"),
+                _TileInfo.Output(display_name="tile_data"),
+            ],
+        )
 
     @staticmethod
     def _log(message: str) -> None:
@@ -59,25 +66,26 @@ class TS_ImageTileSplitter:
         max_overlap = max(0, min(tile_w - 1, tile_h - 1))
         return max(0, min(overlap, max_overlap))
 
+    @classmethod
     def execute(
-        self,
+        cls,
         image: torch.Tensor,
         tile_width: int,
         tile_height: int,
         overlap: int,
         feather: float,
-    ):
-        self._log_tensor("Input", image)
+    ) -> IO.NodeOutput:
+        cls._log_tensor("Input", image)
 
         if image is None or not isinstance(image, torch.Tensor):
             raise ValueError(f"Expected IMAGE tensor, got {type(image)}")
 
-        image = self._ensure_bhwc(image)
+        image = cls._ensure_bhwc(image)
         batch_size, img_h, img_w, _ = image.shape
 
         tile_width = max(1, min(int(tile_width), img_w))
         tile_height = max(1, min(int(tile_height), img_h))
-        overlap = self._clamp_overlap(tile_width, tile_height, int(overlap))
+        overlap = cls._clamp_overlap(tile_width, tile_height, int(overlap))
 
         stride_w = max(1, tile_width - overlap)
         stride_h = max(1, tile_height - overlap)
@@ -123,18 +131,18 @@ class TS_ImageTileSplitter:
                     )
 
         if not results_tiles:
-            self._log("No tiles produced, returning original image.")
-            return (image, tile_data)
+            cls._log("No tiles produced, returning original image.")
+            return IO.NodeOutput(image, tile_data)
 
         final_tiles = torch.cat(results_tiles, dim=0)
 
-        self._log_tensor("Output tiles", final_tiles)
-        self._log(f"Tiles={final_tiles.shape[0]} Grid={rows}x{cols}")
+        cls._log_tensor("Output tiles", final_tiles)
+        cls._log(f"Tiles={final_tiles.shape[0]} Grid={rows}x{cols}")
 
-        return (final_tiles, tile_data)
+        return IO.NodeOutput(final_tiles, tile_data)
 
     @classmethod
-    def IS_CHANGED(
+    def fingerprint_inputs(
         cls,
         image: torch.Tensor,
         tile_width: int,

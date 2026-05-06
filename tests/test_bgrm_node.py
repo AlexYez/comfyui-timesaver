@@ -52,6 +52,52 @@ def _install_stubs(monkeypatch, root: Path) -> None:
     monkeypatch.setitem(sys.modules, "safetensors", safetensors)
     monkeypatch.setitem(sys.modules, "safetensors.torch", safetensors_torch)
 
+    # Stub comfy_api.latest.IO so the V3 schema declaration in
+    # ts_bgrm_birefnet imports without dragging in the full ComfyUI runtime.
+    comfy_api_mod = types.ModuleType("comfy_api")
+    latest_mod = types.ModuleType("comfy_api.latest")
+
+    class _StubInput:
+        def __init__(self, *args, **kwargs):
+            self.id = args[0] if args else kwargs.get("id")
+            self.args = args
+            self.kwargs = kwargs
+
+    class _StubOutput:
+        def __init__(self, *args, **kwargs):
+            self.id = kwargs.get("id")
+            self.display_name = kwargs.get("display_name")
+            self.args = args
+            self.kwargs = kwargs
+
+    class _StubComfyType:
+        Input = _StubInput
+        Output = _StubOutput
+
+    class _StubSchema:
+        def __init__(self, **kwargs):
+            self.__dict__.update(kwargs)
+
+    class _StubNodeOutput:
+        def __init__(self, *args, **kwargs):
+            self.args = args
+            self.kwargs = kwargs
+
+    class _StubIO:
+        class ComfyNode:
+            pass
+        Schema = _StubSchema
+        NodeOutput = _StubNodeOutput
+        Image = _StubComfyType
+        Mask = _StubComfyType
+        Boolean = _StubComfyType
+        Combo = _StubComfyType
+        Int = _StubComfyType
+
+    latest_mod.IO = _StubIO
+    monkeypatch.setitem(sys.modules, "comfy_api", comfy_api_mod)
+    monkeypatch.setitem(sys.modules, "comfy_api.latest", latest_mod)
+
 
 def _load_module(monkeypatch):
     root = Path(__file__).resolve().parents[1]
@@ -61,43 +107,38 @@ def _load_module(monkeypatch):
     return importlib.import_module("nodes.image.ts_bgrm_birefnet")
 
 
-def test_bgrm_v1_contract_is_stable(monkeypatch):
+def test_bgrm_v3_contract_is_stable(monkeypatch):
     module = _load_module(monkeypatch)
 
-    input_types = module.TS_BGRM_BiRefNet.INPUT_TYPES()
+    schema = module.TS_BGRM_BiRefNet.define_schema()
+    input_ids = [item.id for item in schema.inputs]
 
     assert module.NODE_CLASS_MAPPINGS == {"TS_BGRM_BiRefNet": module.TS_BGRM_BiRefNet}
     assert module.NODE_DISPLAY_NAME_MAPPINGS == {"TS_BGRM_BiRefNet": "TS Remove Background"}
-    assert module.TS_BGRM_BiRefNet.RETURN_TYPES == ("IMAGE", "MASK", "IMAGE")
-    assert module.TS_BGRM_BiRefNet.RETURN_NAMES == ("IMAGE", "MASK", "MASK_IMAGE")
-    assert module.TS_BGRM_BiRefNet.FUNCTION == "process_image"
-    assert module.TS_BGRM_BiRefNet.CATEGORY == "TS/Image"
-    assert list(input_types["required"]) == ["image", "enable", "model"]
-    assert list(input_types["optional"]) == [
-        "use_custom_resolution",
-        "process_resolution",
-        "mask_blur",
-        "mask_offset",
-        "invert_output",
-        "refine_foreground",
-        "background",
-        "background_color",
+    assert schema.node_id == "TS_BGRM_BiRefNet"
+    assert schema.display_name == "TS Remove Background"
+    assert schema.category == "TS/Image"
+    assert [out.display_name for out in schema.outputs] == ["IMAGE", "MASK", "MASK_IMAGE"]
+    assert input_ids == [
+        "image", "enable", "model",
+        "use_custom_resolution", "process_resolution", "mask_blur", "mask_offset",
+        "invert_output", "refine_foreground", "background", "background_color",
     ]
 
 
 def test_bgrm_disabled_path_preserves_batch_and_input(monkeypatch):
     module = _load_module(monkeypatch)
-    node = module.TS_BGRM_BiRefNet()
     image = torch.rand((2, 8, 7, 3), dtype=torch.float32)
     before = image.clone()
 
-    out_image, out_mask, out_mask_image = node.process_image(
+    output = module.TS_BGRM_BiRefNet.execute(
         image,
         False,
         "BiRefNet_512x512",
         False,
         1024,
     )
+    out_image, out_mask, out_mask_image = output.args
 
     assert torch.equal(image, before)
     assert out_image is image
@@ -181,21 +222,21 @@ def test_bgrm_process_masks_runs_in_half_on_gpu(monkeypatch):
 def test_bgrm_process_path_reports_progress_without_model_download(monkeypatch):
     module = _load_module(monkeypatch)
     _ProgressBar.instances.clear()
-    node = module.TS_BGRM_BiRefNet()
 
-    monkeypatch.setattr(node.model, "check_model_cache", lambda model: (True, "ok"))
-    monkeypatch.setattr(node.model, "load_model", lambda *args, **kwargs: None)
-    monkeypatch.setattr(
-        node.model,
-        "process_masks",
-        lambda image, params, progress_bar=None, start_step=55, end_step=80, target_device=None: torch.ones(
-            (image.shape[0], image.shape[1], image.shape[2]),
-            dtype=torch.float32,
-        ),
-    )
+    class _FakeBg:
+        def check_model_cache(self, model):
+            return (True, "ok")
+
+        def load_model(self, *args, **kwargs):
+            return None
+
+        def process_masks(self, image, params, progress_bar=None, start_step=55, end_step=80, target_device=None):
+            return torch.ones((image.shape[0], image.shape[1], image.shape[2]), dtype=torch.float32)
+
+    monkeypatch.setattr(module.TS_BGRM_BiRefNet, "_model", _FakeBg())
 
     image = torch.rand((2, 6, 5, 3), dtype=torch.float32)
-    out_image, out_mask, out_mask_image = node.process_image(
+    output = module.TS_BGRM_BiRefNet.execute(
         image,
         True,
         "BiRefNet_512x512",
@@ -204,6 +245,7 @@ def test_bgrm_process_path_reports_progress_without_model_download(monkeypatch):
         background="Color",
         background_color="white",
     )
+    out_image, out_mask, out_mask_image = output.args
 
     assert out_image.shape == (2, 6, 5, 3)
     assert out_mask.shape == (2, 6, 5)
@@ -216,22 +258,22 @@ def test_bgrm_logs_processing_device(monkeypatch, caplog):
     module = _load_module(monkeypatch)
     monkeypatch.setattr(module.torch.cuda, "is_available", lambda: False)
     _ProgressBar.instances.clear()
-    node = module.TS_BGRM_BiRefNet()
 
-    monkeypatch.setattr(node.model, "check_model_cache", lambda model: (True, "ok"))
-    monkeypatch.setattr(node.model, "load_model", lambda *args, **kwargs: None)
-    monkeypatch.setattr(
-        node.model,
-        "process_masks",
-        lambda image, params, progress_bar=None, start_step=55, end_step=80, target_device=None: torch.ones(
-            (image.shape[0], image.shape[1], image.shape[2]),
-            dtype=torch.float32,
-        ),
-    )
+    class _FakeBg:
+        def check_model_cache(self, model):
+            return (True, "ok")
+
+        def load_model(self, *args, **kwargs):
+            return None
+
+        def process_masks(self, image, params, progress_bar=None, start_step=55, end_step=80, target_device=None):
+            return torch.ones((image.shape[0], image.shape[1], image.shape[2]), dtype=torch.float32)
+
+    monkeypatch.setattr(module.TS_BGRM_BiRefNet, "_model", _FakeBg())
 
     caplog.set_level(logging.INFO, logger=module.__name__)
     image = torch.rand((1, 4, 4, 3), dtype=torch.float32)
-    node.process_image(
+    module.TS_BGRM_BiRefNet.execute(
         image,
         True,
         "BiRefNet_512x512",

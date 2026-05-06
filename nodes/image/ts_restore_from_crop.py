@@ -10,12 +10,16 @@ import torch.nn.functional as F
 
 import comfy
 
+from comfy_api.latest import IO
+
 logger = logging.getLogger("comfyui_timesaver.ts_restore_from_crop")
 LOG_PREFIX = "[TS Restore From Crop]"
 
 
+_CropData = IO.Custom("CROP_DATA")
+
+
 def _gaussian_blur_mask(mask_tensor_batch, blur_amount, device):
-    """Apply a separable Gaussian blur to a batch of [B, H, W] masks."""
     if blur_amount <= 0:
         return mask_tensor_batch
 
@@ -41,7 +45,6 @@ def _gaussian_blur_mask(mask_tensor_batch, blur_amount, device):
 
 
 def _box_blur_mask(mask_tensor_batch, blur_amount, device):
-    """Apply a separable box blur to a batch of [B, H, W] masks."""
     if blur_amount <= 0:
         return mask_tensor_batch
 
@@ -64,25 +67,26 @@ def _box_blur_mask(mask_tensor_batch, blur_amount, device):
     return blurred_v.squeeze(1)
 
 
-class TSRestoreFromCrop:
+class TSRestoreFromCrop(IO.ComfyNode):
     @classmethod
-    def INPUT_TYPES(cls):
-        return {
-            "required": {
-                "original_images": ("IMAGE",),
-                "cropped_images": ("IMAGE",),
-                "crop_data": ("CROP_DATA",),
-                "blur": ("INT", {"default": 64, "min": 0, "max": 256, "step": 1}),
-                "blur_type": (["Gaussian", "Box"], {"default": "Gaussian"}),
-                "force_gpu": ("BOOLEAN", {"default": True}),
-            }
-        }
+    def define_schema(cls) -> IO.Schema:
+        return IO.Schema(
+            node_id="TSRestoreFromCrop",
+            display_name="TS Restore From Crop",
+            category="TS/Image",
+            inputs=[
+                IO.Image.Input("original_images"),
+                IO.Image.Input("cropped_images"),
+                _CropData.Input("crop_data"),
+                IO.Int.Input("blur", default=64, min=0, max=256, step=1),
+                IO.Combo.Input("blur_type", options=["Gaussian", "Box"], default="Gaussian"),
+                IO.Boolean.Input("force_gpu", default=True),
+            ],
+            outputs=[IO.Image.Output(display_name="IMAGE")],
+        )
 
-    RETURN_TYPES = ("IMAGE",)
-    FUNCTION = "restore"
-    CATEGORY = "TS/Image"
-
-    def restore(self, original_images, cropped_images, crop_data, blur, blur_type, force_gpu):
+    @classmethod
+    def execute(cls, original_images, cropped_images, crop_data, blur, blur_type, force_gpu) -> IO.NodeOutput:
         target_device = comfy.model_management.get_torch_device() if force_gpu and torch.cuda.is_available() else torch.device("cpu")
         logger.info("%s Using device %s", LOG_PREFIX, target_device)
         original_images, cropped_images = original_images.to(target_device), cropped_images.to(target_device)
@@ -122,7 +126,6 @@ class TSRestoreFromCrop:
                 final_paste_region = region_to_paste[local_y_s:local_y_e, local_x_s:local_x_e, :]
 
                 if blur > 0:
-                    # Edge-aware blur: don't soften edges that touch the image border.
                     left_edge = 0 if p_x <= blur else blur
                     top_edge = 0 if p_y <= blur else blur
                     right_edge = 0 if (p_x + p_w) >= (orig_img_w - blur) else blur
@@ -150,7 +153,7 @@ class TSRestoreFromCrop:
 
             restored_images.append(orig_img)
 
-        return (torch.stack(restored_images),)
+        return IO.NodeOutput(torch.stack(restored_images))
 
 
 NODE_CLASS_MAPPINGS = {"TSRestoreFromCrop": TSRestoreFromCrop}

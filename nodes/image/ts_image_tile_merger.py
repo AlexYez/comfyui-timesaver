@@ -4,29 +4,33 @@ node_id: TS_ImageTileMerger
 """
 
 from typing import Any, Dict, Optional
+import logging
 
 import torch
-import logging
+
+from comfy_api.latest import IO
 
 
 logger = logging.getLogger("comfyui_timesaver.ts_image_tile_merger")
 LOG_PREFIX = "[TS Image Tile Merger]"
 
 
-class TS_ImageTileMerger:
-    @classmethod
-    def INPUT_TYPES(cls):
-        return {
-            "required": {
-                "images": ("IMAGE",),
-                "tile_data": ("TILE_INFO",),
-            }
-        }
+_TileInfo = IO.Custom("TILE_INFO")
 
-    RETURN_TYPES = ("IMAGE",)
-    RETURN_NAMES = ("image",)
-    FUNCTION = "execute"
-    CATEGORY = "TS/Image"
+
+class TS_ImageTileMerger(IO.ComfyNode):
+    @classmethod
+    def define_schema(cls) -> IO.Schema:
+        return IO.Schema(
+            node_id="TS_ImageTileMerger",
+            display_name="TS Image Tile Merger",
+            category="TS/Image",
+            inputs=[
+                IO.Image.Input("images"),
+                _TileInfo.Input("tile_data"),
+            ],
+            outputs=[IO.Image.Output(display_name="image")],
+        )
 
     @staticmethod
     def _log(message: str) -> None:
@@ -85,8 +89,9 @@ class TS_ImageTileMerger:
 
         return mask
 
-    def execute(self, images: torch.Tensor, tile_data: Dict[str, Any]):
-        self._log_tensor("Input tiles", images)
+    @classmethod
+    def execute(cls, images: torch.Tensor, tile_data: Dict[str, Any]) -> IO.NodeOutput:
+        cls._log_tensor("Input tiles", images)
 
         if images is None or not isinstance(images, torch.Tensor):
             raise ValueError(f"Expected IMAGE tensor, got {type(images)}")
@@ -94,7 +99,7 @@ class TS_ImageTileMerger:
         if tile_data is None or not isinstance(tile_data, dict):
             raise ValueError(f"Expected TILE_INFO dict, got {type(tile_data)}")
 
-        images = self._ensure_nhwc(images)
+        images = cls._ensure_nhwc(images)
 
         orig_h = int(tile_data.get("original_height", images.shape[1]))
         orig_w = int(tile_data.get("original_width", images.shape[2]))
@@ -143,7 +148,7 @@ class TS_ImageTileMerger:
             if y + tile_h > orig_h:
                 y = max(0, orig_h - tile_h)
 
-            weight_mask = self._build_weight_mask(
+            weight_mask = cls._build_weight_mask(
                 tile_h,
                 tile_w,
                 feather_ratio,
@@ -161,11 +166,11 @@ class TS_ImageTileMerger:
         weights[weights == 0] = 1.0
         output = output / weights
 
-        self._log_tensor("Output", output)
-        return (output,)
+        cls._log_tensor("Output", output)
+        return IO.NodeOutput(output)
 
     @classmethod
-    def IS_CHANGED(cls, images: torch.Tensor, tile_data: Dict[str, Any]) -> str:
+    def fingerprint_inputs(cls, images: torch.Tensor, tile_data: Dict[str, Any]) -> str:
         if images is None or not isinstance(images, torch.Tensor):
             return "none"
         if tile_data is None or not isinstance(tile_data, dict):

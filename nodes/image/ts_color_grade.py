@@ -7,33 +7,29 @@ import math
 
 import torch
 
+from comfy_api.latest import IO
 
-class TS_Color_Grade:
-    CATEGORY = "TS/Image"
 
-    @staticmethod
-    def _ts_slider(default, min_val, max_val, step, round_val=None):
-        spec = {"default": default, "min": min_val, "max": max_val, "step": step}
-        return ("FLOAT", spec)
-
+class TS_Color_Grade(IO.ComfyNode):
     @classmethod
-    def INPUT_TYPES(cls):
-        return {
-            "required": {
-                "image": ("IMAGE",),
-                "hue": cls._ts_slider(0.0, -180.0, 180.0, 0.1, 0.1),
-                "temperature": cls._ts_slider(0.0, -1.0, 1.0, 0.01, 0.01),
-                "saturation": cls._ts_slider(1.0, 0.0, 3.0, 0.01, 0.01),
-                "contrast": cls._ts_slider(1.0, 0.0, 3.0, 0.01, 0.01),
-                "gain": cls._ts_slider(1.0, 0.0, 3.0, 0.01, 0.01),
-                "lift": cls._ts_slider(0.0, -1.0, 1.0, 0.01, 0.01),
-                "gamma": cls._ts_slider(1.0, 0.1, 3.0, 0.01, 0.01),
-                "brightness": cls._ts_slider(0.0, -1.0, 1.0, 0.01, 0.01),
-            }
-        }
-
-    RETURN_TYPES = ("IMAGE",)
-    FUNCTION = "process"
+    def define_schema(cls) -> IO.Schema:
+        return IO.Schema(
+            node_id="TS_Color_Grade",
+            display_name="TS Color Grade",
+            category="TS/Image",
+            inputs=[
+                IO.Image.Input("image"),
+                IO.Float.Input("hue", default=0.0, min=-180.0, max=180.0, step=0.1),
+                IO.Float.Input("temperature", default=0.0, min=-1.0, max=1.0, step=0.01),
+                IO.Float.Input("saturation", default=1.0, min=0.0, max=3.0, step=0.01),
+                IO.Float.Input("contrast", default=1.0, min=0.0, max=3.0, step=0.01),
+                IO.Float.Input("gain", default=1.0, min=0.0, max=3.0, step=0.01),
+                IO.Float.Input("lift", default=0.0, min=-1.0, max=1.0, step=0.01),
+                IO.Float.Input("gamma", default=1.0, min=0.1, max=3.0, step=0.01),
+                IO.Float.Input("brightness", default=0.0, min=-1.0, max=1.0, step=0.01),
+            ],
+            outputs=[IO.Image.Output(display_name="IMAGE")],
+        )
 
     @staticmethod
     def adjust_hue(image, hue):
@@ -95,18 +91,19 @@ class TS_Color_Grade:
             return image
         return image + brightness
 
-    def process(self, image, hue, temperature, saturation, contrast, gain, lift, gamma, brightness):
-        img = self._ts_validate_image(image)
+    @classmethod
+    def execute(cls, image, hue, temperature, saturation, contrast, gain, lift, gamma, brightness) -> IO.NodeOutput:
+        img = cls._ts_validate_image(image)
 
-        img = self.adjust_hue(img, hue)
-        img = self._ts_apply_temperature(img, temperature)
-        img = self._ts_apply_saturation(img, saturation)
-        img = self._ts_apply_contrast(img, contrast)
-        img = self._ts_apply_gain_lift(img, gain, lift)
-        img = self._ts_apply_gamma(img, gamma)
-        img = self._ts_apply_brightness(img, brightness)
+        img = cls.adjust_hue(img, hue)
+        img = cls._ts_apply_temperature(img, temperature)
+        img = cls._ts_apply_saturation(img, saturation)
+        img = cls._ts_apply_contrast(img, contrast)
+        img = cls._ts_apply_gain_lift(img, gain, lift)
+        img = cls._ts_apply_gamma(img, gamma)
+        img = cls._ts_apply_brightness(img, brightness)
 
-        return (torch.clamp(img, 0.0, 1.0),)
+        return IO.NodeOutput(torch.clamp(img, 0.0, 1.0))
 
 
 NODE_CLASS_MAPPINGS = {"TS_Color_Grade": TS_Color_Grade}

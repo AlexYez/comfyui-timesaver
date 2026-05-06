@@ -17,6 +17,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from comfy.utils import ProgressBar
+from comfy_api.latest import IO
 from huggingface_hub import hf_hub_download
 from PIL import Image, ImageFilter
 from safetensors.torch import load_file
@@ -527,12 +528,17 @@ class BiRefNetModel:
         except Exception as e:
             handle_model_error(f"Error in BiRefNet processing: {str(e)}")
 
-class TS_BGRM_BiRefNet:
-    def __init__(self):
-        self.model = BiRefNetModel()
-    
+class TS_BGRM_BiRefNet(IO.ComfyNode):
+    _model = None
+
     @classmethod
-    def INPUT_TYPES(s):
+    def _ensure_model(cls):
+        if cls._model is None:
+            cls._model = BiRefNetModel()
+        return cls._model
+
+    @classmethod
+    def define_schema(cls) -> IO.Schema:
         tooltips = {
             "enable": "Enable or disable the background removal process. If disabled, the original image will be passed through.",
             "image": "Input image to be processed for background removal.",
@@ -544,32 +550,34 @@ class TS_BGRM_BiRefNet:
             "invert_output": "Enable to invert both the image and mask output (useful for certain effects).",
             "refine_foreground": "Use Fast Foreground Colour Estimation to optimize transparent background",
             "background": "Choose background type: Alpha (transparent) or Color (custom background color).",
-            "background_color": "Select background color preset (black, white, green)."
+            "background_color": "Select background color preset (black, white, green).",
         }
-        return {
-            "required": {
-                "image": ("IMAGE", {"tooltip": tooltips["image"]}),
-                "enable": ("BOOLEAN", {"default": True, "tooltip": tooltips["enable"]}),
-                "model": (list(MODEL_CONFIG.keys()), {"tooltip": tooltips["model"]}),
-            },
-            "optional": {
-                "use_custom_resolution": ("BOOLEAN", {"default": False, "tooltip": tooltips["use_custom_resolution"]}),
-                "process_resolution": ("INT", {"default": 1024, "min": 256, "max": 4096, "step": 64, "tooltip": tooltips["process_resolution"]}),
-                "mask_blur": ("INT", {"default": 0, "min": 0, "max": 64, "step": 1, "tooltip": tooltips["mask_blur"]}),
-                "mask_offset": ("INT", {"default": 0, "min": -20, "max": 20, "step": 1, "tooltip": tooltips["mask_offset"]}),
-                "invert_output": ("BOOLEAN", {"default": False, "tooltip": tooltips["invert_output"]}),
-                "refine_foreground": ("BOOLEAN", {"default": False, "tooltip": tooltips["refine_foreground"]}),
-                "background": (["Alpha", "Color"], {"default": "Alpha", "tooltip": tooltips["background"]}),
-                "background_color": (["black", "white", "green"], {"default": "white", "tooltip": tooltips["background_color"]}),
-            }
-        }
+        return IO.Schema(
+            node_id="TS_BGRM_BiRefNet",
+            display_name="TS Remove Background",
+            category="TS/Image",
+            inputs=[
+                IO.Image.Input("image", tooltip=tooltips["image"]),
+                IO.Boolean.Input("enable", default=True, tooltip=tooltips["enable"]),
+                IO.Combo.Input("model", options=list(MODEL_CONFIG.keys()), tooltip=tooltips["model"]),
+                IO.Boolean.Input("use_custom_resolution", default=False, optional=True, tooltip=tooltips["use_custom_resolution"]),
+                IO.Int.Input("process_resolution", default=1024, min=256, max=4096, step=64, optional=True, tooltip=tooltips["process_resolution"]),
+                IO.Int.Input("mask_blur", default=0, min=0, max=64, step=1, optional=True, tooltip=tooltips["mask_blur"]),
+                IO.Int.Input("mask_offset", default=0, min=-20, max=20, step=1, optional=True, tooltip=tooltips["mask_offset"]),
+                IO.Boolean.Input("invert_output", default=False, optional=True, tooltip=tooltips["invert_output"]),
+                IO.Boolean.Input("refine_foreground", default=False, optional=True, tooltip=tooltips["refine_foreground"]),
+                IO.Combo.Input("background", options=["Alpha", "Color"], default="Alpha", optional=True, tooltip=tooltips["background"]),
+                IO.Combo.Input("background_color", options=["black", "white", "green"], default="white", optional=True, tooltip=tooltips["background_color"]),
+            ],
+            outputs=[
+                IO.Image.Output(display_name="IMAGE"),
+                IO.Mask.Output(display_name="MASK"),
+                IO.Image.Output(display_name="MASK_IMAGE"),
+            ],
+        )
 
-    RETURN_TYPES = ("IMAGE", "MASK", "IMAGE")
-    RETURN_NAMES = ("IMAGE", "MASK", "MASK_IMAGE")
-    FUNCTION = "process_image"
-    CATEGORY = "TS/Image"
-
-    def process_image(self, image, enable, model, use_custom_resolution, process_resolution, **params):
+    @classmethod
+    def execute(cls, image, enable, model, use_custom_resolution=False, process_resolution=1024, **params) -> IO.NodeOutput:
         params = {
             "mask_blur": 0,
             "mask_offset": 0,
@@ -584,7 +592,7 @@ class TS_BGRM_BiRefNet:
             b, h, w, c = image.shape
             mask_output = torch.ones((b, h, w), dtype=torch.float32, device=image.device)
             mask_image_output = torch.ones((b, h, w, 3), dtype=torch.float32, device=image.device)
-            return (image, mask_output, mask_image_output)
+            return IO.NodeOutput(image, mask_output, mask_image_output)
 
         try:
             pbar = ProgressBar(100)
@@ -609,10 +617,11 @@ class TS_BGRM_BiRefNet:
 
             processed_images = []
             processed_masks = []
-            cache_status, message = self.model.check_model_cache(model)
+            bg_model = cls._ensure_model()
+            cache_status, message = bg_model.check_model_cache(model)
             if not cache_status:
                 logger.info("%s Cache check: %s", _LOG_PREFIX, message)
-                download_status, download_message = self.model.download_model(model, progress_bar=pbar, start_step=5, end_step=30)
+                download_status, download_message = bg_model.download_model(model, progress_bar=pbar, start_step=5, end_step=30)
                 if not download_status:
                     handle_model_error(download_message)
                 logger.info("%s Model files downloaded successfully", _LOG_PREFIX)
@@ -622,10 +631,10 @@ class TS_BGRM_BiRefNet:
             target_device = _get_target_device()
             logger.info("%s Processing device: %s", _LOG_PREFIX, _format_device_label(target_device))
 
-            self.model.load_model(model, progress_bar=pbar, start_step=30, end_step=55, target_device=target_device)
+            bg_model.load_model(model, progress_bar=pbar, start_step=30, end_step=55, target_device=target_device)
             _update_progress(pbar, 55)
 
-            masks = self.model.process_masks(image, params, progress_bar=pbar, start_step=55, end_step=80, target_device=target_device)
+            masks = bg_model.process_masks(image, params, progress_bar=pbar, start_step=55, end_step=80, target_device=target_device)
 
             batch_size = image.shape[0]
             for index, img in enumerate(image):
@@ -678,7 +687,7 @@ class TS_BGRM_BiRefNet:
             mask_output = torch.cat(processed_masks, dim=0)
             mask_image_output = mask_output.unsqueeze(-1).expand(-1, -1, -1, 3)
             _update_progress(pbar, 100)
-            return (image_output, mask_output, mask_image_output)
+            return IO.NodeOutput(image_output, mask_output, mask_image_output)
         except Exception as e:
             handle_model_error(f"Error in image processing: {str(e)}")
 

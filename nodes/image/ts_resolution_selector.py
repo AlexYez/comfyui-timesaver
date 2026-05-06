@@ -1,50 +1,52 @@
-﻿import math
+import math
 import torch
 import torch.nn.functional as F
 
-import folder_paths
 import logging
+
+from comfy_api.latest import IO
 
 
 logger = logging.getLogger("comfyui_timesaver.ts_resolution_selector")
 LOG_PREFIX = "[TS Resolution Selector]"
 
 
-class TS_ResolutionSelector:
-    ASPECT_PRESETS = [
-        ("1:1", 1.0, 1.0),
-        ("4:3", 4.0, 3.0),
-        ("3:2", 3.0, 2.0),
-        ("16:9", 16.0, 9.0),
-        ("21:9", 21.0, 9.0),
-        ("3:4", 3.0, 4.0),
-        ("2:3", 2.0, 3.0),
-        ("9:16", 9.0, 16.0),
-        ("9:21", 9.0, 21.0),
-    ]
-    ASPECT_OPTIONS = [name for (name, _w, _h) in ASPECT_PRESETS]
+_ASPECT_PRESETS = [
+    ("1:1", 1.0, 1.0),
+    ("4:3", 4.0, 3.0),
+    ("3:2", 3.0, 2.0),
+    ("16:9", 16.0, 9.0),
+    ("21:9", 21.0, 9.0),
+    ("3:4", 3.0, 4.0),
+    ("2:3", 2.0, 3.0),
+    ("9:16", 9.0, 16.0),
+    ("9:21", 9.0, 21.0),
+]
+_ASPECT_OPTIONS = [name for (name, _w, _h) in _ASPECT_PRESETS]
 
-    RETURN_TYPES = ("IMAGE",)
-    RETURN_NAMES = ("img",)
-    FUNCTION = "select_resolution"
-    CATEGORY = "TS/Image"
 
-    @classmethod
-    def INPUT_TYPES(cls):
-        return {
-            "required": {
-                "aspect_ratio": (cls.ASPECT_OPTIONS, {"default": "1:1"}),
-                "resolution": ("FLOAT", {"default": 1.5, "min": 0.5, "max": 4.0, "step": 0.1, "display": "slider"}),
-                "custom_ratio": ("STRING", {"default": "0:0"}),
-                "original_aspect": ("BOOLEAN", {"default": False}),
-            },
-            "optional": {
-                "image": ("IMAGE",),
-            },
-        }
+class TS_ResolutionSelector(IO.ComfyNode):
+    ASPECT_PRESETS = _ASPECT_PRESETS
+    ASPECT_OPTIONS = _ASPECT_OPTIONS
 
     @classmethod
-    def IS_CHANGED(cls, aspect_ratio, resolution, custom_ratio, original_aspect=False, image=None):
+    def define_schema(cls) -> IO.Schema:
+        return IO.Schema(
+            node_id="TS_ResolutionSelector",
+            display_name="TS Resolution Selector",
+            category="TS/Image",
+            inputs=[
+                IO.Combo.Input("aspect_ratio", options=_ASPECT_OPTIONS, default="1:1"),
+                IO.Float.Input("resolution", default=1.5, min=0.5, max=4.0, step=0.1, display_mode=IO.NumberDisplay.slider),
+                IO.String.Input("custom_ratio", default="0:0"),
+                IO.Boolean.Input("original_aspect", default=False),
+                IO.Image.Input("image", optional=True),
+            ],
+            outputs=[IO.Image.Output(display_name="img")],
+        )
+
+    @classmethod
+    def fingerprint_inputs(cls, aspect_ratio, resolution, custom_ratio, original_aspect=False, image=None):
         if cls._is_valid_image(image):
             return float("nan")
         res_value = 0.0 if resolution is None else float(resolution)
@@ -62,16 +64,19 @@ class TS_ResolutionSelector:
             return False
         return True
 
-    def _log(self, message):
+    @staticmethod
+    def _log(message):
         logger.info("%s %s", LOG_PREFIX, message)
 
-    def _log_tensor_shape(self, label, tensor):
+    @classmethod
+    def _log_tensor_shape(cls, label, tensor):
         if not isinstance(tensor, torch.Tensor):
             return
         shape = tuple(tensor.shape)
-        self._log(f"{label} shape={shape} dtype={tensor.dtype} device={tensor.device}")
+        cls._log(f"{label} shape={shape} dtype={tensor.dtype} device={tensor.device}")
 
-    def _parse_ratio(self, ratio_text):
+    @staticmethod
+    def _parse_ratio(ratio_text):
         if not ratio_text:
             return 1.0, 1.0
         parts = ratio_text.split(":")
@@ -86,24 +91,26 @@ class TS_ResolutionSelector:
             return 1.0, 1.0
         return w, h
 
-    def _snap_to_divisible(self, value, divisor):
+    @staticmethod
+    def _snap_to_divisible(value, divisor):
         if divisor <= 1:
             return max(1, int(round(value)))
         return max(divisor, int(round(value / divisor) * divisor))
 
-    def _choose_best_dims(self, ideal_w, ideal_h, aspect, divisor, target_pixels):
+    @classmethod
+    def _choose_best_dims(cls, ideal_w, ideal_h, aspect, divisor, target_pixels):
         if divisor <= 1:
             w = max(1, int(round(ideal_w)))
             h = max(1, int(round(ideal_h)))
             return w, h
 
-        w1 = self._snap_to_divisible(ideal_w, divisor)
-        h1 = self._snap_to_divisible(w1 / aspect, divisor)
+        w1 = cls._snap_to_divisible(ideal_w, divisor)
+        h1 = cls._snap_to_divisible(w1 / aspect, divisor)
         w1 = max(divisor, w1)
         h1 = max(divisor, h1)
 
-        h2 = self._snap_to_divisible(ideal_h, divisor)
-        w2 = self._snap_to_divisible(h2 * aspect, divisor)
+        h2 = cls._snap_to_divisible(ideal_h, divisor)
+        w2 = cls._snap_to_divisible(h2 * aspect, divisor)
         w2 = max(divisor, w2)
         h2 = max(divisor, h2)
 
@@ -117,7 +124,8 @@ class TS_ResolutionSelector:
         candidate_b = (w2, h2)
         return min([candidate_a, candidate_b], key=score)
 
-    def _crop_alpha_to_bbox(self, image, pad_px=10):
+    @classmethod
+    def _crop_alpha_to_bbox(cls, image, pad_px=10):
         if image is None or not isinstance(image, torch.Tensor):
             return None
         if image.ndim != 4:
@@ -134,7 +142,6 @@ class TS_ResolutionSelector:
         for i in range(batch):
             alpha_i = alpha[i, ..., 0]
             if not torch.any(alpha_i > 0):
-                # Fully transparent image: composite on white without crop.
                 comp = rgb[i] * alpha_i.unsqueeze(-1) + (1.0 - alpha_i.unsqueeze(-1))
                 output.append(comp.unsqueeze(0))
                 continue
@@ -157,14 +164,15 @@ class TS_ResolutionSelector:
 
         return torch.cat(output, dim=0)
 
-    def _fit_image_to_canvas(self, image, target_w, target_h):
+    @classmethod
+    def _fit_image_to_canvas(cls, image, target_w, target_h):
         if image is None or not isinstance(image, torch.Tensor):
             return None
         if image.ndim != 4:
             return None
 
         if image.shape[3] >= 4:
-            image = self._crop_alpha_to_bbox(image, pad_px=10)
+            image = cls._crop_alpha_to_bbox(image, pad_px=10)
             if image is None:
                 return None
 
@@ -188,7 +196,8 @@ class TS_ResolutionSelector:
         canvas[:, top : top + new_h, left : left + new_w, :] = resized
         return canvas.clamp(0.0, 1.0)
 
-    def _get_image_aspect(self, image):
+    @staticmethod
+    def _get_image_aspect(image):
         if image is None or not isinstance(image, torch.Tensor):
             return None
         if image.ndim != 4:
@@ -198,21 +207,22 @@ class TS_ResolutionSelector:
             return None
         return float(src_w) / float(src_h)
 
-    def select_resolution(self, aspect_ratio, resolution, custom_ratio, original_aspect=False, image=None):
-        if not self._is_valid_image(image):
+    @classmethod
+    def execute(cls, aspect_ratio, resolution, custom_ratio, original_aspect=False, image=None) -> IO.NodeOutput:
+        if not cls._is_valid_image(image):
             if image is not None:
-                self._log("input image is missing or invalid; treating input as disconnected")
+                cls._log("input image is missing or invalid; treating input as disconnected")
             image = None
 
-        ratio_w, ratio_h = self._parse_ratio(aspect_ratio)
+        ratio_w, ratio_h = cls._parse_ratio(aspect_ratio)
         custom_value = custom_ratio if custom_ratio is not None else "0:0"
         if custom_value.strip() and custom_value.strip() != "0:0":
-            ratio_w, ratio_h = self._parse_ratio(custom_value)
+            ratio_w, ratio_h = cls._parse_ratio(custom_value)
         aspect = ratio_w / ratio_h if ratio_h != 0 else 1.0
         aspect_source = "preset/custom"
 
         if bool(original_aspect) and image is not None:
-            image_aspect = self._get_image_aspect(image)
+            image_aspect = cls._get_image_aspect(image)
             if image_aspect is not None and image_aspect > 0:
                 aspect = image_aspect
                 aspect_source = "image"
@@ -227,14 +237,14 @@ class TS_ResolutionSelector:
         ideal_h = math.sqrt(total_pixels / aspect) if aspect > 0 else 1.0
         ideal_w = ideal_h * aspect
 
-        width, height = self._choose_best_dims(ideal_w, ideal_h, aspect, divisor, total_pixels)
+        width, height = cls._choose_best_dims(ideal_w, ideal_h, aspect, divisor, total_pixels)
         width = max(1, int(width))
         height = max(1, int(height))
 
         if image is not None:
             image = image.float()
-            self._log_tensor_shape("input", image)
-            fitted = self._fit_image_to_canvas(image, width, height)
+            cls._log_tensor_shape("input", image)
+            fitted = cls._fit_image_to_canvas(image, width, height)
             if fitted is not None:
                 img = fitted
             else:
@@ -242,14 +252,14 @@ class TS_ResolutionSelector:
         else:
             img = torch.zeros((1, height, width, 3), dtype=torch.float32)
 
-        self._log(
+        cls._log(
             f"aspect_ratio={aspect_ratio} custom_ratio={custom_value} original_aspect={bool(original_aspect)} "
             f"aspect_source={aspect_source} resolution={res_value:.3f} divide_by={divisor}"
         )
-        self._log(f"output={width}x{height}")
-        self._log_tensor_shape("output", img)
+        cls._log(f"output={width}x{height}")
+        cls._log_tensor_shape("output", img)
 
-        return (img,)
+        return IO.NodeOutput(img)
 
 
 NODE_CLASS_MAPPINGS = {
@@ -259,4 +269,3 @@ NODE_CLASS_MAPPINGS = {
 NODE_DISPLAY_NAME_MAPPINGS = {
     "TS_ResolutionSelector": "TS Resolution Selector",
 }
-

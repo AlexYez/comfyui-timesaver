@@ -10,35 +10,46 @@ import torch.nn.functional as F
 
 import comfy
 
+from comfy_api.latest import IO
+
 logger = logging.getLogger("comfyui_timesaver.ts_crop_to_mask")
 LOG_PREFIX = "[TS Crop To Mask]"
 
 
-class TSCropToMask:
+_CropData = IO.Custom("CROP_DATA")
+
+
+class TSCropToMask(IO.ComfyNode):
     @classmethod
-    def INPUT_TYPES(cls):
-        return {
-            "required": {
-                "images": ("IMAGE",),
-                "mask": ("MASK",),
-                "padding": ("INT", {"default": 64, "min": 0, "max": 320}),
-                "divide_by": ("INT", {"default": 32, "min": 1, "max": 64}),
-                "max_resolution": ("INT", {"default": 720, "min": 320, "max": 2048, "step": 1, "description": "Max resolution for the smaller side of the crop."}),
-                "fixed_mask_frame_index": ("INT", {"default": 0, "min": 0, "max": 9999, "step": 1, "description": "If > 0, use mask from this 1-indexed frame for all crops. (Overrides interpolation)"}),
-                "interpolation_window_size": ("INT", {"default": 0, "min": 0, "max": 100, "step": 1, "description": "Number of frames for interpolation (0 for none). Affects frames within the batch."}),
-                "force_gpu": ("BOOLEAN", {"default": True, "description": "If true, force processing on GPU if available."}),
-                "fixed_crop_size": ("BOOLEAN", {"default": False}),
-                "fixed_width": ("INT", {"default": 1024, "min": 64, "max": 4096, "step": 8}),
-                "fixed_height": ("INT", {"default": 1024, "min": 64, "max": 4096, "step": 8}),
-            }
-        }
+    def define_schema(cls) -> IO.Schema:
+        return IO.Schema(
+            node_id="TSCropToMask",
+            display_name="TS Crop To Mask",
+            category="TS/Image",
+            inputs=[
+                IO.Image.Input("images"),
+                IO.Mask.Input("mask"),
+                IO.Int.Input("padding", default=64, min=0, max=320),
+                IO.Int.Input("divide_by", default=32, min=1, max=64),
+                IO.Int.Input("max_resolution", default=720, min=320, max=2048, step=1),
+                IO.Int.Input("fixed_mask_frame_index", default=0, min=0, max=9999, step=1),
+                IO.Int.Input("interpolation_window_size", default=0, min=0, max=100, step=1),
+                IO.Boolean.Input("force_gpu", default=True),
+                IO.Boolean.Input("fixed_crop_size", default=False),
+                IO.Int.Input("fixed_width", default=1024, min=64, max=4096, step=8),
+                IO.Int.Input("fixed_height", default=1024, min=64, max=4096, step=8),
+            ],
+            outputs=[
+                IO.Image.Output(display_name="cropped_images"),
+                IO.Mask.Output(display_name="cropped_masks"),
+                _CropData.Output(display_name="crop_data"),
+                IO.Int.Output(display_name="width"),
+                IO.Int.Output(display_name="height"),
+            ],
+        )
 
-    RETURN_TYPES = ("IMAGE", "MASK", "CROP_DATA", "INT", "INT")
-    RETURN_NAMES = ("cropped_images", "cropped_masks", "crop_data", "width", "height")
-    FUNCTION = "crop"
-    CATEGORY = "TS/Image"
-
-    def crop(self, images, mask, padding, divide_by, max_resolution, fixed_mask_frame_index, interpolation_window_size, force_gpu, fixed_crop_size=False, fixed_width=1024, fixed_height=1024):
+    @classmethod
+    def execute(cls, images, mask, padding, divide_by, max_resolution, fixed_mask_frame_index, interpolation_window_size, force_gpu, fixed_crop_size=False, fixed_width=1024, fixed_height=1024) -> IO.NodeOutput:
         target_device = comfy.model_management.get_torch_device() if force_gpu and torch.cuda.is_available() else torch.device("cpu")
         logger.info("%s Using device %s", LOG_PREFIX, target_device)
 
@@ -89,7 +100,7 @@ class TSCropToMask:
                     "initial_crop_width": original_img_w, "initial_crop_height": original_img_h,
                     "final_crop_width": original_img_w, "final_crop_height": original_img_h,
                 })
-            return (images, mask, crop_data, original_img_w, original_img_h)
+            return IO.NodeOutput(images, mask, crop_data, original_img_w, original_img_h)
 
         raw_regions = []
         if fixed_mask_frame_index > 0:
@@ -219,7 +230,7 @@ class TSCropToMask:
             for d in crop_data:
                 d["final_crop_width"], d["final_crop_height"] = new_width, new_height
 
-        return (cropped_images, cropped_masks, crop_data, new_width, new_height)
+        return IO.NodeOutput(cropped_images, cropped_masks, crop_data, new_width, new_height)
 
 
 NODE_CLASS_MAPPINGS = {"TSCropToMask": TSCropToMask}
