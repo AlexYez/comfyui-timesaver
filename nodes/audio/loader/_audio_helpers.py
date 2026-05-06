@@ -64,6 +64,10 @@ PREVIEW_BINS = 2048
 PREVIEW_SAMPLE_RATE = 4000
 SUPPORTED_AUDIO_EXTENSIONS = {".aac", ".aif", ".aiff", ".flac", ".m4a", ".mp3", ".ogg", ".opus", ".wav", ".wma", ".webm"}
 SUPPORTED_VIDEO_EXTENSIONS = {".avi", ".flv", ".m2ts", ".m4v", ".mkv", ".mov", ".mp4", ".mpeg", ".mpg", ".mts", ".ts", ".webm"}
+# Hard cap on recording uploads to keep the input directory bounded. A 10-min
+# 48 kHz stereo opus clip is well under 100 MB; 200 MB leaves room for slop
+# while still stopping a hostile / runaway client.
+_RECORDING_UPLOAD_MAX_BYTES = 200 * 1024 * 1024
 
 
 @dataclass
@@ -240,7 +244,15 @@ def _parse_audio_metadata(stderr_text: str, filepath: str) -> MediaMetadata:
 
 def _probe_media(filepath: str) -> MediaMetadata:
     ffmpeg_exe = _get_ffmpeg_executable()
-    result = subprocess.run([ffmpeg_exe, "-hide_banner", "-i", filepath], capture_output=True, check=False)
+    # Probe-only: ffmpeg should print metadata and exit instantly. 30 s is a
+    # generous cap for slow disk / network shares; a hung probe is almost
+    # certainly a corrupt file.
+    result = subprocess.run(
+        [ffmpeg_exe, "-hide_banner", "-i", filepath],
+        capture_output=True,
+        check=False,
+        timeout=30,
+    )
     return _parse_audio_metadata(result.stderr.decode("utf-8", errors="replace"), filepath)
 
 
@@ -299,23 +311,35 @@ def _build_waveform_preview(metadata: MediaMetadata, target_bins: int = PREVIEW_
     samples_per_bin = max(1, int(math.ceil(expected_samples / max(1, target_bins))))
     peaks: list[float] = []
     remainder = np.empty(0, dtype=np.int16)
+    # Hard wall-clock cap: even a 4-hour audiobook decodes in well under 10 min
+    # at 4 kHz preview rate. Anything past that is almost certainly a hung
+    # ffmpeg on a corrupt file.
+    deadline = time.monotonic() + 600.0
     process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=0)
-    assert process.stdout is not None
-    assert process.stderr is not None
-    while True:
-        chunk = process.stdout.read(65536)
-        if not chunk:
-            break
-        data = np.frombuffer(chunk, dtype=np.int16)
-        if remainder.size:
-            data = np.concatenate((remainder, data))
-        full_count = (data.size // samples_per_bin) * samples_per_bin
-        if full_count:
-            reshaped = data[:full_count].reshape(-1, samples_per_bin)
-            peaks.extend((np.max(np.abs(reshaped), axis=1) / 32768.0).astype(np.float32).tolist())
-        remainder = data[full_count:]
-    stderr_text = process.stderr.read().decode("utf-8", errors="replace")
-    return_code = process.wait()
+    try:
+        while True:
+            if time.monotonic() > deadline:
+                raise RuntimeError("ffmpeg waveform preview timed out (>10 min).")
+            chunk = process.stdout.read(65536)
+            if not chunk:
+                break
+            data = np.frombuffer(chunk, dtype=np.int16)
+            if remainder.size:
+                data = np.concatenate((remainder, data))
+            full_count = (data.size // samples_per_bin) * samples_per_bin
+            if full_count:
+                reshaped = data[:full_count].reshape(-1, samples_per_bin)
+                peaks.extend((np.max(np.abs(reshaped), axis=1) / 32768.0).astype(np.float32).tolist())
+            remainder = data[full_count:]
+        stderr_text = process.stderr.read().decode("utf-8", errors="replace")
+        return_code = process.wait(timeout=10)
+    except Exception:
+        process.kill()
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            pass
+        raise
     if return_code != 0 and not peaks and not remainder.size:
         raise RuntimeError(stderr_text.strip() or "ffmpeg failed to generate waveform preview.")
     if remainder.size:
@@ -381,7 +405,9 @@ def _decode_audio_segment(metadata: MediaMetadata, start_seconds: float, end_sec
     if end_seconds is not None and end_seconds > start_seconds:
         command.extend(["-t", f"{max(0.0, end_seconds - start_seconds):.6f}"])
     command.extend(["-ac", str(metadata.target_channels), "-ar", str(metadata.sample_rate), "-f", "f32le", "-acodec", "pcm_f32le", "-"])
-    process = subprocess.run(command, capture_output=True, check=False)
+    # Same 10-min ceiling as the waveform preview path — corrupt media that
+    # gets past _probe_media should not lock the worker thread forever.
+    process = subprocess.run(command, capture_output=True, check=False, timeout=600)
     if process.returncode != 0:
         raise RuntimeError(process.stderr.decode("utf-8", errors="replace").strip() or "ffmpeg failed to decode audio.")
     raw = np.frombuffer(process.stdout, dtype=np.float32)
@@ -561,19 +587,37 @@ async def ts_audio_loader_upload_recording(request: web.Request) -> web.StreamRe
         if audio_part is None or audio_part.name != "audio":
             return web.json_response({"error": "Missing audio field."}, status=400)
         original_name = audio_part.filename or "recording.webm"
-        suffix = Path(original_name).suffix.lower() or ".webm"
-        if len(suffix) > 10:
+        # Whitelist suffixes against SUPPORTED_AUDIO_EXTENSIONS so a user can't
+        # smuggle ".exe"/".py" into the input directory by faking the filename.
+        suffix = Path(original_name).suffix.lower()
+        if suffix not in SUPPORTED_AUDIO_EXTENSIONS:
             suffix = ".webm"
         output_name = f"ts_audio_recording_{time.strftime('%Y%m%d_%H%M%S')}_{os.getpid()}_{int(time.time_ns() % 1000000)}{suffix}"
         RECORDINGS_DIR.mkdir(parents=True, exist_ok=True)
         output_path = RECORDINGS_DIR / output_name
+        # Stream to disk with a hard size cap. ComfyUI ships without auth, so
+        # without a cap a LAN client could fill the input directory.
+        total_bytes = 0
         with output_path.open("wb") as handle:
             while True:
                 chunk = await audio_part.read_chunk(size=1024 * 1024)
                 if not chunk:
                     break
+                total_bytes += len(chunk)
+                if total_bytes > _RECORDING_UPLOAD_MAX_BYTES:
+                    handle.close()
+                    try:
+                        output_path.unlink(missing_ok=True)
+                    except OSError:
+                        pass
+                    raise web.HTTPRequestEntityTooLarge(
+                        max_size=_RECORDING_UPLOAD_MAX_BYTES,
+                        actual_size=total_bytes,
+                    )
                 handle.write(chunk)
         return web.json_response({"path": _to_input_annotation(output_path), "filename": output_name})
+    except web.HTTPException:
+        raise
     except Exception as exc:
         return web.json_response({"error": str(exc)}, status=500)
 

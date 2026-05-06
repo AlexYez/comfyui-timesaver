@@ -97,7 +97,7 @@ heavy-imports на module-level, утечки во фронтенде, дыры 
    локально. Аналогично — `cv2` и `matplotlib.cm` в `ts_video_depth.py` поднять в функции
    `preprocess_vda_internal` / `postprocess_vda_colormap_internal`.
 
-3. **[High · S] Утечка polling intervals и paste-listener в TS_LamaCleanup при удалении ноды**
+3. **[High · S] [RESOLVED] Утечка polling intervals и paste-listener в TS_LamaCleanup при удалении ноды**
 
    Files: `js/image/lama_cleanup/_lama_helpers.js:1246`
           `js/image/lama_cleanup/_lama_helpers.js:218`
@@ -145,7 +145,7 @@ heavy-imports на module-level, утечки во фронтенде, дыры 
    списка. Минимум — снять `bitsandbytes`, `demucs`, `silero*`, `pykeops`, `geomloss`,
    `openai-whisper`. README уже честно говорит, что эти пакеты опциональны.
 
-5. **[High · S] Routes `/ts_voice_recognition/transcribe` и `/ts_audio_loader/upload_recording` принимают неограниченный размер аплоада**
+5. **[High · S] [RESOLVED] Routes `/ts_voice_recognition/transcribe` и `/ts_audio_loader/upload_recording` принимают неограниченный размер аплоада**
 
    Files: `nodes/llm/ts_super_prompt.py:981`
           `nodes/llm/ts_super_prompt.py:1014`
@@ -175,7 +175,7 @@ heavy-imports на module-level, утечки во фронтенде, дыры 
    Recommendation: удалить лишний `return 0.0` на line 816 — оставшийся
    `return 0.0` на line 819 (в конце функции) уже покрывает все exit-пути.
 
-7. **[High · S] Subprocess вызовы ffmpeg без `timeout=`**
+7. **[High · S] [RESOLVED] Subprocess вызовы ffmpeg без `timeout=`**
 
    Files: `nodes/audio/loader/_audio_helpers.py:244`
           `nodes/audio/loader/_audio_helpers.py:303`
@@ -352,7 +352,7 @@ heavy-imports на module-level, утечки во фронтенде, дыры 
     Recommendation: заменить `except Exception: continue` на
     `except Exception as exc: logger.debug(...); continue`. Минимум — debug-уровень.
 
-19. **[Medium · S] Unstreamed аплоад в ts_super_prompt: list[bytes] вместо stream-в-файл**
+19. **[Medium · S] [PARTIAL — size cap added in 1d73fe8 follow-up; full streaming refactor still pending] Unstreamed аплоад в ts_super_prompt: list[bytes] вместо stream-в-файл**
 
     Files: `nodes/llm/ts_super_prompt.py:981`
            `nodes/llm/ts_super_prompt.py:997`
