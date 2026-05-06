@@ -45,11 +45,22 @@ class TS_ResolutionSelector:
 
     @classmethod
     def IS_CHANGED(cls, aspect_ratio, resolution, custom_ratio, original_aspect=False, image=None):
-        if image is not None:
+        if cls._is_valid_image(image):
             return float("nan")
         res_value = 0.0 if resolution is None else float(resolution)
         ratio_value = custom_ratio if custom_ratio is not None else "0:0"
         return f"{aspect_ratio}-{ratio_value}-{res_value:.3f}-{bool(original_aspect)}"
+
+    @staticmethod
+    def _is_valid_image(image):
+        if image is None or not isinstance(image, torch.Tensor):
+            return False
+        if image.ndim != 4:
+            return False
+        batch, src_h, src_w, channels = image.shape
+        if batch <= 0 or src_h <= 0 or src_w <= 0 or channels <= 0:
+            return False
+        return True
 
     def _log(self, message):
         logger.info("%s %s", LOG_PREFIX, message)
@@ -188,6 +199,11 @@ class TS_ResolutionSelector:
         return float(src_w) / float(src_h)
 
     def select_resolution(self, aspect_ratio, resolution, custom_ratio, original_aspect=False, image=None):
+        if not self._is_valid_image(image):
+            if image is not None:
+                self._log("input image is missing or invalid; treating input as disconnected")
+            image = None
+
         ratio_w, ratio_h = self._parse_ratio(aspect_ratio)
         custom_value = custom_ratio if custom_ratio is not None else "0:0"
         if custom_value.strip() and custom_value.strip() != "0:0":
