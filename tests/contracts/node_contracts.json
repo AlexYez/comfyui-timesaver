@@ -1,6 +1,6 @@
 {
   "TS Cube to Equirectangular": {
-    "api": "v1",
+    "api": "v3",
     "category": "TS/Image",
     "class_name": "TS_CubemapFacesToEquirectangularNode",
     "display_name": "TS Cube to Equirectangular",
@@ -21,7 +21,7 @@
     }
   },
   "TS Equirectangular to Cube": {
-    "api": "v1",
+    "api": "v3",
     "category": "TS/Image",
     "class_name": "TS_EquirectangularToCubemapFacesNode",
     "display_name": "TS Equirectangular to Cube",
@@ -93,7 +93,7 @@
     }
   },
   "TSAutoTileSize": {
-    "api": "v1",
+    "api": "v3",
     "category": "TS/Image",
     "class_name": "TSAutoTileSize",
     "display_name": "TS Auto Tile Size",
@@ -126,7 +126,7 @@
     }
   },
   "TSCropToMask": {
-    "api": "v1",
+    "api": "v3",
     "category": "TS/Image",
     "class_name": "TSCropToMask",
     "display_name": "TS Crop To Mask",
@@ -181,7 +181,7 @@
     }
   },
   "TSRestoreFromCrop": {
-    "api": "v1",
+    "api": "v3",
     "category": "TS/Image",
     "class_name": "TSRestoreFromCrop",
     "display_name": "TS Restore From Crop",
@@ -351,7 +351,7 @@
     }
   },
   "TS_BGRM_BiRefNet": {
-    "api": "v1",
+    "api": "v3",
     "category": "TS/Image",
     "class_name": "TS_BGRM_BiRefNet",
     "display_name": "TS Remove Background",
@@ -456,14 +456,64 @@
     }
   },
   "TS_Color_Grade": {
-    "api": "v1",
+    "api": "v3",
     "category": "TS/Image",
     "class_name": "TS_Color_Grade",
     "display_name": "TS Color Grade",
-    "python_file": "nodes/image/ts_color_grade.py"
+    "python_file": "nodes/image/ts_color_grade.py",
+    "widgets": {
+      "brightness": {
+        "default": 0.0,
+        "max": 1.0,
+        "min": -1.0,
+        "step": 0.01
+      },
+      "contrast": {
+        "default": 1.0,
+        "max": 3.0,
+        "min": 0.0,
+        "step": 0.01
+      },
+      "gain": {
+        "default": 1.0,
+        "max": 3.0,
+        "min": 0.0,
+        "step": 0.01
+      },
+      "gamma": {
+        "default": 1.0,
+        "max": 3.0,
+        "min": 0.1,
+        "step": 0.01
+      },
+      "hue": {
+        "default": 0.0,
+        "max": 180.0,
+        "min": -180.0,
+        "step": 0.1
+      },
+      "lift": {
+        "default": 0.0,
+        "max": 1.0,
+        "min": -1.0,
+        "step": 0.01
+      },
+      "saturation": {
+        "default": 1.0,
+        "max": 3.0,
+        "min": 0.0,
+        "step": 0.01
+      },
+      "temperature": {
+        "default": 0.0,
+        "max": 1.0,
+        "min": -1.0,
+        "step": 0.01
+      }
+    }
   },
   "TS_Color_Match": {
-    "api": "v1",
+    "api": "v3",
     "category": "TS/Image",
     "class_name": "TS_Color_Match",
     "display_name": "TS Color Match",
@@ -618,7 +668,7 @@
     }
   },
   "TS_FilmGrain": {
-    "api": "v1",
+    "api": "v3",
     "category": "TS/Image",
     "class_name": "TS_FilmGrain",
     "display_name": "TS Film Grain",
@@ -671,7 +721,7 @@
     }
   },
   "TS_Film_Emulation": {
-    "api": "v1",
+    "api": "v3",
     "category": "TS/Image",
     "class_name": "TS_Film_Emulation",
     "display_name": "TS Film Emulation",
@@ -821,14 +871,14 @@
     }
   },
   "TS_GetImageMegapixels": {
-    "api": "v1",
+    "api": "v3",
     "category": "TS/Image",
     "class_name": "TS_GetImageMegapixels",
     "display_name": "TS Get Image Megapixels",
     "python_file": "nodes/image/ts_get_image_megapixels.py"
   },
   "TS_GetImageSizeSide": {
-    "api": "v1",
+    "api": "v3",
     "category": "TS/Image",
     "class_name": "TS_GetImageSizeSide",
     "display_name": "TS Get Image Size",
@@ -840,7 +890,7 @@
     }
   },
   "TS_ImageBatchCut": {
-    "api": "v1",
+    "api": "v3",
     "category": "TS/Image",
     "class_name": "TS_ImageBatchCut",
     "display_name": "TS Image Batch Cut",
@@ -859,21 +909,21 @@
     }
   },
   "TS_ImageBatchToImageList": {
-    "api": "v1",
+    "api": "v3",
     "category": "TS/Image",
     "class_name": "TS_ImageBatchToImageList",
     "display_name": "TS Image Batch to Image List",
     "python_file": "nodes/image/ts_image_batch_to_list.py"
   },
   "TS_ImageListToImageBatch": {
-    "api": "v1",
+    "api": "v3",
     "category": "TS/Image",
     "class_name": "TS_ImageListToImageBatch",
     "display_name": "TS Image List to Image Batch",
     "python_file": "nodes/image/ts_image_list_to_batch.py"
   },
   "TS_ImagePromptInjector": {
-    "api": "v1",
+    "api": "v3",
     "category": "TS/Image",
     "class_name": "TS_ImagePromptInjector",
     "display_name": "TS Image Prompt Injector",
@@ -885,7 +935,7 @@
     }
   },
   "TS_ImageResize": {
-    "api": "v1",
+    "api": "v3",
     "category": "TS/Image",
     "class_name": "TS_ImageResize",
     "display_name": "TS Image Resize",
@@ -945,14 +995,14 @@
     }
   },
   "TS_ImageTileMerger": {
-    "api": "v1",
+    "api": "v3",
     "category": "TS/Image",
     "class_name": "TS_ImageTileMerger",
     "display_name": "TS Image Tile Merger",
     "python_file": "nodes/image/ts_image_tile_merger.py"
   },
   "TS_ImageTileSplitter": {
-    "api": "v1",
+    "api": "v3",
     "category": "TS/Image",
     "class_name": "TS_ImageTileSplitter",
     "display_name": "TS Image Tile Splitter",
@@ -1350,7 +1400,7 @@
     }
   },
   "TS_QwenCanvas": {
-    "api": "v1",
+    "api": "v3",
     "category": "TS/Image",
     "class_name": "TS_QwenCanvas",
     "display_name": "TS Qwen Canvas",
@@ -1362,7 +1412,7 @@
     }
   },
   "TS_QwenSafeResize": {
-    "api": "v1",
+    "api": "v3",
     "category": "TS/Image",
     "class_name": "TS_QwenSafeResize",
     "display_name": "TS Qwen Safe Resize",
@@ -1399,7 +1449,7 @@
     }
   },
   "TS_ResolutionSelector": {
-    "api": "v1",
+    "api": "v3",
     "category": "TS/Image",
     "class_name": "TS_ResolutionSelector",
     "display_name": "TS Resolution Selector",
@@ -1610,7 +1660,7 @@
     }
   },
   "TS_WAN_SafeResize": {
-    "api": "v1",
+    "api": "v3",
     "category": "TS/Image",
     "class_name": "TS_WAN_SafeResize",
     "display_name": "TS WAN Safe Resize",

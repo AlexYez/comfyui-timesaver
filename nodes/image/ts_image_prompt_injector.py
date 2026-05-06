@@ -5,33 +5,31 @@ node_id: TS_ImagePromptInjector
 
 from typing import Optional
 import time
+import logging
 
 import torch
-import comfy.utils
-import logging
+
+from comfy_api.latest import IO
 
 
 logger = logging.getLogger("comfyui_timesaver.ts_image_prompt_injector")
 LOG_PREFIX = "[TS Image Prompt Injector]"
 
 
-class TS_ImagePromptInjector:
+class TS_ImagePromptInjector(IO.ComfyNode):
     @classmethod
-    def INPUT_TYPES(cls):
-        return {
-            "required": {
-                "image": ("IMAGE",),
-                "prompt": ("STRING", {"default": "", "multiline": True}),
-            },
-            "hidden": {
-                "prompt_graph": "PROMPT",
-            },
-        }
-
-    RETURN_TYPES = ("IMAGE",)
-    RETURN_NAMES = ("image",)
-    FUNCTION = "execute"
-    CATEGORY = "TS/Image"
+    def define_schema(cls) -> IO.Schema:
+        return IO.Schema(
+            node_id="TS_ImagePromptInjector",
+            display_name="TS Image Prompt Injector",
+            category="TS/Image",
+            inputs=[
+                IO.Image.Input("image"),
+                IO.String.Input("prompt", default="", multiline=True),
+            ],
+            outputs=[IO.Image.Output(display_name="image")],
+            hidden=[IO.Hidden.prompt],
+        )
 
     @staticmethod
     def _log(message: str) -> None:
@@ -203,12 +201,13 @@ class TS_ImagePromptInjector:
         else:
             cls._log(f"Updated prompt text in {updated} node(s).")
 
-    def execute(self, image: torch.Tensor, prompt: str, prompt_graph=None):
-        self._log_tensor("Input", image)
+    @classmethod
+    def execute(cls, image: torch.Tensor, prompt: str) -> IO.NodeOutput:
+        cls._log_tensor("Input", image)
 
         if image is None:
-            self._log("Input is None, returning as-is.")
-            return (image,)
+            cls._log("Input is None, returning as-is.")
+            return IO.NodeOutput(image)
 
         if not isinstance(image, torch.Tensor):
             raise ValueError(f"Expected IMAGE tensor, got {type(image)}")
@@ -218,27 +217,24 @@ class TS_ImagePromptInjector:
                 f"Expected IMAGE with 3 or 4 dims [H,W,C] or [B,H,W,C], got {image.ndim}"
             )
 
-        prompt_text = self._normalize_prompt(prompt)
+        prompt_text = cls._normalize_prompt(prompt)
         if prompt_text == "":
-            self._log("Prompt is empty, metadata not updated.")
-            return (image,)
+            cls._log("Prompt is empty, metadata not updated.")
+            return IO.NodeOutput(image)
 
-        self._log(f"Injecting prompt length={len(prompt_text)}")
-        self._inject_prompt_into_graph(prompt_graph, prompt_text)
-        return (image,)
+        cls._log(f"Injecting prompt length={len(prompt_text)}")
+        prompt_graph = cls.hidden.prompt
+        cls._inject_prompt_into_graph(prompt_graph, prompt_text)
+        return IO.NodeOutput(image)
 
     @classmethod
-    def IS_CHANGED(
-        cls, image: torch.Tensor, prompt: str, prompt_graph=None
-    ) -> str:
+    def fingerprint_inputs(cls, image: torch.Tensor, prompt: str) -> str:
         prompt_text = cls._normalize_prompt(prompt)
         if isinstance(image, torch.Tensor):
             shape = tuple(image.shape)
         else:
             shape = "none"
         return f"ts_prompt_injector_{shape}_{len(prompt_text)}_{time.time_ns()}"
-
-
 
 
 NODE_CLASS_MAPPINGS = {"TS_ImagePromptInjector": TS_ImagePromptInjector}

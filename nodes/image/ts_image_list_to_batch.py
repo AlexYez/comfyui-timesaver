@@ -4,31 +4,29 @@ node_id: TS_ImageListToImageBatch
 """
 
 from typing import Optional
-import time
+import logging
 
 import torch
 import comfy.utils
-import logging
+
+from comfy_api.latest import IO
 
 
 logger = logging.getLogger("comfyui_timesaver.ts_image_list_to_batch")
 LOG_PREFIX = "[TS Image List to Image Batch]"
 
 
-class TS_ImageListToImageBatch:
+class TS_ImageListToImageBatch(IO.ComfyNode):
     @classmethod
-    def INPUT_TYPES(cls):
-        return {
-            "required": {
-                "images": ("IMAGE",),
-            }
-        }
-
-    INPUT_IS_LIST = True
-    RETURN_TYPES = ("IMAGE",)
-    RETURN_NAMES = ("image",)
-    FUNCTION = "execute"
-    CATEGORY = "TS/Image"
+    def define_schema(cls) -> IO.Schema:
+        return IO.Schema(
+            node_id="TS_ImageListToImageBatch",
+            display_name="TS Image List to Image Batch",
+            category="TS/Image",
+            is_input_list=True,
+            inputs=[IO.Image.Input("images")],
+            outputs=[IO.Image.Output(display_name="image")],
+        )
 
     @staticmethod
     def _log(message: str) -> None:
@@ -54,30 +52,31 @@ class TS_ImageListToImageBatch:
             raise ValueError(f"Expected IMAGE with 3 or 4 dims, got {image.ndim}")
         return image
 
-    def execute(self, images):
+    @classmethod
+    def execute(cls, images) -> IO.NodeOutput:
         if images is None:
-            self._log("Input list is None.")
-            return ()
+            cls._log("Input list is None.")
+            return IO.NodeOutput()
 
         if not isinstance(images, list):
             images = [images]
 
-        self._log(f"Input list length={len(images)}")
+        cls._log(f"Input list length={len(images)}")
 
         if len(images) == 0:
-            self._log("Input list is empty.")
-            return ()
+            cls._log("Input list is empty.")
+            return IO.NodeOutput()
 
         valid_images = [img for img in images if img is not None]
         if len(valid_images) == 0:
-            self._log("All input images are None.")
-            return ()
+            cls._log("All input images are None.")
+            return IO.NodeOutput()
 
         normalized = []
         for idx, img in enumerate(valid_images):
             if not isinstance(img, torch.Tensor):
                 raise ValueError(f"Image {idx} is not a torch.Tensor: {type(img)}")
-            norm = self._ensure_bhwc(img)
+            norm = cls._ensure_bhwc(img)
             normalized.append(norm)
 
         base = normalized[0]
@@ -86,34 +85,34 @@ class TS_ImageListToImageBatch:
         target_dtype = base.dtype
         target_device = base.device
 
-        self._log_tensor("Input[0]", base)
-        self._log(f"Target size={target_w}x{target_h} channels={target_c}")
+        cls._log_tensor("Input[0]", base)
+        cls._log(f"Target size={target_w}x{target_h} channels={target_c}")
 
         resized = []
         for idx, img in enumerate(normalized):
             if img.device != target_device:
-                self._log(f"Image {idx} moved to {target_device}")
+                cls._log(f"Image {idx} moved to {target_device}")
                 img = img.to(target_device)
             if img.dtype != target_dtype:
                 img = img.to(target_dtype)
             if img.shape[1] != target_h or img.shape[2] != target_w:
-                self._log(
+                cls._log(
                     f"Image {idx} resized from {img.shape[2]}x{img.shape[1]} to {target_w}x{target_h}"
                 )
                 img = comfy.utils.common_upscale(
                     img.movedim(-1, 1), target_w, target_h, "lanczos", "center"
                 ).movedim(1, -1)
             if img.shape[3] != target_c:
-                self._log(f"Image {idx} channels trimmed to {target_c}")
+                cls._log(f"Image {idx} channels trimmed to {target_c}")
                 img = img[..., :target_c]
             resized.append(img)
 
         batch = torch.cat(resized, dim=0)
-        self._log_tensor("Output", batch)
-        return (batch,)
+        cls._log_tensor("Output", batch)
+        return IO.NodeOutput(batch)
 
     @classmethod
-    def IS_CHANGED(cls, images) -> str:
+    def fingerprint_inputs(cls, images) -> str:
         if images is None:
             return "none"
         if not isinstance(images, list):
@@ -132,8 +131,6 @@ class TS_ImageListToImageBatch:
             return f"{shapes}_{sums}"
         except Exception:
             return f"{shapes}"
-
-
 
 
 NODE_CLASS_MAPPINGS = {"TS_ImageListToImageBatch": TS_ImageListToImageBatch}

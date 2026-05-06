@@ -1,27 +1,42 @@
-﻿# Third-party imports
 import numpy as np
 import torch
+
+from comfy_api.latest import IO
 
 from ...ts_dependency_manager import TSDependencyManager
 
 py360convert = TSDependencyManager.import_optional("py360convert")
 
-class TS_EquirectangularToCubemapFacesNode:
+
+class TS_EquirectangularToCubemapFacesNode(IO.ComfyNode):
     @classmethod
-    def INPUT_TYPES(cls):
-        return {
-            "required": {
-                "image": ("IMAGE",),
-                "cube_size": ("INT", {"default": 512, "min": 64, "max": 4096, "step": 64}), # Increased max
-            },
-        }
+    def define_schema(cls) -> IO.Schema:
+        return IO.Schema(
+            node_id="TS Equirectangular to Cube",
+            display_name="TS Equirectangular to Cube",
+            category="TS/Image",
+            inputs=[
+                IO.Image.Input("image"),
+                IO.Int.Input("cube_size", default=512, min=64, max=4096, step=64),
+            ],
+            outputs=[
+                IO.Image.Output(display_name="front"),
+                IO.Image.Output(display_name="right"),
+                IO.Image.Output(display_name="back"),
+                IO.Image.Output(display_name="left"),
+                IO.Image.Output(display_name="top"),
+                IO.Image.Output(display_name="bottom"),
+            ],
+        )
 
-    RETURN_TYPES = ("IMAGE", "IMAGE", "IMAGE", "IMAGE", "IMAGE", "IMAGE")
-    RETURN_NAMES = ("front", "right", "back", "left", "top", "bottom")
-    FUNCTION = "convert"
-    CATEGORY = "TS/Image"
+    @staticmethod
+    def image_to_tensor(img_array):
+        img_float32 = np.array(img_array).astype(np.float32) / 255.0
+        tensor = torch.from_numpy(img_float32).unsqueeze(0)
+        return tensor
 
-    def convert(self, image, cube_size):
+    @classmethod
+    def execute(cls, image, cube_size) -> IO.NodeOutput:
         if py360convert is None:
             raise RuntimeError(
                 "[TS Equirectangular to Cube] Missing dependency 'py360convert'. "
@@ -30,26 +45,20 @@ class TS_EquirectangularToCubemapFacesNode:
 
         image_np = image.squeeze(0).numpy()
         image_uint8 = (image_np * 255).astype(np.uint8)
-        # py360convert.e2c expects face_w as the width of each cube face
         cubemap_dict = py360convert.e2c(image_uint8, face_w=cube_size, cube_format='dict')
-        
-        front = self.image_to_tensor(cubemap_dict['F'])
-        right = self.image_to_tensor(cubemap_dict['R'])
-        back = self.image_to_tensor(cubemap_dict['B'])
-        left = self.image_to_tensor(cubemap_dict['L'])
-        top = self.image_to_tensor(cubemap_dict['U'])
-        bottom = self.image_to_tensor(cubemap_dict['D'])
-        return (front, right, back, left, top, bottom)
 
-    def image_to_tensor(self, img_array):
-        img_float32 = np.array(img_array).astype(np.float32) / 255.0
-        tensor = torch.from_numpy(img_float32).unsqueeze(0)
-        return tensor
+        front = cls.image_to_tensor(cubemap_dict['F'])
+        right = cls.image_to_tensor(cubemap_dict['R'])
+        back = cls.image_to_tensor(cubemap_dict['B'])
+        left = cls.image_to_tensor(cubemap_dict['L'])
+        top = cls.image_to_tensor(cubemap_dict['U'])
+        bottom = cls.image_to_tensor(cubemap_dict['D'])
+        return IO.NodeOutput(front, right, back, left, top, bottom)
+
 
 NODE_CLASS_MAPPINGS = {
-    "TS Equirectangular to Cube": TS_EquirectangularToCubemapFacesNode # Ключ оставлен оригинальным
+    "TS Equirectangular to Cube": TS_EquirectangularToCubemapFacesNode,
 }
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "TS Equirectangular to Cube": "TS Equirectangular to Cube"
+    "TS Equirectangular to Cube": "TS Equirectangular to Cube",
 }
-
