@@ -193,7 +193,7 @@ heavy-imports на module-level, утечки во фронтенде, дыры 
    часовых видео). Для Popen на 303 — обернуть в `try/finally` с `process.kill()`
    и `process.wait(timeout=10)`.
 
-8. **[High · S] God-file `ts_super_prompt.py` (1731 строка) объединяет AI prompt и Whisper voice-pipeline**
+8. **[High · S] [RESOLVED] God-file `ts_super_prompt.py` (1731 строка) объединяет AI prompt и Whisper voice-pipeline**
 
    Files: `nodes/llm/ts_super_prompt.py:1`
           `nodes/llm/ts_super_prompt.py:1731`
