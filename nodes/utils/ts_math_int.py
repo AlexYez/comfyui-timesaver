@@ -3,39 +3,42 @@
 node_id: TS_Math_Int
 """
 
+from comfy_api.latest import IO
+
 from .._shared import TS_Logger
 
 
-class TS_Math_Int:
-    def __init__(self): pass
+_OPERATIONS = [
+    "add (+)",
+    "subtract (-)",
+    "multiply (*)",
+    "divide (/)",
+    "floor_divide (//)",
+    "modulo (%)",
+    "power (**)",
+    "min",
+    "max",
+]
+
+
+class TS_Math_Int(IO.ComfyNode):
+    @classmethod
+    def define_schema(cls) -> IO.Schema:
+        return IO.Schema(
+            node_id="TS_Math_Int",
+            display_name="TS Math Int",
+            category="TS/Utils",
+            description="Integer math operations",
+            inputs=[
+                IO.Int.Input("a", default=0, min=-2147483648, max=2147483647, step=1),
+                IO.Int.Input("b", default=0, min=-2147483648, max=2147483647, step=1),
+                IO.Combo.Input("operation", options=_OPERATIONS),
+            ],
+            outputs=[IO.Int.Output(display_name="result")],
+        )
 
     @classmethod
-    def INPUT_TYPES(cls):
-        return {
-            "required": {
-                "a": ("INT", {"default": 0, "min": -2147483648, "max": 2147483647, "step": 1}),
-                "b": ("INT", {"default": 0, "min": -2147483648, "max": 2147483647, "step": 1}),
-                "operation": ([
-                    "add (+)",
-                    "subtract (-)",
-                    "multiply (*)",
-                    "divide (/)",
-                    "floor_divide (//)",
-                    "modulo (%)",
-                    "power (**)",
-                    "min",
-                    "max"
-                ],),
-            },
-        }
-
-    RETURN_TYPES = ("INT",)
-    RETURN_NAMES = ("result",)
-    FUNCTION = "calculate"
-    CATEGORY = "TS/Utils"
-    DESCRIPTION = "Integer math operations"
-
-    def calculate(self, a, b, operation):
+    def execute(cls, a: int, b: int, operation: str) -> IO.NodeOutput:
         try:
             if operation == "add (+)":
                 result = a + b
@@ -72,13 +75,10 @@ class TS_Math_Int:
                 result = 0
 
             TS_Logger.log("MathInt", f"{a} {operation} {b} = {result}")
-            return (int(result),)
+            return IO.NodeOutput(int(result))
         except Exception as e:
             TS_Logger.error("MathInt", f"Error: {str(e)}")
-            return (0,)
-
-# ==============================================================================
-# Node 5: TS Animation Preview
+            return IO.NodeOutput(0)
 
 
 NODE_CLASS_MAPPINGS = {"TS_Math_Int": TS_Math_Int}

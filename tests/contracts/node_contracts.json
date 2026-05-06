@@ -728,7 +728,7 @@
     }
   },
   "TS_FloatSlider": {
-    "api": "v1",
+    "api": "v3",
     "category": "TS/Utils",
     "class_name": "TS_FloatSlider",
     "display_name": "TS Float Slider",
@@ -973,7 +973,7 @@
     }
   },
   "TS_Int_Slider": {
-    "api": "v1",
+    "api": "v3",
     "category": "TS/Utils",
     "class_name": "TS_Int_Slider",
     "display_name": "TS Int Slider",
@@ -1126,7 +1126,7 @@
     }
   },
   "TS_Math_Int": {
-    "api": "v1",
+    "api": "v3",
     "category": "TS/Utils",
     "class_name": "TS_Math_Int",
     "display_name": "TS Math Int",
@@ -1499,7 +1499,7 @@
     }
   },
   "TS_Smart_Switch": {
-    "api": "v1",
+    "api": "v3",
     "category": "TS/Utils",
     "class_name": "TS_Smart_Switch",
     "display_name": "TS Smart Switch",
