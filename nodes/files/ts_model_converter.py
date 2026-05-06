@@ -3,63 +3,45 @@
 node_id: TS_ModelConverter
 """
 
-import gc
-import glob
-import json
 import logging
-import os
-import uuid
-from collections import OrderedDict
 
 import torch
-from tqdm import tqdm
 
-import folder_paths
 from comfy.model_patcher import ModelPatcher
-import comfy.model_patcher
-import comfy.sd
-from safetensors.torch import save_file, load_file
-from safetensors import safe_open
+from comfy_api.latest import IO
 
 logger = logging.getLogger("comfyui_timesaver.ts_model_converter")
 LOG_PREFIX = "[TS Model Converter]"
 
 
-class TS_ModelConverterNode:
+class TS_ModelConverterNode(IO.ComfyNode):
     @classmethod
-    def INPUT_TYPES(s):
-        return {
-            "required": {
-                "model": ("MODEL",),
-            }
-        }
+    def define_schema(cls) -> IO.Schema:
+        return IO.Schema(
+            node_id="TS_ModelConverter",
+            display_name="TS Model Converter",
+            category="TS/Files",
+            inputs=[IO.Model.Input("model")],
+            outputs=[IO.Model.Output(display_name="MODEL")],
+        )
 
-    RETURN_TYPES = ("MODEL",)
-    FUNCTION = "convert_to_fp8"
-    CATEGORY = "TS/Files"
-
-    def convert_to_fp8(self, model):
+    @classmethod
+    def execute(cls, model) -> IO.NodeOutput:
         try:
-            # Логика для разных типов объектов модели в ComfyUI
-            if hasattr(model, 'diffusion_model'):
+            if hasattr(model, "diffusion_model"):
                 model.diffusion_model = model.diffusion_model.to(torch.float8_e4m3fn)
             elif isinstance(model, ModelPatcher):
                 model.model = model.model.to(torch.float8_e4m3fn)
             else:
                 model = model.to(torch.float8_e4m3fn)
-            
-            # Чистим кэш после конвертации в памяти
+
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
-                
-            return (model,)
+
+            return IO.NodeOutput(model)
         except Exception as e:
             logger.error("%s FP8 Conversion Error: %s", LOG_PREFIX, e)
-            return (model,)
-
-# ==========================
-# Advanced Converter (On-Disk)
-# ==========================
+            return IO.NodeOutput(model)
 
 
 NODE_CLASS_MAPPINGS = {"TS_ModelConverter": TS_ModelConverterNode}
