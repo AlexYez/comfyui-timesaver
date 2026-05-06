@@ -162,6 +162,13 @@ _QWEN_ENGINE: TS_Qwen3_VL_V3 | None = None
 # certainly a misuse or DoS attempt — Qwen3.5 has a much smaller context budget
 # in practice and 8 KiB is well above any reasonable creative prompt.
 _ENHANCE_MAX_TEXT_LEN = 8192
+# Hard cap on /ts_voice_recognition/transcribe upload size. The compact voice
+# recorder in the UI produces ≤2 MB clips for typical 30-second prompts; 50 MB
+# is well above any reasonable speech upload and stops a hostile / runaway
+# client from filling RAM via repeated multipart streams. ComfyUI ships
+# without auth, so this guard is the only thing standing between LAN clients
+# and unbounded buffering.
+_VOICE_UPLOAD_MAX_BYTES = 50 * 1024 * 1024
 
 
 def _log_info(message: str) -> None:
@@ -655,10 +662,14 @@ def _read_audio(filepath: str):
     ]
 
     try:
-        result = subprocess.run(command, capture_output=True, check=True)
+        # Voice clips are short (≤10 min after VAD); 5 min is a generous cap
+        # for slow disks and prevents a hung ffmpeg from blocking the worker.
+        result = subprocess.run(command, capture_output=True, check=True, timeout=300)
         return np.frombuffer(result.stdout, dtype=np.float32).copy()
     except FileNotFoundError:
         pass
+    except subprocess.TimeoutExpired:
+        _voice_log_warning("ffmpeg timed out decoding voice clip; falling back to whisper.load_audio.")
     except subprocess.CalledProcessError as exc:
         stderr = exc.stderr.decode("utf-8", errors="replace")
         _voice_log_warning(f"ffmpeg failed to decode audio: {stderr}")
@@ -989,10 +1000,17 @@ async def _read_audio_upload(request: web.Request) -> tuple[dict[str, Any] | Non
             return upload, fields
         if part.name == "audio":
             chunks = []
+            total_bytes = 0
             while True:
                 chunk = await part.read_chunk(size=1024 * 1024)
                 if not chunk:
                     break
+                total_bytes += len(chunk)
+                if total_bytes > _VOICE_UPLOAD_MAX_BYTES:
+                    raise web.HTTPRequestEntityTooLarge(
+                        max_size=_VOICE_UPLOAD_MAX_BYTES,
+                        actual_size=total_bytes,
+                    )
                 chunks.append(chunk)
             upload = {"filename": part.filename, "data": b"".join(chunks)}
             continue

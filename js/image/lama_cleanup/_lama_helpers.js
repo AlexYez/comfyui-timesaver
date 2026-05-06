@@ -1250,6 +1250,19 @@ export function setupLamaCleanup(node) {
         document.removeEventListener("paste", onDocumentPaste);
     };
 
+    // Wire cleanup into LiteGraph's onRemoved so polling intervals and the
+    // document-level paste listener don't survive when the node is deleted
+    // from the graph.
+    const prevOnRemoved = node.onRemoved;
+    node.onRemoved = function onRemovedWithLamaCleanup() {
+        try {
+            node._tsLamaCleanupCleanup?.();
+        } catch (err) {
+            console.warn("[TS LamaCleanup] cleanup on removal failed", err);
+        }
+        return prevOnRemoved?.apply(this, arguments);
+    };
+
     syncDomSize();
     updateMeta();
     requestRedraw();

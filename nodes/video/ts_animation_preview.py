@@ -336,7 +336,10 @@ class TS_Animation_Preview(IO.ComfyNode):
             cmd += ["-t", f"{duration_seconds:.6f}"]
         cmd.append(output_path)
 
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        # Mux is `-c:v copy` + AAC re-encode of typically ≤30 s preview audio.
+        # 5 min is far above the realistic worst case; a longer hang means
+        # ffmpeg got stuck on a corrupt input.
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
         if result.returncode != 0:
             error_msg = (result.stderr or result.stdout or "").strip()
             raise RuntimeError(f"FFmpeg mux failed. {error_msg}")
