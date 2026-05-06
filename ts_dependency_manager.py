@@ -4,15 +4,14 @@ import logging
 import re
 from typing import Any
 
-try:
-    import torch
-except Exception:  # pragma: no cover
-    torch = None
-
 
 class TSDependencyManager:
-    """
-    Centralized dependency/runtime guard for TS nodes.
+    """Centralized dependency / runtime guard for TS nodes.
+
+    Since release 8.9 the pack is V3-only; the legacy V1 fallback that
+    invented typed default outputs from `RETURN_TYPES` was removed in
+    favour of a single `_wrap_execute_classmethod` path that re-raises
+    a normalised `RuntimeError`.
     """
 
     _IMPORT_CACHE: dict[str, Any] = {}
@@ -53,91 +52,13 @@ class TSDependencyManager:
         )
 
     @classmethod
-    def fallback_value_for_type(cls, output_type: Any, error_message: str) -> Any:
-        if not isinstance(output_type, str):
-            return None
-
-        output_type = output_type.upper()
-        if output_type == "STRING":
-            return error_message
-        if output_type == "INT":
-            return 0
-        if output_type == "FLOAT":
-            return 0.0
-        if output_type == "BOOLEAN":
-            return False
-        if output_type == "IMAGE":
-            if torch is not None:
-                return torch.zeros((1, 64, 64, 3), dtype=torch.float32)
-            return None
-        if output_type == "MASK":
-            if torch is not None:
-                return torch.zeros((1, 64, 64), dtype=torch.float32)
-            return None
-        if output_type == "LATENT":
-            if torch is not None:
-                return {"samples": torch.zeros((1, 4, 8, 8), dtype=torch.float32)}
-            return {"samples": None}
-        if output_type == "AUDIO":
-            if torch is not None:
-                return {"waveform": torch.zeros((1, 1, 1), dtype=torch.float32), "sample_rate": 44100}
-            return {"waveform": None, "sample_rate": 44100}
-        return None
-
-    @classmethod
-    def build_v1_fallback_output(cls, node_cls: type, error_message: str) -> tuple[Any, ...]:
-        return_types = getattr(node_cls, "RETURN_TYPES", ())
-        if not isinstance(return_types, (tuple, list)):
-            return ()
-        if len(return_types) == 0:
-            return ()
-        return tuple(cls.fallback_value_for_type(output_type, error_message) for output_type in return_types)
-
-    @classmethod
-    def _wrap_plain_method(cls, node_cls: type, method_name: str, logger: logging.Logger, node_name: str) -> None:
-        original = getattr(node_cls, method_name, None)
-        if original is None or not callable(original):
-            return
-        if getattr(original, "_ts_runtime_guard_wrapped", False):
-            return
-
-        def wrapped(self, *args, **kwargs):
-            try:
-                return original(self, *args, **kwargs)
-            except Exception as exc:
-                message = cls.build_error_message(node_name, method_name, exc)
-                logger.exception(message)
-                return cls.build_v1_fallback_output(node_cls, message)
-
-        wrapped._ts_runtime_guard_wrapped = True
-        setattr(node_cls, method_name, wrapped)
-
-    @classmethod
-    def _wrap_class_method(cls, node_cls: type, method_name: str, logger: logging.Logger, node_name: str) -> None:
-        static_attr = inspect.getattr_static(node_cls, method_name, None)
-        if not isinstance(static_attr, classmethod):
-            return
-
-        original = static_attr.__func__
-        if getattr(original, "_ts_runtime_guard_wrapped", False):
-            return
-
-        def wrapped(inner_cls, *args, **kwargs):
-            try:
-                return original(inner_cls, *args, **kwargs)
-            except Exception as exc:
-                message = cls.build_error_message(node_name, method_name, exc)
-                logger.exception(message)
-                return cls.build_v1_fallback_output(node_cls, message)
-
-        wrapped._ts_runtime_guard_wrapped = True
-        setattr(node_cls, method_name, classmethod(wrapped))
-
-    @classmethod
     def _wrap_execute_classmethod(cls, node_cls: type, logger: logging.Logger, node_name: str) -> None:
-        """
-        Best-effort guard for V3-style execute classmethod.
-        For V3 nodes we re-raise as RuntimeError with normalized message.
+        """V3 runtime guard: catch every exception out of `execute()` and
+        re-raise it as a `RuntimeError` whose message has the TS prefix and
+        an actionable hint when a dependency is missing. ComfyUI's own
+        prompt-execution code surfaces the message directly to the workflow
+        UI, so the user sees the cleaned-up text instead of a raw stack
+        trace from inside an optional dependency.
         """
         method_name = "execute"
         static_attr = inspect.getattr_static(node_cls, method_name, None)
@@ -161,14 +82,4 @@ class TSDependencyManager:
 
     @classmethod
     def wrap_node_runtime(cls, node_name: str, node_cls: type, logger: logging.Logger) -> None:
-        function_name = getattr(node_cls, "FUNCTION", None)
-        if isinstance(function_name, str) and function_name:
-            static_attr = inspect.getattr_static(node_cls, function_name, None)
-            if isinstance(static_attr, classmethod):
-                cls._wrap_class_method(node_cls, function_name, logger, node_name)
-            else:
-                cls._wrap_plain_method(node_cls, function_name, logger, node_name)
-            return
-
-        # V3 fallback: no FUNCTION attribute but classmethod execute exists.
         cls._wrap_execute_classmethod(node_cls, logger, node_name)

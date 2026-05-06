@@ -207,14 +207,14 @@ def _register_module_nodes(module_name: str, module) -> int:
     if not hasattr(module, "NODE_CLASS_MAPPINGS"):
         return 0
 
-    mappings = getattr(module, "NODE_CLASS_MAPPINGS")
+    mappings = module.NODE_CLASS_MAPPINGS
     if not isinstance(mappings, dict) or not mappings:
         return 0
 
     NODE_CLASS_MAPPINGS.update(mappings)
 
     if hasattr(module, "NODE_DISPLAY_NAME_MAPPINGS"):
-        display_names = getattr(module, "NODE_DISPLAY_NAME_MAPPINGS")
+        display_names = module.NODE_DISPLAY_NAME_MAPPINGS
         if isinstance(display_names, dict):
             NODE_DISPLAY_NAME_MAPPINGS.update(display_names)
 

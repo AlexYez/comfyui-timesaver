@@ -10,7 +10,18 @@ import os
 import folder_paths
 from comfy_api.latest import IO
 
-from ._audio_helpers import *  # noqa: F401,F403  re-export public helpers via __all__
+from ._audio_helpers import (
+    _decode_audio_segment,
+    _empty_audio,
+    _get_uploadable_media_options,
+    _log_info,
+    _log_warning,
+    _normalize_path,
+    _normalize_selected_path,
+    _probe_media,
+    _sanitize_crop,
+    _seconds_to_hms,
+)
 
 
 class TS_AudioLoader(IO.ComfyNode):

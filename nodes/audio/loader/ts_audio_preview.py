@@ -8,7 +8,12 @@ from typing import Any
 
 from comfy_api.latest import IO
 
-from ._audio_helpers import *  # noqa: F401,F403  re-export public helpers via __all__
+from ._audio_helpers import (
+    _build_generated_audio_preview_payload,
+    _coerce_audio_tensor,
+    _hash_audio_tensor,
+    _log_warning,
+)
 
 
 class TS_AudioPreview(IO.ComfyNode):

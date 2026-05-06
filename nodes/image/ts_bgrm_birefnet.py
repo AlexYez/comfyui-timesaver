@@ -287,8 +287,15 @@ def pil2tensor(image):
     return torch.from_numpy(np.array(image).astype(np.float32) / 255.0).unsqueeze(0)
 
 
-def handle_model_error(message):
+def handle_model_error(message, cause: Exception | None = None):
+    """Log and raise a normalized RuntimeError. When called from inside an
+    `except` block, pass the caught exception via ``cause`` so the original
+    traceback is chained (`raise ... from cause`) — without it, debugging a
+    BiRefNet failure means staring at a generic message with no origin.
+    """
     logger.error("%s %s", _LOG_PREFIX, message)
+    if cause is not None:
+        raise RuntimeError(message) from cause
     raise RuntimeError(message)
 
 def refine_foreground(image_bchw, masks_b1hw):
@@ -330,13 +337,28 @@ def refine_foreground(image_bchw, masks_b1hw):
 
     return torch.from_numpy(np.stack(refined_fg))
 
+def _resolve_birefnet_cache_dir() -> str:
+    """Pick the first registered `birefnet` folder, falling back to the
+    default `models/BiRefNet/` only when nothing else is registered. This
+    lets `extra_model_paths.yaml` redirect BiRefNet weights to a shared
+    network mount the same way it works for any other ComfyUI model type.
+    """
+    try:
+        registered = folder_paths.get_folder_paths("birefnet")
+    except Exception:
+        registered = []
+    if registered:
+        return registered[0]
+    return os.path.join(folder_paths.models_dir, "BiRefNet")
+
+
 class BiRefNetModel:
     def __init__(self):
         self.model = None
         self.current_model_version = None
         self.current_device = None
         self.current_dtype = None
-        self.base_cache_dir = os.path.join(folder_paths.models_dir, "BiRefNet")
+        self.base_cache_dir = _resolve_birefnet_cache_dir()
 
     def get_cache_dir(self, model_name):
         return self.base_cache_dir
@@ -470,7 +492,7 @@ class BiRefNetModel:
                 _update_progress(progress_bar, end_step)
 
             except Exception as e:
-                handle_model_error(f"Error loading BiRefNet model: {str(e)}")
+                handle_model_error(f"Error loading BiRefNet model: {str(e)}", cause=e)
 
     def _process_mask_chunk(self, image_chunk, process_res, target_device, target_dtype):
         if image_chunk.ndim != 4 or image_chunk.shape[-1] < 3:
@@ -544,7 +566,7 @@ class BiRefNetModel:
             return torch.cat(masks, dim=0)
 
         except Exception as e:
-            handle_model_error(f"Error in BiRefNet processing: {str(e)}")
+            handle_model_error(f"Error in BiRefNet processing: {str(e)}", cause=e)
 
 class TS_BGRM_BiRefNet(IO.ComfyNode):
     _model = None
@@ -707,7 +729,7 @@ class TS_BGRM_BiRefNet(IO.ComfyNode):
             _update_progress(pbar, 100)
             return IO.NodeOutput(image_output, mask_output, mask_image_output)
         except Exception as e:
-            handle_model_error(f"Error in image processing: {str(e)}")
+            handle_model_error(f"Error in image processing: {str(e)}", cause=e)
 
 # Node Mapping
 NODE_CLASS_MAPPINGS = {

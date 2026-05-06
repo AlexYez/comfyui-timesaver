@@ -166,9 +166,14 @@ class TS_Video_Upscale_With_Model(IO.ComfyNode):
             frame = images[i:i + 1]
             in_img = frame.movedim(-1, -3).to(device)
 
+            # Bind `current_model` via the default-arg trick so the closure
+            # captures *this iteration's* model reference, not the loop
+            # variable. tiled_scale is synchronous today, but a future async
+            # variant would otherwise see a `current_model` that was already
+            # moved back to CPU and del'd at the end of the iteration.
             s = comfy.utils.tiled_scale(
                 in_img,
-                lambda a: current_model(a),
+                lambda a, m=current_model: m(a),
                 tile_x=96,
                 tile_y=96,
                 overlap=8,
