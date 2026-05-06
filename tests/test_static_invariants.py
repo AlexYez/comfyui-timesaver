@@ -105,8 +105,8 @@ def test_no_torch_in_requirements():
 KNOWN_CUDA_HARDCODES: frozenset[str] = frozenset(
     {
         "nodes/image/lama_cleanup/_lama_helpers.py:424",
-        "nodes/audio/ts_whisper.py:578",
-        "nodes/audio/ts_whisper.py:582",
+        "nodes/audio/ts_whisper.py:590",
+        "nodes/audio/ts_whisper.py:594",
     }
 )
 
