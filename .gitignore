@@ -9,7 +9,9 @@
 /.codex_tmp/
 /.claude/
 pytest-cache-files-*/
-tests/.cache/
+
+# Test suite (kept locally for development; not shipped to public repo)
+/tests/
 
 # Internal engineering docs and helper scripts (not for distribution)
 AGENTS.md
