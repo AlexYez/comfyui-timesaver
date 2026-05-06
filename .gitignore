@@ -9,19 +9,3 @@
 /.codex_tmp/
 /.claude/
 pytest-cache-files-*/
-
-# Test suite (kept locally for development; not shipped to public repo)
-/tests/
-
-# Dev tools (kept locally; not needed by end users)
-/tools/
-
-# Internal engineering docs and helper scripts (not for distribution)
-AGENTS.md
-**/AGENTS.md
-CLAUDE.md
-TECH_DEBT_AUDIT.md
-doc/TS_DEPENDENCY_POLICY.md
-doc/migration.md
-doc/generate_readme_ru.py
-doc/img/
