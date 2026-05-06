@@ -15,8 +15,19 @@ import folder_paths
 import comfy.model_management as mm
 from huggingface_hub import snapshot_download
 
+from comfy_api.latest import IO
 
-class TS_Qwen3_VL_V3:
+
+class TS_Qwen3_VL_V3(IO.ComfyNode):
+    _instance = None
+
+    @classmethod
+    def _get_instance(cls):
+        if cls._instance is None:
+            cls._instance = cls.__new__(cls)
+            cls._instance.__init__()
+        return cls._instance
+
     _MODEL_LIST = [
         "hfmaster/Qwen3-VL-2B",
         "hfmaster/Qwen3-VL-4B",
@@ -51,7 +62,7 @@ class TS_Qwen3_VL_V3:
         self._log_versions()
 
     @classmethod
-    def INPUT_TYPES(cls):
+    def define_schema(cls) -> IO.Schema:
         presets, preset_keys = cls._load_presets()
         preset_options = preset_keys + ["Your instruction"]
 
@@ -60,95 +71,36 @@ class TS_Qwen3_VL_V3:
             precision_options.extend(["int8", "int4"])
 
         attention_options = ["auto", "flash_attention_2", "sdpa", "eager"]
+        default_preset = preset_options[0] if preset_options else "Your instruction"
 
-        return {
-            "required": {
-                "model_name": (cls._MODEL_LIST, {
-                    "default": "hfmaster/Qwen3-VL-2B",
-                    "tooltip": "Выберите модель из списка. Для сторонних моделей выберите 'Custom (manual)'."
-                }),
-                "custom_model_id": ("STRING", {
-                    "multiline": False, 
-                    "default": "",
-                    "tooltip": "ID репозитория на HuggingFace (например, 'Qwen/Qwen2-VL-7B-Instruct') или полный локальный путь."
-                }),
-                "hf_token": ("STRING", {
-                    "multiline": False, 
-                    "default": "",
-                    "tooltip": "Ваш токен HuggingFace (Write/Read) для скачивания моделей. Оставьте пустым для публичных моделей."
-                }),
-                "system_preset": (preset_options, {
-                    "default": preset_options[0] if preset_options else "Your instruction",
-                    "tooltip": "Предустановка системного промпта. Влияет на поведение и стиль ответов модели."
-                }),
-                "prompt": ("STRING", {
-                    "multiline": True, 
-                    "default": "",
-                    "tooltip": "Ваш запрос (промпт) к модели."
-                }),
-                "seed": ("INT", {
-                    "default": 42, 
-                    "min": 0, 
-                    "max": 0xffffffffffffffff,
-                    "tooltip": "Сид для воспроизводимости результатов генерации."
-                }),
-                "max_new_tokens": ("INT", {
-                    "default": 512, 
-                    "min": 64, 
-                    "max": 8192, 
-                    "step": 64,
-                    "tooltip": "Максимальное количество токенов в ответе (длина текста)."
-                }),
-                "precision": (precision_options, {
-                    "default": "auto",
-                    "tooltip": "Точность весов. 'auto' выбирает оптимальную. int4/int8 требуют установленного bitsandbytes."
-                }),
-                "attention_mode": (attention_options, {
-                    "default": "auto",
-                    "tooltip": "Тип внимания. 'flash_attention_2' быстрее и экономичнее, но требует совместимой GPU."
-                }),
-                "offline_mode": ("BOOLEAN", {
-                    "default": False,
-                    "tooltip": "Запретить скачивание. Использовать только файлы, уже находящиеся в папке models/LLM."
-                }),
-                "unload_after_generation": ("BOOLEAN", {
-                    "default": False,
-                    "tooltip": "Выгружать модель из памяти сразу после генерации. Экономит VRAM, но замедляет повторные запуски."
-                }),
-                "enable": ("BOOLEAN", {
-                    "default": True,
-                    "tooltip": "Включить обработку. Если выключено - просто передает изображения на выход без изменений."
-                }),
-                "max_image_size": ("INT", {
-                    "default": 1024, 
-                    "min": 64, 
-                    "max": 4096, 
-                    "step": 32,
-                    "tooltip": "Максимальный размер стороны изображения. Большие разрешения требуют больше VRAM."
-                }),
-                "video_max_frames": ("INT", {
-                    "default": 16, 
-                    "min": 4, 
-                    "max": 256, 
-                    "step": 4,
-                    "tooltip": "Сколько кадров из видео передавать модели. Больше кадров = лучше понимание контекста, но больше расход памяти."
-                }),
-            },
-            "optional": {
-                "image": ("IMAGE", {"tooltip": "Входное изображение."}),
-                "video": ("IMAGE", {"tooltip": "Входной видеопоток (батч изображений)."}),
-                "custom_system_prompt": ("STRING", {
-                    "multiline": True, 
-                    "forceInput": True,
-                    "tooltip": "Ваш системный промпт. Работает, если в 'system_preset' выбрано 'Your instruction'."
-                }),
-            }
-        }
-
-    RETURN_TYPES = ("STRING", "IMAGE")
-    RETURN_NAMES = ("generated_text", "processed_image")
-    FUNCTION = "process"
-    CATEGORY = "TS/LLM"
+        return IO.Schema(
+            node_id="TS_Qwen3_VL_V3",
+            display_name="TS Qwen 3 VL V3",
+            category="TS/LLM",
+            inputs=[
+                IO.Combo.Input("model_name", options=cls._MODEL_LIST, default="hfmaster/Qwen3-VL-2B", tooltip="Выберите модель из списка. Для сторонних моделей выберите 'Custom (manual)'."),
+                IO.String.Input("custom_model_id", default="", multiline=False, tooltip="ID репозитория на HuggingFace (например, 'Qwen/Qwen2-VL-7B-Instruct') или полный локальный путь."),
+                IO.String.Input("hf_token", default="", multiline=False, tooltip="Ваш токен HuggingFace (Write/Read) для скачивания моделей. Оставьте пустым для публичных моделей."),
+                IO.Combo.Input("system_preset", options=preset_options, default=default_preset, tooltip="Предустановка системного промпта. Влияет на поведение и стиль ответов модели."),
+                IO.String.Input("prompt", default="", multiline=True, tooltip="Ваш запрос (промпт) к модели."),
+                IO.Int.Input("seed", default=42, min=0, max=0xffffffffffffffff, tooltip="Сид для воспроизводимости результатов генерации."),
+                IO.Int.Input("max_new_tokens", default=512, min=64, max=8192, step=64, tooltip="Максимальное количество токенов в ответе (длина текста)."),
+                IO.Combo.Input("precision", options=precision_options, default="auto", tooltip="Точность весов. 'auto' выбирает оптимальную. int4/int8 требуют установленного bitsandbytes."),
+                IO.Combo.Input("attention_mode", options=attention_options, default="auto", tooltip="Тип внимания. 'flash_attention_2' быстрее и экономичнее, но требует совместимой GPU."),
+                IO.Boolean.Input("offline_mode", default=False, tooltip="Запретить скачивание. Использовать только файлы, уже находящиеся в папке models/LLM."),
+                IO.Boolean.Input("unload_after_generation", default=False, tooltip="Выгружать модель из памяти сразу после генерации. Экономит VRAM, но замедляет повторные запуски."),
+                IO.Boolean.Input("enable", default=True, tooltip="Включить обработку. Если выключено - просто передает изображения на выход без изменений."),
+                IO.Int.Input("max_image_size", default=1024, min=64, max=4096, step=32, tooltip="Максимальный размер стороны изображения. Большие разрешения требуют больше VRAM."),
+                IO.Int.Input("video_max_frames", default=16, min=4, max=256, step=4, tooltip="Сколько кадров из видео передавать модели. Больше кадров = лучше понимание контекста, но больше расход памяти."),
+                IO.Image.Input("image", optional=True, tooltip="Входное изображение."),
+                IO.Image.Input("video", optional=True, tooltip="Входной видеопоток (батч изображений)."),
+                IO.String.Input("custom_system_prompt", multiline=True, force_input=True, optional=True, tooltip="Ваш системный промпт. Работает, если в 'system_preset' выбрано 'Your instruction'."),
+            ],
+            outputs=[
+                IO.String.Output(display_name="generated_text"),
+                IO.Image.Output(display_name="processed_image"),
+            ],
+        )
 
     @classmethod
     def _presets_path(cls):
@@ -159,10 +111,52 @@ class TS_Qwen3_VL_V3:
         return legacy
 
     @classmethod
-    def IS_CHANGED(cls, **kwargs):
+    def fingerprint_inputs(cls, **kwargs):
         presets_path = cls._presets_path()
         mtime = os.path.getmtime(presets_path) if os.path.exists(presets_path) else None
         return (mtime,)
+
+    @classmethod
+    def execute(
+        cls,
+        model_name,
+        custom_model_id,
+        hf_token,
+        system_preset,
+        prompt,
+        seed,
+        max_new_tokens,
+        precision,
+        attention_mode,
+        offline_mode,
+        unload_after_generation,
+        enable,
+        max_image_size,
+        video_max_frames,
+        image=None,
+        video=None,
+        custom_system_prompt=None,
+    ) -> IO.NodeOutput:
+        result = cls._get_instance().process(
+            model_name=model_name,
+            system_preset=system_preset,
+            prompt=prompt,
+            seed=seed,
+            max_new_tokens=max_new_tokens,
+            precision=precision,
+            attention_mode=attention_mode,
+            offline_mode=offline_mode,
+            unload_after_generation=unload_after_generation,
+            enable=enable,
+            hf_token=hf_token,
+            max_image_size=max_image_size,
+            video_max_frames=video_max_frames,
+            custom_model_id=custom_model_id,
+            image=image,
+            video=video,
+            custom_system_prompt=custom_system_prompt,
+        )
+        return IO.NodeOutput(*result)
 
     def process(
         self,
