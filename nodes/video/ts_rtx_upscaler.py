@@ -5,6 +5,8 @@ import comfy.model_management as model_management
 import comfy.utils
 import torch
 
+from comfy_api.latest import IO
+
 try:
     import nvvfx
     TS_NVVFX_IMPORT_ERROR = None
@@ -21,59 +23,48 @@ class TS_UpscaleType(str, Enum):
     TARGET_DIMENSIONS = "target dimensions"
 
 
-class TS_RTX_Upscaler:
-    RETURN_TYPES = ("IMAGE",)
-    RETURN_NAMES = ("upscaled_images",)
-    FUNCTION = "upscale"
-    CATEGORY = "TS/Video"
-
+class TS_RTX_Upscaler(IO.ComfyNode):
     MAX_PIXELS_PER_BATCH = 1024 * 1024 * 16
 
     @classmethod
-    def INPUT_TYPES(cls):
-        return {
-            "required": {
-                "images": ("IMAGE",),
-                "resize_type": (
-                    [TS_UpscaleType.SCALE_BY.value, TS_UpscaleType.TARGET_DIMENSIONS.value],
-                    {"default": TS_UpscaleType.SCALE_BY.value},
+    def define_schema(cls) -> IO.Schema:
+        return IO.Schema(
+            node_id="TS_RTX_Upscaler",
+            display_name="TS RTX Upscaler",
+            category="TS/Video",
+            inputs=[
+                IO.Image.Input("images"),
+                IO.Combo.Input(
+                    "resize_type",
+                    options=[TS_UpscaleType.SCALE_BY.value, TS_UpscaleType.TARGET_DIMENSIONS.value],
+                    default=TS_UpscaleType.SCALE_BY.value,
                 ),
-                "scale": (
-                    "FLOAT",
-                    {"default": 2.0, "min": 1.0, "max": 4.0, "step": 0.01},
-                ),
-                "width": (
-                    "INT",
-                    {"default": 1920, "min": 64, "max": 8192, "step": 8},
-                ),
-                "height": (
-                    "INT",
-                    {"default": 1080, "min": 64, "max": 8192, "step": 8},
-                ),
-                "quality": (
-                    ["LOW", "MEDIUM", "HIGH", "ULTRA"],
-                    {"default": "ULTRA"},
-                ),
-            }
-        }
+                IO.Float.Input("scale", default=2.0, min=1.0, max=4.0, step=0.01),
+                IO.Int.Input("width", default=1920, min=64, max=8192, step=8),
+                IO.Int.Input("height", default=1080, min=64, max=8192, step=8),
+                IO.Combo.Input("quality", options=["LOW", "MEDIUM", "HIGH", "ULTRA"], default="ULTRA"),
+            ],
+            outputs=[IO.Image.Output(display_name="upscaled_images")],
+        )
 
     @classmethod
-    def VALIDATE_INPUTS(cls, **_):
+    def validate_inputs(cls, **_):
         return True
 
-    def upscale(self, images, resize_type, scale, width, height, quality):
-        self._ensure_runtime_ready()
-        self._validate_images(images)
+    @classmethod
+    def execute(cls, images, resize_type, scale, width, height, quality) -> IO.NodeOutput:
+        cls._ensure_runtime_ready()
+        cls._validate_images(images)
 
-        output_width, output_height = self._resolve_output_size(
+        output_width, output_height = cls._resolve_output_size(
             images=images,
             resize_type=resize_type,
             scale=scale,
             width=width,
             height=height,
         )
-        quality_level = self._resolve_quality_level(quality)
-        batch_size = self._resolve_batch_size(output_width, output_height)
+        quality_level = cls._resolve_quality_level(quality)
+        batch_size = cls._resolve_batch_size(output_width, output_height)
 
         logger.info(
             "%s input=%s target=%dx%d quality=%s batch_size=%d",
@@ -85,8 +76,8 @@ class TS_RTX_Upscaler:
             batch_size,
         )
 
-        rgb_images, alpha_images = self._split_alpha(images)
-        upscaled_rgb = self._run_nvvfx_upscale(
+        rgb_images, alpha_images = cls._split_alpha(images)
+        upscaled_rgb = cls._run_nvvfx_upscale(
             images_rgb=rgb_images,
             output_width=output_width,
             output_height=output_height,
@@ -95,7 +86,7 @@ class TS_RTX_Upscaler:
         )
 
         if alpha_images is not None:
-            upscaled_alpha = self._resize_alpha(alpha_images, output_width, output_height)
+            upscaled_alpha = cls._resize_alpha(alpha_images, output_width, output_height)
             final_images = torch.cat([upscaled_rgb, upscaled_alpha], dim=-1)
         else:
             final_images = upscaled_rgb
@@ -103,9 +94,10 @@ class TS_RTX_Upscaler:
         final_images = final_images.clamp(0.0, 1.0).to(torch.float32).cpu()
 
         logger.info("%s output=%s", LOG_PREFIX, tuple(final_images.shape))
-        return (final_images,)
+        return IO.NodeOutput(final_images)
 
-    def _ensure_runtime_ready(self):
+    @staticmethod
+    def _ensure_runtime_ready():
         if nvvfx is None:
             message = (
                 "[TS RTX Upscaler] nvidia-vfx is not installed. Install it with "
@@ -122,7 +114,8 @@ class TS_RTX_Upscaler:
         if "cuda" not in str(device).lower():
             raise RuntimeError(f"[TS RTX Upscaler] Expected CUDA device, got: {device}")
 
-    def _validate_images(self, images):
+    @staticmethod
+    def _validate_images(images):
         if not isinstance(images, torch.Tensor):
             raise TypeError("[TS RTX Upscaler] `images` must be a torch.Tensor.")
         if images.ndim != 4:
@@ -136,7 +129,8 @@ class TS_RTX_Upscaler:
                 f"[TS RTX Upscaler] Supported channels are 3 or 4, got: {images.shape[-1]}"
             )
 
-    def _resolve_output_size(self, images, resize_type, scale, width, height):
+    @classmethod
+    def _resolve_output_size(cls, images, resize_type, scale, width, height):
         _, input_h, input_w, _ = images.shape
 
         if resize_type == TS_UpscaleType.SCALE_BY.value:
@@ -148,17 +142,19 @@ class TS_RTX_Upscaler:
         else:
             raise ValueError(f"[TS RTX Upscaler] Unsupported resize_type: {resize_type}")
 
-        out_w = self._align_to_8(out_w)
-        out_h = self._align_to_8(out_h)
+        out_w = cls._align_to_8(out_w)
+        out_h = cls._align_to_8(out_h)
         return out_w, out_h
 
-    def _resolve_batch_size(self, output_width, output_height):
+    @classmethod
+    def _resolve_batch_size(cls, output_width, output_height):
         out_pixels = output_width * output_height
         if out_pixels <= 0:
             raise ValueError("[TS RTX Upscaler] Invalid output dimensions.")
-        return max(1, self.MAX_PIXELS_PER_BATCH // out_pixels)
+        return max(1, cls.MAX_PIXELS_PER_BATCH // out_pixels)
 
-    def _resolve_quality_level(self, quality):
+    @staticmethod
+    def _resolve_quality_level(quality):
         effects = getattr(nvvfx, "effects", None)
         quality_level = getattr(effects, "QualityLevel", None) if effects is not None else None
         if quality_level is None:
@@ -187,7 +183,8 @@ class TS_RTX_Upscaler:
 
         raise RuntimeError("[TS RTX Upscaler] No supported quality levels found in nvidia-vfx.")
 
-    def _run_nvvfx_upscale(self, images_rgb, output_width, output_height, quality_level, batch_size):
+    @classmethod
+    def _run_nvvfx_upscale(cls, images_rgb, output_width, output_height, quality_level, batch_size):
         device = model_management.get_torch_device()
         upscaled_batches = []
 
@@ -205,8 +202,8 @@ class TS_RTX_Upscaler:
                     frame_chw = batch_cuda[frame_idx]
                     dlpack_output = super_res.run(frame_chw).image
                     output = torch.from_dlpack(dlpack_output).clone()
-                    output_hwc = self._to_hwc(output)
-                    batch_outputs.append(self._normalize_output(output_hwc))
+                    output_hwc = cls._to_hwc(output)
+                    batch_outputs.append(cls._normalize_output(output_hwc))
 
                 upscaled_batches.append(torch.stack(batch_outputs, dim=0).cpu())
 
@@ -215,19 +212,22 @@ class TS_RTX_Upscaler:
 
         return torch.cat(upscaled_batches, dim=0)
 
-    def _split_alpha(self, images):
+    @staticmethod
+    def _split_alpha(images):
         if images.shape[-1] == 4:
             return images[..., :3], images[..., 3:4]
         return images, None
 
-    def _resize_alpha(self, alpha_images, output_width, output_height):
+    @staticmethod
+    def _resize_alpha(alpha_images, output_width, output_height):
         alpha_nchw = alpha_images.permute(0, 3, 1, 2).contiguous()
         resized_alpha = comfy.utils.common_upscale(
             alpha_nchw, output_width, output_height, "bilinear", crop="disabled"
         )
         return resized_alpha.permute(0, 2, 3, 1).contiguous()
 
-    def _to_hwc(self, frame):
+    @staticmethod
+    def _to_hwc(frame):
         if frame.ndim != 3:
             raise ValueError(f"[TS RTX Upscaler] Unexpected frame shape from nvidia-vfx: {tuple(frame.shape)}")
 
@@ -249,12 +249,14 @@ class TS_RTX_Upscaler:
 
         return frame.contiguous()
 
-    def _normalize_output(self, frame):
+    @staticmethod
+    def _normalize_output(frame):
         if torch.is_floating_point(frame):
             return frame.to(torch.float32)
         return frame.to(torch.float32) / 255.0
 
-    def _align_to_8(self, value):
+    @staticmethod
+    def _align_to_8(value):
         return max(8, int(round(float(value) / 8.0) * 8))
 
 

@@ -7,13 +7,15 @@ import logging
 import os
 import subprocess
 import time
-import traceback
 import uuid
 import wave
+from collections.abc import Mapping
 
 import torch
 
 import folder_paths
+
+from comfy_api.latest import IO
 
 from .._shared import TS_Logger
 
@@ -26,37 +28,34 @@ except Exception:
     imageio = None
 
 
-class TS_Animation_Preview:
-    def __init__(self): pass
+class TS_Animation_Preview(IO.ComfyNode):
+    @classmethod
+    def define_schema(cls) -> IO.Schema:
+        return IO.Schema(
+            node_id="TS_Animation_Preview",
+            display_name="TS Animation Preview",
+            category="TS/Video",
+            description="Create a looping H.265 preview video from an image batch.",
+            is_output_node=True,
+            inputs=[
+                IO.Image.Input("images"),
+                IO.Float.Input("fps", default=25.0, min=1.0, max=120.0, step=1.0),
+                IO.Audio.Input("audio", optional=True),
+            ],
+            outputs=[],
+        )
 
     @classmethod
-    def INPUT_TYPES(cls):
-        return {
-            "required": {
-                "images": ("IMAGE",),
-                "fps": ("FLOAT", {"default": 25.0, "min": 1.0, "max": 120.0, "step": 1.0}),
-            },
-            "optional": {
-                "audio": ("AUDIO",),
-            },
-        }
-
-    RETURN_TYPES = ()
-    FUNCTION = "preview"
-    OUTPUT_NODE = True
-    CATEGORY = "TS/Video"
-    DESCRIPTION = "Create a looping H.265 preview video from an image batch."
-
-    @classmethod
-    def IS_CHANGED(cls, images, fps, audio=None):
+    def fingerprint_inputs(cls, images, fps, audio=None):
         return time.time()
 
-    def preview(self, images, fps, audio=None):
+    @classmethod
+    def execute(cls, images, fps, audio=None) -> IO.NodeOutput:
         node_name = "AnimationPreview"
 
         if images is None:
             TS_Logger.error(node_name, "No images provided.")
-            return {"ui": {"ts_animation_preview": []}}
+            return IO.NodeOutput(ui={"ts_animation_preview": []})
 
         if not isinstance(images, torch.Tensor) or images.ndim != 4:
             raise ValueError("TS Animation Preview expects IMAGE tensor [B,H,W,C].")
@@ -72,24 +71,22 @@ class TS_Animation_Preview:
         filepath = os.path.join(temp_dir, filename)
 
         audio_path = None
-        audio_waveform = None
-        audio_sample_rate = None
-        audio_payload = self._normalize_audio_input(audio)
+        audio_payload = cls._normalize_audio_input(audio)
         if audio_payload is not None:
-            audio_waveform, audio_sample_rate = self._prepare_audio(audio_payload, frame_count, fps_value)
+            audio_waveform, audio_sample_rate = cls._prepare_audio(audio_payload, frame_count, fps_value)
             TS_Logger.log(
                 node_name,
                 f"Audio waveform shape: {tuple(audio_waveform.shape)} | sample_rate={audio_sample_rate}"
             )
-            audio_path = self._write_audio_wav(temp_dir, audio_waveform, audio_sample_rate)
+            audio_path = cls._write_audio_wav(temp_dir, audio_waveform, audio_sample_rate)
 
-        codec_used = self._write_h265_video(filepath, images, fps_value)
+        codec_used = cls._write_h265_video(filepath, images, fps_value)
 
         if audio_path is not None:
             mux_path = os.path.join(temp_dir, f"ts_animation_preview_mux_{uuid.uuid4().hex}.mp4")
             duration_seconds = frame_count / fps_value if fps_value > 0 else 0.0
             try:
-                self._mux_audio_into_video(filepath, audio_path, mux_path, duration_seconds)
+                cls._mux_audio_into_video(filepath, audio_path, mux_path, duration_seconds)
                 os.replace(mux_path, filepath)
             finally:
                 if os.path.exists(audio_path):
@@ -119,9 +116,10 @@ class TS_Animation_Preview:
             "fps": fps_value,
         }
 
-        return {"ui": {"ts_animation_preview": [payload]}}
+        return IO.NodeOutput(ui={"ts_animation_preview": [payload]})
 
-    def _write_h265_video(self, filepath, images, fps_value):
+    @classmethod
+    def _write_h265_video(cls, filepath, images, fps_value):
         if imageio is None:
             raise RuntimeError("imageio is not available. Please install it to enable TS Animation Preview.")
         codec_candidates = ["libx265", "hevc_nvenc", "hevc_qsv", "hevc_amf", "hevc"]
@@ -140,7 +138,7 @@ class TS_Animation_Preview:
                     output_params=output_params,
                 )
                 for frame in images:
-                    writer.append_data(self._to_uint8_rgb(frame))
+                    writer.append_data(cls._to_uint8_rgb(frame))
                 writer.close()
                 return codec
             except Exception as e:
@@ -158,7 +156,8 @@ class TS_Animation_Preview:
 
         raise RuntimeError(f"Failed to encode H.265 preview video. Last error: {last_error}")
 
-    def _to_uint8_rgb(self, frame):
+    @staticmethod
+    def _to_uint8_rgb(frame):
         if not isinstance(frame, torch.Tensor) or frame.ndim != 3:
             raise ValueError("Frame must be a torch.Tensor with shape [H,W,C].")
 
@@ -174,7 +173,8 @@ class TS_Animation_Preview:
         frame = (frame * 255.0).to(torch.uint8).cpu().numpy()
         return frame
 
-    def _normalize_audio_input(self, audio):
+    @classmethod
+    def _normalize_audio_input(cls, audio):
         if audio is None:
             return None
 
@@ -193,18 +193,18 @@ class TS_Animation_Preview:
             if len(audio) == 2 and isinstance(audio[0], torch.Tensor) and isinstance(audio[1], (int, float)):
                 return {"waveform": audio[0], "sample_rate": int(audio[1])}
             for item in audio:
-                normalized = self._normalize_audio_input(item)
+                normalized = cls._normalize_audio_input(item)
                 if normalized is not None:
                     return normalized
             return None
 
         if isinstance(audio, dict):
             if "audio" in audio:
-                return self._normalize_audio_input(audio["audio"])
+                return cls._normalize_audio_input(audio["audio"])
             if "data" in audio:
-                return self._normalize_audio_input(audio["data"])
+                return cls._normalize_audio_input(audio["data"])
             if "value" in audio:
-                return self._normalize_audio_input(audio["value"])
+                return cls._normalize_audio_input(audio["value"])
 
             waveform = audio.get("waveform", audio.get("WAVEFORM", audio.get("samples", None)))
             sample_rate = audio.get(
@@ -214,10 +214,9 @@ class TS_Animation_Preview:
             if waveform is not None and sample_rate is not None:
                 return {"waveform": waveform, "sample_rate": sample_rate}
 
-            TS_Logger.log(
+            TS_Logger.warn(
                 "AnimationPreview",
                 f"Audio input ignored: missing waveform/sample_rate keys. keys={list(audio.keys())}",
-                "yellow",
             )
             return None
 
@@ -226,17 +225,15 @@ class TS_Animation_Preview:
                 waveform = audio["waveform"]
                 sample_rate = audio["sample_rate"]
             except KeyError:
-                TS_Logger.log(
+                TS_Logger.warn(
                     "AnimationPreview",
                     "Audio input ignored: missing waveform/sample_rate keys.",
-                    "yellow",
                 )
                 return None
             except Exception as e:
-                TS_Logger.log(
+                TS_Logger.warn(
                     "AnimationPreview",
                     f"Audio input ignored: failed to load audio from mapping. {str(e)}",
-                    "yellow",
                 )
                 return None
 
@@ -250,7 +247,8 @@ class TS_Animation_Preview:
         TS_Logger.warn("AnimationPreview", f"Audio input ignored: unsupported type {type(audio)}.")
         return None
 
-    def _prepare_audio(self, audio, frame_count, fps_value):
+    @staticmethod
+    def _prepare_audio(audio, frame_count, fps_value):
         if not isinstance(audio, dict):
             raise ValueError("Audio input must be a dict with keys 'waveform' and 'sample_rate'.")
 
@@ -283,7 +281,8 @@ class TS_Animation_Preview:
 
         return waveform, sample_rate
 
-    def _write_audio_wav(self, temp_dir, waveform, sample_rate):
+    @staticmethod
+    def _write_audio_wav(temp_dir, waveform, sample_rate):
         if not isinstance(waveform, torch.Tensor) or waveform.ndim != 2:
             raise ValueError("Prepared audio waveform must be a torch.Tensor with shape [C,T].")
 
@@ -310,15 +309,17 @@ class TS_Animation_Preview:
 
         return filepath
 
-    def _get_ffmpeg_exe(self):
+    @staticmethod
+    def _get_ffmpeg_exe():
         try:
             import imageio_ffmpeg
             return imageio_ffmpeg.get_ffmpeg_exe()
         except Exception:
             return "ffmpeg"
 
-    def _mux_audio_into_video(self, video_path, audio_path, output_path, duration_seconds):
-        ffmpeg_exe = self._get_ffmpeg_exe()
+    @classmethod
+    def _mux_audio_into_video(cls, video_path, audio_path, output_path, duration_seconds):
+        ffmpeg_exe = cls._get_ffmpeg_exe()
         cmd = [
             ffmpeg_exe,
             "-y",
@@ -339,7 +340,6 @@ class TS_Animation_Preview:
         if result.returncode != 0:
             error_msg = (result.stderr or result.stdout or "").strip()
             raise RuntimeError(f"FFmpeg mux failed. {error_msg}")
-
 
 
 NODE_CLASS_MAPPINGS = {"TS_Animation_Preview": TS_Animation_Preview}

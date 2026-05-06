@@ -15,6 +15,8 @@ import comfy.model_management as model_management
 import comfy.utils
 import folder_paths
 
+from comfy_api.latest import IO
+
 from .frame_interpolation_models import FILMNet, IFNet, detect_rife_config
 
 logger = logging.getLogger(__name__)
@@ -450,98 +452,70 @@ def _interpolate_batch_adaptive(
             model_management.soft_empty_cache()
 
 
-class TS_Frame_Interpolation:
+class TS_Frame_Interpolation(IO.ComfyNode):
     """Interpolate image sequences with RIFE models from ComfyUI/models/rife."""
 
     @classmethod
-    def INPUT_TYPES(cls) -> dict:
-        return {
-            "required": {
-                "images": ("IMAGE",),
-                "model_name": (
-                    _SUPPORTED_MODEL_NAMES,
-                    {
-                        "default": "rife_v4.26.safetensors",
-                        "tooltip": "RIFE checkpoint stored in ComfyUI/models/rife. Missing files are downloaded automatically.",
-                    },
+    def define_schema(cls) -> IO.Schema:
+        return IO.Schema(
+            node_id="TS_Frame_Interpolation",
+            display_name="TS Frame Interpolation",
+            category="TS/Video",
+            inputs=[
+                IO.Image.Input("images"),
+                IO.Combo.Input(
+                    "model_name",
+                    options=_SUPPORTED_MODEL_NAMES,
+                    default="rife_v4.26.safetensors",
+                    tooltip="RIFE checkpoint stored in ComfyUI/models/rife. Missing files are downloaded automatically.",
                 ),
-                "mode": (
-                    [_MODE_SLOWDOWN, _MODE_FPS],
-                    {
-                        "default": _MODE_SLOWDOWN,
-                        "tooltip": "slowdown_x extends the clip length. fps_conversion resamples motion to a target FPS.",
-                    },
+                IO.Combo.Input(
+                    "mode",
+                    options=[_MODE_SLOWDOWN, _MODE_FPS],
+                    default=_MODE_SLOWDOWN,
+                    tooltip="slowdown_x extends the clip length. fps_conversion resamples motion to a target FPS.",
                 ),
-                "slowdown_factor": (
-                    "FLOAT",
-                    {
-                        "default": 2.0,
-                        "min": 1.0,
-                        "max": 16.0,
-                        "step": 0.1,
-                        "tooltip": "Used when mode is slowdown_x.",
-                    },
+                IO.Float.Input("slowdown_factor", default=2.0, min=1.0, max=16.0, step=0.1, tooltip="Used when mode is slowdown_x."),
+                IO.Float.Input("source_fps", default=24.0, min=1.0, max=240.0, step=0.1, tooltip="Used when mode is fps_conversion."),
+                IO.Float.Input(
+                    "target_fps",
+                    default=60.0,
+                    min=1.0,
+                    max=240.0,
+                    step=0.1,
+                    tooltip="Used when mode is fps_conversion. Must be greater than or equal to source_fps.",
                 ),
-                "source_fps": (
-                    "FLOAT",
-                    {
-                        "default": 24.0,
-                        "min": 1.0,
-                        "max": 240.0,
-                        "step": 0.1,
-                        "tooltip": "Used when mode is fps_conversion.",
-                    },
+                IO.Int.Input(
+                    "max_timestep_batch",
+                    default=8,
+                    min=1,
+                    max=64,
+                    step=1,
+                    tooltip="Maximum number of intermediate timestamps evaluated together. Lower values reduce VRAM peaks on long clips.",
                 ),
-                "target_fps": (
-                    "FLOAT",
-                    {
-                        "default": 60.0,
-                        "min": 1.0,
-                        "max": 240.0,
-                        "step": 0.1,
-                        "tooltip": "Used when mode is fps_conversion. Must be greater than or equal to source_fps.",
-                    },
+                IO.Int.Input(
+                    "tile_size",
+                    default=0,
+                    min=0,
+                    max=4096,
+                    step=64,
+                    tooltip="0 = automatic. Positive values force tiled interpolation for high-resolution video.",
                 ),
-                "max_timestep_batch": (
-                    "INT",
-                    {
-                        "default": 8,
-                        "min": 1,
-                        "max": 64,
-                        "step": 1,
-                        "tooltip": "Maximum number of intermediate timestamps evaluated together. Lower values reduce VRAM peaks on long clips.",
-                    },
+                IO.Int.Input(
+                    "tile_overlap",
+                    default=_DEFAULT_TILE_OVERLAP,
+                    min=16,
+                    max=512,
+                    step=16,
+                    tooltip="Blend overlap between tiles. Higher values reduce seams but use more compute.",
                 ),
-                "tile_size": (
-                    "INT",
-                    {
-                        "default": 0,
-                        "min": 0,
-                        "max": 4096,
-                        "step": 64,
-                        "tooltip": "0 = automatic. Positive values force tiled interpolation for high-resolution video.",
-                    },
-                ),
-                "tile_overlap": (
-                    "INT",
-                    {
-                        "default": _DEFAULT_TILE_OVERLAP,
-                        "min": 16,
-                        "max": 512,
-                        "step": 16,
-                        "tooltip": "Blend overlap between tiles. Higher values reduce seams but use more compute.",
-                    },
-                ),
-            }
-        }
+            ],
+            outputs=[IO.Image.Output(display_name="images")],
+        )
 
-    RETURN_TYPES = ("IMAGE",)
-    RETURN_NAMES = ("images",)
-    FUNCTION = "interpolate"
-    CATEGORY = "TS/Video"
-
-    def interpolate(
-        self,
+    @classmethod
+    def execute(
+        cls,
         images: torch.Tensor,
         model_name: str,
         mode: str,
@@ -551,10 +525,10 @@ class TS_Frame_Interpolation:
         max_timestep_batch: int,
         tile_size: int,
         tile_overlap: int,
-    ) -> tuple[torch.Tensor]:
+    ) -> IO.NodeOutput:
         """Interpolate a sequence of BHWC frames."""
         if images.shape[0] < 2:
-            return (images,)
+            return IO.NodeOutput(images)
 
         output_count, schedule, exact_frames = _build_schedule(
             frame_count=int(images.shape[0]),
@@ -565,7 +539,7 @@ class TS_Frame_Interpolation:
         )
 
         if not schedule and output_count == images.shape[0] and all(exact_frames.get(i) == i for i in range(output_count)):
-            return (images,)
+            return IO.NodeOutput(images)
 
         height = int(images.shape[1])
         width = int(images.shape[2])
@@ -681,7 +655,7 @@ class TS_Frame_Interpolation:
             model.to("cpu")
             model_management.soft_empty_cache()
 
-        return (result.movedim(1, -1).clamp_(0.0, 1.0),)
+        return IO.NodeOutput(result.movedim(1, -1).clamp_(0.0, 1.0))
 
 
 NODE_CLASS_MAPPINGS = {
