@@ -396,7 +396,7 @@
     }
   },
   "TS_BatchPromptLoader": {
-    "api": "v1",
+    "api": "v3",
     "category": "TS/Text",
     "class_name": "TS_BatchPromptLoader",
     "display_name": "TS Batch Prompt Loader",
@@ -1259,7 +1259,7 @@
     }
   },
   "TS_PromptBuilder": {
-    "api": "v1",
+    "api": "v3",
     "category": "TS/Text",
     "class_name": "TS_PromptBuilder",
     "display_name": "TS Prompt Builder",
@@ -1508,7 +1508,7 @@
     }
   },
   "TS_StylePromptSelector": {
-    "api": "v1",
+    "api": "v3",
     "category": "TS/Text",
     "class_name": "TS_StylePromptSelector",
     "display_name": "TS Style Prompt Selector",

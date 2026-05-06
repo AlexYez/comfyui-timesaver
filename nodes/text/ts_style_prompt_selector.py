@@ -4,6 +4,7 @@ from pathlib import Path
 
 import folder_paths
 from aiohttp import web
+from comfy_api.latest import IO
 
 try:
     from server import PromptServer
@@ -130,22 +131,21 @@ async def ts_styles_preview(request):
     return web.FileResponse(file_path)
 
 
-class TS_StylePromptSelector:
+class TS_StylePromptSelector(IO.ComfyNode):
     @classmethod
-    def INPUT_TYPES(cls):
-        return {
-            "required": {
-                "style_id": ("STRING", {"default": ""}),
-            }
-        }
-
-    RETURN_TYPES = ("STRING",)
-    RETURN_NAMES = ("prompt",)
-    FUNCTION = "get_prompt"
-    CATEGORY = "TS/Text"
+    def define_schema(cls) -> IO.Schema:
+        return IO.Schema(
+            node_id="TS_StylePromptSelector",
+            display_name="TS Style Prompt Selector",
+            category="TS/Text",
+            inputs=[
+                IO.String.Input("style_id", default=""),
+            ],
+            outputs=[IO.String.Output(display_name="prompt")],
+        )
 
     @classmethod
-    def VALIDATE_INPUTS(cls, style_id):
+    def validate_inputs(cls, style_id):
         if style_id is None:
             return True
         if isinstance(style_id, str):
@@ -153,14 +153,15 @@ class TS_StylePromptSelector:
         return "style_id must be STRING."
 
     @classmethod
-    def IS_CHANGED(cls, style_id):
+    def fingerprint_inputs(cls, style_id):
         return _as_text(style_id).strip()
 
-    def get_prompt(self, style_id):
+    @classmethod
+    def execute(cls, style_id) -> IO.NodeOutput:
         styles = _load_styles()
         selected_id = _as_text(style_id).strip()
         if not selected_id or selected_id == _NO_STYLE_OPTION:
-            return (" ",)
+            return IO.NodeOutput(" ")
 
         prompt = ""
         if styles and selected_id:
@@ -173,7 +174,7 @@ class TS_StylePromptSelector:
 
         if not prompt:
             logger.warning("%s Style not found: %s", _LOG_PREFIX, selected_id)
-        return (prompt or "",)
+        return IO.NodeOutput(prompt or "")
 
 
 NODE_CLASS_MAPPINGS = {

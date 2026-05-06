@@ -1,4 +1,4 @@
-﻿import hashlib
+import hashlib
 import json
 import logging
 import os
@@ -7,6 +7,8 @@ import tempfile
 
 import folder_paths
 from aiohttp import web
+from comfy_api.latest import IO
+
 try:
     from server import PromptServer
 except Exception:
@@ -105,7 +107,7 @@ def ts_read_prompt_lines(file_path):
         with open(file_path, "r", encoding="utf-8") as handle:
             lines = []
             for raw in handle:
-                cleaned = raw.strip().lstrip("\ufeff")
+                cleaned = raw.strip().lstrip("﻿")
                 if cleaned:
                     lines.append(cleaned)
         return lines
@@ -253,32 +255,29 @@ async def ts_prompt_builder_config(request):
     return web.json_response({"files": files, "blocks": blocks})
 
 
-class TS_PromptBuilder:
+class TS_PromptBuilder(IO.ComfyNode):
     @classmethod
-    def INPUT_TYPES(cls):
-        return {
-            "required": {
-                "seed": (
-                    "INT",
-                    {
-                        "default": 0,
-                        "min": 0,
-                        "max": 0xFFFFFFFFFFFFFFFF,
-                        "control_after_generate": True,
-                        "tooltip": "0 = auto-random each run, >0 = deterministic per seed",
-                    },
+    def define_schema(cls) -> IO.Schema:
+        return IO.Schema(
+            node_id="TS_PromptBuilder",
+            display_name="TS Prompt Builder",
+            category="TS/Text",
+            inputs=[
+                IO.Int.Input(
+                    "seed",
+                    default=0,
+                    min=0,
+                    max=0xFFFFFFFFFFFFFFFF,
+                    control_after_generate=True,
+                    tooltip="0 = auto-random each run, >0 = deterministic per seed",
                 ),
-                "config_json": ("STRING", {"default": ""}),
-            }
-        }
-
-    RETURN_TYPES = ("STRING",)
-    RETURN_NAMES = ("prompt",)
-    FUNCTION = "build_prompt"
-    CATEGORY = "TS/Text"
+                IO.String.Input("config_json", default=""),
+            ],
+            outputs=[IO.String.Output(display_name="prompt")],
+        )
 
     @classmethod
-    def IS_CHANGED(cls, seed, config_json):
+    def fingerprint_inputs(cls, seed, config_json):
         try:
             seed_value = int(seed)
         except Exception:
@@ -287,7 +286,8 @@ class TS_PromptBuilder:
             return (config_json, random.SystemRandom().random())
         return (config_json, seed_value)
 
-    def build_prompt(self, seed, config_json):
+    @classmethod
+    def execute(cls, seed, config_json) -> IO.NodeOutput:
         try:
             seed_value = int(seed)
         except Exception:
@@ -296,7 +296,7 @@ class TS_PromptBuilder:
         files = ts_list_prompt_files()
         if not files:
             ts_logger.warning("[TS Prompt Builder] No prompt files found.")
-            return ("",)
+            return IO.NodeOutput("")
 
         config_items = ts_parse_config(config_json)
         if config_items:
@@ -323,7 +323,7 @@ class TS_PromptBuilder:
                 block_seed = ts_block_seed(seed_value, file_name)
                 parts.append(random.Random(block_seed).choice(lines))
 
-        return (", ".join(parts),)
+        return IO.NodeOutput(", ".join(parts))
 
 
 NODE_CLASS_MAPPINGS = {
@@ -333,4 +333,3 @@ NODE_CLASS_MAPPINGS = {
 NODE_DISPLAY_NAME_MAPPINGS = {
     "TS_PromptBuilder": "TS Prompt Builder",
 }
-
