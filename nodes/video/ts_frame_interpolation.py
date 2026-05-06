@@ -17,7 +17,7 @@ import folder_paths
 
 from comfy_api.latest import IO
 
-from .frame_interpolation_models import FILMNet, IFNet, detect_rife_config
+from ..frame_interpolation_models import FILMNet, IFNet, detect_rife_config
 
 logger = logging.getLogger(__name__)
 
