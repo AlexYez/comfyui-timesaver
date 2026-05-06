@@ -473,6 +473,48 @@ def test_image_resize_with_mask(image_resize):
     assert out_mask.shape == (1, 50, 50)
 
 
+# ---------- TS_FilmGrain ----------
+
+
+@pytest.fixture
+def film_grain(monkeypatch):
+    pytest.importorskip("kornia")
+    return _load(monkeypatch, "nodes.image.ts_film_grain")
+
+
+def test_film_grain_schema(film_grain):
+    schema = film_grain.TS_FilmGrain.define_schema()
+    assert schema.node_id == "TS_FilmGrain"
+    inputs = {item.id: item for item in schema.inputs}
+    assert "grain_intensity" in inputs
+    assert "force_gpu" in inputs
+    assert "seed" in inputs
+
+
+def test_film_grain_does_not_mutate_input(film_grain):
+    """Regression for finding #2: in-place add_/clamp_ used to poison the
+    caller's IMAGE tensor when no device/dtype conversion was needed."""
+    img = torch.rand((1, 8, 8, 3), dtype=torch.float32)
+    before = img.clone()
+    output = film_grain.TS_FilmGrain.execute(
+        img,
+        force_gpu=False,
+        grain_size=1.0,
+        grain_intensity=0.05,
+        grain_speed=0.5,
+        grain_softness=0.0,
+        color_grain_strength=0.15,
+        mid_tone_grain_bias=0.5,
+        seed=42,
+    )
+    assert torch.equal(img, before), "TS_FilmGrain mutated its input tensor"
+    out = output.args[0]
+    assert out.shape == img.shape
+    assert (out >= 0.0).all() and (out <= 1.0).all()
+    # Output must differ from input (grain was actually applied).
+    assert not torch.equal(out, img)
+
+
 # ---------- TS_ImageBatchToImageList / TS_ImageListToImageBatch ----------
 
 

@@ -176,14 +176,25 @@ def test_bgrm_process_masks_preserves_batch_on_cpu(monkeypatch):
     assert model.model.dtypes == [torch.float32, torch.float32]
 
 
-def test_bgrm_prefers_gpu_when_cuda_is_available(monkeypatch):
-    if not torch.cuda.is_available():
-        pytest.skip("CUDA is not available")
-
+def test_bgrm_respects_model_management_cpu_choice(monkeypatch):
+    """Regression for finding #3: previously _get_target_device silently
+    overrode CPU back to cuda whenever CUDA was physically present, which
+    broke `--cpu`, lowvram, and multi-GPU index selection. The fix trusts
+    model_management.get_torch_device() unconditionally."""
     module = _load_module(monkeypatch)
     monkeypatch.setattr(module.model_management, "get_torch_device", lambda: torch.device("cpu"))
 
-    assert module._get_target_device().type == "cuda"
+    assert module._get_target_device().type == "cpu"
+
+
+def test_bgrm_preserves_cuda_index_from_model_management(monkeypatch):
+    """Multi-GPU users rely on get_torch_device returning the right index;
+    the function must pass it through unchanged instead of forcing cuda:0."""
+    module = _load_module(monkeypatch)
+    target = torch.device("cuda", 1)
+    monkeypatch.setattr(module.model_management, "get_torch_device", lambda: target)
+
+    assert module._get_target_device() == target
 
 
 def test_bgrm_process_masks_runs_in_half_on_gpu(monkeypatch):

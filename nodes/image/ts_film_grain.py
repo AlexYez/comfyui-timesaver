@@ -159,8 +159,10 @@ class TS_FilmGrain(IO.ComfyNode):
                 (sigma, sigma)
             ).permute(0, 2, 3, 1)
 
-        output_images = images.add_(final_grain)
-        output_images.clamp_(0.0, 1.0)
+        # Non-mutating add+clamp: when `images` is the caller's input tensor
+        # (no device/dtype conversion happened above), an in-place add_ would
+        # poison the workflow cache and re-apply grain on every cache hit.
+        output_images = (images + final_grain).clamp(0.0, 1.0)
 
         del final_grain
 

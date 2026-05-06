@@ -3,6 +3,7 @@ name = "comfyui-timesaver"
 description = "ComfyUI nodes from [Timesaver](https://github.com/AlexYez/comfyui-timesaver)."
 version = "9.1"
 license = { file = "LICENSE.txt" }
+requires-python = ">=3.12"
 # Core runtime: pulled by every node pack on every install. Things that
 # fail-gracefully via TSDependencyManager.import_optional or `try / except
 # ImportError` belong in [project.optional-dependencies] below, not here.
@@ -71,3 +72,6 @@ Repository = "https://github.com/AlexYez/comfyui-timesaver"
 PublisherId = "timesaver"
 DisplayName = "ComfyUI Timesaver Nodes"
 Icon = "https://raw.githubusercontent.com/AlexYez/comfyui-timesaver/refs/heads/master/icon.png"
+# Pinned to the ComfyUI release that exposes the comfy_api.latest IO surface
+# this pack relies on (IO.ComfyNode, IO.Schema, IO.NodeOutput, IO.Color, etc.).
+requires-comfyui = ">=0.20.1"
