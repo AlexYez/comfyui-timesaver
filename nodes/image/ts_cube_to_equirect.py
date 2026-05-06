@@ -2,7 +2,7 @@
 import numpy as np
 import torch
 
-from ..ts_dependency_manager import TSDependencyManager
+from ...ts_dependency_manager import TSDependencyManager
 
 py360convert = TSDependencyManager.import_optional("py360convert")
 
