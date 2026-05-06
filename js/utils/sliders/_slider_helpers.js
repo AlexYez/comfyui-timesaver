@@ -138,7 +138,16 @@ export function tsApplyConfig(tsNode, tsWidget, tsType, tsConfig, tsForceDefault
     if (tsType === "int") {
         tsOptions.precision = 0;
     } else {
-        tsOptions.precision = tsCountDecimals(tsConfig.step);
+        // ComfyUI multiplies the V3 step by 10 for slider widgets, so a
+        // 0.1 step lands as 1 and tsCountDecimals(step) returns 0 — the
+        // UI then formats float defaults as integers (0.5 shown as 1).
+        // Honor the user-declared `round` (V3 IO.Float.Input(round=...))
+        // when it carries more decimals than the step.
+        const stepDecimals = tsCountDecimals(tsConfig.step);
+        const roundDecimals = Number.isFinite(tsOptions.round)
+            ? tsCountDecimals(tsOptions.round)
+            : 0;
+        tsOptions.precision = Math.max(stepDecimals, roundDecimals);
     }
 
     let tsValue = tsNormalizeNumber(tsWidget.value);
