@@ -209,7 +209,7 @@ heavy-imports на module-level, утечки во фронтенде, дыры 
    модуль, по правилу `_`-prefix). Оставить в `ts_super_prompt.py`: класс, schema,
    `_generate_with_qwen`, и enhance route. Без миграции public API.
 
-9. **[Medium · S] Frontend wildcard import + ruff F405 в audio loader**
+9. **[Medium · S] [RESOLVED] Frontend wildcard import + ruff F405 в audio loader**
 
    Files: `nodes/audio/loader/ts_audio_loader.py:24`
           `nodes/audio/loader/ts_audio_preview.py:11`
@@ -254,7 +254,7 @@ heavy-imports на module-level, утечки во фронтенде, дыры 
     (ruff F401). И каждый из них немного добавляет startup latency.
     Recommendation: удалить три строки.
 
-13. **[Medium · M] Closure over loop variable в `_upscale_batch_load_unload`**
+13. **[Medium · M] [RESOLVED] Closure over loop variable в `_upscale_batch_load_unload`**
 
     Files: `nodes/video/ts_video_upscale_with_model.py:171`
     What's wrong: `lambda a: current_model(a)` замыкается на loop-переменную `current_model`,
@@ -320,7 +320,7 @@ heavy-imports на module-level, утечки во фронтенде, дыры 
     на ничего, mypy и так знает что pipes не None). assert на тензоры в
     `*_safe_resize.py` — превратить в `raise ValueError(...)`.
 
-17. **[Medium · M] Inconsistent error handling: `handle_model_error` теряет original traceback**
+17. **[Medium · M] [RESOLVED] Inconsistent error handling: `handle_model_error` теряет original traceback**
 
     Files: `nodes/image/ts_bgrm_birefnet.py:279`
            `nodes/image/ts_bgrm_birefnet.py:692`
@@ -364,7 +364,7 @@ heavy-imports на module-level, утечки во фронтенде, дыры 
     Recommendation: вместо `chunks = []` сразу `with output_path.open("wb") as handle: ...
     handle.write(chunk)`, потом read из файла когда нужно.
 
-20. **[Medium · S] `B009`/`B005` getattr с константой и mutable defaults в video_depth_anything**
+20. **[Medium · S] [PARTIAL — `__init__.py` getattr fixed; vendored video_depth_anything mutable defaults left as upstream] `B009`/`B005` getattr с константой и mutable defaults в video_depth_anything**
 
     Files: `__init__.py:209`
            `__init__.py:216`
@@ -414,7 +414,7 @@ heavy-imports на module-level, утечки во фронтенде, дыры 
     из lama_cleanup. Сам side-effect оставить — это accepted convention для интеграции
     `extra_model_paths.yaml`.
 
-23. **[Medium · S] `models/` имя совпадает с core: `add_model_folder_path("birefnet", ...)` — ок, но `models_dir/BiRefNet` хардкод**
+23. **[Medium · S] [RESOLVED] `models/` имя совпадает с core: `add_model_folder_path("birefnet", ...)` — ок, но `models_dir/BiRefNet` хардкод**
 
     Files: `nodes/image/ts_bgrm_birefnet.py:29`
     What's wrong: путь жёстко `os.path.join(folder_paths.models_dir, "BiRefNet")`.
@@ -441,7 +441,7 @@ heavy-imports на module-level, утечки во фронтенде, дыры 
     Recommendation: вернуть `tests/` в репо (см. #1) и в `ci.yml` гарантировать
     запуск как минимум `test_pack_imports.py` (он не требует heavy deps).
 
-25. **[Medium · M] Класс `TS_DependencyManager.fallback_value_for_type` — dead-path для V3**
+25. **[Medium · M] [RESOLVED] Класс `TS_DependencyManager.fallback_value_for_type` — dead-path для V3**
 
     Files: `ts_dependency_manager.py:56`
            `ts_dependency_manager.py:88`

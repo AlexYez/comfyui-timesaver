@@ -13,7 +13,6 @@ import os
 import folder_paths
 from comfy_api.latest import IO
 
-from ._lama_helpers import *  # noqa: F401,F403  re-export helpers via __all__
 from ._lama_helpers import (
     _load_image_tensor,
     _resolve_image_path,
