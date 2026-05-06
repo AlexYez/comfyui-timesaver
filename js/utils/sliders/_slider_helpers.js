@@ -28,10 +28,16 @@ export function tsCountDecimals(tsValue) {
     return tsIndex >= 0 ? tsText.length - tsIndex - 1 : 0;
 }
 
-export function tsSnapToStep(tsValue, tsMin, tsStep, tsType) {
+export function tsSnapToStep(tsValue, tsMin, tsStep, tsType, tsAnchor) {
     if (!Number.isFinite(tsStep) || tsStep <= 0) return tsValue;
-    const tsSteps = Math.round((tsValue - tsMin) / tsStep);
-    let tsSnapped = tsMin + tsSteps * tsStep;
+    // Anchor on default (when supplied) instead of min. With min=-1e9 and
+    // step=1, snapping relative to min loses sub-step precision in float64
+    // (default 0.5 collapses to 1). Snapping relative to default keeps the
+    // default exact and lets neighbours grid by `step`. Falls back to min
+    // when no usable anchor is provided.
+    const anchor = Number.isFinite(tsAnchor) ? tsAnchor : tsMin;
+    const tsSteps = Math.round((tsValue - anchor) / tsStep);
+    let tsSnapped = anchor + tsSteps * tsStep;
     if (tsType === "int") {
         tsSnapped = Math.round(tsSnapped);
         return tsSnapped;
@@ -151,7 +157,7 @@ export function tsApplyConfig(tsNode, tsWidget, tsType, tsConfig, tsForceDefault
     }
 
     tsValue = Math.min(tsConfig.max, Math.max(tsConfig.min, tsValue));
-    tsValue = tsSnapToStep(tsValue, tsConfig.min, tsConfig.step, tsType);
+    tsValue = tsSnapToStep(tsValue, tsConfig.min, tsConfig.step, tsType, tsConfig.default);
 
     if (tsValue !== tsWidget.value) {
         tsWidget.value = tsValue;
