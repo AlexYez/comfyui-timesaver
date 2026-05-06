@@ -13,6 +13,9 @@ pytest-cache-files-*/
 # Test suite (kept locally for development; not shipped to public repo)
 /tests/
 
+# Dev tools (kept locally; not needed by end users)
+/tools/
+
 # Internal engineering docs and helper scripts (not for distribution)
 AGENTS.md
 **/AGENTS.md
