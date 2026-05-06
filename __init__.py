@@ -174,7 +174,8 @@ def _scan_external_imports() -> list[dict]:
         rel = py_file.relative_to(_PACKAGE_DIR).as_posix()
         try:
             content = py_file.read_text(encoding="utf-8", errors="ignore")
-        except Exception:
+        except (OSError, UnicodeDecodeError) as exc:
+            logger.debug("[TS Loader] Skipping import audit for %s: %s", rel, exc)
             continue
         for line in content.splitlines():
             for root in _extract_import_roots_from_line(line):
@@ -298,38 +299,41 @@ def _print_startup_report() -> None:
         max_widths=[28, 10, 10, 86],
     )
 
-    print("[TS Startup] comfyui-timesaver load report")
-    print(f"[TS Startup] Package path: {_PACKAGE_DIR}")
-    print(f"[TS Startup] Modules discovered: {len(_MODULE_ENTRIES)}")
-    print(module_table)
-    print(f"[TS Startup] External imports discovered: {len(_IMPORT_AUDIT_RESULTS)}")
-    print(import_table)
-    print(
+    logger.info("[TS Startup] comfyui-timesaver load report")
+    logger.info("[TS Startup] Package path: %s", _PACKAGE_DIR)
+    logger.info("[TS Startup] Modules discovered: %d", len(_MODULE_ENTRIES))
+    for line in module_table.splitlines():
+        logger.info("%s", line)
+    logger.info("[TS Startup] External imports discovered: %d", len(_IMPORT_AUDIT_RESULTS))
+    for line in import_table.splitlines():
+        logger.info("%s", line)
+    logger.info(
         "[TS Startup] Summary: "
-        f"loaded={loaded}, skipped={skipped}, errors={errors}, "
-        f"load_issues={len(load_issues)}, "
-        f"nodes_registered={len(NODE_CLASS_MAPPINGS)}, "
-        f"critical_missing_imports={len(critical_missing_imports)}, "
-        f"optional_missing_imports={len(optional_missing_imports)}"
+        "loaded=%d, skipped=%d, errors=%d, load_issues=%d, "
+        "nodes_registered=%d, critical_missing_imports=%d, optional_missing_imports=%d",
+        loaded, skipped, errors, len(load_issues),
+        len(NODE_CLASS_MAPPINGS),
+        len(critical_missing_imports),
+        len(optional_missing_imports),
     )
     if load_issues:
-        print("[TS Startup] Module load issues:")
+        logger.info("[TS Startup] Module load issues:")
         for item in load_issues:
-            print(f"  - {item['module']}: {item['details']}")
+            logger.info("  - %s: %s", item["module"], item["details"])
     else:
-        print("[TS Startup] Module load issues: none")
+        logger.info("[TS Startup] Module load issues: none")
     if critical_missing_imports:
-        print("[TS Startup] Critical missing imports:")
+        logger.warning("[TS Startup] Critical missing imports:")
         for item in critical_missing_imports:
-            print(f"  - {item['import']} (used in: {item['source']})")
+            logger.warning("  - %s (used in: %s)", item["import"], item["source"])
     else:
-        print("[TS Startup] Critical missing imports: none")
+        logger.info("[TS Startup] Critical missing imports: none")
     if optional_missing_imports:
-        print("[TS Startup] Optional missing imports:")
+        logger.info("[TS Startup] Optional missing imports:")
         for item in optional_missing_imports:
-            print(f"  - {item['import']} (used in: {item['source']})")
+            logger.info("  - %s (used in: %s)", item["import"], item["source"])
     else:
-        print("[TS Startup] Optional missing imports: none")
+        logger.info("[TS Startup] Optional missing imports: none")
 
 
 def _collect_critical_missing_roots() -> set[str]:

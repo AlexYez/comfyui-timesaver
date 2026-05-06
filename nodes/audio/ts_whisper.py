@@ -21,13 +21,6 @@ _LOG_NAME = "comfyui_ts_whisper"
 _LOG_PREFIX = "[TS Whisper]"
 
 _logger = logging.getLogger(_LOG_NAME)
-if not _logger.handlers:
-    _handler = logging.StreamHandler()
-    _handler.setFormatter(
-        logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-    )
-    _logger.addHandler(_handler)
-_logger.setLevel(logging.INFO)
 
 
 def _log_info(message):

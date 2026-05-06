@@ -1,16 +1,16 @@
-# Copyright (2025) Bytedance Ltd. and/or its affiliates 
+# Copyright (2025) Bytedance Ltd. and/or its affiliates
 
-# Licensed under the Apache License, Version 2.0 (the "License"); 
-# you may not use this file except in compliance with the License. 
-# You may obtain a copy of the License at 
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
 
-#     http://www.apache.org/licenses/LICENSE-2.0 
+#     http://www.apache.org/licenses/LICENSE-2.0
 
-# Unless required by applicable law or agreed to in writing, software 
-# distributed under the License is distributed on an "AS IS" BASIS, 
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. 
-# See the License for the specific language governing permissions and 
-# limitations under the License. 
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 import torch
 import torch.nn.functional as F
 import torch.nn as nn
@@ -36,9 +36,9 @@ class VideoDepthAnything(nn.Module):
     def __init__(
         self,
         encoder='vitl',
-        features=256, 
-        out_channels=[256, 512, 1024, 1024], 
-        use_bn=False, 
+        features=256,
+        out_channels=[256, 512, 1024, 1024],
+        use_bn=False,
         use_clstoken=False,
         num_frames=32,
         pe='ape'
@@ -49,7 +49,7 @@ class VideoDepthAnything(nn.Module):
             'vits': [2, 5, 8, 11],
             'vitl': [4, 11, 17, 23]
         }
-        
+
         self.encoder = encoder
         self.pretrained = DINOv2(model_name=encoder)
 
@@ -63,7 +63,7 @@ class VideoDepthAnything(nn.Module):
         depth = F.interpolate(depth, size=(H, W), mode="bilinear", align_corners=True)
         depth = F.relu(depth)
         return depth.squeeze(1).unflatten(0, (B, T)) # return shape [B, T, H, W]
-    
+
     def infer_video_depth(self, frames, input_size=518, device='cuda', fp32=False, pbar=None):
         frame_height, frame_width = frames[0].shape[:2]
         ratio = max(frame_height, frame_width) / min(frame_height, frame_width)
@@ -90,7 +90,7 @@ class VideoDepthAnything(nn.Module):
         org_video_len = len(frame_list)
         append_frame_len = (frame_step - (org_video_len % frame_step)) % frame_step + (INFER_LEN - frame_step)
         frame_list = frame_list + [frame_list[-1].copy()] * append_frame_len
-        
+
         depth_list = []
         pre_input = None
         for frame_id in tqdm(range(0, org_video_len, frame_step)):
@@ -150,7 +150,7 @@ class VideoDepthAnything(nn.Module):
                     new_depth = depth_list[frame_id+kf_id] * scale + shift
                     new_depth[new_depth<0] = 0
                     ref_align.append(new_depth)
-            
+
         depth_list = depth_list_aligned
-            
+
         return np.stack(depth_list[:org_video_len], axis=0)

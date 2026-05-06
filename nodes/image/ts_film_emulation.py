@@ -3,11 +3,14 @@
 node_id: TS_Film_Emulation
 """
 
+import logging
 import os
 
 import torch
 
 from comfy_api.latest import IO
+
+logger = logging.getLogger(__name__)
 
 
 class TS_Film_Emulation(IO.ComfyNode):
@@ -98,7 +101,8 @@ class TS_Film_Emulation(IO.ComfyNode):
                 elif len(parts) >= 3 and (parts[0][0].isdigit() or parts[0][0] in "-."):
                     try:
                         data.append([float(v) for v in parts[:3]])
-                    except Exception:
+                    except ValueError as exc:
+                        logger.debug("[TS Film Emulation] Skipping malformed LUT line %r: %s", line, exc)
                         continue
         if size <= 0 or len(data) != size ** 3:
             return None, None

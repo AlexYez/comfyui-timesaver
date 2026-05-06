@@ -196,7 +196,7 @@ class TS_Qwen3_VL_V3(IO.ComfyNode):
         resolved_model_id = self._resolve_model_id(model_name, custom_model_id)
         resolved_precision = self._resolve_precision(precision, resolved_model_id)
         resolved_attention = self._resolve_attention(attention_mode, resolved_precision)
-        
+
         # 3. Memory Management Pre-Check
         # Calculate expected usage and free up ComfyUI memory if needed BEFORE loading
         estimated_vram = self._estimate_vram_usage(resolved_model_id, resolved_precision)
@@ -223,7 +223,7 @@ class TS_Qwen3_VL_V3(IO.ComfyNode):
         # If model is on CPU but we have CUDA, try to move it to GPU now
         target_device = self._get_device()
         moved_to_gpu = False
-        
+
         if target_device.type == "cuda" and not self._model_has_cuda_device(model):
             try:
                 self._logger.info(f"[TS Qwen3 VL V3] Moving model to GPU for inference...")
@@ -298,7 +298,7 @@ class TS_Qwen3_VL_V3(IO.ComfyNode):
                 processor,
                 messages
             )
-            
+
             # Ensure inputs are on the same device as the model
             input_device = self._select_input_device(model)
             inputs = self._move_inputs_to_device(inputs, input_device)
@@ -308,9 +308,9 @@ class TS_Qwen3_VL_V3(IO.ComfyNode):
             gen_params["use_cache"] = True
             gen_params["pad_token_id"] = self._get_pad_token_id(processor, model)
             gen_params["do_sample"] = gen_params.get("temperature", 0) > 0
-            
+
             rng_cuda_devices = self._cuda_indices_for_rng(model, input_device)
-            
+
             # Generator setup
             if self._supports_generator(model):
                 gen_device = self._select_generator_device(input_device)
@@ -332,7 +332,7 @@ class TS_Qwen3_VL_V3(IO.ComfyNode):
                         for idx in rng_cuda_devices:
                             with torch.cuda.device(idx):
                                 torch.cuda.manual_seed(seed)
-                
+
                 self._logger.info("[TS Qwen3 VL V3] Generating...")
                 with torch.inference_mode():
                     if use_autocast:
@@ -378,7 +378,7 @@ class TS_Qwen3_VL_V3(IO.ComfyNode):
         Estimates VRAM usage in GB.
         """
         size_b = self._model_size_b(model_id)
-        
+
         # Base model weights
         if precision in ("fp32", "auto"): # 'auto' usually resolves to fp16/bf16 on GPU, but worst case
             bytes_per_param = 4 if precision == "fp32" else 2.2 # Slight overhead
@@ -392,9 +392,9 @@ class TS_Qwen3_VL_V3(IO.ComfyNode):
             bytes_per_param = 2.2
 
         weights_gb = size_b * bytes_per_param
-        
+
         # Context overhead (KV cache, activation, vision encoder buffer)
-        context_overhead_gb = 1.5 
+        context_overhead_gb = 1.5
         if size_b >= 8:
             context_overhead_gb = 2.5
 
@@ -409,10 +409,10 @@ class TS_Qwen3_VL_V3(IO.ComfyNode):
 
         try:
             mm.soft_empty_cache()
-            
+
             free_mem_bytes = mm.get_free_memory()
             free_mem_gb = free_mem_bytes / (1024**3)
-            
+
             self._logger.info(f"[TS Qwen3 VL V3] Memory Check: Required={required_vram_gb:.2f}GB, Free={free_mem_gb:.2f}GB")
 
             if force_unload or free_mem_gb < required_vram_gb:
@@ -421,11 +421,11 @@ class TS_Qwen3_VL_V3(IO.ComfyNode):
                 mm.soft_empty_cache()
                 if torch.cuda.is_available():
                     torch.cuda.empty_cache()
-                    
+
                 free_mem_bytes = mm.get_free_memory()
                 free_mem_gb = free_mem_bytes / (1024**3)
                 self._logger.info(f"[TS Qwen3 VL V3] Memory Post-Clean: Free={free_mem_gb:.2f}GB")
-                
+
         except Exception as e:
             self._logger.warning(f"[TS Qwen3 VL V3] Memory management warning: {e}")
 
@@ -772,7 +772,7 @@ class TS_Qwen3_VL_V3(IO.ComfyNode):
             if vram_gb >= 8 and bnb_ok: return "int8"
             if bnb_ok: return "int4"
             return "fp16"
-        
+
         if vram_gb >= 8 and bf16_ok: return "bf16"
         if vram_gb >= 6: return "fp16"
         if bnb_ok: return "int8"
@@ -811,9 +811,6 @@ class TS_Qwen3_VL_V3(IO.ComfyNode):
                 if device.type == "cuda":
                     props = torch.cuda.get_device_properties(device)
                     return float(props.total_memory) / (1024 ** 3)
-                else:
-                    return 0.0
-                return 0.0
         except Exception as exc:
             self._logger.debug("[TS Qwen3 VL V3] VRAM probe failed: %s", exc)
         return 0.0
@@ -931,7 +928,7 @@ class TS_Qwen3_VL_V3(IO.ComfyNode):
             self._cache_order.remove(key)
         if not cached:
             return
-        
+
         del cached
         gc.collect()
         if torch.cuda.is_available():
@@ -975,7 +972,7 @@ class TS_Qwen3_VL_V3(IO.ComfyNode):
         else:
             load_kwargs["torch_dtype"] = self._dtype_from_precision(precision)
             # Deferred load to GPU
-            pass 
+            pass
 
         self._logger.info(f"[TS Qwen3 VL V3] Loading processor from {local_dir}")
         processor = self._load_processor_or_tokenizer(transformers_module, local_dir, offline_mode)

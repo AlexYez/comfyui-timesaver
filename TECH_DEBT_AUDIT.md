@@ -52,7 +52,7 @@ heavy-imports на module-level, утечки во фронтенде, дыры 
 
 ## Findings
 
-1. **[Critical · S] CI workflow ссылается на пути из `.gitignore` — каждая сборка падает**
+1. **[Critical · S] [RESOLVED in d0977ef] CI workflow ссылается на пути из `.gitignore` — каждая сборка падает**
 
    Files: `.github/workflows/ci.yml:39`
           `.github/workflows/ci.yml:42`
@@ -163,7 +163,7 @@ heavy-imports на module-level, утечки во фронтенде, дыры 
    suffix whitelist-ом (`SUPPORTED_AUDIO_EXTENSIONS` уже определён на line 66 — он же и
    должен валидировать suffix).
 
-6. **[High · S] `unreachable code` в `_get_vram_gb` — `return 0.0` после if/else никогда не выполняется**
+6. **[High · S] [RESOLVED] `unreachable code` в `_get_vram_gb` — `return 0.0` после if/else никогда не выполняется**
 
    Files: `nodes/llm/ts_qwen3_vl.py:816`
    What's wrong: после блока `if device.type == "cuda": return ...; else: return 0.0`
@@ -226,7 +226,7 @@ heavy-imports на module-level, утечки во фронтенде, дыры 
    (`from ._audio_helpers import _normalize_selected_path, _empty_audio, ...`).
    ts_lama_cleanup.py уже наполовину сделал это — добить.
 
-10. **[Medium · S] Dead function `_temporal_smooth_transforms` в `ts_color_match.py`**
+10. **[Medium · S] [RESOLVED] Dead function `_temporal_smooth_transforms` в `ts_color_match.py`**
 
     Files: `nodes/image/ts_color_match.py:264`
     What's wrong: функция `_temporal_smooth_transforms(a_list, b_list, alpha)` определена
@@ -237,7 +237,7 @@ heavy-imports на module-level, утечки во фронтенде, дыры 
     самый большой не-LLM файл (670 строк).
     Recommendation: удалить функцию `_temporal_smooth_transforms` (lines 264-275).
 
-11. **[Medium · S] Unused local `channels` в `_sinkhorn_prepare_reference`**
+11. **[Medium · S] [RESOLVED] Unused local `channels` в `_sinkhorn_prepare_reference`**
 
     Files: `nodes/image/ts_color_match.py:323`
     What's wrong: `channels = ref_img.shape[-1]` присваивается, не используется (ruff F841).
@@ -245,7 +245,7 @@ heavy-imports на module-level, утечки во фронтенде, дыры 
     Recommendation: удалить, либо превратить в проверку `assert ref_img.shape[-1] == 3,
     "Reference must be RGB"`.
 
-12. **[Medium · S] Unused imports в `ts_silero_tts.py`**
+12. **[Medium · S] [RESOLVED] Unused imports в `ts_silero_tts.py`**
 
     Files: `nodes/audio/ts_silero_tts.py:6`
            `nodes/audio/ts_silero_tts.py:7`
@@ -272,7 +272,7 @@ heavy-imports на module-level, утечки во фронтенде, дыры 
     ```
     или, проще, передать модель напрямую без лямбды через `partial`/именованную функцию.
 
-14. **[Medium · S] `_logger.addHandler(StreamHandler)` в библиотечной ноде**
+14. **[Medium · S] [RESOLVED] `_logger.addHandler(StreamHandler)` в библиотечной ноде**
 
     Files: `nodes/audio/ts_whisper.py:24`
     What's wrong: модуль на module-level прикрепляет собственный `StreamHandler` к
@@ -334,7 +334,7 @@ heavy-imports на module-level, утечки во фронтенде, дыры 
     Recommendation: `raise RuntimeError(message) from exc` в `handle_model_error`,
     или просто `logger.exception(...)` перед raise.
 
-18. **[Medium · S] `try/except: continue` без логирования в loader/cleanup-логике**
+18. **[Medium · S] [RESOLVED] `try/except: continue` без логирования в loader/cleanup-логике**
 
     Files: `__init__.py:177`
            `nodes/files/ts_downloader.py:124`
@@ -398,7 +398,7 @@ heavy-imports на module-level, утечки во фронтенде, дыры 
     чтобы новые ноды не повторяли паттерн. Не трогать существующие. Если когда-то
     решите выровнять — нужен alias через `search_aliases` + `NodeReplace`-механизм V3.
 
-22. **[Medium · S] BGRM module-level side effect: `folder_paths.add_model_folder_path` при импорте**
+22. **[Medium · S] [RESOLVED] BGRM module-level side effect: `folder_paths.add_model_folder_path` при импорте**
 
     Files: `nodes/image/ts_bgrm_birefnet.py:29`
            `nodes/image/lama_cleanup/_lama_helpers.py:75`
@@ -459,7 +459,7 @@ heavy-imports на module-level, утечки во фронтенде, дыры 
     custom-node плагинов, которые могут регистрироваться через TSDependencyManager».
     CLAUDE.md уже говорит "V1 шаблон оставлен только как reference" — следовать этой строке.
 
-26. **[Low · S] Кодстайл: trailing whitespace, blank-line whitespace, f-string без placeholder, разное**
+26. **[Low · S] [RESOLVED] Кодстайл: trailing whitespace, blank-line whitespace, f-string без placeholder, разное**
 
     Files: `nodes/image/ts_bgrm_birefnet.py:287` и далее (W293)
            `nodes/llm/ts_qwen3_vl.py:229` (F541 — f-string без placeholder)
@@ -508,7 +508,7 @@ heavy-imports на module-level, утечки во фронтенде, дыры 
     Recommendation: оставить как есть — vendored код. Не править. Документировать
     в `doc/AGENTS.md` исключения для `nodes/video_depth_anything/`.
 
-31. **[Low · S] `print()` для startup-таблицы вместо logger.info**
+31. **[Low · S] [RESOLVED] `print()` для startup-таблицы вместо logger.info**
 
     Files: `__init__.py:301-332`
     What's wrong: 17 `print()` вызовов в `_print_startup_report`. CLAUDE.md §13 запрещает
