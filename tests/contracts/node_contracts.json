@@ -361,7 +361,7 @@
         "default": "Alpha"
       },
       "background_color": {
-        "default": "white"
+        "default": "#ffffff"
       },
       "enable": {
         "default": true
@@ -386,9 +386,6 @@
         "max": 4096,
         "min": 256,
         "step": 64
-      },
-      "refine_foreground": {
-        "default": false
       },
       "use_custom_resolution": {
         "default": false

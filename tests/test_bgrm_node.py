@@ -93,6 +93,7 @@ def _install_stubs(monkeypatch, root: Path) -> None:
         Boolean = _StubComfyType
         Combo = _StubComfyType
         Int = _StubComfyType
+        Color = _StubComfyType
 
     latest_mod.IO = _StubIO
     monkeypatch.setitem(sys.modules, "comfy_api", comfy_api_mod)
@@ -122,7 +123,7 @@ def test_bgrm_v3_contract_is_stable(monkeypatch):
     assert input_ids == [
         "image", "enable", "model",
         "use_custom_resolution", "process_resolution", "mask_blur", "mask_offset",
-        "invert_output", "refine_foreground", "background", "background_color",
+        "invert_output", "background", "background_color",
     ]
 
 
@@ -254,7 +255,7 @@ def test_bgrm_process_path_reports_progress_without_model_download(monkeypatch):
         False,
         1024,
         background="Color",
-        background_color="white",
+        background_color="#ffffff",
     )
     out_image, out_mask, out_mask_image = output.args
 

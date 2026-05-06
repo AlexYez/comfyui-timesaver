@@ -6,7 +6,6 @@ import importlib.util
 import logging
 import os
 import sys
-import threading
 import types
 from contextlib import contextmanager
 
@@ -222,30 +221,15 @@ def _update_progress(progress_bar, value, total=100):
 
 @contextmanager
 def _progress_pulse(progress_bar, start_step, cap_step, total_steps=100, interval=0.75):
-    if progress_bar is None or cap_step <= start_step:
-        yield
-        return
-
-    stop_event = threading.Event()
-    current_value = int(start_step)
-    cap_value = int(cap_step)
-
-    def pulse():
-        nonlocal current_value
-        while not stop_event.wait(interval):
-            if current_value >= cap_value:
-                continue
-            current_value += 1
-            _update_progress(progress_bar, current_value, total_steps)
-
-    _update_progress(progress_bar, current_value, total_steps)
-    worker = threading.Thread(target=pulse, name="ts-bgrm-progress", daemon=True)
-    worker.start()
-    try:
-        yield
-    finally:
-        stop_event.set()
-        worker.join(timeout=1.0)
+    """No-op context manager. The previous implementation spawned a
+    background thread per phase to animate the progress bar; on a
+    multi-phase execute (download / load module / load weights / model.to /
+    inference) that meant 5-7 thread spawn+join cycles costing 100-200 ms
+    of overhead with no functional benefit. Phase boundaries still emit
+    discrete `_update_progress` calls."""
+    if progress_bar is not None and start_step:
+        _update_progress(progress_bar, start_step, total_steps)
+    yield
 
 
 def _estimate_inference_chunk_size(batch_size, process_res, target_device):
@@ -299,45 +283,6 @@ def handle_model_error(message, cause: Exception | None = None):
     if cause is not None:
         raise RuntimeError(message) from cause
     raise RuntimeError(message)
-
-def refine_foreground(image_bchw, masks_b1hw):
-    b, c, h, w = image_bchw.shape
-    if b != masks_b1hw.shape[0]:
-        raise ValueError("images and masks must have the same batch size")
-
-    image_np = image_bchw.cpu().numpy()
-    mask_np = masks_b1hw.cpu().numpy()
-
-    refined_fg = []
-    for i in range(b):
-        mask = mask_np[i, 0]
-        thresh = 0.45
-        mask_binary = (mask > thresh).astype(np.float32)
-
-        # Lazy: cv2 is only needed when actually refining a foreground mask.
-        import cv2
-        edge_blur = cv2.GaussianBlur(mask_binary, (3, 3), 0)
-        transition_mask = np.logical_and(mask > 0.05, mask < 0.95)
-
-        alpha = 0.85
-        mask_refined = np.where(transition_mask,
-                              alpha * mask + (1-alpha) * edge_blur,
-                              mask_binary)
-
-        edge_region = np.logical_and(mask > 0.2, mask < 0.8)
-        mask_refined = np.where(edge_region,
-                              mask_refined * 0.98,
-                              mask_refined)
-
-        result = []
-        for c in range(image_np.shape[1]):
-            channel = image_np[i, c]
-            refined = channel * mask_refined
-            result.append(refined)
-
-        refined_fg.append(np.stack(result))
-
-    return torch.from_numpy(np.stack(refined_fg))
 
 def _resolve_birefnet_cache_dir() -> str:
     """Pick the first registered `birefnet` folder, falling back to the
@@ -519,11 +464,19 @@ class BiRefNetModel:
                 pred = pred.unsqueeze(1)
             elif pred.ndim == 4 and pred.shape[1] != 1 and pred.shape[-1] == 1:
                 pred = pred.movedim(-1, 1)
+            pred = pred.sigmoid()
 
-            pred = pred.sigmoid().float()
-            pred = F.interpolate(pred, size=(height, width), mode="bicubic", align_corners=False)
-
-        return pred[:, 0].clamp(0.0, 1.0).detach().cpu()
+        # CPU + PIL bicubic resize: at 4K/8K output sizes, GPU bicubic on
+        # FP32 is dominated by the cast + interpolate kernel; PIL's libjpeg-
+        # tuned bicubic on CPU comes out ahead, especially when the
+        # postprocessing loop is CPU-bound anyway (PIL filters / merge).
+        pred_cpu = pred[:, 0].float().cpu().numpy()
+        out = np.empty((pred_cpu.shape[0], height, width), dtype=np.float32)
+        for i in range(pred_cpu.shape[0]):
+            arr = np.clip(pred_cpu[i] * 255.0, 0, 255).astype(np.uint8)
+            pil_mask = Image.fromarray(arr).resize((width, height), Image.BICUBIC)
+            out[i] = np.asarray(pil_mask, dtype=np.float32) / 255.0
+        return torch.from_numpy(out)
 
     def process_masks(self, image, params, progress_bar=None, start_step=55, end_step=80, target_device=None):
         try:
@@ -598,9 +551,8 @@ class TS_BGRM_BiRefNet(IO.ComfyNode):
             "mask_blur": "Specify the amount of blur to apply to the mask edges (0 for no blur, higher values for more blur).",
             "mask_offset": "Adjust the mask boundary (positive values expand the mask, negative values shrink it).",
             "invert_output": "Enable to invert both the image and mask output (useful for certain effects).",
-            "refine_foreground": "Use Fast Foreground Colour Estimation to optimize transparent background",
             "background": "Choose background type: Alpha (transparent) or Color (custom background color).",
-            "background_color": "Select background color preset (black, white, green).",
+            "background_color": "Background color when 'background' is set to 'Color'. COLOR widget supports precise eyedropper picking.",
         }
         return IO.Schema(
             node_id="TS_BGRM_BiRefNet",
@@ -615,9 +567,8 @@ class TS_BGRM_BiRefNet(IO.ComfyNode):
                 IO.Int.Input("mask_blur", default=0, min=0, max=64, step=1, optional=True, tooltip=tooltips["mask_blur"]),
                 IO.Int.Input("mask_offset", default=0, min=-20, max=20, step=1, optional=True, tooltip=tooltips["mask_offset"]),
                 IO.Boolean.Input("invert_output", default=False, optional=True, tooltip=tooltips["invert_output"]),
-                IO.Boolean.Input("refine_foreground", default=False, optional=True, tooltip=tooltips["refine_foreground"]),
                 IO.Combo.Input("background", options=["Alpha", "Color"], default="Alpha", optional=True, tooltip=tooltips["background"]),
-                IO.Combo.Input("background_color", options=["black", "white", "green"], default="white", optional=True, tooltip=tooltips["background_color"]),
+                IO.Color.Input("background_color", default="#ffffff", optional=True, tooltip=tooltips["background_color"]),
             ],
             outputs=[
                 IO.Image.Output(display_name="IMAGE"),
@@ -632,9 +583,8 @@ class TS_BGRM_BiRefNet(IO.ComfyNode):
             "mask_blur": 0,
             "mask_offset": 0,
             "invert_output": False,
-            "refine_foreground": False,
             "background": "Alpha",
-            "background_color": "white",
+            "background_color": "#ffffff",
             **params,
         }
 
@@ -700,31 +650,14 @@ class TS_BGRM_BiRefNet(IO.ComfyNode):
                             mask = mask.filter(ImageFilter.MinFilter(3))
                 if params["invert_output"]:
                     mask = Image.fromarray(255 - np.array(mask))
-                img_tensor = img.detach().cpu().movedim(-1, 0).unsqueeze(0).float()
-                mask_tensor = torch.from_numpy(np.array(mask)).unsqueeze(0).unsqueeze(0) / 255.0
                 orig_image = tensor2pil(img)
-                if params.get("refine_foreground", False):
-                    refined_fg = refine_foreground(img_tensor, mask_tensor)
-                    refined_fg = tensor2pil(refined_fg[0].permute(1, 2, 0))
-                    r, g, b = refined_fg.split()
-                    foreground = Image.merge('RGBA', (r, g, b, mask))
-                else:
-                    orig_rgba = orig_image.convert("RGBA")
-                    r, g, b, _ = orig_rgba.split()
-                    foreground = Image.merge('RGBA', (r, g, b, mask))
+                orig_rgba = orig_image.convert("RGBA")
+                r, g, b, _ = orig_rgba.split()
+                foreground = Image.merge('RGBA', (r, g, b, mask))
                 if params["background"] == "Alpha":
                     processed_images.append(pil2tensor(foreground))
                 else:
-                    background_color = params.get("background_color", "white")
-                    color_presets = {
-                        "black": "#000000",
-                        "white": "#ffffff",
-                        "green": "#00ff00",
-                    }
-                    if isinstance(background_color, str):
-                        color_key = background_color.strip().lower()
-                        if color_key in color_presets:
-                            background_color = color_presets[color_key]
+                    background_color = params.get("background_color", "#ffffff")
                     rgba = hex_to_rgba(background_color)
                     bg_image = Image.new('RGBA', orig_image.size, rgba)
                     composite_image = Image.alpha_composite(bg_image, foreground)
