@@ -338,6 +338,18 @@ class TS_MultiReference(IO.ComfyNode):
                         "default 32 is a safe choice for Flux 2, Qwen image edit, etc."
                     ),
                 ),
+                IO.Boolean.Input(
+                    "block_empty_slots",
+                    default=True,
+                    tooltip=(
+                        "When enabled (default), empty image_N slots return "
+                        "ExecutionBlocker so downstream nodes are silently "
+                        "skipped (e.g. Save Image / PreviewImage). Disable "
+                        "to pass None on empty slots instead, so downstream "
+                        "nodes with optional IMAGE inputs (like TS Resolution "
+                        "Selector) keep running and apply their own fallback."
+                    ),
+                ),
                 IO.Image.Input(
                     "image_1",
                     optional=True,
@@ -406,6 +418,7 @@ class TS_MultiReference(IO.ComfyNode):
         cls,
         max_megapixels: float,
         divide_by: int = _DEFAULT_SIZE_MULTIPLE,
+        block_empty_slots: bool = True,
         conditioning=None,
         vae=None,
         image_1: Optional[torch.Tensor] = None,
@@ -415,7 +428,7 @@ class TS_MultiReference(IO.ComfyNode):
         mask_2: Optional[torch.Tensor] = None,
         mask_3: Optional[torch.Tensor] = None,
     ):
-        # Per-slot input → per-slot output (resized image or ExecutionBlocker).
+        # Per-slot input → per-slot output (resized image, ExecutionBlocker, or None).
         input_slots = (image_1, image_2, image_3)
         mask_slots = (mask_1, mask_2, mask_3)
 
@@ -432,12 +445,13 @@ class TS_MultiReference(IO.ComfyNode):
                 "images are provided together with a conditioning."
             )
 
+        empty_slot_value = ExecutionBlocker(None) if block_empty_slots else None
         current_conditioning = conditioning
         output_images: list = []
         for slot_image, slot_mask, slot_has in zip(input_slots, mask_slots, has_image):
             if not slot_has:
-                # Empty slot → block downstream silently.
-                output_images.append(ExecutionBlocker(None))
+                # Empty slot → block downstream silently or pass None through.
+                output_images.append(empty_slot_value)
                 continue
 
             processed_image = _resize_reference_image(

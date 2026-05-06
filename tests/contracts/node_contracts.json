@@ -1214,6 +1214,9 @@
     "display_name": "TS Multi Reference",
     "python_file": "nodes/conditioning/ts_multi_reference.py",
     "widgets": {
+      "block_empty_slots": {
+        "default": true
+      },
       "divide_by": {
         "default": 32,
         "max": 128,
