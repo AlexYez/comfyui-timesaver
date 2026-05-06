@@ -54,7 +54,7 @@ Whether you build pipelines for image generation, video, audio, or just want to 
   - [🎨 Conditioning](#conditioning)
 - [Tips for Beginners](#-tips-for-beginners)
 - [Troubleshooting](#-troubleshooting)
-- [Development](#-development)
+- [Repo Layout](#-repo-layout)
 - [License & Credits](#-license--credits)
 
 ---
@@ -764,49 +764,16 @@ Timesaver freezes node ids and inputs across versions on purpose. If something b
 
 ---
 
-## 🧪 Development
-
-### Running tests
-
-```bash
-# 263 tests, all CPU-safe
-D:/AiApps/ComfyUI/comfyui/python/python.exe -m pytest tests
-D:/AiApps/ComfyUI/comfyui/python/python.exe -m compileall .
-D:/AiApps/ComfyUI/comfyui/python/python.exe tools/build_node_contracts.py --check
-```
-
-The test suite covers schema contracts, tensor invariants (no input mutation, batch preservation, dtype/range), and a live `127.0.0.1:8188` smoke that confirms every node is registered with matching display name and category.
-
-### Re-generating screenshots
-
-Need fresh node screenshots after a UI change?
-
-```bash
-D:/AiApps/ComfyUI/comfyui/python/python.exe -m pip install playwright
-D:/AiApps/ComfyUI/comfyui/python/python.exe -m playwright install chromium
-
-# All 57 nodes
-D:/AiApps/ComfyUI/comfyui/python/python.exe tools/screenshot_nodes.py
-
-# Just one or a few
-D:/AiApps/ComfyUI/comfyui/python/python.exe tools/screenshot_nodes.py TS_Keyer ts_audio_loader
-```
-
-### Repo layout
+## 🗂️ Repo Layout
 
 ```text
 comfyui-timesaver/
 ├─ nodes/                  # 57 node modules, organised by category
 ├─ js/                     # frontend extensions for DOM-widget nodes
-├─ tools/                  # build_node_contracts.py, screenshot_nodes.py
-├─ tests/                  # 263 pytest tests
 ├─ doc/screenshots/        # 57 node screenshots (this README uses them)
-├─ AGENTS.md               # engineering rules for human contributors
-├─ CLAUDE.md               # engineering rules for Claude Code agents
+├─ requirements.txt        # runtime dependencies
 └─ pyproject.toml          # version + ComfyRegistry metadata
 ```
-
-See [AGENTS.md](AGENTS.md) for engineering conventions, [doc/](doc/) for migration notes and dependency policy.
 
 ---
 

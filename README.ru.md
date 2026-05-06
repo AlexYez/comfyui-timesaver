@@ -54,7 +54,7 @@
   - [🎨 Conditioning](#conditioning)
 - [Подсказки для новичков](#-подсказки-для-новичков)
 - [Если что-то сломалось](#-если-что-то-сломалось)
-- [Разработка](#-разработка)
+- [Структура репозитория](#-структура-репозитория)
 - [Лицензия и благодарности](#-лицензия-и-благодарности)
 
 ---
@@ -764,49 +764,16 @@ Timesaver специально замораживает id нод и входы 
 
 ---
 
-## 🧪 Разработка
-
-### Запуск тестов
-
-```bash
-# 263 теста, все CPU-safe
-D:/AiApps/ComfyUI/comfyui/python/python.exe -m pytest tests
-D:/AiApps/ComfyUI/comfyui/python/python.exe -m compileall .
-D:/AiApps/ComfyUI/comfyui/python/python.exe tools/build_node_contracts.py --check
-```
-
-Тестовый набор покрывает schema-контракты, тензорные инварианты (нет мутации входов, сохранение батча, dtype/range) и live `127.0.0.1:8188` smoke, который проверяет регистрацию каждой ноды с правильным display name и категорией.
-
-### Перегенерация скриншотов
-
-Нужны свежие скриншоты после изменения UI?
-
-```bash
-D:/AiApps/ComfyUI/comfyui/python/python.exe -m pip install playwright
-D:/AiApps/ComfyUI/comfyui/python/python.exe -m playwright install chromium
-
-# Все 57 нод
-D:/AiApps/ComfyUI/comfyui/python/python.exe tools/screenshot_nodes.py
-
-# Только одну или несколько
-D:/AiApps/ComfyUI/comfyui/python/python.exe tools/screenshot_nodes.py TS_Keyer ts_audio_loader
-```
-
-### Структура репозитория
+## 🗂️ Структура репозитория
 
 ```text
 comfyui-timesaver/
 ├─ nodes/                  # 57 модулей нод по категориям
 ├─ js/                     # frontend extensions для DOM-widget нод
-├─ tools/                  # build_node_contracts.py, screenshot_nodes.py
-├─ tests/                  # 263 pytest-теста
 ├─ doc/screenshots/        # 57 скриншотов нод (этот README их использует)
-├─ AGENTS.md               # инженерные правила для людей-контрибьюторов
-├─ CLAUDE.md               # инженерные правила для Claude Code агентов
+├─ requirements.txt        # runtime-зависимости
 └─ pyproject.toml          # версия + ComfyRegistry-метаданные
 ```
-
-См. [AGENTS.md](AGENTS.md) для соглашений и [doc/](doc/) для migration-нот и dependency policy.
 
 ---
 
