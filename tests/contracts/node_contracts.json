@@ -294,7 +294,7 @@
     }
   },
   "TS_Animation_Preview": {
-    "api": "v1",
+    "api": "v3",
     "category": "TS/Video",
     "class_name": "TS_Animation_Preview",
     "display_name": "TS Animation Preview",
@@ -755,7 +755,7 @@
     }
   },
   "TS_Frame_Interpolation": {
-    "api": "v1",
+    "api": "v3",
     "category": "TS/Video",
     "class_name": "TS_Frame_Interpolation",
     "display_name": "TS Frame Interpolation",
@@ -806,7 +806,7 @@
     }
   },
   "TS_Free_Video_Memory": {
-    "api": "v1",
+    "api": "v3",
     "category": "TS/Video",
     "class_name": "TS_Free_Video_Memory",
     "display_name": "TS Free Video Memory",
@@ -1075,7 +1075,7 @@
     }
   },
   "TS_LTX_FirstLastFrame": {
-    "api": "v1",
+    "api": "v3",
     "category": "TS/Video",
     "class_name": "TS_LTX_FirstLastFrame",
     "display_name": "TS LTX First/Last Frame",
@@ -1369,7 +1369,7 @@
     "python_file": "nodes/image/ts_qwen_safe_resize.py"
   },
   "TS_RTX_Upscaler": {
-    "api": "v1",
+    "api": "v3",
     "category": "TS/Video",
     "class_name": "TS_RTX_Upscaler",
     "display_name": "TS RTX Upscaler",
@@ -1550,7 +1550,7 @@
     }
   },
   "TS_VideoDepthNode": {
-    "api": "v1",
+    "api": "v3",
     "category": "TS/Video",
     "class_name": "TS_VideoDepth",
     "display_name": "TS Video Depth",
@@ -1592,7 +1592,7 @@
     }
   },
   "TS_Video_Upscale_With_Model": {
-    "api": "v1",
+    "api": "v3",
     "category": "TS/Video",
     "class_name": "TS_Video_Upscale_With_Model",
     "display_name": "TS Video Upscale With Model",
