@@ -1341,7 +1341,7 @@
     }
   },
   "TS_Qwen3_VL_V3": {
-    "api": "v1",
+    "api": "v3",
     "category": "TS/LLM",
     "class_name": "TS_Qwen3_VL_V3",
     "display_name": "TS Qwen 3 VL V3",
