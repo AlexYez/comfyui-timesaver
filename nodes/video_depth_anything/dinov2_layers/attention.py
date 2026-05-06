@@ -80,4 +80,3 @@ class MemEffAttention(Attention):
         x = self.proj_drop(x)
         return x
 
-        

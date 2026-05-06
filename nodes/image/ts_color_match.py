@@ -261,21 +261,6 @@ def _apply_affine(image, A, b, clamp_min=None, clamp_max=None):
     return out
 
 
-def _temporal_smooth_transforms(a_list, b_list, alpha):
-    if len(a_list) <= 1:
-        return a_list, b_list
-    smoothed_a = [a_list[0]]
-    smoothed_b = [b_list[0]]
-    for i in range(1, len(a_list)):
-        prev_a = smoothed_a[-1]
-        prev_b = smoothed_b[-1]
-        cur_a = a_list[i]
-        cur_b = b_list[i]
-        smoothed_a.append(prev_a * alpha + cur_a * (1.0 - alpha))
-        smoothed_b.append(prev_b * alpha + cur_b * (1.0 - alpha))
-    return smoothed_a, smoothed_b
-
-
 def _sinkhorn_plan(src_points, ref_points, blur, iters):
     n = src_points.shape[0]
     m = ref_points.shape[0]
@@ -320,7 +305,6 @@ def _sinkhorn_barycentric(src_sample, ref_sample, blur, iters):
 def _sinkhorn_prepare_reference(ref_img, max_points, seed, mask_mode, mask_size):
     backend = "tensorized"
     max_points = _cap_sinkhorn_points(max_points, backend, ref_img.device)
-    channels = ref_img.shape[-1]
     ref = _flatten_with_mask(ref_img, mask_mode, mask_size)
     gen_ref = _make_generator(seed + 1, ref_img.device) if seed is not None and seed >= 0 else None
     return _sample_pixels(ref, max_points, gen_ref)

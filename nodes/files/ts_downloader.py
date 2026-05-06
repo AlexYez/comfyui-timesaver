@@ -121,7 +121,8 @@ class TS_DownloadFilesNode(IO.ComfyNode):
                 parsed = urlparse(final_url)
                 base_url = f"{parsed.scheme}://{parsed.netloc}"
                 unique_bases.add(base_url)
-            except Exception:
+            except Exception as exc:
+                logger.debug("%s Could not parse URL '%s': %s", LOG_PREFIX, final_url, exc)
                 continue
 
         if not unique_bases:

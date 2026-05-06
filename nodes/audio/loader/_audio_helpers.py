@@ -43,7 +43,6 @@ import folder_paths
 import numpy as np
 import torch
 from aiohttp import web
-from comfy_api.latest import IO
 
 try:
     import imageio_ffmpeg

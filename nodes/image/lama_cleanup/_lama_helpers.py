@@ -266,7 +266,8 @@ def _cleanup_session_files(session_id: str, keep: set[str] | None = None) -> int
             continue
         try:
             keep_normalized.add(_normalize_path(str(Path(raw).resolve(strict=False))))
-        except Exception:
+        except OSError as exc:
+            LOGGER.debug("%s Could not resolve keep-path '%s': %s", LOG_PREFIX, raw, exc)
             continue
     removed = 0
     try:
@@ -307,7 +308,8 @@ def _cleanup_session_paths(session_id: str, paths: list[str]) -> int:
             continue
         try:
             path_obj = Path(resolved)
-        except Exception:
+        except (TypeError, ValueError) as exc:
+            LOGGER.debug("%s Could not build Path('%s'): %s", LOG_PREFIX, resolved, exc)
             continue
         if not path_obj.is_file():
             continue
@@ -689,8 +691,8 @@ def _process_inpaint(
 
             kernel_size = max(3, int(feather) * 2 + 1)
             soft_mask = cv2.GaussianBlur(soft_mask, (kernel_size, kernel_size), 0)
-        except Exception:
-            pass
+        except (ImportError, Exception) as exc:
+            LOGGER.debug("%s Feather GaussianBlur skipped: %s", LOG_PREFIX, exc)
     soft_mask = np.clip(soft_mask, 0.0, 1.0)[..., None]
     blended = inpainted_crop.astype(np.float32) * soft_mask + crop_image.astype(np.float32) * (1.0 - soft_mask)
     blended = np.clip(blended, 0.0, 255.0).astype(np.uint8)

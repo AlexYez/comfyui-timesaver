@@ -25,8 +25,22 @@ from safetensors.torch import load_file
 logger = logging.getLogger(__name__)
 _LOG_PREFIX = "[TS Remove Background]"
 
-# Add model path to ComfyUI/models/BiRefNet/
-folder_paths.add_model_folder_path("birefnet", os.path.join(folder_paths.models_dir, "BiRefNet"))
+
+def _register_birefnet_folder():
+    """Register `models/BiRefNet/` so ComfyUI's folder_paths is aware of it.
+
+    Wrapped in try/except: any monkey-patch from another custom node that
+    breaks `folder_paths` should not abort our import.
+    """
+    try:
+        folder_paths.add_model_folder_path(
+            "birefnet", os.path.join(folder_paths.models_dir, "BiRefNet")
+        )
+    except Exception as exc:
+        logger.warning("%s Failed to register 'birefnet' model folder: %s", _LOG_PREFIX, exc)
+
+
+_register_birefnet_folder()
 
 # Model configuration
 MODEL_CONFIG = {
@@ -284,37 +298,37 @@ def refine_foreground(image_bchw, masks_b1hw):
     b, c, h, w = image_bchw.shape
     if b != masks_b1hw.shape[0]:
         raise ValueError("images and masks must have the same batch size")
-    
+
     image_np = image_bchw.cpu().numpy()
     mask_np = masks_b1hw.cpu().numpy()
-    
+
     refined_fg = []
     for i in range(b):
-        mask = mask_np[i, 0]      
+        mask = mask_np[i, 0]
         thresh = 0.45
         mask_binary = (mask > thresh).astype(np.float32)
-        
+
         edge_blur = cv2.GaussianBlur(mask_binary, (3, 3), 0)
         transition_mask = np.logical_and(mask > 0.05, mask < 0.95)
-        
+
         alpha = 0.85
         mask_refined = np.where(transition_mask,
                               alpha * mask + (1-alpha) * edge_blur,
                               mask_binary)
-        
+
         edge_region = np.logical_and(mask > 0.2, mask < 0.8)
         mask_refined = np.where(edge_region,
                               mask_refined * 0.98,
                               mask_refined)
-        
+
         result = []
         for c in range(image_np.shape[1]):
             channel = image_np[i, c]
             refined = channel * mask_refined
             result.append(refined)
-            
+
         refined_fg.append(np.stack(result))
-    
+
     return torch.from_numpy(np.stack(refined_fg))
 
 class BiRefNetModel:
@@ -324,26 +338,26 @@ class BiRefNetModel:
         self.current_device = None
         self.current_dtype = None
         self.base_cache_dir = os.path.join(folder_paths.models_dir, "BiRefNet")
-    
+
     def get_cache_dir(self, model_name):
         return self.base_cache_dir
-    
+
     def check_model_cache(self, model_name):
         cache_dir = self.get_cache_dir(model_name)
-        
+
         if not os.path.exists(cache_dir):
             return False, "Model directory not found"
-        
+
         missing_files = []
         for filename in MODEL_CONFIG[model_name]["files"].keys():
             if not os.path.exists(os.path.join(cache_dir, filename)):
                 missing_files.append(filename)
-        
+
         if missing_files:
             return False, f"Missing model files: {', '.join(missing_files)}"
-            
+
         return True, "Model cache verified"
-    
+
     def download_model(self, model_name, progress_bar=None, start_step=5, end_step=30):
         cache_dir = self.get_cache_dir(model_name)
 
@@ -370,7 +384,7 @@ class BiRefNetModel:
 
         except Exception as e:
             return False, f"Error downloading model files: {str(e)}"
-    
+
     def clear_model(self):
         if self.model is not None:
             self.model.cpu()
