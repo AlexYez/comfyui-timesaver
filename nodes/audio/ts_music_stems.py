@@ -10,7 +10,7 @@ import torchaudio
 
 from comfy_api.latest import IO
 
-from ..ts_dependency_manager import TSDependencyManager
+from ...ts_dependency_manager import TSDependencyManager
 
 logger = logging.getLogger("comfyui_timesaver.ts_music_stems")
 LOG_PREFIX = "[TS Music Stems]"
