@@ -11,3 +11,8 @@
 /.test_models/
 /.test_input/
 pytest-cache-files-*/
+
+# Local-only AI assistant instructions; not published to GitHub.
+CLAUDE.md
+MODERNIZATION_PLAN.md
+comfyui-pack-testing-guide.md
