@@ -3,16 +3,13 @@
 .github/pull_request_template.md
 .github/workflows/ci.yml
 .github/workflows/publish_action.yml
-AGENTS.md
 CLAUDE.md
 README.md
 README.ru.md
 __init__.py
-doc/AGENTS.md
 doc/TS_DEPENDENCY_POLICY.md
 doc/generate_readme_ru.py
 doc/migration.md
-js/AGENTS.md
 js/audio/ts-audio-loader.js
 js/image/ts-resolution-selector.js
 js/llm/ts-super-prompt.js
@@ -145,7 +142,6 @@ nodes/video_depth_anything/utils/util.py
 nodes/video_depth_anything/video_depth.py
 pyproject.toml
 requirements.txt
-tests/AGENTS.md
 tests/conftest.py
 tests/test_bgrm_node.py
 tests/test_multi_reference_node.py
