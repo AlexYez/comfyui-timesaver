@@ -1,6 +1,6 @@
 # CLAUDE.md — Engineering Rules for comfyui-timesaver
 
-Этот файл — операционные правила для Claude (и других AI-ассистентов) при работе над `comfyui-timesaver`. Он построен на основе [AGENTS.md](AGENTS.md) и привязан к ComfyUI custom-node V3 API (`comfy_api.v0_0_2.IO` — pinned namespace, не `latest`).
+Этот файл — операционные правила для Claude (и других AI-ассистентов) при работе над `comfyui-timesaver`. Привязан к ComfyUI custom-node V3 API (`comfy_api.v0_0_2.IO` — pinned namespace, не `latest`).
 
 Главная цель: **максимальное качество итогового кода без поломки старых ComfyUI workflows**.
 
@@ -22,16 +22,7 @@ ComfyUI-кредо:
 
 ## 0. Иерархия инструкций
 
-Соблюдай этот корневой `CLAUDE.md` и ближайший локальный `AGENTS.md`:
-
-```text
-nodes/AGENTS.md
-js/AGENTS.md
-doc/AGENTS.md
-tests/AGENTS.md
-```
-
-Локальные `AGENTS.md` могут уточнять правила, но не могут ослаблять совместимость, безопасность, тестирование и стабильность node contracts.
+Этот `CLAUDE.md` — единственный источник правил для всего пакета. Backend-specific уточнения по нодам — в `nodes/AGENTS.md` (читать его перед работой в `nodes/`).
 
 При конфликте: workflow compatibility > безопасность > тесты > всё остальное.
 
@@ -53,7 +44,7 @@ Layout (с релиза 8.8):
 
 ```text
 comfyui-timesaver/
-├─ AGENTS.md / CLAUDE.md
+├─ CLAUDE.md
 ├─ __init__.py            # рекурсивное auto-discovery + import audit
 ├─ ts_dependency_manager.py
 ├─ pyproject.toml
@@ -526,8 +517,6 @@ Verification summary в ответе пользователю — обязате
 - Tensor-тесты обязаны проверять: shape, batch preservation, dtype/range, **отсутствие мутации входа** (`assert torch.equal(image, before)`).
 - Snapshot контрактов (если потребуются) — `tests/contracts/node_contracts.json`.
 
-См. полные правила в [tests/AGENTS.md](tests/AGENTS.md).
-
 ---
 
 ## 12. Frontend (js/)
@@ -541,8 +530,6 @@ Verification summary в ответе пользователю — обязате
 - Логи: `console.warn("[TS ModuleName] ...")` / `console.error("[TS ModuleName] ...", err)` — без эмоджи и спама.
 - Legacy LiteGraph (`registerCustomNodes` + `LGraphNode`) разрешён только для compatibility — пример: `ts-bookmark.js`.
 - Когда задеваешь UI и ComfyUI запущен — проверь browser console на чистоту.
-
-См. полные правила в [js/AGENTS.md](js/AGENTS.md).
 
 ---
 
@@ -900,11 +887,7 @@ Verification summary всегда в формате:
 ## 23. Полезные ссылки внутри репо
 
 - [README.md](README.md) — пользовательская документация (русский + английский).
-- [AGENTS.md](AGENTS.md) — root engineering rules (источник этого файла).
-- [nodes/AGENTS.md](nodes/AGENTS.md) — backend-specific правила.
-- [js/AGENTS.md](js/AGENTS.md) — frontend-specific правила.
-- [tests/AGENTS.md](tests/AGENTS.md) — testing rules.
-- [doc/AGENTS.md](doc/AGENTS.md) — documentation rules.
+- [nodes/AGENTS.md](nodes/AGENTS.md) — backend-specific уточнения.
 - [doc/TS_DEPENDENCY_POLICY.md](doc/TS_DEPENDENCY_POLICY.md) — политика зависимостей.
 - [pyproject.toml](pyproject.toml) — версия, dependencies, ComfyRegistry metadata.
 - [requirements.txt](requirements.txt) — runtime dependencies.
