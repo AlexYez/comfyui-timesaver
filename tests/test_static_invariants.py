@@ -175,9 +175,11 @@ def test_no_print_progress_reporting():
 
 
 def test_node_files_follow_ts_prefix_convention():
-    """Loader convention (CLAUDE.md §6, §7): every public node file is
-    named `ts_*.py`. Files without that prefix in `nodes/<category>/` are
-    private helpers and must start with `_`."""
+    """Loader convention: every public node file is named `ts_*.py`.
+    Files without that prefix in `nodes/<category>/` are private helpers
+    and must start with `_`. Bundled third-party trees (e.g.
+    `frame_interpolation_models/`, `video_depth_anything/`) are
+    whitelisted via `BUNDLED_HELPER_DIRS` above."""
     offenders: list[str] = []
     for path in _iter_node_py_files():
         name = path.name
