@@ -17,8 +17,9 @@ __all__ = [
     "_get_uploadable_image_options",
     "_session_working_path",
     "_working_file_signature",
-    "MODEL_REPO_ID",
+    "MODEL_DOWNLOAD_URL",
     "MODEL_FILENAME",
+    "MODEL_LEGACY_FILENAME",
 ]
 
 import asyncio
@@ -34,6 +35,8 @@ import urllib.parse
 import uuid
 from pathlib import Path
 from typing import Any
+from urllib.error import URLError
+from urllib.request import Request, urlopen
 
 import folder_paths
 import numpy as np
@@ -55,12 +58,22 @@ try:
 except Exception:
     server = None
 
+try:
+    from safetensors.torch import load_file as _safetensors_load_file
+except ImportError:
+    _safetensors_load_file = None
+
+from ._lama_arch import build_lama_inpainter
+
 
 LOGGER = logging.getLogger("comfyui_timesaver.ts_lama_cleanup")
 LOG_PREFIX = "[TS Lama Cleanup]"
 
-MODEL_REPO_ID = "1038lab/Lama"
-MODEL_FILENAME = "big-lama.pt"
+MODEL_FILENAME = "big-lama.safetensors"
+MODEL_LEGACY_FILENAME = "big-lama.pt"
+MODEL_DOWNLOAD_URL = (
+    "https://huggingface.co/hfmaster/models-moved/resolve/main/lama/big-lama.safetensors"
+)
 MODEL_FOLDER_NAME = "lama"
 
 NODE_ROOT = Path(__file__).resolve().parents[2]
@@ -417,13 +430,12 @@ class _LamaModel:
     def _resolve_device(self) -> torch.device:
         if self._device is not None:
             return self._device
-        try:
-            if model_management is not None:
-                device = model_management.get_torch_device()
-            else:
-                device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        except Exception:
-            device = torch.device("cpu")
+        if model_management is None:
+            raise RuntimeError(
+                f"{LOG_PREFIX} comfy.model_management is unavailable; "
+                "LaMa inpaint requires a running ComfyUI runtime."
+            )
+        device = model_management.get_torch_device()
         self._device = device
         return device
 
@@ -437,16 +449,19 @@ class _LamaModel:
         return base
 
     def _find_existing_model(self) -> Path | None:
-        """Look for an existing big-lama.pt in any registered models/lama folder."""
-        canonical = self._model_cache_dir() / MODEL_FILENAME
-        if canonical.is_file() and canonical.stat().st_size > 1024:
-            return canonical
+        """Look for big-lama.safetensors (preferred) or big-lama.pt in any models/lama folder."""
+        candidates: list[Path] = []
+        cache_dir = self._model_cache_dir()
+        for name in (MODEL_FILENAME, MODEL_LEGACY_FILENAME):
+            candidates.append(cache_dir / name)
         try:
             registered = folder_paths.get_folder_paths(MODEL_FOLDER_NAME)
         except Exception:
             registered = []
         for folder in registered or []:
-            candidate = Path(folder) / MODEL_FILENAME
+            for name in (MODEL_FILENAME, MODEL_LEGACY_FILENAME):
+                candidates.append(Path(folder) / name)
+        for candidate in candidates:
             if candidate.is_file() and candidate.stat().st_size > 1024:
                 return candidate
         return None
@@ -460,34 +475,41 @@ class _LamaModel:
                 error="",
             )
             return existing
-        try:
-            from huggingface_hub import hf_hub_download
-        except ImportError as exc:
-            raise RuntimeError(
-                "huggingface_hub is required to download the LaMa model. "
-                "Install it via `pip install huggingface_hub`."
-            ) from exc
         cache_dir = self._model_cache_dir()
         local_path = cache_dir / MODEL_FILENAME
+        tmp_path = local_path.with_suffix(local_path.suffix + ".part")
         self._set_status(
             loading=True,
-            message=f"Downloading LaMa model {MODEL_REPO_ID}/{MODEL_FILENAME} to {cache_dir}...",
+            message=f"Downloading LaMa model from {MODEL_DOWNLOAD_URL} to {cache_dir}...",
             error="",
         )
-        downloaded = hf_hub_download(
-            repo_id=MODEL_REPO_ID,
-            filename=MODEL_FILENAME,
-            local_dir=str(cache_dir),
-            local_dir_use_symlinks=False,
-        )
-        downloaded_path = Path(downloaded)
-        if downloaded_path != local_path:
-            try:
-                shutil.copy2(downloaded_path, local_path)
-            except Exception as exc:
-                _log_warning(f"Failed to copy downloaded model to canonical path: {exc}")
-                local_path = downloaded_path
+        request = Request(MODEL_DOWNLOAD_URL, headers={"User-Agent": "comfyui-timesaver"})
+        try:
+            with urlopen(request, timeout=300) as response, tmp_path.open("wb") as handle:
+                shutil.copyfileobj(response, handle)
+            tmp_path.replace(local_path)
+        except URLError as exc:
+            raise RuntimeError(
+                f"Failed to download LaMa model from {MODEL_DOWNLOAD_URL}: {exc}"
+            ) from exc
+        finally:
+            if tmp_path.exists():
+                tmp_path.unlink(missing_ok=True)
         return local_path
+
+    def _load_state_dict(self, model_path: Path) -> dict[str, torch.Tensor]:
+        suffix = model_path.suffix.lower()
+        if suffix == ".safetensors":
+            if _safetensors_load_file is None:
+                raise RuntimeError(
+                    f"{LOG_PREFIX} safetensors is required to load {model_path.name}. "
+                    "Install it via `pip install safetensors`."
+                )
+            return _safetensors_load_file(str(model_path), device="cpu")
+        if suffix == ".pt":
+            ts_module = torch.jit.load(str(model_path), map_location="cpu")
+            return {key: tensor.detach().clone() for key, tensor in ts_module.state_dict().items()}
+        raise RuntimeError(f"{LOG_PREFIX} unsupported LaMa weights format: {model_path}")
 
     def ensure_loaded(self) -> None:
         if self._model is not None:
@@ -502,9 +524,9 @@ class _LamaModel:
                     message="Loading LaMa model into memory...",
                     error="",
                 )
+                state_dict = self._load_state_dict(model_path)
+                model = build_lama_inpainter(state_dict)
                 device = self._resolve_device()
-                model = torch.jit.load(str(model_path), map_location=device)
-                model.eval()
                 model.to(device)
                 self._model = model
                 self._set_status(

@@ -104,7 +104,6 @@ def test_no_torch_in_requirements():
 # this set (delete entries) and the test will pass.
 KNOWN_CUDA_HARDCODES: frozenset[str] = frozenset(
     {
-        "nodes/image/lama_cleanup/_lama_helpers.py:424",
         "nodes/audio/ts_whisper.py:590",
         "nodes/audio/ts_whisper.py:594",
     }
