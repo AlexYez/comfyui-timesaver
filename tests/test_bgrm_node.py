@@ -93,6 +93,7 @@ def _install_stubs(monkeypatch, root: Path) -> None:
         Boolean = _StubComfyType
         Combo = _StubComfyType
         Int = _StubComfyType
+        Float = _StubComfyType
         Color = _StubComfyType
 
     latest_mod.IO = _StubIO
@@ -123,7 +124,8 @@ def test_bgrm_v3_contract_is_stable(monkeypatch):
     assert input_ids == [
         "image", "enable", "model",
         "use_custom_resolution", "process_resolution", "mask_blur", "mask_offset",
-        "invert_output", "background", "background_color",
+        "invert_output", "background", "background_color", "precision",
+        "temporal_smooth", "ema_alpha",
     ]
 
 
@@ -242,7 +244,7 @@ def test_bgrm_process_path_reports_progress_without_model_download(monkeypatch):
         def load_model(self, *args, **kwargs):
             return None
 
-        def process_masks(self, image, params, progress_bar=None, start_step=55, end_step=80, target_device=None):
+        def process_masks(self, image, params, progress_bar=None, start_step=55, end_step=80, target_device=None, target_dtype=None):
             return torch.ones((image.shape[0], image.shape[1], image.shape[2]), dtype=torch.float32)
 
     monkeypatch.setattr(module._state, "model", _FakeBg())
@@ -262,8 +264,15 @@ def test_bgrm_process_path_reports_progress_without_model_download(monkeypatch):
     assert out_image.shape == (2, 6, 5, 3)
     assert out_mask.shape == (2, 6, 5)
     assert out_mask_image.shape == (2, 6, 5, 3)
-    assert _ProgressBar.instances[-1].updates[0] == (1, 100)
-    assert _ProgressBar.instances[-1].updates[-1] == (100, 100)
+    # The execute path now spins up separate ProgressBars for the load
+    # phase (totals=100) and the inference / post-process phases
+    # (totals=batch_size). The last bar (post-process) must reach the
+    # batch size on its final update.
+    bars = _ProgressBar.instances
+    assert len(bars) >= 2, f"expected at least 2 progress bars, got {len(bars)}"
+    final_bar = bars[-1]
+    final_value, final_total = final_bar.updates[-1]
+    assert final_value == 2 and final_total == 2
 
 
 def test_bgrm_logs_processing_device(monkeypatch, caplog):
@@ -278,7 +287,7 @@ def test_bgrm_logs_processing_device(monkeypatch, caplog):
         def load_model(self, *args, **kwargs):
             return None
 
-        def process_masks(self, image, params, progress_bar=None, start_step=55, end_step=80, target_device=None):
+        def process_masks(self, image, params, progress_bar=None, start_step=55, end_step=80, target_device=None, target_dtype=None):
             return torch.ones((image.shape[0], image.shape[1], image.shape[2]), dtype=torch.float32)
 
     monkeypatch.setattr(module._state, "model", _FakeBg())
