@@ -363,6 +363,12 @@
       "background_color": {
         "default": "#ffffff"
       },
+      "ema_alpha": {
+        "default": 0.5,
+        "max": 0.99,
+        "min": 0.0,
+        "step": 0.01
+      },
       "enable": {
         "default": true
       },
@@ -381,11 +387,20 @@
         "min": -20,
         "step": 1
       },
+      "model": {
+        "default": "BiRefNet-HR-matting"
+      },
+      "precision": {
+        "default": "auto"
+      },
       "process_resolution": {
         "default": 1024,
         "max": 4096,
         "min": 256,
         "step": 64
+      },
+      "temporal_smooth": {
+        "default": "median3"
       },
       "use_custom_resolution": {
         "default": false
@@ -1205,6 +1220,78 @@
       }
     }
   },
+  "TS_Matting_ViTMatte": {
+    "api": "v3",
+    "category": "TS/Image",
+    "class_name": "TS_Matting_ViTMatte",
+    "display_name": "TS Matting (ViTMatte)",
+    "python_file": "nodes/image/ts_matting_vitmatte.py",
+    "widgets": {
+      "auto_crop_by_mask": {
+        "default": true
+      },
+      "background": {
+        "default": "Alpha"
+      },
+      "background_color": {
+        "default": "#ffffff"
+      },
+      "crop_padding_pct": {
+        "default": 15,
+        "max": 100,
+        "min": 0,
+        "step": 1
+      },
+      "ema_alpha": {
+        "default": 0.5,
+        "max": 0.99,
+        "min": 0.0,
+        "step": 0.01
+      },
+      "invert_output": {
+        "default": false
+      },
+      "mask_blur": {
+        "default": 0,
+        "max": 64,
+        "min": 0,
+        "step": 1
+      },
+      "mask_offset": {
+        "default": 0,
+        "max": 20,
+        "min": -20,
+        "step": 1
+      },
+      "max_resolution": {
+        "default": 2048,
+        "max": 4096,
+        "min": 0,
+        "step": 64
+      },
+      "model": {
+        "default": "vitmatte-base-composition-1k"
+      },
+      "precision": {
+        "default": "auto"
+      },
+      "temporal_smooth": {
+        "default": "median3"
+      },
+      "trimap_dilate_px": {
+        "default": 20,
+        "max": 128,
+        "min": 0,
+        "step": 1
+      },
+      "trimap_erode_px": {
+        "default": 10,
+        "max": 128,
+        "min": 0,
+        "step": 1
+      }
+    }
+  },
   "TS_ModelConverter": {
     "api": "v3",
     "category": "TS/Files",
@@ -1469,6 +1556,42 @@
       }
     }
   },
+  "TS_SAM_MediaLoader": {
+    "api": "v3",
+    "category": "TS/Image",
+    "class_name": "TS_SAM_MediaLoader",
+    "display_name": "TS SAM Media Loader",
+    "python_file": "nodes/image/sam_media_loader/ts_sam_media_loader.py",
+    "widgets": {
+      "coordinates": {
+        "default": "[]"
+      },
+      "frame_stride": {
+        "default": 1,
+        "max": 60,
+        "min": 1,
+        "step": 1
+      },
+      "max_frames": {
+        "default": 0,
+        "max": 10000,
+        "min": 0,
+        "step": 1
+      },
+      "media_type": {
+        "default": ""
+      },
+      "neg_coordinates": {
+        "default": "[]"
+      },
+      "sam3_checkpoint": {
+        "default": ""
+      },
+      "source_path": {
+        "default": ""
+      }
+    }
+  },
   "TS_SileroStress": {
     "api": "v3",
     "category": "TS/Text",
@@ -1601,11 +1724,20 @@
       "colormap": {
         "default": "gray"
       },
+      "denoise_method": {
+        "default": "bilateral"
+      },
+      "dither_pattern": {
+        "default": "bayer"
+      },
       "dithering_strength": {
         "default": 0.005,
         "max": 0.016,
         "min": 0.0,
         "step": 0.0001
+      },
+      "edge_aware_upscale": {
+        "default": true
       },
       "input_size": {
         "default": 518,
@@ -1621,6 +1753,9 @@
       },
       "model_filename": {
         "default": "video_depth_anything_vitl.pth"
+      },
+      "normalization_mode": {
+        "default": "percentile"
       },
       "precision": {
         "default": "fp16"
