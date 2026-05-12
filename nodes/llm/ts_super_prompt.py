@@ -183,11 +183,11 @@ from .super_prompt.ts_super_prompt import (  # noqa: F401
 )
 
 
-# Re-export NODE_CLASS_MAPPINGS so existing tests that import this shim see
-# the same registration. Loader will discover the real entry point at
-# nodes/llm/super_prompt/ts_super_prompt.py too, but Python's module cache
-# guarantees `TS_SuperPrompt` is the same class object both times — `dict.update`
-# is a no-op rewrite, and `wrap_node_runtime` skips the second pass via the
-# `_ts_runtime_guard_wrapped` flag set on its first wrap.
-NODE_CLASS_MAPPINGS = {"TS_SuperPrompt": TS_SuperPrompt}
-NODE_DISPLAY_NAME_MAPPINGS = {"TS_SuperPrompt": "TS Super Prompt"}
+# NODE_CLASS_MAPPINGS deliberately left empty here. The real registration lives
+# in nodes/llm/super_prompt/ts_super_prompt.py and is discovered by the loader's
+# recursive scan. Re-declaring the mapping in this shim made the contract
+# snapshot tool (tools/build_node_contracts.py) record this file as the node's
+# python_file with api="unknown", because the class is imported (not defined)
+# here. Keeping the mappings out makes the snapshot point at the real V3 entry.
+NODE_CLASS_MAPPINGS: dict[str, type] = {}
+NODE_DISPLAY_NAME_MAPPINGS: dict[str, str] = {}

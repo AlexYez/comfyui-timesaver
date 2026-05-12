@@ -8,7 +8,7 @@
 
 Resize, color-grade, key, denoise, transcribe, translate, prompt-build, manage models — without leaving the canvas.
 
-[![Version](https://img.shields.io/badge/version-9.2-blue.svg)](pyproject.toml)
+[![Version](https://img.shields.io/badge/version-9.5-blue.svg)](pyproject.toml)
 [![ComfyUI](https://img.shields.io/badge/ComfyUI-V3%20API-orange.svg)](https://github.com/comfyanonymous/ComfyUI)
 [![Python](https://img.shields.io/badge/python-3.10+-green.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-see%20LICENSE.txt-lightgrey.svg)](LICENSE.txt)
@@ -575,7 +575,7 @@ Tools for managing model files, downloads, EDLs, and inspecting weights.
 #### TS Files Downloader (Ultimate)
 <img src="doc/screenshots/ts_downloader.png" alt="TS Files Downloader" width="450" />
 
-Multi-file downloader that takes a list of `URL <space> target_path` lines and downloads them in parallel. Auto-replaces HuggingFace mirrors, supports `models/<subdir>` aliases, retries on failure, and shows progress. Handy for one-shot pulling all assets a workflow needs.
+Multi-file downloader that takes a list of `URL <space> target_path` lines and downloads them sequentially. Auto-replaces HuggingFace mirrors with reachability check across the full mirror list, supports `models/<subdir>` aliases, resumes interrupted downloads, validates archives against zip-slip on auto-unzip, and shows progress (including SHA256 verification). Handy for one-shot pulling all assets a workflow needs.
 
 **Use when:** distributing a workflow that needs N specific models — give users a Files Downloader node pre-filled with the URLs.
 

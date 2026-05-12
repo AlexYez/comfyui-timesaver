@@ -80,7 +80,26 @@ def _install_stubs(monkeypatch, ts_tmp_path):
 
     if "tqdm" not in sys.modules:
         tqdm_mod = types.ModuleType("tqdm")
-        tqdm_mod.tqdm = lambda iterable=None, **kw: iterable if iterable is not None else iter([])
+
+        class _TqdmStub:
+            def __init__(self, iterable=None, **kwargs):
+                self._iterable = iterable
+
+            def __iter__(self):
+                if self._iterable is None:
+                    return iter([])
+                return iter(self._iterable)
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def update(self, n=1):
+                pass
+
+        tqdm_mod.tqdm = _TqdmStub
         monkeypatch.setitem(sys.modules, "tqdm", tqdm_mod)
 
     # Stub comfy_api.v0_0_2.IO so the V3 schema declaration in
@@ -232,3 +251,136 @@ def test_check_connectivity_to_targets_returns_false_when_all_fail(downloader_mo
 
     parsed = [{"url": "https://offline.example/a.bin", "target_dir": "/tmp"}]
     assert node._check_connectivity_to_targets(parsed, _Sess(), "huggingface.co") is False
+
+
+def test_check_connectivity_falls_back_to_secondary_hf_mirror(downloader_module):
+    node = downloader_module.TS_DownloadFilesNode()
+    calls = []
+
+    class _Sess:
+        def head(self, url, timeout=None, allow_redirects=False):
+            calls.append(url)
+            if "hf-mirror.com" in url:
+                return types.SimpleNamespace(status_code=200)
+            raise downloader_module.requests.RequestException("primary down")
+
+    parsed = [{"url": "https://huggingface.co/repo/file.bin", "target_dir": "/tmp"}]
+    assert node._check_connectivity_to_targets(parsed, _Sess(), "huggingface.co, hf-mirror.com") is True
+    assert any("hf-mirror.com" in u for u in calls), \
+        "secondary HF mirror must be probed even when first one is down"
+
+
+def test_check_connectivity_probes_real_url_not_root(downloader_module):
+    node = downloader_module.TS_DownloadFilesNode()
+    seen_urls = []
+
+    class _Sess:
+        def head(self, url, timeout=None, allow_redirects=False):
+            seen_urls.append(url)
+            return types.SimpleNamespace(status_code=200)
+
+    parsed = [{"url": "https://huggingface.co/owner/repo/resolve/main/file.safetensors", "target_dir": "/tmp"}]
+    node._check_connectivity_to_targets(parsed, _Sess(), "huggingface.co")
+    assert seen_urls and "/owner/repo/resolve/main/file.safetensors" in seen_urls[0]
+
+
+def test_sanitize_filename_blocks_parent_traversal(downloader_module):
+    node = downloader_module.TS_DownloadFilesNode()
+    assert node._sanitize_filename("../evil.bin") == "evil.bin"
+    assert node._sanitize_filename("..\\..\\..\\evil.bin") == "evil.bin"
+    sanitized_dotdot = node._sanitize_filename("..")
+    assert ".." not in sanitized_dotdot and sanitized_dotdot.startswith("downloaded_file_")
+    sanitized_dot = node._sanitize_filename(".")
+    assert sanitized_dot.startswith("downloaded_file_")
+
+
+def test_sanitize_filename_keeps_normal_model_names(downloader_module):
+    node = downloader_module.TS_DownloadFilesNode()
+    assert node._sanitize_filename("model.safetensors") == "model.safetensors"
+    assert node._sanitize_filename("flux.dev_v2.safetensors") == "flux.dev_v2.safetensors"
+
+
+def test_sanitize_filename_strips_control_chars_and_forbidden(downloader_module):
+    node = downloader_module.TS_DownloadFilesNode()
+    out = node._sanitize_filename('weird<>:"|?*\x00name.bin')
+    assert "<" not in out and ">" not in out and "|" not in out and "\x00" not in out
+    assert out.endswith("name.bin")
+
+
+def test_sanitize_filename_truncates_overlong(downloader_module):
+    node = downloader_module.TS_DownloadFilesNode()
+    long = ("x" * 400) + ".safetensors"
+    out = node._sanitize_filename(long)
+    assert len(out) <= 200
+    assert out.endswith(".safetensors")
+
+
+def test_is_zip_member_safe_accepts_normal_paths(downloader_module, ts_tmp_path):
+    node = downloader_module.TS_DownloadFilesNode()
+    root = str((ts_tmp_path / "extract").resolve())
+    import os as _os
+    _os.makedirs(root, exist_ok=True)
+    assert node._is_zip_member_safe("model.safetensors", root) is True
+    assert node._is_zip_member_safe("subdir/file.bin", root) is True
+
+
+def test_is_zip_member_safe_rejects_traversal(downloader_module, ts_tmp_path):
+    node = downloader_module.TS_DownloadFilesNode()
+    root = str((ts_tmp_path / "extract").resolve())
+    import os as _os
+    _os.makedirs(root, exist_ok=True)
+    assert node._is_zip_member_safe("../evil.bin", root) is False
+    assert node._is_zip_member_safe("sub/../../evil.bin", root) is False
+    assert node._is_zip_member_safe("/etc/passwd", root) is False
+    assert node._is_zip_member_safe("..", root) is False
+
+
+def test_is_zip_member_safe_rejects_windows_absolute(downloader_module, ts_tmp_path):
+    node = downloader_module.TS_DownloadFilesNode()
+    root = str((ts_tmp_path / "extract").resolve())
+    import os as _os
+    _os.makedirs(root, exist_ok=True)
+    assert node._is_zip_member_safe("C:/Windows/System32/evil.dll", root) is False
+
+
+def test_extract_zip_refuses_unsafe_archive(downloader_module, ts_tmp_path):
+    import zipfile as _zipfile
+    node = downloader_module.TS_DownloadFilesNode()
+    extract_root = ts_tmp_path / "extract"
+    extract_root.mkdir(parents=True, exist_ok=True)
+    zip_path = ts_tmp_path / "malicious.zip"
+    with _zipfile.ZipFile(zip_path, "w") as zf:
+        zf.writestr("ok.txt", "ok")
+        zf.writestr("../escape.txt", "boom")
+    result = node._extract_zip(str(zip_path), str(extract_root))
+    assert result is False
+    assert zip_path.exists(), "archive must NOT be deleted on rejection"
+    assert not (extract_root.parent / "escape.txt").exists(), "traversal payload must not be written"
+    assert not (extract_root / "ok.txt").exists(), "no member must be extracted when archive is rejected"
+
+
+def test_extract_zip_accepts_clean_archive(downloader_module, ts_tmp_path):
+    import zipfile as _zipfile
+    node = downloader_module.TS_DownloadFilesNode()
+    extract_root = ts_tmp_path / "extract_ok"
+    extract_root.mkdir(parents=True, exist_ok=True)
+    zip_path = ts_tmp_path / "clean.zip"
+    with _zipfile.ZipFile(zip_path, "w") as zf:
+        zf.writestr("a.txt", "a")
+        zf.writestr("sub/b.txt", "b")
+    result = node._extract_zip(str(zip_path), str(extract_root))
+    assert result is True
+    assert (extract_root / "a.txt").read_text() == "a"
+    assert (extract_root / "sub" / "b.txt").read_text() == "b"
+    assert not zip_path.exists(), "archive should be deleted after successful extraction"
+
+
+def test_compute_sha256_matches_hashlib(downloader_module, ts_tmp_path):
+    import hashlib as _hashlib
+    node = downloader_module.TS_DownloadFilesNode()
+    f = ts_tmp_path / "data.bin"
+    payload = b"comfyui-timesaver" * 5000
+    f.write_bytes(payload)
+    expected = _hashlib.sha256(payload).hexdigest()
+    actual = node._compute_sha256(str(f), chunk_size=1024)
+    assert actual == expected

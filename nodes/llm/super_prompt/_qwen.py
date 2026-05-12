@@ -1,14 +1,27 @@
 """Qwen-prompt-enhancement pipeline for TS Super Prompt.
 
-Owns: preset loading from `qwen_3_vl_presets.json`, message construction
-(system + user + optional image content), `apply_chat_template` invocation
-across processor/tokenizer variants with `enable_thinking=False`,
-generation-param normalisation/filtering, the public `_generate_with_qwen`
-entry point used by the `/ts_super_prompt/enhance` HTTP route, and the
-HF-snapshot download progress monitor used while Qwen weights stream in.
+Owns: preset loading from ``qwen_3_vl_presets.json``, message construction
+(system + user + optional image content), ``apply_chat_template`` invocation
+across processor/tokenizer variants with ``enable_thinking=False``,
+generation-param normalisation/filtering, the public
+``_generate_with_qwen`` entry point used by the
+``/ts_super_prompt/enhance`` HTTP route, and the HF-snapshot download
+progress monitor used while Qwen weights stream in.
 
-`torch` is imported lazily inside `_generate_with_qwen` so contract tests
-can stub `nodes.llm.ts_qwen3_vl` without forcing torch.
+Heavy runtime (model load/cache, device/memory/precision, chat-template
+defaults) lives in :mod:`nodes.llm._qwen_engine` and is shared with
+``TS_Qwen3_VL_V3``.
+
+The ``"Your instruction"`` preset is intentionally **hidden from the
+TS_SuperPrompt combo** via ``preset_options()`` — there is no widget to
+collect a custom system prompt in this node, so showing the preset only
+caused confusion (it would silently fall back to ``DEFAULT_PRESET``).
+The constant ``CUSTOM_PRESET`` and the supporting branch in
+``_resolve_preset`` are kept so external callers / TS_Qwen3_VL_V3 are
+unaffected.
+
+``torch`` is imported lazily inside ``_generate_with_qwen`` so contract
+tests can stub the engine without forcing torch.
 
 Private — loader skips paths with `_`-prefixed components.
 """
@@ -25,7 +38,16 @@ from typing import Any
 
 import folder_paths
 
-from ..ts_qwen3_vl import TS_Qwen3_VL_V3
+from .._qwen_engine import (
+    QwenEngine,
+    _chat_template_functions,
+    _flatten_text_messages,
+    _messages_have_visuals,
+    _template_accepts_kwargs,
+    apply_chat_template_no_thinking as _engine_apply_chat_template_no_thinking,
+    get_qwen_engine,
+)
+from ..ts_qwen3_vl import _load_presets as _qwen_load_presets
 from ._helpers import (
     CUSTOM_PRESET,
     DEFAULT_MODEL_ID,
@@ -54,11 +76,22 @@ from ._helpers import (
 )
 
 
-_QWEN_ENGINE: TS_Qwen3_VL_V3 | None = None
+# ---------------------------------------------------------------------------
+# Engine access
+# ---------------------------------------------------------------------------
+
+def _get_qwen_engine() -> QwenEngine:
+    """Return the process-wide :class:`QwenEngine` singleton.
+
+    Kept as a function (rather than referencing :func:`get_qwen_engine`
+    directly at call sites) so contract tests can monkeypatch this name
+    without touching the engine module.
+    """
+    return get_qwen_engine()
 
 
 class QwenDownloadProgressMonitor:
-    """Poll local HuggingFace files while snapshot_download runs."""
+    """Poll local HuggingFace files while ``snapshot_download`` runs."""
 
     def __init__(
         self,
@@ -84,7 +117,11 @@ class QwenDownloadProgressMonitor:
     def start(self) -> None:
         if not self.enabled:
             return
-        send_progress(self.operation_id, f"Connecting to HuggingFace for {self.model_id}", self.start_percent)
+        send_progress(
+            self.operation_id,
+            f"Connecting to HuggingFace for {self.model_id}",
+            self.start_percent,
+        )
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
 
@@ -122,7 +159,11 @@ class QwenDownloadProgressMonitor:
 
 
 def _qwen_model_dir(model_id: str) -> Path:
-    return Path(getattr(folder_paths, "models_dir", Path.cwd() / "models")) / "LLM" / str(model_id).split("/")[-1]
+    return (
+        Path(getattr(folder_paths, "models_dir", Path.cwd() / "models"))
+        / "LLM"
+        / str(model_id).split("/")[-1]
+    )
 
 
 def _qwen_download_estimate(model_id: str) -> int:
@@ -130,48 +171,50 @@ def _qwen_download_estimate(model_id: str) -> int:
     if explicit:
         return int(explicit)
     try:
-        size_b = float(_get_qwen_engine()._model_size_b(model_id))
+        size_b = float(QwenEngine.model_size_b(model_id))
     except Exception:
         size_b = 2.0
     return int(max(1.0, size_b) * 2_250_000_000)
 
 
-def _is_qwen_model_available(engine: TS_Qwen3_VL_V3, model_id: str) -> bool:
-    checker = getattr(engine, "_check_model_integrity", None)
-    if not callable(checker):
-        return False
+def _is_qwen_model_available(engine: QwenEngine, model_id: str) -> bool:
     try:
-        return bool(checker(str(_qwen_model_dir(model_id))))
+        return bool(engine.check_model_integrity(str(_qwen_model_dir(model_id))))
     except Exception:
         return False
 
 
-def _get_qwen_engine() -> TS_Qwen3_VL_V3:
-    global _QWEN_ENGINE
-    if _QWEN_ENGINE is None:
-        _QWEN_ENGINE = TS_Qwen3_VL_V3()
-    return _QWEN_ENGINE
-
+# ---------------------------------------------------------------------------
+# Preset handling — "Your instruction" hidden from TS_SuperPrompt UI
+# ---------------------------------------------------------------------------
 
 def _load_presets() -> tuple[dict[str, Any], list[str]]:
-    presets, keys = TS_Qwen3_VL_V3._load_presets()
+    presets, keys = _qwen_load_presets()
     if not isinstance(presets, dict):
         return {}, []
     return presets, [key for key in keys if isinstance(key, str) and key]
 
 
 def preset_options() -> list[str]:
+    """Return preset names shown in the TS_SuperPrompt combo.
+
+    The ``CUSTOM_PRESET`` ("Your instruction") entry is intentionally
+    omitted: there is no widget to collect a custom system prompt in this
+    node, so the option would silently fall back to the default preset and
+    confuse users. ``TS_Qwen3_VL_V3`` still exposes it via its own schema.
+    """
     _presets, keys = _load_presets()
-    options = list(keys)
-    if CUSTOM_PRESET not in options:
-        options.append(CUSTOM_PRESET)
-    return options or [CUSTOM_PRESET]
+    options = [key for key in keys if isinstance(key, str) and key]
+    if not options:
+        # Fall back to a single visible option so the combo is never empty.
+        options = [DEFAULT_PRESET]
+    return options
 
 
 def default_preset(options: list[str]) -> str:
     if DEFAULT_PRESET in options:
         return DEFAULT_PRESET
-    return options[0] if options else CUSTOM_PRESET
+    return options[0] if options else DEFAULT_PRESET
 
 
 def _resolve_preset(system_preset: str, custom_system_prompt: str | None) -> tuple[str, dict[str, Any]]:
@@ -239,7 +282,13 @@ def _target_instruction(prompt_target: str, has_image: bool) -> str:
     )
 
 
-def _build_messages(system_prompt: str, text: str, prompt_target: str, image: Any, max_image_size: int) -> list[dict[str, Any]]:
+def _build_messages(
+    system_prompt: str,
+    text: str,
+    prompt_target: str,
+    image: Any,
+    max_image_size: int,
+) -> list[dict[str, Any]]:
     engine = _get_qwen_engine()
     user_content: list[dict[str, Any]] = []
 
@@ -259,117 +308,34 @@ def _build_messages(system_prompt: str, text: str, prompt_target: str, image: An
     )
 
     if image is not None:
-        for pil_image in engine._tensor_to_pil_list(image):
+        # ``image`` is either a torch.Tensor (workflow IMAGE input) or a
+        # ``PIL.Image`` (resolved from the /enhance attached_image path).
+        # ``normalize_to_pil_list`` handles both shapes uniformly.
+        for pil_image in engine.normalize_to_pil_list(image):
             user_content.append(
                 {
                     "type": "image",
-                    "image": engine._resize_and_crop_image(pil_image, int(max_image_size)),
+                    "image": engine.resize_and_crop_image(pil_image, int(max_image_size)),
                 }
             )
 
     user_content.append({"type": "text", "text": user_text})
 
     return [
-        {
-            "role": "system",
-            "content": [{"type": "text", "text": system_text}],
-        },
+        {"role": "system", "content": [{"type": "text", "text": system_text}]},
         {"role": "user", "content": user_content},
     ]
 
 
-def _messages_have_visuals(messages: list[dict[str, Any]]) -> bool:
-    for message in messages:
-        content = message.get("content")
-        if not isinstance(content, list):
-            continue
-        for item in content:
-            if isinstance(item, dict) and item.get("type") in {"image", "video"}:
-                return True
-    return False
-
-
-def _flatten_text_messages(messages: list[dict[str, Any]]) -> list[dict[str, str]]:
-    flattened: list[dict[str, str]] = []
-    for message in messages:
-        content = message.get("content")
-        if isinstance(content, str):
-            text = content
-        elif isinstance(content, list):
-            text_parts = [
-                str(item.get("text") or "")
-                for item in content
-                if isinstance(item, dict) and item.get("type") == "text"
-            ]
-            text = "\n\n".join(part for part in text_parts if part)
-        else:
-            text = str(content or "")
-        flattened.append({"role": str(message.get("role") or "user"), "content": text})
-    return flattened
-
-
-def _chat_template_functions(engine: TS_Qwen3_VL_V3, processor) -> list[Any]:
-    template_fns: list[Any] = []
-    processor_template = getattr(processor, "apply_chat_template", None)
-    if processor_template is not None:
-        template_fns.append(processor_template)
-
-    get_tokenizer = getattr(engine, "_get_tokenizer_from_processor", None)
-    tokenizer = get_tokenizer(processor) if callable(get_tokenizer) else getattr(processor, "tokenizer", processor)
-    tokenizer_template = getattr(tokenizer, "apply_chat_template", None)
-    if tokenizer_template is not None and tokenizer_template not in template_fns:
-        template_fns.append(tokenizer_template)
-
-    if not template_fns:
-        raise RuntimeError("Loaded processor/tokenizer does not provide apply_chat_template.")
-    return template_fns
-
-
-def _template_accepts_kwargs(template_fn, kwargs: dict[str, Any]) -> bool:
-    try:
-        signature = inspect.signature(template_fn)
-    except Exception:
-        return True
-    parameters = signature.parameters
-    if any(param.kind == inspect.Parameter.VAR_KEYWORD for param in parameters.values()):
-        return True
-    return all(key in parameters for key in kwargs.keys())
-
-
-def _apply_chat_template_no_thinking(engine: TS_Qwen3_VL_V3, processor, messages: list[dict[str, Any]]):
-    base_kwargs = {
-        "tokenize": True,
-        "add_generation_prompt": True,
-        "return_dict": True,
-        "return_tensors": "pt",
-    }
-
-    thinking_variants = (
-        {"enable_thinking": False},
-        {"chat_template_kwargs": {"enable_thinking": False}},
-        {},
-    )
-    message_variants = [messages]
-    if not _messages_have_visuals(messages):
-        flattened_messages = _flatten_text_messages(messages)
-        if flattened_messages != messages:
-            message_variants.append(flattened_messages)
-
-    last_error: Exception | None = None
-    for template_fn in _chat_template_functions(engine, processor):
-        for candidate_messages in message_variants:
-            for thinking_kwargs in thinking_variants:
-                kwargs = {**base_kwargs, **thinking_kwargs}
-                if not _template_accepts_kwargs(template_fn, kwargs):
-                    continue
-                try:
-                    return template_fn(candidate_messages, **kwargs)
-                except TypeError as exc:
-                    last_error = exc
-                    continue
-    if last_error is not None:
-        raise last_error
-    raise RuntimeError("Loaded chat template rejected all supported argument variants.")
+# ``_chat_template_functions`` / ``_template_accepts_kwargs`` /
+# ``_messages_have_visuals`` / ``_flatten_text_messages`` /
+# ``_apply_chat_template_no_thinking`` previously lived here. They moved
+# into :mod:`nodes.llm._qwen_engine` so ``TS_Qwen3_VL_V3`` can share the
+# same "no chain-of-thought" template plumbing. The names below stay as
+# module-level aliases for backward compatibility with the existing test
+# suite (which imports them through this module) and for any external code
+# that referenced them by their original location.
+_apply_chat_template_no_thinking = _engine_apply_chat_template_no_thinking
 
 
 def _filter_generation_params(model, params: dict[str, Any]) -> dict[str, Any]:
@@ -467,16 +433,16 @@ def _generate_with_qwen(
         send_progress(operation_id, "Preparing prompt", 5.0)
         engine = _get_qwen_engine()
         system_prompt, gen_params = _resolve_preset(system_preset, SUPER_PROMPT_CUSTOM_SYSTEM_PROMPT)
-        resolved_precision = engine._resolve_precision(SUPER_PROMPT_PRECISION, DEFAULT_MODEL_ID)
-        resolved_attention = engine._resolve_attention(SUPER_PROMPT_ATTENTION_MODE, resolved_precision)
-        estimated_vram = engine._estimate_vram_usage(DEFAULT_MODEL_ID, resolved_precision)
+        resolved_precision = engine.resolve_precision(SUPER_PROMPT_PRECISION, DEFAULT_MODEL_ID)
+        resolved_attention = engine.resolve_attention(SUPER_PROMPT_ATTENTION_MODE, resolved_precision)
+        estimated_vram = engine.estimate_vram_usage(DEFAULT_MODEL_ID, resolved_precision)
 
         log_info(
             f"model={DEFAULT_MODEL_ID} precision={resolved_precision} "
             f"attention={resolved_attention} thinking=disabled"
         )
         send_progress(operation_id, "Checking memory", 12.0)
-        engine._ensure_memory_available(estimated_vram)
+        engine.ensure_memory_available(estimated_vram)
 
         send_progress(operation_id, "Checking Qwen model files", 16.0)
         qwen_model_available = _is_qwen_model_available(engine, DEFAULT_MODEL_ID)
@@ -497,7 +463,7 @@ def _generate_with_qwen(
             qwen_monitor.start()
             download_success = False
             try:
-                engine._ensure_model_available(
+                engine.ensure_model_available(
                     DEFAULT_MODEL_ID,
                     bool(SUPER_PROMPT_OFFLINE_MODE),
                     str(SUPER_PROMPT_HF_TOKEN or ""),
@@ -508,7 +474,7 @@ def _generate_with_qwen(
                 qwen_monitor.stop(download_success)
 
         send_progress(operation_id, "Loading Qwen model into memory", 46.0)
-        model, processor = engine._load_model(
+        model, processor = engine.load_model(
             DEFAULT_MODEL_ID,
             resolved_precision,
             resolved_attention,
@@ -518,26 +484,26 @@ def _generate_with_qwen(
         )
         send_progress(operation_id, "Qwen model loaded", 50.0)
 
-        target_device = engine._get_device()
+        target_device = engine.get_device()
         moved_to_gpu = False
-        if target_device.type == "cuda" and not engine._model_has_cuda_device(model):
+        if target_device.type == "cuda" and not engine.model_has_cuda_device(model):
             try:
                 send_progress(operation_id, "Moving Qwen to GPU", 54.0)
-                engine._ensure_memory_available(estimated_vram, force_unload=True)
+                engine.ensure_memory_available(estimated_vram, force_unload=True)
                 model.to(target_device)
                 moved_to_gpu = True
             except RuntimeError as exc:
-                if engine._is_oom_error(exc):
+                if engine.is_oom_error(exc):
                     try:
                         model.to("cpu")
                     except Exception as cleanup_exc:
                         LOGGER.debug("%s OOM cleanup move-to-CPU failed: %s", LOG_PREFIX, cleanup_exc)
-                    engine._prepare_memory(force=True)
+                    engine.prepare_memory(force=True)
                     raise RuntimeError("Out of memory during Qwen GPU transfer.") from exc
                 raise
 
         try:
-            if image is not None and not engine._supports_multimodal_inputs(processor):
+            if image is not None and not engine.supports_multimodal_inputs(processor):
                 raise RuntimeError(
                     "Loaded processor/tokenizer does not support image input. "
                     "Use a Qwen vision-language model or disconnect image."
@@ -552,9 +518,9 @@ def _generate_with_qwen(
                 int(SUPER_PROMPT_MAX_IMAGE_SIZE),
             )
             inputs = _apply_chat_template_no_thinking(engine, processor, messages)
-            input_device = engine._select_input_device(model)
-            inputs = engine._move_inputs_to_device(inputs, input_device)
-            engine._log_processing_device("super_prompt_inputs", input_device, model, inputs)
+            input_device = engine.select_input_device(model)
+            inputs = engine.move_inputs_to_device(inputs, input_device)
+            engine.log_processing_device("super_prompt_inputs", input_device, model, inputs)
 
             gen_params = dict(gen_params)
             gen_params.setdefault("temperature", 0.7 if image is not None else 1.0)
@@ -563,27 +529,38 @@ def _generate_with_qwen(
             gen_params.setdefault("repetition_penalty", 1.0)
             gen_params["max_new_tokens"] = int(SUPER_PROMPT_MAX_NEW_TOKENS)
             gen_params["use_cache"] = True
-            gen_params["pad_token_id"] = engine._get_pad_token_id(processor, model)
+            gen_params["pad_token_id"] = engine.get_pad_token_id(processor, model)
             gen_params["do_sample"] = float(gen_params.get("temperature", 0.0) or 0.0) > 0.0
             gen_params = _normalize_generation_params(gen_params)
 
             # Local import keeps torch out of module-level eval so contract
-            # tests can stub `nodes.llm.ts_qwen3_vl` without importing torch.
+            # tests can stub the engine without importing torch.
             import torch
 
-            rng_cuda_devices = engine._cuda_indices_for_rng(model, input_device)
-            if engine._supports_generator(model):
-                gen_device = engine._select_generator_device(input_device)
-                gen = torch.Generator(device=gen_device)
-                gen.manual_seed(int(SUPER_PROMPT_SEED))
-                gen_params["generator"] = gen
+            rng_cuda_devices = engine.cuda_indices_for_rng(model, input_device)
+            if engine.supports_generator(model):
+                gen_device = engine.select_generator_device(input_device)
+                generator = torch.Generator(device=gen_device)
+                generator.manual_seed(int(SUPER_PROMPT_SEED))
+                gen_params["generator"] = generator
                 rng_context = nullcontext()
             else:
-                rng_context = torch.random.fork_rng(devices=rng_cuda_devices) if rng_cuda_devices else torch.random.fork_rng()
+                rng_context = (
+                    torch.random.fork_rng(devices=rng_cuda_devices)
+                    if rng_cuda_devices
+                    else torch.random.fork_rng()
+                )
 
-            dtype = engine._dtype_from_precision(resolved_precision)
-            autocast_device = input_device if hasattr(input_device, "type") else getattr(model, "device", None)
-            use_autocast = getattr(autocast_device, "type", None) == "cuda" and dtype in (torch.float16, torch.bfloat16)
+            dtype = engine.dtype_from_precision(resolved_precision)
+            autocast_device = (
+                input_device
+                if hasattr(input_device, "type")
+                else getattr(model, "device", None)
+            )
+            use_autocast = (
+                getattr(autocast_device, "type", None) == "cuda"
+                and dtype in (torch.float16, torch.bfloat16)
+            )
             gen_params = _filter_generation_params(model, gen_params)
 
             with rng_context:
@@ -605,7 +582,7 @@ def _generate_with_qwen(
             generated_trimmed = [
                 out_ids[len(in_ids):] for in_ids, out_ids in zip(inputs["input_ids"], generated_ids)
             ]
-            output_text = engine._batch_decode(
+            output_text = engine.batch_decode(
                 processor,
                 generated_trimmed,
                 skip_special_tokens=True,
@@ -615,11 +592,11 @@ def _generate_with_qwen(
         finally:
             if SUPER_PROMPT_UNLOAD_AFTER_GENERATION:
                 send_progress(operation_id, "Unloading Qwen", 96.0)
-                engine._unload_model(DEFAULT_MODEL_ID, resolved_precision, resolved_attention)
+                engine.unload_model(DEFAULT_MODEL_ID, resolved_precision, resolved_attention)
             elif moved_to_gpu:
                 try:
                     model.to("cpu")
-                    engine._prepare_memory(force=True)
+                    engine.prepare_memory(force=True)
                 except Exception as cleanup_exc:
                     LOGGER.debug("%s Post-generation soft-offload failed: %s", LOG_PREFIX, cleanup_exc)
             gc.collect()

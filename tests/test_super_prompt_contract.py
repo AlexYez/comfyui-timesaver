@@ -5,6 +5,9 @@ import sys
 import types
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _engine_stubs import _DummyEngine, install_engine_module_stub  # noqa: E402
+
 
 class _Input:
     def __init__(self, id, *args, **kwargs):
@@ -12,6 +15,7 @@ class _Input:
         self.args = args
         self.kwargs = kwargs
         self.optional = bool(kwargs.get("optional", False))
+        self.socketless = bool(kwargs.get("socketless", False))
         self.default = kwargs.get("default")
         self.options = kwargs.get("options", args[0] if args else None)
 
@@ -50,19 +54,30 @@ class _IO:
     Image = _ComfyType
 
 
-class _DummyQwen:
-    @classmethod
-    def _load_presets(cls):
-        return {
-            "Prompts enhance": {
-                "system_prompt": "Enhance prompt.",
-                "gen_params": {"temperature": 0.8},
-            }
-        }, ["Prompts enhance"]
+# ---------------------------------------------------------------------------
+# Test doubles
+# ---------------------------------------------------------------------------
 
-    @classmethod
-    def _is_bitsandbytes_available(cls):
-        return False
+_PRESET_FIXTURE = (
+    {
+        "Prompts enhance": {
+            "system_prompt": "Enhance prompt.",
+            "gen_params": {"temperature": 0.8},
+        }
+    },
+    ["Prompts enhance"],
+)
+
+
+def _fixture_load_presets():
+    return _PRESET_FIXTURE
+
+
+_ENGINE_SINGLETON = _DummyEngine()
+
+
+def _fixture_get_qwen_engine() -> _DummyEngine:
+    return _ENGINE_SINGLETON
 
 
 def _install_stubs(monkeypatch):
@@ -77,6 +92,7 @@ def _install_stubs(monkeypatch):
     folder_paths = types.ModuleType("folder_paths")
     folder_paths.models_dir = str(root / ".test_models")
     folder_paths.get_input_directory = lambda: str(root / ".test_input")
+    folder_paths.get_annotated_filepath = lambda annotated: ""
     monkeypatch.setitem(sys.modules, "folder_paths", folder_paths)
 
     aiohttp = types.ModuleType("aiohttp")
@@ -89,9 +105,16 @@ def _install_stubs(monkeypatch):
     monkeypatch.setitem(sys.modules, "aiohttp", aiohttp)
     monkeypatch.setitem(sys.modules, "aiohttp.web", web)
 
+    # nodes.llm.ts_qwen3_vl — only the symbols super_prompt imports.
     qwen_module = types.ModuleType("nodes.llm.ts_qwen3_vl")
-    qwen_module.TS_Qwen3_VL_V3 = _DummyQwen
+    qwen_module._load_presets = _fixture_load_presets
+    qwen_module.TS_Qwen3_VL_V3 = _DummyEngine
     monkeypatch.setitem(sys.modules, "nodes.llm.ts_qwen3_vl", qwen_module)
+
+    # nodes.llm._qwen_engine stub. The real engine pulls in torch and would
+    # force tests to depend on a CUDA-capable Python install.
+    engine_module = install_engine_module_stub(monkeypatch)
+    engine_module.get_qwen_engine = _fixture_get_qwen_engine
 
 
 def _load_module(monkeypatch):
@@ -130,16 +153,35 @@ def test_super_prompt_schema_contract(monkeypatch):
     assert schema.node_id == "TS_SuperPrompt"
     assert schema.display_name == "TS Super Prompt"
     assert schema.category == "TS/LLM"
-    assert list(inputs) == ["text", "high_quality", "system_preset", "image"]
+    # "Your instruction" preset is intentionally hidden from this node.
+    # The Image input has been replaced by the socketless ``attached_image``
+    # string widget driven by the JS frontend's Attach button.
+    assert list(inputs) == ["text", "high_quality", "system_preset", "attached_image"]
     assert inputs["text"].default == ""
     assert inputs["high_quality"].default is False
-    assert inputs["system_preset"].options == ["Prompts enhance", "Your instruction"]
-    assert inputs["image"].optional is True
+    assert inputs["system_preset"].options == ["Prompts enhance"]
+    assert inputs["attached_image"].default == ""
+    assert inputs["attached_image"].socketless is True
     assert "промпта" in inputs["text"].kwargs["tooltip"]
     assert "turbo" in inputs["high_quality"].kwargs["tooltip"]
     assert "пресет" in inputs["system_preset"].kwargs["tooltip"]
-    assert "изображение" in inputs["image"].kwargs["tooltip"]
+    assert "изображения" in inputs["attached_image"].kwargs["tooltip"]
     assert schema.outputs[0].display_name == "text"
+
+
+def test_super_prompt_shim_does_not_double_register_node(monkeypatch):
+    """The shim must not duplicate NODE_CLASS_MAPPINGS — see the snapshot tool.
+
+    The real entry lives at ``nodes.llm.super_prompt.ts_super_prompt``. Both
+    files registering the same id confused ``tools/build_node_contracts.py``
+    into recording the shim as the node's source file with ``api='unknown'``.
+    """
+    module = _load_module(monkeypatch)
+    real = importlib.import_module("nodes.llm.super_prompt.ts_super_prompt")
+
+    assert module.TS_SuperPrompt is real.TS_SuperPrompt
+    assert module.NODE_CLASS_MAPPINGS == {}
+    assert real.NODE_CLASS_MAPPINGS == {"TS_SuperPrompt": real.TS_SuperPrompt}
 
 
 def test_super_prompt_default_model_has_stock_qwen_option(monkeypatch):
@@ -187,7 +229,7 @@ def test_super_prompt_disables_thinking_in_chat_template(monkeypatch):
             return {"input_ids": [[1, 2, 3]]}
 
     processor = Processor()
-    result = module._apply_chat_template_no_thinking(_DummyQwen(), processor, [{"role": "user", "content": []}])
+    result = module._apply_chat_template_no_thinking(_DummyEngine(), processor, [{"role": "user", "content": []}])
 
     assert result == {"input_ids": [[1, 2, 3]]}
     assert processor.kwargs["enable_thinking"] is False
@@ -222,7 +264,7 @@ def test_super_prompt_flattens_chat_for_text_only_template(monkeypatch):
 
     processor = TextOnlyProcessor()
     messages = module._build_messages("System", "idea", "image", image=None, max_image_size=1024)
-    result = module._apply_chat_template_no_thinking(_DummyQwen(), processor, messages)
+    result = module._apply_chat_template_no_thinking(_DummyEngine(), processor, messages)
 
     assert result == {"input_ids": [[4, 5, 6]]}
     assert isinstance(processor.messages[0]["content"], str)
@@ -245,7 +287,7 @@ def test_super_prompt_structured_chat_matches_transformers_processor(monkeypatch
 
     processor = StructuredProcessor()
     messages = module._build_messages("System", "idea", "image", image=None, max_image_size=1024)
-    result = module._apply_chat_template_no_thinking(_DummyQwen(), processor, messages)
+    result = module._apply_chat_template_no_thinking(_DummyEngine(), processor, messages)
 
     assert result == {"input_ids": [[7, 8, 9]]}
     assert processor.kwargs["enable_thinking"] is False
@@ -268,6 +310,32 @@ def test_super_prompt_normalizes_openai_style_generation_params(monkeypatch):
     assert "max_tokens" not in params
     assert "stop" not in params
     assert "presence_penalty" not in params
+
+
+def test_super_prompt_validate_accepts_unknown_preset(monkeypatch):
+    """Legacy workflows referencing a renamed/removed preset must keep
+    loading — validate_inputs accepts any string and _resolve_preset falls
+    back to the canonical default at execute time."""
+    module = _load_module(monkeypatch)
+
+    assert module.TS_SuperPrompt.validate_inputs(
+        text="hello",
+        high_quality=False,
+        system_preset="Some preset that was renamed in v9.6",
+        attached_image="",
+    ) is True
+
+
+def test_super_prompt_resolve_preset_falls_back_on_unknown(monkeypatch):
+    """If a workflow ships an unknown preset, _resolve_preset returns the
+    DEFAULT_PRESET system_prompt + gen_params instead of empty/zero values."""
+    module = _load_module(monkeypatch)
+
+    system_prompt, gen_params = module._resolve_preset(
+        "Some preset that was renamed", custom_system_prompt=None
+    )
+    assert system_prompt == "Enhance prompt."
+    assert gen_params == {"temperature": 0.8}
 
 
 def test_super_prompt_retries_without_unused_model_kwargs(monkeypatch):

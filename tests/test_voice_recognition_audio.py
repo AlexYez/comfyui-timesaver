@@ -9,6 +9,9 @@ import pytest
 
 np = pytest.importorskip("numpy")
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _engine_stubs import _DummyEngine, install_engine_module_stub  # noqa: E402
+
 
 class _Schema:
     def __init__(self, **kwargs):
@@ -51,15 +54,18 @@ class _IO:
     Image = _ComfyType
 
 
-class _DummyQwen:
-    @classmethod
-    def _load_presets(cls):
-        return {
-            "Prompts enhance": {
-                "system_prompt": "Enhance prompt.",
-                "gen_params": {"temperature": 0.8},
-            }
-        }, ["Prompts enhance"]
+_PRESET_FIXTURE = (
+    {
+        "Prompts enhance": {
+            "system_prompt": "Enhance prompt.",
+            "gen_params": {"temperature": 0.8},
+        }
+    },
+    ["Prompts enhance"],
+)
+
+
+_ENGINE_SINGLETON = _DummyEngine()
 
 
 def _install_stubs(monkeypatch, root: Path) -> None:
@@ -72,6 +78,7 @@ def _install_stubs(monkeypatch, root: Path) -> None:
     folder_paths = types.ModuleType("folder_paths")
     folder_paths.models_dir = str(root / ".test_models")
     folder_paths.get_input_directory = lambda: str(root / ".test_input")
+    folder_paths.get_annotated_filepath = lambda annotated: ""
     monkeypatch.setitem(sys.modules, "folder_paths", folder_paths)
 
     aiohttp = types.ModuleType("aiohttp")
@@ -85,8 +92,12 @@ def _install_stubs(monkeypatch, root: Path) -> None:
     monkeypatch.setitem(sys.modules, "aiohttp.web", web)
 
     qwen_module = types.ModuleType("nodes.llm.ts_qwen3_vl")
-    qwen_module.TS_Qwen3_VL_V3 = _DummyQwen
+    qwen_module._load_presets = lambda: _PRESET_FIXTURE
+    qwen_module.TS_Qwen3_VL_V3 = _DummyEngine
     monkeypatch.setitem(sys.modules, "nodes.llm.ts_qwen3_vl", qwen_module)
+
+    engine_module = install_engine_module_stub(monkeypatch)
+    engine_module.get_qwen_engine = lambda: _ENGINE_SINGLETON
 
 
 def _load_module(monkeypatch):
@@ -243,9 +254,43 @@ def test_transcription_cleanup_removes_duplicate_prepositions(monkeypatch):
     )
 
 
-def test_voice_recognition_backend_registers_only_super_prompt_node(monkeypatch):
+def test_transcription_cleanup_collapses_phrase_loops(monkeypatch):
+    """Whisper sometimes loops on a phrase even after compression_ratio
+    kicks in — the post-processing must fold repeats back to one copy."""
     module = _load_module(monkeypatch)
 
+    # Two-word loop (typical Whisper greedy-decoding hallucination).
+    assert module._clean_transcription_text(
+        "hello world hello world hello world"
+    ) == "hello world"
+    # Russian sentence loop with terminating punctuation glued to the word.
+    assert module._clean_transcription_text(
+        "привет мир. привет мир. привет мир."
+    ) == "привет мир."
+    # Single-word loop.
+    assert module._clean_transcription_text("test test test test") == "test"
+    # Mixed: prepositions collapsed first, then phrase collapse runs.
+    assert module._clean_transcription_text(
+        "кот на столе кот на столе кот на столе"
+    ) == "кот на столе"
+
+
+def test_transcription_cleanup_keeps_non_repeating_text(monkeypatch):
+    """Sanity: the phrase-loop pass must never touch normal speech."""
+    module = _load_module(monkeypatch)
+
+    sample = "a cinematic wide shot of a city at golden hour"
+    assert module._clean_transcription_text(sample) == sample
+
+
+def test_voice_recognition_backend_registers_only_super_prompt_node(monkeypatch):
+    module = _load_module(monkeypatch)
+    real = importlib.import_module("nodes.llm.super_prompt.ts_super_prompt")
+
     assert not hasattr(module, "TS_" + "VoiceRecognition")
-    assert module.NODE_CLASS_MAPPINGS == {"TS_SuperPrompt": module.TS_SuperPrompt}
+    # The shim deliberately exports an empty NODE_CLASS_MAPPINGS so that the
+    # snapshot tool records the real V3 file at nodes/llm/super_prompt/.
+    assert module.NODE_CLASS_MAPPINGS == {}
+    assert real.NODE_CLASS_MAPPINGS == {"TS_SuperPrompt": real.TS_SuperPrompt}
+    assert module.TS_SuperPrompt is real.TS_SuperPrompt
     assert module.TRANSLATE_TO_ENGLISH is False
