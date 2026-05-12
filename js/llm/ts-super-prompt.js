@@ -165,14 +165,19 @@ function setWidgetValue(node, name, value) {
 
 function hideNativeWidget(widget) {
     if (!widget) return;
+    // CRITICAL: do NOT mutate ``widget.type`` to ``"hidden"``. ComfyUI
+    // workflow serialization skips ``hidden``-type widgets, which means
+    // copying the node, switching workflow tabs, or reloading the page
+    // drops the user's text / preset / high_quality / attached_image.
+    // Just hide it visually + collapse its layout slot — the widget stays
+    // a regular string/boolean/combo for serialize purposes.
     widget.hidden = true;
     widget.serializeValue = widget.serializeValue || (() => widget.value);
-    // Mute draw + collapse layout slot. Litegraph reserves space for any
-    // widget whose computeSize doesn't return ≤0, so we force ``[0, -4]`` —
-    // matching the spacing fudge it applies between widget rows.
+    // Litegraph reserves space for any widget whose computeSize doesn't
+    // return ≤0, so we force ``[0, -4]`` — matching the spacing fudge it
+    // applies between widget rows.
     widget.computeSize = () => [0, -4];
     widget.draw = () => {};
-    widget.type = widget.type === "hidden" ? widget.type : "hidden";
     if (widget.inputEl) {
         widget.inputEl.style.display = "none";
     }
@@ -397,15 +402,27 @@ function setupSuperPrompt(node) {
         attachedImage: String(getWidgetValue(node, ATTACHED_IMAGE_WIDGET, "") || ""),
     };
 
+    // Pull the latest values from the (hidden) native widgets into the DOM
+    // UI. Run on first paint, after copy/paste, and after workflow load —
+    // LiteGraph restores widget values after onNodeCreated, so we need an
+    // explicit pull-through point.
+    function syncUiFromWidgets() {
+        if (disposed) return;
+        textarea.value = String(getWidgetValue(node, TEXT_WIDGET, "") || "");
+        hqToggle.classList.toggle(
+            "is-on",
+            toBoolean(getWidgetValue(node, HIGH_QUALITY_WIDGET, false)),
+        );
+        const preset = String(getWidgetValue(node, SYSTEM_PRESET_WIDGET, "") || "");
+        if (preset && Array.from(presetSelect.options).some((o) => o.value === preset)) {
+            presetSelect.value = preset;
+        }
+        state.attachedImage = String(getWidgetValue(node, ATTACHED_IMAGE_WIDGET, "") || "");
+        renderAttached();
+    }
+
     // Initial values from hidden widgets.
-    textarea.value = String(getWidgetValue(node, TEXT_WIDGET, "") || "");
-    if (toBoolean(getWidgetValue(node, HIGH_QUALITY_WIDGET, false))) {
-        hqToggle.classList.add("is-on");
-    }
-    const initialPreset = String(getWidgetValue(node, SYSTEM_PRESET_WIDGET, "") || "");
-    if (initialPreset && Array.from(presetSelect.options).some((o) => o.value === initialPreset)) {
-        presetSelect.value = initialPreset;
-    }
+    syncUiFromWidgets();
 
     // -----------------------------------------------------------------
     // Sync helpers
@@ -1061,15 +1078,36 @@ function setupSuperPrompt(node) {
             if (idx >= 0) node.widgets.splice(idx, 1);
         }
         container.remove();
+        // Detach onConfigure wrapper + sync-handle so a fresh setupSuperPrompt
+        // can install its own without stacking wrappers.
+        if (Object.prototype.hasOwnProperty.call(node, "_tsSuperPromptOriginalOnConfigure")) {
+            node.onConfigure = node._tsSuperPromptOriginalOnConfigure;
+            delete node._tsSuperPromptOriginalOnConfigure;
+        }
+        delete node._tsSuperPromptSyncUi;
     }
 
     node._tsSuperPromptCleanup = cleanup;
+    node._tsSuperPromptSyncUi = syncUiFromWidgets;
     if (!node._tsSuperPromptOriginalOnRemoved) {
         node._tsSuperPromptOriginalOnRemoved = node.onRemoved;
     }
     node.onRemoved = function onRemovedWrapper() {
         cleanup();
         return node._tsSuperPromptOriginalOnRemoved?.apply(this, arguments);
+    };
+
+    // Pull-through after LiteGraph restores widget values. ``onConfigure``
+    // fires for both ``LGraph.configure`` (workflow load + tab switch) and
+    // ``LGraphNode.clone`` (copy / paste) — in both cases widget values
+    // land *after* onNodeCreated, so we re-sync the DOM UI here.
+    if (!Object.prototype.hasOwnProperty.call(node, "_tsSuperPromptOriginalOnConfigure")) {
+        node._tsSuperPromptOriginalOnConfigure = node.onConfigure;
+    }
+    node.onConfigure = function onConfigureWrapper() {
+        const result = node._tsSuperPromptOriginalOnConfigure?.apply(this, arguments);
+        if (!disposed) syncUiFromWidgets();
+        return result;
     };
 
     // Initial paint.
@@ -1096,6 +1134,15 @@ app.registerExtension({
         if (![node?.type, node?.comfyClass].includes(NODE_NAME)) return;
         if (!getWidget(node, DOM_WIDGET_NAME)) {
             setupSuperPrompt(node);
+            return;
+        }
+        // DOM widget already exists (e.g. node was created by onNodeCreated
+        // and is now being configured by LGraph). Re-pull widget values so
+        // the textarea / preset / HQ toggle reflect the restored workflow
+        // state — onConfigure also catches this, but ComfyUI versions vary
+        // on the order of events.
+        if (typeof node._tsSuperPromptSyncUi === "function") {
+            node._tsSuperPromptSyncUi();
         }
     },
 });

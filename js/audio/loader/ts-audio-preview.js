@@ -38,6 +38,10 @@ app.registerExtension({
         if (node?.type !== PREVIEW_NODE_NAME && node?.comfyClass !== PREVIEW_NODE_NAME) return;
         if (!getWidget(node, DOM_WIDGET_NAME)) {
             setupAudioLoader(node);
+            return;
+        }
+        if (typeof node._tsAudioLoaderRehydrate === "function") {
+            node._tsAudioLoaderRehydrate();
         }
     },
 });

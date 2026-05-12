@@ -4,11 +4,11 @@
 
 # 🚀 Timesaver Nodes for ComfyUI
 
-**A friendly toolkit of 57 production-ready nodes that take the boring busywork out of your ComfyUI graphs.**
+**A friendly toolkit of 59 production-ready nodes that take the boring busywork out of your ComfyUI graphs.**
 
 Resize, color-grade, key, denoise, transcribe, translate, prompt-build, manage models — without leaving the canvas.
 
-[![Version](https://img.shields.io/badge/version-9.5-blue.svg)](pyproject.toml)
+[![Version](https://img.shields.io/badge/version-9.6-blue.svg)](pyproject.toml)
 [![ComfyUI](https://img.shields.io/badge/ComfyUI-V3%20API-orange.svg)](https://github.com/comfyanonymous/ComfyUI)
 [![Python](https://img.shields.io/badge/python-3.10+-green.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-see%20LICENSE.txt-lightgrey.svg)](LICENSE.txt)
@@ -25,7 +25,7 @@ Whether you build pipelines for image generation, video, audio, or just want to 
 
 |  | Category | Count | Highlights |
 |---|---|---|---|
-| 🖼️ | **[Image](#image)** | 26 | Resize, color, masks, keyer, tiling, 360°, Lama cleanup, BiRefNet bg removal |
+| 🖼️ | **[Image](#image)** | 28 | Resize, color, masks, keyer, tiling, 360°, Lama cleanup, BiRefNet bg removal, ViTMatte, SAM3 picker |
 | 🎬 | **[Video](#video)** | 7 | Frame interpolation, RTX/spandrel upscale, depth, animation preview |
 | 🎵 | **[Audio](#audio)** | 5 | Whisper transcription, Silero TTS, Demucs stem split, audio cropping |
 | 🤖 | **[LLM](#llm)** | 2 | Qwen 3 VL multimodal chat, Super Prompt with voice input |
@@ -34,7 +34,7 @@ Whether you build pipelines for image generation, video, audio, or just want to 
 | 🛠️ | **[Utils](#utils)** | 4 | Custom sliders, math, smart type-aware switch |
 | 🎨 | **[Conditioning](#conditioning)** | 1 | Multi-reference image conditioning |
 
-> All 57 nodes use the **ComfyUI V3 API** (`comfy_api.v0_0_2.IO` — pinned namespace for stability).
+> All 59 nodes use the **ComfyUI V3 API** (`comfy_api.v0_0_2.IO` — pinned namespace for stability).
 
 ---
 
@@ -245,7 +245,7 @@ Three-octave organic film grain. Tune `grain_size`, `intensity`, `softness`, and
 #### TS Remove Background (BiRefNet)
 <img src="doc/screenshots/ts_bgrm_birefnet.png" alt="TS Remove Background" width="450" />
 
-State-of-the-art background removal via BiRefNet. Outputs the cut-out image, an alpha mask, and a "mask preview" image. Options: `process_resolution`, `mask_blur`, `mask_offset`, `refine_foreground`, custom background colour or transparent.
+State-of-the-art background removal via BiRefNet. Outputs the cut-out image, an alpha mask, and a "mask preview" image. Options: model picker (HR-matting / general / portrait / DIS), `process_resolution` (with `use_custom_resolution` override), `precision` (auto/fp16/fp32), `mask_blur`, `mask_offset`, `invert_output`, `temporal_smooth` for video (`none`/`median3`/`ema` with `ema_alpha`), background mode (Alpha / colour via the COLOR widget). v9.4 cleanup removed the unstable `refine_foreground` option.
 
 **Use when:** isolating subjects, building product shots, or feeding clean alpha masks into compositing nodes.
 
@@ -272,9 +272,25 @@ Standalone despill with four algorithms: `classic`, `balanced`, `adaptive` (edge
 #### TS Lama Cleanup
 <img src="doc/screenshots/ts_lama_cleanup.png" alt="TS Lama Cleanup" width="450" />
 
-Built-in inpainting node powered by LaMa — paint a mask right on the node's canvas (brush + undo/redo + reset), then run to fill. Stores intermediate edits per session, no external Photoshop trip required.
+Built-in inpainting node powered by LaMa — paint a mask right on the node's canvas (brush + undo/redo + reset), then run to fill. Stores intermediate edits per session, no external Photoshop trip required. Since v9.3 the architecture is pure PyTorch (no upstream `lama-cleaner` dependency) and weights load from `.safetensors` in `models/lama/` instead of pickled `.ckpt`.
 
 **Use when:** removing tourists from photos, erasing watermarks, fixing artifacts, prototyping cleanup before a heavier inpainter.
+
+---
+
+#### TS Matting (ViTMatte)
+
+Guided alpha matting via Hugging Face ViTMatte. Takes an image + a coarse mask (e.g. from SAM3 Detect), auto-builds a trimap and refines into a photo-realistic alpha matte. Same `mask_blur`/`mask_offset`/`background` post-processing contract as TS Remove Background, so it's a drop-in upgrade when edges/hair/transparency matter. Models cached under `models/vitmatte/`.
+
+**Use when:** producing crisp cut-outs from SAM-style masks without dropping into Photoshop.
+
+---
+
+#### TS SAM Media Loader
+
+Loads an image or video and lets you click-pick positive/negative points right on a first-frame preview. Outputs `IMAGE`, `AUDIO` (for video), and `positive_coords`/`negative_coords` STRING JSON in the exact format expected by the native ComfyUI **SAM3 Detect** / **SAM3 Video Track** nodes. With an optional SAM3 `model` input it also returns the rendered `initial_mask` ready to feed into SAM3 Video Track.
+
+**Use when:** building SAM3 segmentation/tracking workflows and you want a friendly UI for the seed points instead of typing JSON by hand.
 
 ---
 
@@ -421,7 +437,7 @@ Hardware-accelerated upscale via NVIDIA RTX Video Super Resolution (`nvvfx`). Fo
 #### TS Video Depth
 <img src="doc/screenshots/ts_video_depth.png" alt="TS Video Depth" width="450" />
 
-Depth-Anything-based per-frame depth estimation, optimised for video (temporal consistency).
+Depth-Anything-based per-frame depth estimation, optimised for video (temporal consistency). v9.4 brought a full GPU-pipeline overhaul: SDPA attention, TPDF dithering on output, sub-chunk processing for long clips, and a numerically-equivalent DPT tail — same outputs, dramatically faster on RTX cards.
 
 **Use when:** building depth-aware ControlNet pipelines, parallax effects, or 3D reprojection.
 
@@ -503,7 +519,7 @@ Multimodal LLM-powered prompt enhancement and image understanding.
 #### TS Qwen 3 VL V3
 <img src="doc/screenshots/ts_qwen3_vl.png" alt="TS Qwen 3 VL V3" width="450" />
 
-Multimodal Qwen 3 VL (image + video + text) running locally. Built-in model picker (Qwen 2B / 4B / 8B variants and uncensored mods), system-prompt presets ("Image Edit Command Translation", "Prompt Enhancement", …), 4-bit/8-bit quantisation via `bitsandbytes`, FlashAttention-2 support, on-the-fly download from HuggingFace.
+Multimodal Qwen 3 VL (image + video + text) running locally. Built-in model picker (Qwen 2B / 4B / 8B variants and uncensored mods), system-prompt presets ("Image Edit Command Translation", "Prompt Enhancement", …), 4-bit/8-bit quantisation via `bitsandbytes`, FlashAttention-2 support, on-the-fly download from HuggingFace. Since v9.5 the heavy pipeline lives in a shared `nodes/llm/_qwen_engine.py` reused by Super Prompt — bug fixes and perf improvements land in both nodes at once.
 
 **Use when:** describing images for prompts, translating user intents into edit commands, building VLM-driven pipelines.
 
@@ -512,7 +528,7 @@ Multimodal Qwen 3 VL (image + video + text) running locally. Built-in model pick
 #### TS Super Prompt
 <img src="doc/screenshots/ts_super_prompt.png" alt="TS Super Prompt" width="450" />
 
-Prompt enhancement node with a built-in **voice button** — speak your idea, Whisper transcribes it (with cinematography-aware grammar fixes), then a small Qwen3 model expands it into a rich prompt. Optional image input for image-conditioned prompting. Two modes: fast turbo or high-quality.
+Prompt enhancement node with a built-in **voice button** — speak your idea, Whisper transcribes it (with cinematography-aware grammar fixes), then a small Qwen3 model expands it into a rich prompt. Optional image input for image-conditioned prompting. Two modes: fast turbo or high-quality. Internals split (v9.5) into `nodes/llm/super_prompt/` (`_helpers`, `_voice`, `_qwen` over the shared Qwen engine) so the prompt-enhancement path stays in sync with TS Qwen 3 VL V3.
 
 **Use when:** quick prompt brainstorming, voice-driven workflows, or bridging a sketchy idea into a production-ready prompt.
 
@@ -771,9 +787,9 @@ Timesaver freezes node ids and inputs across versions on purpose. If something b
 
 ```text
 comfyui-timesaver/
-├─ nodes/                  # 57 node modules, organised by category
+├─ nodes/                  # 59 node modules, organised by category
 ├─ js/                     # frontend extensions for DOM-widget nodes
-├─ doc/screenshots/        # 57 node screenshots (this README uses them)
+├─ doc/screenshots/        # node screenshots (this README uses them)
 ├─ requirements.txt        # runtime dependencies
 └─ pyproject.toml          # version + ComfyRegistry metadata
 ```
