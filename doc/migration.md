@@ -1,5 +1,7 @@
 # Migration Notes
 
+> **Update v9.2:** import surface pinned from `comfy_api.latest` to `comfy_api.v0_0_2`. Все примеры в этом документе с `from comfy_api.latest import IO` относятся к момиту 8.9; в текущем коде используется `from comfy_api.v0_0_2 import IO`. Поведение API идентично, namespace pinned для предсказуемости при обновлениях ComfyUI core.
+
 ## 8.8 → 8.9 — Full V1 → V3 API migration
 
 Релиз `8.9` переводит **все 57 нод** на ComfyUI V3 API (`comfy_api.latest.IO`). До этого пак был смешанным (V1 + V3). После миграции `grep RETURN_TYPES nodes/` пуст.
@@ -185,3 +187,20 @@ python tools/build_node_contracts.py --check
 | `nodes/.cache/ts_audio_loader/` | `TS_AudioLoader` preview cache | Да, пересоздастся при первом использовании |
 
 `TS_DeflickerNode` удалена в одной из revision'ов после 8.8 (импорт `nodes/rife/` отсутствовал и был сломан). Соответствующих кэш-каталогов на диске нода не оставляла. Сохранённые workflow с этой нодой теперь покажут «missing node» — ремап не предусмотрен.
+
+---
+
+## После 8.9 — релизы 9.x
+
+Эти изменения не ломают workflow JSON, но меняют внутреннее устройство пакета и/или ассортимент нод. Полный список — `git log --oneline`.
+
+| Релиз | Что | Workflow impact |
+| --- | --- | --- |
+| 9.1 | Version bump + tests/tools re-tracked | Нет |
+| 9.2 | Pin `comfy_api.v0_0_2` + V3 lock_class fix + static invariants | Внутренний refactor; ноды с per-class кешем (`TS_BGRM_BiRefNet`, `TS_Whisper`, `TS_VideoDepth`, `TS_Qwen3_VL_V3`) переведены на module-level `_NodeState`. Симптом до фикса: `AttributeError: Cannot modify class attribute '...' on locked class` |
+| 9.3 | `TS_LamaCleanup` — pure PyTorch + safetensors loader | Нет (та же schema). Architecture перенесена в `nodes/image/lama_cleanup/_lama_arch.py`, отказ от внешнего `lama-cleaner` package. Веса: `.safetensors` в `models/lama/` (раньше pickled `.ckpt`). |
+| 9.4 | `TS_VideoDepth` GPU overhaul + новые image-ноды (**TS_Matting_ViTMatte**, **TS_SAM_MediaLoader**) | Новые публичные ноды; image count 26 → 28; total 57 → 59. `TS_BGRM_BiRefNet` — расширены опции (refine_foreground убран, новые controls — schema совместима со старыми workflow через defaults). |
+| 9.5 | `TS_DownloadFilesNode` hardening + LLM stack refactor | (1) `TS_DownloadFilesNode`: zip-slip защита, sanitize filename, per-mirror connectivity probe, SHA256 progress UI. (2) **LLM stack refactor**: `nodes/llm/_qwen_engine.py` — новый shared Qwen pipeline (~1250 строк), используется и в `TS_Qwen3_VL_V3` (`nodes/llm/ts_qwen3_vl.py` стал тонкой обёрткой), и в `TS_SuperPrompt` (`nodes/llm/super_prompt/_qwen.py`). Public schema/выходы обеих нод не изменились. `nodes/llm/super_prompt/` split-подпакет; легаси-путь `nodes/llm/ts_super_prompt.py` — backward-compat re-export shim с пустым `NODE_CLASS_MAPPINGS`. |
+| 9.6 | `TS_AudioLoader` / `TS_AudioPreview` — фикс сброса crop при переключении workflow-вкладок + документация | Hidden widgets (`crop_start_seconds`, `crop_end_seconds`, `preview_state_json`) теперь читаются с fallback на `node.properties` (защита от V2 Vue serialize quirks). `loadedGraphNode` вызывает `_tsAudioLoaderRehydrate` вместо повторного `setupAudioLoader` — DOM не пересоздаётся, не двоится верхняя часть ноды. `applyMediaPayload` больше не сбрасывает crop при `cropEnd === -1` (sentinel «до конца»). Документация: CLAUDE.md обновлён под v9.6, добавлены §12.5.12 (rehydrate) и §12.5.13 (hidden widgets fallback). README/migration.md актуализированы под текущие 59 нод. |
+
+Для всех 9.x релизов: `node_id`, имена входов/выходов, defaults, category, JS extension IDs не менялись. Контракты ловятся через `tests/contracts/node_contracts.json` (59 V3 нод на v9.6) и `tests/test_node_contracts.py` (snapshot test).

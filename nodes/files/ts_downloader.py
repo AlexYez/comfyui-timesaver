@@ -100,7 +100,7 @@ class TS_DownloadFilesNode(IO.ComfyNode):
         if not target_domain or target_domain.strip() == "huggingface.co":
             return url
         clean_domain = target_domain.replace("https://", "").replace("http://", "").strip("/")
-        pattern = r"(https?://)(www\.)?huggingface\.co"
+        pattern = r"(https?://)(www\.)?huggingface\.co(?=[/:?#]|$)"
         if re.search(pattern, url):
             return re.sub(pattern, f"\\1{clean_domain}", url)
         return url
@@ -331,7 +331,15 @@ class TS_DownloadFilesNode(IO.ComfyNode):
             host = urlparse(url).netloc.lower()
         except Exception:
             return False
-        return ("huggingface.co" in host) or ("hf-mirror.com" in host)
+        if "@" in host:
+            host = host.rsplit("@", 1)[-1]
+        host = host.split(":", 1)[0]
+        return (
+            host == "huggingface.co"
+            or host.endswith(".huggingface.co")
+            or host == "hf-mirror.com"
+            or host.endswith(".hf-mirror.com")
+        )
 
     @classmethod
     def _extract_hf_expected_sha256(cls, remote_etag, final_url):

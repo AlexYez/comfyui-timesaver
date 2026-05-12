@@ -117,6 +117,26 @@ function setWidgetValue(node, name, value) {
     node.properties[name] = value;
 }
 function getWidgetValue(node, name, fallback) { return getWidget(node, name)?.value ?? fallback; }
+function readPersistedNumber(node, name, fallback) {
+    const widgetValue = getWidget(node, name)?.value;
+    if (widgetValue !== undefined && widgetValue !== null && widgetValue !== "") {
+        const numeric = Number(widgetValue);
+        if (Number.isFinite(numeric)) return numeric;
+    }
+    const propValue = node?.properties?.[name];
+    if (propValue !== undefined && propValue !== null && propValue !== "") {
+        const numeric = Number(propValue);
+        if (Number.isFinite(numeric)) return numeric;
+    }
+    return fallback;
+}
+function readPersistedString(node, name, fallback = "") {
+    const widgetValue = getWidget(node, name)?.value;
+    if (typeof widgetValue === "string" && widgetValue.length > 0) return widgetValue;
+    const propValue = node?.properties?.[name];
+    if (typeof propValue === "string" && propValue.length > 0) return propValue;
+    return fallback;
+}
 function scheduleCanvasDirty() { app?.graph?.setDirtyCanvas?.(true, true); }
 function playIcon() { return `<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>`; }
 function pauseIcon() { return `<svg viewBox="0 0 24 24"><path d="M6 19h4V5H6zm8-14v14h4V5z"/></svg>`; }
@@ -150,8 +170,8 @@ export function setupAudioLoader(node) {
         mode: String(getWidgetValue(node, INPUT_MODE, "load") || "load"),
         sourcePath: String(getWidgetValue(node, INPUT_SOURCE_PATH, "") || ""),
         recordedPath: "",
-        cropStart: Number(getWidgetValue(node, INPUT_CROP_START, 0) || 0),
-        cropEnd: Number(getWidgetValue(node, INPUT_CROP_END, -1) || -1),
+        cropStart: readPersistedNumber(node, INPUT_CROP_START, 0),
+        cropEnd: readPersistedNumber(node, INPUT_CROP_END, -1),
         isLooping: Boolean(node.properties?.ts_audio_loader_loop ?? false),
         duration: 0, sampleRate: 0, channels: 0, mediaType: "audio", peaks: [], filename: "",
         status: isPreviewNode ? "Connect audio and queue once to preview." : "Choose file to upload or record from microphone.",
@@ -374,9 +394,15 @@ export function setupAudioLoader(node) {
             videoEl.removeAttribute("src");
             videoEl.load();
         }
-        if (!(state.cropEnd > state.cropStart)) {
-            state.cropStart = 0;
-            state.cropEnd = -1;
+        if (state.duration > 0) {
+            if (!Number.isFinite(state.cropStart) || state.cropStart < 0 || state.cropStart >= state.duration) {
+                state.cropStart = 0;
+                state.cropEnd = -1;
+            } else if (state.cropEnd > 0) {
+                if (state.cropEnd > state.duration || state.cropEnd <= state.cropStart) {
+                    state.cropEnd = -1;
+                }
+            }
         }
         if (options.persist !== false) {
             persistPreviewState(payload);
@@ -387,7 +413,7 @@ export function setupAudioLoader(node) {
     }
     function restorePreviewState() {
         if (!isPreviewNode) return;
-        const raw = String(getWidgetValue(node, INPUT_PREVIEW_STATE, "") || "");
+        const raw = readPersistedString(node, INPUT_PREVIEW_STATE, "");
         if (!raw) return;
         try {
             const payload = JSON.parse(raw);
@@ -870,11 +896,15 @@ export function setupAudioLoader(node) {
         const nextSourcePath = String(getWidgetValue(node, INPUT_SOURCE_PATH, "") || "");
         if (nextSourcePath === state.sourcePath) return;
         if (!nextSourcePath && state.mode === "record" && state.recordedPath) return;
+        if (!nextSourcePath && state.sourcePath) return;
+        const isSwap = Boolean(state.sourcePath) && Boolean(nextSourcePath) && nextSourcePath !== state.sourcePath;
         state.sourcePath = nextSourcePath;
         state.mode = "load";
         state.recordedPath = "";
-        state.cropStart = 0;
-        state.cropEnd = -1;
+        if (isSwap) {
+            state.cropStart = 0;
+            state.cropEnd = -1;
+        }
         syncWidgets();
         fetchMetadata(state.sourcePath);
     }, 300) : null;
@@ -890,6 +920,29 @@ export function setupAudioLoader(node) {
     node._tsAudioLoaderApplyPayload = (payload, persist = true) => {
         if (!payload) return;
         applyMediaPayload(payload, { persist });
+    };
+    node._tsAudioLoaderRehydrate = () => {
+        if (!isPreviewNode) {
+            const restoredMode = String(getWidgetValue(node, INPUT_MODE, state.mode) || state.mode || "load");
+            const restoredSource = String(getWidgetValue(node, INPUT_SOURCE_PATH, state.sourcePath) || "");
+            state.mode = restoredMode;
+            state.sourcePath = restoredSource;
+        }
+        const restoredCropStart = readPersistedNumber(node, INPUT_CROP_START, state.cropStart);
+        const restoredCropEnd = readPersistedNumber(node, INPUT_CROP_END, state.cropEnd);
+        state.cropStart = restoredCropStart;
+        state.cropEnd = restoredCropEnd;
+        if (node.properties && Object.prototype.hasOwnProperty.call(node.properties, "ts_audio_loader_loop")) {
+            state.isLooping = Boolean(node.properties.ts_audio_loader_loop);
+        }
+        if (isPreviewNode) {
+            restorePreviewState();
+        } else if (state.sourcePath) {
+            fetchMetadata(state.sourcePath);
+        } else {
+            updateText();
+            drawWaveform();
+        }
     };
     requestAnimationFrame(() => {
         syncDomSize();
