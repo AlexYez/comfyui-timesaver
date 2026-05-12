@@ -7,6 +7,15 @@ Public node + the four aiohttp routes that drive the in-canvas UI:
 - GET  /ts_voice_recognition/status     : reports model cache / load state.
 - POST /ts_super_prompt/enhance         : runs Qwen prompt enhancement.
 
+The image reference is **not** taken from a workflow IMAGE input. Instead
+the JS frontend lets the user attach a file (drag-drop / paste / file
+picker), uploads it through ComfyUI's standard ``/upload/image`` endpoint,
+and stores the resulting ComfyUI-annotated path
+(``"subfolder/filename [type]"``) in the hidden ``attached_image``
+socketless widget. The ``/ts_super_prompt/enhance`` route then resolves
+that annotated path back to a PIL image at request time and passes it to
+Qwen — so the Enhance button works without running the entire workflow.
+
 Heavy logic lives in the sibling private modules:
 
 - ``_helpers.py`` — config constants, logger, PromptServer event dispatch,
@@ -27,6 +36,7 @@ from typing import Any
 
 from aiohttp import web
 
+import folder_paths
 from comfy_api.v0_0_2 import IO
 
 from ._helpers import (
@@ -43,6 +53,7 @@ from ._helpers import (
     MODELS_WITHOUT_TRANSLATE,
     SOURCE_LANGUAGE,
     SUPER_PROMPT_ENHANCE_ON_EXECUTE,
+    SUPER_PROMPT_MAX_IMAGE_SIZE,
     TRANSLATE_TO_ENGLISH,
     VOICE_LOG_PREFIX,
     VOICE_MODEL_CACHE,
@@ -72,9 +83,78 @@ from ._voice import (
 
 
 # ---------------------------------------------------------------------------
-# Voice recognition HTTP routes
+# Attached image helpers
 # ---------------------------------------------------------------------------
 
+_IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tif", ".tiff", ".gif"}
+
+
+def _resolve_annotated_image_path(annotated: str) -> str:
+    """Resolve a ComfyUI annotated filepath (``"name.png [input]"``) to a real path.
+
+    Returns an empty string if the input is empty or unresolvable. Falls back
+    to checking the raw string as a path if ``folder_paths`` rejects it.
+    """
+    path = str(annotated or "").strip()
+    if not path:
+        return ""
+    try:
+        resolved = folder_paths.get_annotated_filepath(path)
+    except Exception:
+        resolved = ""
+    if resolved and Path(resolved).is_file():
+        return resolved
+    if Path(path).is_file():
+        return path
+    return ""
+
+
+def _load_attached_image_pil(annotated: str):
+    """Resolve + load the attached image as a PIL.Image, or None on failure."""
+    resolved = _resolve_annotated_image_path(annotated)
+    if not resolved:
+        return None
+    suffix = Path(resolved).suffix.lower()
+    if suffix and suffix not in _IMAGE_SUFFIXES:
+        LOGGER.warning("%s Attached image has unsupported suffix %s", LOG_PREFIX, suffix)
+        return None
+    try:
+        from PIL import Image
+    except Exception as exc:
+        LOGGER.warning("%s PIL not available for attached image: %s", LOG_PREFIX, exc)
+        return None
+    try:
+        with Image.open(resolved) as img:
+            return img.convert("RGB").copy()
+    except Exception as exc:
+        LOGGER.warning(
+            "%s Failed to open attached image %s: %s", LOG_PREFIX, resolved, exc
+        )
+        return None
+
+
+def _attached_image_as_tensor(annotated: str):
+    """Load the attached image as a ComfyUI IMAGE tensor (``[1, H, W, C]``)."""
+    pil = _load_attached_image_pil(annotated)
+    if pil is None:
+        return None
+    try:
+        import numpy as np
+        import torch
+    except Exception as exc:
+        LOGGER.warning("%s torch/numpy unavailable for attached image: %s", LOG_PREFIX, exc)
+        return None
+    arr = np.asarray(pil, dtype=np.float32) / 255.0
+    if arr.ndim == 2:
+        arr = arr[..., None]
+    if arr.shape[-1] == 4:
+        arr = arr[..., :3]
+    return torch.from_numpy(arr).unsqueeze(0)
+
+
+# ---------------------------------------------------------------------------
+# Voice recognition HTTP routes
+# ---------------------------------------------------------------------------
 
 def _safe_audio_suffix(filename: str | None) -> str:
     suffix = Path(filename or "").suffix.lower()
@@ -214,7 +294,26 @@ async def enhance_endpoint(request: web.Request) -> web.StreamResponse:
 
     preset = str(data.get("system_preset") or DEFAULT_PRESET)
     if preset not in preset_options():
-        return web.json_response({"error": "Unknown system_preset."}, status=400)
+        LOGGER.warning(
+            "%s Unknown system_preset %r in /enhance; falling back to %r.",
+            LOG_PREFIX,
+            preset,
+            DEFAULT_PRESET,
+        )
+        preset = DEFAULT_PRESET
+
+    # Optional reference image attached via the in-node "Attach image" UI.
+    # The frontend uploads through /upload/image first and only sends the
+    # resulting annotated path here. An empty / unresolvable path simply
+    # means "text-only enhance" — not an error.
+    attached_image = str(data.get("attached_image") or "")
+    image_pil = _load_attached_image_pil(attached_image) if attached_image else None
+    if attached_image and image_pil is None:
+        LOGGER.warning(
+            "%s Attached image %r could not be loaded; falling back to text-only enhance.",
+            LOG_PREFIX,
+            attached_image,
+        )
 
     # Racy fast-fail for obviously-busy Qwen. Internal _generate_with_qwen still
     # acquires MODEL_LOCK with proper blocking, so this only spares the caller
@@ -232,10 +331,18 @@ async def enhance_endpoint(request: web.Request) -> web.StreamResponse:
             text,
             preset,
             operation_id,
-            None,
+            image_pil,
         )
         send_done(operation_id, "AI prompt ready")
-        return web.json_response({"ok": True, "text": result, "thinking": False, "model": DEFAULT_MODEL_ID})
+        return web.json_response(
+            {
+                "ok": True,
+                "text": result,
+                "thinking": False,
+                "model": DEFAULT_MODEL_ID,
+                "used_image": image_pil is not None,
+            }
+        )
     except Exception as exc:
         LOGGER.exception("%s AI prompt enhancement failed", LOG_PREFIX)
         send_error(operation_id, str(exc))
@@ -258,7 +365,9 @@ class TS_SuperPrompt(IO.ComfyNode):
             display_name="TS Super Prompt",
             category="TS/LLM",
             description=(
-                "Voice prompt field with optional Qwen3.5 AI prompt enhancement for image, video, and music prompts."
+                "Voice prompt field with optional Qwen3.5 AI prompt enhancement for image, video, and music prompts. "
+                "Attach an optional reference image right in the node (drag-drop / paste / file picker) — "
+                "it is used by the Enhance button without running the workflow."
             ),
             inputs=[
                 IO.String.Input(
@@ -284,13 +393,14 @@ class TS_SuperPrompt(IO.ComfyNode):
                     default=default_preset(options),
                     tooltip="Выберите системный пресет из qwen_3_vl_presets.json для улучшения промпта.",
                 ),
-                IO.Image.Input(
-                    "image",
-                    optional=True,
+                IO.String.Input(
+                    "attached_image",
+                    default="",
                     tooltip=(
-                        "Опциональное изображение-референс для улучшения промпта, "
-                        "если SUPER_PROMPT_ENHANCE_ON_EXECUTE включен в коде."
+                        "Внутреннее поле: аннотированный путь приложенного изображения "
+                        "(заполняется кнопкой Attach в самой ноде)."
                     ),
+                    socketless=True,
                 ),
             ],
             outputs=[IO.String.Output(display_name="text")],
@@ -310,14 +420,21 @@ class TS_SuperPrompt(IO.ComfyNode):
         text: str = "",
         high_quality: bool = False,
         system_preset: str = DEFAULT_PRESET,
+        attached_image: str = "",
         **_: Any,
     ) -> bool | str:
         if not isinstance(text, str):
             return "text must be a string."
         if not isinstance(high_quality, bool):
             return "high_quality must be a boolean."
-        if system_preset not in preset_options():
-            return "system_preset must be one of the presets from qwen_3_vl_presets.json."
+        if not isinstance(system_preset, str):
+            return "system_preset must be a string."
+        if not isinstance(attached_image, str):
+            return "attached_image must be a string (annotated filepath)."
+        # Unknown ``system_preset`` values are intentionally accepted here:
+        # ``_resolve_preset`` in _qwen.py silently falls back to the canonical
+        # ``DEFAULT_PRESET`` ("Prompts enhance") so workflows saved before a
+        # preset rename keep loading + running without an error.
         return True
 
     @classmethod
@@ -325,20 +442,20 @@ class TS_SuperPrompt(IO.ComfyNode):
         cls,
         text: str = "",
         high_quality: bool = False,
-        translate_to_english: bool = False,
         system_preset: str = DEFAULT_PRESET,
-        image: Any = None,
+        attached_image: str = "",
         **_: Any,
     ) -> IO.NodeOutput:
-        _ = high_quality, translate_to_english
+        _ = high_quality
         if not SUPER_PROMPT_ENHANCE_ON_EXECUTE:
             return IO.NodeOutput(text or "")
 
+        image_pil = _load_attached_image_pil(attached_image) if attached_image else None
         enhanced = _generate_with_qwen(
             text=text or "",
             system_preset=system_preset,
             operation_id=None,
-            image=image,
+            image=image_pil,
         )
         return IO.NodeOutput(enhanced)
 

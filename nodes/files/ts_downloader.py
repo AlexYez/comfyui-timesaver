@@ -105,42 +105,60 @@ class TS_DownloadFilesNode(IO.ComfyNode):
             return re.sub(pattern, f"\\1{clean_domain}", url)
         return url
 
-    @classmethod
-    def _check_connectivity_to_targets(cls, file_list_parsed, session, hf_domain_str):
-        active_mirror = "huggingface.co"
-        if hf_domain_str:
-            domains = [d.strip() for d in hf_domain_str.split(',') if d.strip()]
-            if domains:
-                active_mirror = domains[0]
+    @staticmethod
+    def _parse_mirror_domains(hf_domain_str):
+        if not hf_domain_str:
+            return ["huggingface.co"]
+        domains = []
+        for raw in hf_domain_str.split(','):
+            cleaned = raw.replace("https://", "").replace("http://", "").strip("/").strip()
+            if cleaned and cleaned not in domains:
+                domains.append(cleaned)
+        return domains or ["huggingface.co"]
 
-        unique_bases = set()
+    @classmethod
+    def _build_connectivity_probes(cls, file_list_parsed, hf_domain_str):
+        mirror_domains = cls._parse_mirror_domains(hf_domain_str)
+        probes = {}
         for item in file_list_parsed:
             url = item['url']
-            final_url = cls._replace_hf_domain(url, active_mirror)
-            try:
-                parsed = urlparse(final_url)
-                base_url = f"{parsed.scheme}://{parsed.netloc}"
-                unique_bases.add(base_url)
-            except Exception as exc:
-                logger.debug("%s Could not parse URL '%s': %s", LOG_PREFIX, final_url, exc)
-                continue
+            if cls._is_hf_url(url):
+                for mirror in mirror_domains:
+                    candidate_url = cls._replace_hf_domain(url, mirror)
+                    try:
+                        parsed = urlparse(candidate_url)
+                        base = f"{parsed.scheme}://{parsed.netloc}"
+                    except Exception as exc:
+                        logger.debug("%s Could not parse URL '%s': %s", LOG_PREFIX, candidate_url, exc)
+                        continue
+                    probes.setdefault(base, candidate_url)
+            else:
+                try:
+                    parsed = urlparse(url)
+                    base = f"{parsed.scheme}://{parsed.netloc}"
+                except Exception as exc:
+                    logger.debug("%s Could not parse URL '%s': %s", LOG_PREFIX, url, exc)
+                    continue
+                probes.setdefault(base, url)
+        return probes
 
-        if not unique_bases:
+    @classmethod
+    def _check_connectivity_to_targets(cls, file_list_parsed, session, hf_domain_str):
+        probes = cls._build_connectivity_probes(file_list_parsed, hf_domain_str)
+        if not probes:
             return True
 
-        logger.info(f"{LOG_PREFIX} Checking connectivity to targets: {list(unique_bases)} ...")
-        is_online = False
-        for base_url in unique_bases:
+        logger.info(f"{LOG_PREFIX} Checking connectivity to targets: {list(probes.keys())} ...")
+        for base_url, probe_url in probes.items():
             try:
-                session.head(base_url, timeout=(2, 2), allow_redirects=True)
+                session.head(probe_url, timeout=(5, 5), allow_redirects=True)
                 logger.info(f"{LOG_PREFIX} Target '{base_url}' is REACHABLE.")
-                is_online = True
-                break
+                return True
             except requests.RequestException:
                 logger.warning(f"{LOG_PREFIX} Target '{base_url}' is UNREACHABLE.")
                 continue
 
-        return is_online
+        return False
 
     @staticmethod
     def _select_best_mirror(session, domain_list_str):
@@ -237,6 +255,22 @@ class TS_DownloadFilesNode(IO.ComfyNode):
                     continue
                 files.append({'url': url, 'target_dir': target_path})
         return files
+
+    @staticmethod
+    def _sanitize_filename(name, fallback_prefix="downloaded_file"):
+        if not name:
+            return f"{fallback_prefix}_{int(time.time())}"
+        name = name.replace("\\", "/").split("/")[-1]
+        if name in (".", ".."):
+            return f"{fallback_prefix}_{int(time.time())}"
+        name = re.sub(r'[<>:"/\\|?*\x00-\x1f]', '_', name)
+        name = name.strip().strip(".").strip()
+        if not name:
+            return f"{fallback_prefix}_{int(time.time())}"
+        if len(name) > 200:
+            stem, ext = os.path.splitext(name)
+            name = stem[: max(1, 200 - len(ext))] + ext
+        return name
 
     @staticmethod
     def _get_filename_from_header_map(headers):
@@ -364,14 +398,35 @@ class TS_DownloadFilesNode(IO.ComfyNode):
         return True
 
     @staticmethod
-    def _compute_sha256(file_path, chunk_size=8 * 1024 * 1024):
+    def _compute_sha256(file_path, chunk_size=8 * 1024 * 1024, desc=None):
         hasher = hashlib.sha256()
-        with open(file_path, "rb") as f:
+        try:
+            total = os.path.getsize(file_path)
+        except OSError:
+            total = 0
+        comfy_pbar = ProgressBar(total) if (ProgressBar and total > 0) else None
+        progress_desc = desc or f"SHA256: {os.path.basename(file_path)}"
+        accumulated = 0
+        ui_update_threshold = 8 * 1024 * 1024
+        with open(file_path, "rb") as f, tqdm(
+            total=total or None,
+            unit='B', unit_scale=True, desc=progress_desc,
+            mininterval=1.0, ncols=100, unit_divisor=1024,
+        ) as pbar:
             while True:
                 chunk = f.read(chunk_size)
                 if not chunk:
                     break
                 hasher.update(chunk)
+                chunk_len = len(chunk)
+                pbar.update(chunk_len)
+                if comfy_pbar:
+                    accumulated += chunk_len
+                    if accumulated >= ui_update_threshold:
+                        comfy_pbar.update(accumulated)
+                        accumulated = 0
+            if comfy_pbar and accumulated > 0:
+                comfy_pbar.update(accumulated)
         return hasher.hexdigest()
 
     @classmethod
@@ -433,11 +488,35 @@ class TS_DownloadFilesNode(IO.ComfyNode):
         finally:
             response.close()
 
+    @staticmethod
+    def _is_zip_member_safe(member_name, extract_root):
+        if not member_name or member_name in (".", ".."):
+            return False
+        normalized = member_name.replace("\\", "/")
+        if normalized.startswith("/") or normalized.startswith("../") or "/../" in normalized or normalized.endswith("/.."):
+            return False
+        head = normalized.split("/", 1)[0]
+        if len(head) >= 2 and head[1] == ":":
+            return False
+        target = os.path.realpath(os.path.join(extract_root, member_name))
+        if target == extract_root:
+            return True
+        return target.startswith(extract_root + os.sep)
+
     @classmethod
     def _extract_zip(cls, zip_path, extract_to):
         logger.info(f"{LOG_PREFIX} Auto-Unzip: Extracting '{os.path.basename(zip_path)}' to '{extract_to}'...")
         try:
+            os.makedirs(extract_to, exist_ok=True)
+            extract_root = os.path.realpath(extract_to)
             with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                for info in zip_ref.infolist():
+                    if not cls._is_zip_member_safe(info.filename, extract_root):
+                        logger.error(
+                            "%s Refusing to extract unsafe zip member '%s' (path traversal).",
+                            LOG_PREFIX, info.filename,
+                        )
+                        return False
                 zip_ref.extractall(extract_to)
             logger.info(f"{LOG_PREFIX} Extraction complete. Deleting archive.")
             try:
@@ -478,9 +557,7 @@ class TS_DownloadFilesNode(IO.ComfyNode):
             final_filename = cls._get_filename_from_header_map(remote_info["headers"])
             if not final_filename:
                 final_filename = filename_from_url
-            if not final_filename or final_filename == "/":
-                final_filename = f"downloaded_file_{int(time.time())}"
-            final_filename = re.sub(r'[<>:"/\\|?*]', '_', final_filename)
+            final_filename = cls._sanitize_filename(final_filename)
 
             local_file_path = os.path.join(target_dir, final_filename)
             temp_file_path = local_file_path + ".part"

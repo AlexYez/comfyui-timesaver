@@ -570,6 +570,49 @@ _DUPLICATE_TRANSCRIPTION_WORDS = {
     "with", "in", "on", "at", "to", "from", "of", "for", "by",
 }
 
+_PHRASE_LOOP_MAX_WORDS = 12
+
+
+def _collapse_repeated_phrases(text: str, *, max_phrase_words: int = _PHRASE_LOOP_MAX_WORDS) -> str:
+    """Collapse n-gram phrase repetitions like ``"X Y X Y X Y"`` → ``"X Y"``.
+
+    Whisper occasionally enters a decoding loop where the same chunk repeats
+    multiple times in a row. ``compression_ratio_threshold`` catches the worst
+    cases, but milder loops slip through (especially for short clips, where
+    the compression ratio stays low). We walk word-level n-grams from the
+    largest plausible length down to 1, and whenever a phrase appears ≥2
+    times back-to-back we fold the cluster to a single occurrence.
+
+    Punctuation stays attached to its word, so ``"hello! hello! hello!"`` is
+    recognised as a repeat just like ``"hello hello hello"``. Casing is
+    significant — only literal repeats are collapsed.
+    """
+
+    words = text.split()
+    if len(words) < 2:
+        return text
+
+    changed = True
+    while changed:
+        changed = False
+        # n is bounded by both the phrase-length cap and ``len // 2`` because
+        # we need at least two consecutive copies of the phrase to collapse.
+        for n in range(min(max_phrase_words, len(words) // 2), 0, -1):
+            i = 0
+            while i + 2 * n <= len(words):
+                phrase = words[i:i + n]
+                if words[i + n:i + 2 * n] == phrase:
+                    j = i + n
+                    while j + n <= len(words) and words[j:j + n] == phrase:
+                        j += n
+                    del words[i + n:j]
+                    changed = True
+                    break  # Restart from the largest n on the shortened list.
+                i += 1
+            if changed:
+                break
+    return " ".join(words)
+
 
 def _clean_transcription_text(text: str) -> str:
     cleaned = re.sub(r"\s+", " ", str(text or "")).strip()
@@ -583,6 +626,11 @@ def _clean_transcription_text(text: str) -> str:
             if collapsed == cleaned:
                 break
             cleaned = collapsed
+
+    # Catch Whisper decoding loops: 'X Y X Y X Y' → 'X Y'. Runs after the
+    # preposition pass so 'из из' first folds to 'из', then any larger phrase
+    # repeats are handled here.
+    cleaned = _collapse_repeated_phrases(cleaned)
     return cleaned
 
 
@@ -619,16 +667,34 @@ def transcribe_audio(
     model, _, use_fp16 = load_model(model_name, device, progress_start=42.0, progress_end=64.0)
     send_voice_status(model_name, "Recognizing speech", 68.0)
 
+    # Whisper retries with a higher temperature whenever the previous attempt
+    # fails compression_ratio_threshold / logprob_threshold — that's the
+    # built-in escape from a greedy decoding loop. Passing a single 0.0 gives
+    # us no such escape and bakes in repetitive hallucinations; the tuple
+    # below mirrors Whisper's documented default schedule. We still start at
+    # ``TEMPERATURE`` so configured non-zero values are respected.
+    temperature_schedule = (
+        (TEMPERATURE, 0.2, 0.4, 0.6, 0.8, 1.0)
+        if float(TEMPERATURE) == 0.0
+        else float(TEMPERATURE)
+    )
+
     transcribe_kwargs = {
         "task": task,
         "language": language,
         "fp16": use_fp16,
-        "temperature": TEMPERATURE,
-        "compression_ratio_threshold": 1.35,
+        "temperature": temperature_schedule,
+        # 1.35 was overly strict and threw away large stretches of normal
+        # speech (compression ratio of typical Russian/English narration sits
+        # near 1.6–2.1), surfacing as "no speech detected" or empty results.
+        # 2.4 is the Whisper-default — it still catches the worst loops.
+        "compression_ratio_threshold": 2.4,
         "logprob_threshold": -1.0,
         "no_speech_threshold": 0.6,
         "condition_on_previous_text": False,
     }
+    # ``beam_size`` is only used by Whisper when sampling temperature == 0.0,
+    # so it composes cleanly with the fallback schedule above.
     if BEAM_SIZE > 1:
         transcribe_kwargs["beam_size"] = BEAM_SIZE
     if initial_prompt:

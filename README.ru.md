@@ -8,7 +8,7 @@
 
 Ресайз, цветокоррекция, кеинг, инпейнтинг, транскрипция, переводы, конструкторы промптов, менеджмент моделей — всё прямо на канвасе.
 
-[![Версия](https://img.shields.io/badge/version-9.2-blue.svg)](pyproject.toml)
+[![Версия](https://img.shields.io/badge/version-9.5-blue.svg)](pyproject.toml)
 [![ComfyUI](https://img.shields.io/badge/ComfyUI-V3%20API-orange.svg)](https://github.com/comfyanonymous/ComfyUI)
 [![Python](https://img.shields.io/badge/python-3.10+-green.svg)](https://www.python.org/)
 [![Лицензия](https://img.shields.io/badge/license-see%20LICENSE.txt-lightgrey.svg)](LICENSE.txt)
@@ -572,7 +572,7 @@ Composable prompt builder. Редактируйте промпт как спис
 #### TS Files Downloader (Ultimate)
 <img src="doc/screenshots/ts_downloader.png" alt="TS Files Downloader" width="450" />
 
-Multi-file загрузчик, который принимает список строк формата `URL <пробел> target_path` и скачивает их параллельно. Автоматически подменяет HuggingFace-зеркала, поддерживает `models/<subdir>` алиасы, ретраит при ошибках, показывает прогресс. Удобно отдавать workflow с готовым списком моделей.
+Multi-file загрузчик, который принимает список строк формата `URL <пробел> target_path` и скачивает их последовательно. Автоматически подменяет HuggingFace-зеркала с проверкой доступности по всему списку зеркал, поддерживает `models/<subdir>` алиасы, докачивает прерванные файлы, защищает auto-unzip от zip-slip, показывает прогресс (включая верификацию SHA256). Удобно отдавать workflow с готовым списком моделей.
 
 **Когда использовать:** распространение workflow'а, которому нужны N конкретных моделей — пользователю достаточно подать готовую ноду с URL-ами.
 

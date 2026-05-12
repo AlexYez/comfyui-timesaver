@@ -1456,7 +1456,7 @@
         "step": 64
       },
       "model_name": {
-        "default": "hfmaster/Qwen3-VL-2B"
+        "default": "huihui-ai/Huihui-Qwen3.5-2B-abliterated"
       },
       "offline_mode": {
         "default": false
@@ -1705,11 +1705,22 @@
     }
   },
   "TS_SuperPrompt": {
-    "api": "unknown",
-    "category": null,
+    "api": "v3",
+    "category": "TS/LLM",
     "class_name": "TS_SuperPrompt",
     "display_name": "TS Super Prompt",
-    "python_file": "nodes/llm/ts_super_prompt.py"
+    "python_file": "nodes/llm/super_prompt/ts_super_prompt.py",
+    "widgets": {
+      "attached_image": {
+        "default": ""
+      },
+      "high_quality": {
+        "default": false
+      },
+      "text": {
+        "default": ""
+      }
+    }
   },
   "TS_VideoDepthNode": {
     "api": "v3",
