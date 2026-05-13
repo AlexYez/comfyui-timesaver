@@ -8,6 +8,7 @@ and in any future subpackage layout (image/, video/, audio/, ...).
 
 from __future__ import annotations
 
+import importlib.util
 from pathlib import Path
 
 
@@ -15,26 +16,23 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def _load_init_namespace(monkeypatch):
-    """Execute the package __init__.py in a synthetic namespace.
+    """Load the package __init__.py via importlib in standalone mode.
 
-    Standalone mode (when __package__ is empty) bypasses the auto-load
-    loop in the package, so node modules with heavy optional dependencies
-    are not imported. We control __package__ explicitly to keep the test
-    hermetic.
+    Loading the file as a top-level module (no submodule_search_locations)
+    leaves __package__ empty, which keeps the package's auto-load loop on
+    the standalone branch so node modules with heavy optional dependencies
+    are not imported.
     """
     monkeypatch.syspath_prepend(str(ROOT))
 
     init_path = ROOT / "__init__.py"
-    source = init_path.read_text(encoding="utf-8")
-
-    namespace: dict = {
-        "__file__": str(init_path),
-        "__name__": "ts_pack_init_for_tests",
-        "__package__": "",
-        "__builtins__": __builtins__,
-    }
-    exec(compile(source, str(init_path), "exec"), namespace)
-    return namespace
+    spec = importlib.util.spec_from_file_location(
+        "ts_pack_init_for_tests", str(init_path)
+    )
+    module = importlib.util.module_from_spec(spec)
+    module.__package__ = ""
+    spec.loader.exec_module(module)
+    return module.__dict__
 
 
 def test_discover_module_entries_finds_current_nodes(monkeypatch):
