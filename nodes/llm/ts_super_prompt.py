@@ -41,6 +41,7 @@ from .super_prompt._helpers import (  # noqa: F401
     AUDIO_VAD_ENABLED,
     AUDIO_VAD_FRAME_MS,
     AUDIO_VAD_HOP_MS,
+    AUDIO_VAD_LOW_MULTIPLIER,
     AUDIO_VAD_MIN_SPEECH_SEC,
     AUDIO_VAD_PADDING_SEC,
     AUDIO_VAD_RMS_THRESHOLD,
@@ -111,7 +112,7 @@ from .super_prompt._helpers import (  # noqa: F401
 from .super_prompt._voice import (  # noqa: F401
     AudioPreprocessResult,
     ProgressBroadcaster,
-    _adaptive_vad_threshold,
+    _adaptive_vad_thresholds,
     _apply_edge_fade,
     _as_float32_audio,
     _audio_metadata,

@@ -38,6 +38,7 @@ from ._helpers import (
     AUDIO_VAD_ENABLED,
     AUDIO_VAD_FRAME_MS,
     AUDIO_VAD_HOP_MS,
+    AUDIO_VAD_LOW_MULTIPLIER,
     AUDIO_VAD_MIN_SPEECH_SEC,
     AUDIO_VAD_PADDING_SEC,
     AUDIO_VAD_RMS_THRESHOLD,
@@ -56,6 +57,8 @@ from ._helpers import (
     VOICE_MODEL_CACHE,
     VOICE_MODEL_HIGH_QUALITY,
     WHISPER_DIR,
+    WHISPER_HALLUCINATION_FILTER_ENABLED,
+    WHISPER_HALLUCINATION_PATTERNS,
     send_voice_event,
     send_voice_status,
     voice_log_info,
@@ -409,40 +412,81 @@ def _frame_rms(audio, sample_rate: int) -> tuple[Any, Any, int, int]:
     return rms, starts, frame_size, hop_size
 
 
-def _adaptive_vad_threshold(rms) -> float:
+def _adaptive_vad_thresholds(rms) -> tuple[float, float]:
+    """Compute (high, low) thresholds for hysteresis VAD.
+
+    ``high`` is the original detection threshold — frames above it are
+    confidently speech. ``low`` is a softer floor used to expand the
+    detected speech region outward through quieter frames (unvoiced
+    consonants, short Russian one-letter prepositions like "с"/"в"/"к")
+    that would otherwise be clipped by a single hard threshold. ``low``
+    is clamped to never exceed ``high`` so expansion behaves predictably
+    even on near-silent clips.
+    """
+
     import numpy as np
 
     if rms.size == 0:
-        return float(AUDIO_VAD_RMS_THRESHOLD)
+        floor = float(AUDIO_VAD_RMS_THRESHOLD)
+        return floor, floor
+
     noise_floor = float(np.percentile(rms, 20))
     max_rms = float(np.max(rms))
-    adaptive = noise_floor * float(AUDIO_VAD_ADAPTIVE_MULTIPLIER)
+    high = noise_floor * float(AUDIO_VAD_ADAPTIVE_MULTIPLIER)
     if max_rms > 0:
-        adaptive = min(adaptive, max_rms * 0.35)
-    return max(float(AUDIO_VAD_RMS_THRESHOLD), adaptive)
+        high = min(high, max_rms * 0.35)
+    high = max(float(AUDIO_VAD_RMS_THRESHOLD), high)
+
+    low = noise_floor * float(AUDIO_VAD_LOW_MULTIPLIER)
+    # Always at least slightly above the absolute fixed floor so true silence
+    # (RMS ≈ 0) is still rejected when the noise floor itself collapses to 0.
+    low = max(low, float(AUDIO_VAD_RMS_THRESHOLD) * 0.55)
+    low = min(low, high)
+    return high, low
 
 
 def _detect_speech_bounds(audio, sample_rate: int) -> tuple[int, int, bool, float]:
     import numpy as np
 
     rms, starts, frame_size, hop_size = _frame_rms(audio, sample_rate)
-    threshold = _adaptive_vad_threshold(rms)
+    high_threshold, low_threshold = _adaptive_vad_thresholds(rms)
     if rms.size == 0:
-        return 0, 0, False, threshold
+        return 0, 0, False, high_threshold
 
-    speech_mask = rms >= threshold
+    speech_mask = rms >= high_threshold
     if not bool(np.any(speech_mask)):
-        return 0, 0, False, threshold
+        return 0, 0, False, high_threshold
 
     voiced_duration = float(np.count_nonzero(speech_mask) * hop_size) / float(sample_rate)
     if voiced_duration < float(AUDIO_VAD_MIN_SPEECH_SEC):
-        return 0, 0, False, threshold
+        return 0, 0, False, high_threshold
 
     speech_indices = np.flatnonzero(speech_mask)
+    core_start_idx = int(speech_indices[0])
+    core_end_idx = int(speech_indices[-1])
+
+    # Hysteresis expansion: walk outward from the core region while frames
+    # stay above the LOW threshold. This recovers the unvoiced/quiet edges
+    # of an utterance (e.g. "с камерой" — the "с" is too quiet for the high
+    # threshold but sits well above the noise floor).
+    if core_start_idx == 0:
+        expanded_start_idx = 0
+    else:
+        left_below = np.where(rms[:core_start_idx] < low_threshold)[0]
+        expanded_start_idx = int(left_below[-1]) + 1 if left_below.size else 0
+
+    if core_end_idx >= rms.size - 1:
+        expanded_end_idx = int(rms.size - 1)
+    else:
+        right_below = np.where(rms[core_end_idx + 1:] < low_threshold)[0]
+        expanded_end_idx = (
+            core_end_idx + int(right_below[0]) if right_below.size else int(rms.size - 1)
+        )
+
     padding = max(0, int(sample_rate * AUDIO_VAD_PADDING_SEC))
-    start = max(0, int(starts[int(speech_indices[0])]) - padding)
-    end = min(audio.size, int(starts[int(speech_indices[-1])]) + frame_size + padding)
-    return start, end, end > start, threshold
+    start = max(0, int(starts[expanded_start_idx]) - padding)
+    end = min(audio.size, int(starts[expanded_end_idx]) + frame_size + padding)
+    return start, end, end > start, high_threshold
 
 
 def _normalize_audio(audio):
@@ -614,6 +658,43 @@ def _collapse_repeated_phrases(text: str, *, max_phrase_words: int = _PHRASE_LOO
     return " ".join(words)
 
 
+_HALLUCINATION_TAIL_RE = tuple(
+    # Anchored at end-of-string with tolerated trailing punctuation/whitespace.
+    # `(?iu)` keeps the patterns case- and locale-insensitive so YouTube-style
+    # outros are caught regardless of how Whisper capitalised them.
+    re.compile(rf"(?iu)(?:^|[\s.,!?…—\-:;])({pattern})[\s.,!?…—\-:;]*$")
+    for pattern in WHISPER_HALLUCINATION_PATTERNS
+)
+
+
+def _strip_whisper_hallucinations(text: str) -> str:
+    """Drop Whisper YouTube-outro hallucinations that cling to the tail.
+
+    Whisper trained on YouTube subtitles tends to invent phrases like
+    "продолжение следует" / "thanks for watching" when the audio fades to
+    silence at the end. Each pattern is anchored to the end of the string so
+    legitimate uses earlier in the prompt survive. We loop until no pattern
+    matches, in case the model emitted multiple outros back-to-back.
+    """
+
+    if not WHISPER_HALLUCINATION_FILTER_ENABLED or not text:
+        return text
+
+    current = text
+    changed = True
+    while changed:
+        changed = False
+        for pattern in _HALLUCINATION_TAIL_RE:
+            removed = pattern.sub("", current)
+            if removed != current:
+                # Only strip trailing separators when the filter actually
+                # removed something — otherwise legitimate end-punctuation
+                # ("hello world.") would be eaten on every pass.
+                current = removed.rstrip(" .,!?…—-:;")
+                changed = True
+    return current
+
+
 def _clean_transcription_text(text: str) -> str:
     cleaned = re.sub(r"\s+", " ", str(text or "")).strip()
     if not cleaned:
@@ -631,6 +712,9 @@ def _clean_transcription_text(text: str) -> str:
     # preposition pass so 'из из' first folds to 'из', then any larger phrase
     # repeats are handled here.
     cleaned = _collapse_repeated_phrases(cleaned)
+    # Trailing YouTube-outro hallucinations ("продолжение следует" etc.)
+    # remain even after de-duplication because they appear only once.
+    cleaned = _strip_whisper_hallucinations(cleaned)
     return cleaned
 
 
