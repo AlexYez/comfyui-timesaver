@@ -283,6 +283,122 @@ def test_transcription_cleanup_keeps_non_repeating_text(monkeypatch):
     assert module._clean_transcription_text(sample) == sample
 
 
+def test_transcription_cleanup_strips_youtube_outro_hallucination(monkeypatch):
+    """Whisper invents 'продолжение следует' from YouTube training data
+    when the audio fades to silence. The filter must drop the trailing
+    hallucination without touching legitimate speech earlier in the text."""
+    module = _load_module(monkeypatch)
+
+    # Plain trailing hallucination after a real prompt.
+    assert module._clean_transcription_text(
+        "кот на столе. продолжение следует"
+    ) == "кот на столе"
+    # Punctuation/ellipsis after the hallucination.
+    assert module._clean_transcription_text(
+        "wide shot at golden hour. Продолжение следует..."
+    ) == "wide shot at golden hour"
+    # Multiple outros stacked back-to-back (Whisper sometimes loops on them).
+    assert module._clean_transcription_text(
+        "macro lens portrait. Продолжение следует. Продолжение следует."
+    ) == "macro lens portrait"
+    # If only the hallucination is present, leave an empty string rather
+    # than fabricating output.
+    assert module._clean_transcription_text("Продолжение следует.") == ""
+
+
+def test_adaptive_vad_thresholds_low_never_above_high(monkeypatch):
+    """Hysteresis sanity: ``low`` must stay ≤ ``high`` so boundary expansion
+    behaves predictably. This is invariant for every clip the VAD ever sees."""
+    module = _load_module(monkeypatch)
+
+    # Empty clip: both fall back to the absolute floor.
+    high, low = module._adaptive_vad_thresholds(np.asarray([], dtype=np.float32))
+    assert low <= high
+
+    # Loud + quiet mix: noise floor drives low, peak caps high. low must clamp.
+    rms = np.concatenate([
+        np.full(50, 0.0005, dtype=np.float32),  # silence/noise floor
+        np.full(20, 0.04, dtype=np.float32),    # main speech
+    ])
+    high, low = module._adaptive_vad_thresholds(rms)
+    assert low <= high
+    assert low > 0  # never zero — true silence must still be rejected
+
+
+def test_detect_speech_bounds_hysteresis_recovers_quiet_consonants(monkeypatch):
+    """Without hysteresis the unvoiced "с" preposition gets clipped because its
+    RMS is too low for the high threshold. With hysteresis the boundary
+    expands outward through frames that pass the low threshold, capturing it."""
+    module = _load_module(monkeypatch)
+    sample_rate = module.AUDIO_SAMPLE_RATE
+
+    # 0.7s silence | 0.10s quiet pre-roll (the "с") | 0.50s loud speech | 0.20s silence.
+    silence_pre = np.zeros(int(sample_rate * 0.7), dtype=np.float32)
+    quiet_t = np.linspace(0, 0.10, int(sample_rate * 0.10), endpoint=False, dtype=np.float32)
+    quiet = (0.006 * np.sin(2 * np.pi * 200 * quiet_t)).astype(np.float32)
+    loud_t = np.linspace(0, 0.50, int(sample_rate * 0.50), endpoint=False, dtype=np.float32)
+    loud = (0.05 * np.sin(2 * np.pi * 220 * loud_t)).astype(np.float32)
+    silence_post = np.zeros(int(sample_rate * 0.2), dtype=np.float32)
+    audio = np.concatenate([silence_pre, quiet, loud, silence_post])
+
+    start, end, detected, threshold = module._detect_speech_bounds(audio, sample_rate)
+
+    assert detected is True
+    # Quiet pre-roll begins at 0.7s. Hysteresis must extend the boundary into
+    # it — i.e. start (in samples) must reach below the loud onset (0.8s) by
+    # MORE than the padding alone (0.40s) would account for.
+    loud_onset_sample = int(sample_rate * 0.8)
+    padding_samples = int(sample_rate * module.AUDIO_VAD_PADDING_SEC)
+    padding_only_start = max(0, loud_onset_sample - padding_samples)
+    assert start < padding_only_start, (
+        f"Hysteresis should extend left of padding-only boundary: "
+        f"start={start}, padding_only_start={padding_only_start}"
+    )
+
+
+def test_detect_speech_bounds_hysteresis_stops_at_silence(monkeypatch):
+    """Hysteresis must not run wild — it stops the moment a frame drops
+    below the low threshold. Pure silence outside the speech region must
+    NOT be swallowed (only the configured padding).  """
+    module = _load_module(monkeypatch)
+    sample_rate = module.AUDIO_SAMPLE_RATE
+
+    # 1.0s silence | 0.5s loud speech | 1.0s silence.
+    silence_pre = np.zeros(sample_rate, dtype=np.float32)
+    loud_t = np.linspace(0, 0.5, int(sample_rate * 0.5), endpoint=False, dtype=np.float32)
+    loud = (0.05 * np.sin(2 * np.pi * 220 * loud_t)).astype(np.float32)
+    silence_post = np.zeros(sample_rate, dtype=np.float32)
+    audio = np.concatenate([silence_pre, loud, silence_post])
+
+    start, end, detected, _ = module._detect_speech_bounds(audio, sample_rate)
+    padding_samples = int(sample_rate * module.AUDIO_VAD_PADDING_SEC)
+    # 30ms RMS window can straddle the silence/loud edge by up to a frame,
+    # so the boundary shifts inward by at most one frame_size — that's not
+    # hysteresis bleed, it's just window overlap. Allow that slack.
+    frame_samples = int(sample_rate * module.AUDIO_VAD_FRAME_MS / 1000)
+
+    assert detected is True
+    # Hysteresis must NOT walk through silence: start should stay inside
+    # [loud_onset - padding - frame, loud_onset], never reach the audio start.
+    loud_onset_sample = sample_rate
+    loud_offset_sample = sample_rate + len(loud)
+    assert start >= loud_onset_sample - padding_samples - frame_samples
+    assert start > 0  # silence_pre must not be fully swallowed
+    assert end <= loud_offset_sample + padding_samples + frame_samples
+    assert end < len(audio)  # silence_post must not be fully swallowed
+
+
+def test_transcription_cleanup_filter_can_be_disabled(monkeypatch):
+    """The hallucination filter is gated by a module-level flag so future
+    Whisper releases (or debugging sessions) can opt out without code edits."""
+    module = _load_module(monkeypatch)
+    voice = _load_voice()
+
+    monkeypatch.setattr(voice, "WHISPER_HALLUCINATION_FILTER_ENABLED", False)
+    raw = "кот на столе. продолжение следует"
+    assert module._clean_transcription_text(raw) == raw
+
+
 def test_voice_recognition_backend_registers_only_super_prompt_node(monkeypatch):
     module = _load_module(monkeypatch)
     real = importlib.import_module("nodes.llm.super_prompt.ts_super_prompt")

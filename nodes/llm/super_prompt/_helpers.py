@@ -92,6 +92,18 @@ synthwave, orchestral, cinematic trailer, vocals, drums, bass, guitar, piano.
 """.strip()
 INITIAL_PROMPT_EXTRA = ""
 
+# Trailing-tail Whisper hallucinations. Whisper trained on YouTube subtitles
+# tends to invent typical "outro" phrases when the audio fades to silence/noise
+# at the end. The filter only matches the END of the cleaned text (anchored
+# `$` after _collapse_repeated_phrases) so legitimate dictation containing
+# these words mid-sentence is preserved. Patterns are case-insensitive and
+# tolerate trailing punctuation/ellipsis variants. Disable by flipping the
+# flag below if you ever need raw Whisper output.
+WHISPER_HALLUCINATION_FILTER_ENABLED = True
+WHISPER_HALLUCINATION_PATTERNS = (
+    r"продолжение\s+следует",
+)
+
 # Audio preparation. These steps run before Whisper to reduce silence/noise work
 # and keep the model focused on speech rather than microphone artifacts.
 AUDIO_SAMPLE_RATE = 16000
@@ -102,9 +114,19 @@ AUDIO_VAD_FRAME_MS = 30
 AUDIO_VAD_HOP_MS = 10
 AUDIO_VAD_RMS_THRESHOLD = 0.003
 AUDIO_VAD_ADAPTIVE_MULTIPLIER = 2.2
+# Hysteresis: high threshold (above) decides "this IS speech"; low threshold
+# (below) extends the boundaries outward through quieter frames so short
+# unvoiced consonants and Russian one-letter prepositions ("с", "в", "к") at
+# the edges of an utterance are not clipped. Low must stay ≤ high or
+# expansion would never trigger.
+AUDIO_VAD_LOW_MULTIPLIER = 1.3
 AUDIO_VAD_MIN_SPEECH_SEC = 0.18
-AUDIO_VAD_PADDING_SEC = 0.30
-AUDIO_EDGE_FADE_MS = 12
+# Padding bumped from 0.30 → 0.40s after reports of clipped utterance tails.
+# This is a safety margin AFTER hysteresis expansion, not the only mechanism.
+AUDIO_VAD_PADDING_SEC = 0.40
+# Edge fade reduced from 12ms → 6ms so a fast consonant landing at the very
+# start/end of the trimmed window keeps most of its energy.
+AUDIO_EDGE_FADE_MS = 6
 AUDIO_NORMALIZE_TARGET_PEAK = 0.92
 AUDIO_NORMALIZE_MAX_GAIN_DB = 12.0
 

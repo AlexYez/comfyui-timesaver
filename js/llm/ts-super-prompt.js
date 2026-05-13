@@ -394,7 +394,9 @@ function setupSuperPrompt(node) {
     const state = {
         activeModelName: DEFAULT_MODEL,
         isRecording: false,
-        isVoiceBusy: false,
+        isVoiceBusy: false,        // transcription step (after stop)
+        isModelLoading: false,     // background preload triggered by record click
+        modelReadyPromise: null,   // awaited in onstop so transcribe waits for the model
         isAiBusy: false,
         modelReady: false,
         missingDependencies: [],
@@ -499,7 +501,9 @@ function setupSuperPrompt(node) {
             recordBtn.classList.add("is-recording");
             recordBtn.innerHTML = SVG_ICON_STOP;
             recordBtn.disabled = false;
-            recordBtn.title = "Остановить запись и распознать";
+            recordBtn.title = state.modelReady
+                ? "Остановить запись и распознать"
+                : "Остановить запись (модель догружается)";
             return;
         }
         recordBtn.classList.remove("is-recording");
@@ -514,10 +518,17 @@ function setupSuperPrompt(node) {
             recordBtn.title = `Не хватает зависимости: ${state.missingDependencies[0]}`;
             return;
         }
+        // Model loading in the background does NOT disable the button —
+        // the user can start recording immediately and onstop will wait
+        // for the download to finish before transcription.
         recordBtn.disabled = state.isAiBusy;
-        recordBtn.title = state.modelReady
-            ? "Запись с микрофона"
-            : "Скачать модель распознавания";
+        if (state.modelReady) {
+            recordBtn.title = "Запись с микрофона";
+        } else if (state.isModelLoading) {
+            recordBtn.title = "Запись (модель ещё догружается)";
+        } else {
+            recordBtn.title = "Запись (модель загрузится при остановке)";
+        }
     }
     function refreshAiButton() {
         if (state.isAiBusy) {
@@ -575,7 +586,12 @@ function setupSuperPrompt(node) {
         setProgress({ percent, active: true });
     }
     function onVoiceStatus(event) {
-        if (!matchesActiveModel(event.detail) || !state.isVoiceBusy) return;
+        if (!matchesActiveModel(event.detail)) return;
+        // The "Recording..." status is owned by startRecording — never let
+        // a server-side progress event overwrite it while the mic is open.
+        if (state.isRecording) return;
+        // Only show server progress while a voice action is in flight.
+        if (!state.isVoiceBusy && !state.isModelLoading) return;
         const text = String(event.detail?.text || "Working");
         const percent = clampPercent(event.detail?.percent);
         setStatus(text);
@@ -584,17 +600,27 @@ function setupSuperPrompt(node) {
     function onVoiceDone(event) {
         if (!matchesActiveModel(event.detail)) return;
         state.modelReady = true;
-        state.isVoiceBusy = false;
-        setStatus("Voice model ready", "info", STATUS_RESET_DELAY_MS);
-        setProgress({ percent: 100, active: false });
+        // isVoiceBusy / isModelLoading are owned by HTTP promises (download
+        // and transcribe) — leave them alone here. Just update the UI if
+        // nothing else is using the status bar.
+        if (!state.isRecording && !state.isVoiceBusy) {
+            setStatus("Voice model ready", "info", STATUS_RESET_DELAY_MS);
+            setProgress({ percent: 100, active: false });
+        }
         refreshRecordButton();
         refreshAiButton();
     }
     function onVoiceError(event) {
         if (!matchesActiveModel(event.detail)) return;
-        state.isVoiceBusy = false;
-        setStatus(`Voice error: ${event.detail?.text || "failed"}`, "error", STATUS_RESET_DELAY_MS);
-        setProgress({ active: false, error: true });
+        // Same ownership rule: don't flip flags from a WS event, the
+        // owning HTTP promise's catch branch handles that. Show the
+        // error only if the user isn't actively recording (the message
+        // would just disappear once the local "Recording..." status
+        // refreshes).
+        if (!state.isRecording) {
+            setStatus(`Voice error: ${event.detail?.text || "failed"}`, "error", STATUS_RESET_DELAY_MS);
+            setProgress({ active: false, error: true });
+        }
         refreshRecordButton();
         refreshAiButton();
     }
@@ -706,39 +732,66 @@ function setupSuperPrompt(node) {
         refreshAiButton();
     }
 
-    async function downloadVoiceModel(force = false) {
+    function downloadVoiceModel(force = false) {
         syncActiveVoiceModel();
         if (state.missingDependencies.length > 0) {
             setStatus(`Missing ${state.missingDependencies[0]}`, "error");
             refreshRecordButton();
-            return;
+            return Promise.reject(new Error(`Missing ${state.missingDependencies[0]}`));
         }
-        state.isVoiceBusy = true;
-        setStatus(`Downloading ${state.activeModelName}...`);
-        setProgress({ active: true, indeterminate: true });
-        refreshRecordButton();
-        try {
-            const data = await fetchJson(`${VOICE_ROUTE_BASE}/preload`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    model: state.activeModelName,
-                    high_quality: isHighQualityEnabled(),
-                    force,
-                }),
-            });
-            if (!data.ok) throw new Error(data.error || "preload failed");
-            state.modelReady = true;
-            state.isVoiceBusy = false;
-            setStatus("Voice model ready", "info", STATUS_RESET_DELAY_MS);
-            setProgress({ percent: 100, active: false });
-        } catch (error) {
-            state.isVoiceBusy = false;
-            setStatus(`Voice error: ${error.message}`, "error", STATUS_RESET_DELAY_MS);
-            setProgress({ active: false, error: true });
+        // Reuse the in-flight promise if a previous click already started
+        // a download — clicking record twice in a row must not start two
+        // parallel /preload requests.
+        if (state.isModelLoading && state.modelReadyPromise) {
+            return state.modelReadyPromise;
+        }
+        state.isModelLoading = true;
+        // Don't clobber the "Recording..." status when the download was
+        // triggered as a side-effect of starting a recording. Only show
+        // the download status if the user is not actively recording.
+        if (!state.isRecording) {
+            setStatus(`Downloading ${state.activeModelName}...`);
+            setProgress({ active: true, indeterminate: true });
         }
         refreshRecordButton();
-        refreshAiButton();
+
+        const promise = (async () => {
+            try {
+                const data = await fetchJson(`${VOICE_ROUTE_BASE}/preload`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        model: state.activeModelName,
+                        high_quality: isHighQualityEnabled(),
+                        force,
+                    }),
+                });
+                if (!data.ok) throw new Error(data.error || "preload failed");
+                state.modelReady = true;
+                // Only surface "ready" UI if nothing else is using the
+                // status bar — recording/transcribe own the bar otherwise.
+                if (!state.isRecording && !state.isVoiceBusy) {
+                    setStatus("Voice model ready", "info", STATUS_RESET_DELAY_MS);
+                    setProgress({ percent: 100, active: false });
+                }
+            } catch (error) {
+                if (!state.isRecording && !state.isVoiceBusy) {
+                    setStatus(`Voice error: ${error.message}`, "error", STATUS_RESET_DELAY_MS);
+                    setProgress({ active: false, error: true });
+                }
+                throw error;
+            } finally {
+                state.isModelLoading = false;
+                refreshRecordButton();
+                refreshAiButton();
+            }
+        })();
+        state.modelReadyPromise = promise;
+        // Swallow rejection on the stored handle so the unhandled-rejection
+        // tracker stays quiet — actual error handling happens at the await
+        // sites (onRecordClick caller and onstop awaiter).
+        promise.catch(() => {});
+        return promise;
     }
 
     async function sendAudioToServer(blob) {
@@ -803,6 +856,33 @@ function setupSuperPrompt(node) {
                     refreshAiButton();
                     return;
                 }
+                // If the model is still downloading (started in the
+                // background by onRecordClick), block transcription until
+                // it's ready. This is the cost the user pays for being
+                // able to record on the very first click.
+                if (!state.modelReady && state.modelReadyPromise) {
+                    setStatus("Waiting for voice model...");
+                    setProgress({ active: true, indeterminate: true });
+                    refreshRecordButton();
+                    try {
+                        await state.modelReadyPromise;
+                    } catch (error) {
+                        state.isVoiceBusy = false;
+                        setStatus(`Voice error: ${error.message}`, "error", STATUS_RESET_DELAY_MS);
+                        setProgress({ active: false, error: true });
+                        refreshRecordButton();
+                        refreshAiButton();
+                        return;
+                    }
+                }
+                if (!state.modelReady) {
+                    state.isVoiceBusy = false;
+                    setStatus("Voice model not ready", "error", STATUS_RESET_DELAY_MS);
+                    setProgress({ active: false, error: true });
+                    refreshRecordButton();
+                    refreshAiButton();
+                    return;
+                }
                 await sendAudioToServer(blob);
             };
             mediaRecorder.start();
@@ -845,9 +925,13 @@ function setupSuperPrompt(node) {
             return;
         }
         if (state.isVoiceBusy) return;
-        if (!state.modelReady) {
+        // Trigger model download in the background if it isn't ready yet,
+        // but DO NOT wait for it — recording must start on the very first
+        // click. The transcribe step in mediaRecorder.onstop awaits
+        // state.modelReadyPromise before posting the audio, so a long
+        // download just delays transcription instead of blocking capture.
+        if (!state.modelReady && !state.isModelLoading) {
             downloadVoiceModel(Boolean(event?.shiftKey));
-            return;
         }
         startRecording();
     }
