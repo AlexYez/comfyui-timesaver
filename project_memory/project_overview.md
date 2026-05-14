@@ -1,12 +1,12 @@
 ---
 name: Project overview
-description: comfyui-timesaver — пак из 59 ComfyUI-нод (все на V3 API), v9.11, репо AlexYez/comfyui-timesaver
+description: comfyui-timesaver — пак из 59 ComfyUI-нод (все на V3 API), v9.12, репо AlexYez/comfyui-timesaver
 type: project
 originSessionId: 8022fd27-bafd-461a-97d9-dc12a4035284
 ---
 Пак `comfyui-timesaver` — production-quality custom nodes и frontend extensions для ComfyUI.
 
-Версия: `9.11` (см. pyproject.toml). Структура one-node-one-file с категориальным разбиением (`nodes/image/`, `nodes/video/`, `nodes/audio/`, `nodes/llm/`, `nodes/text/`, `nodes/files/`, `nodes/utils/`, `nodes/conditioning/`). Все 59 нод на V3 API.
+Версия: `9.12` (см. pyproject.toml). Структура one-node-one-file с категориальным разбиением (`nodes/image/`, `nodes/video/`, `nodes/audio/`, `nodes/llm/`, `nodes/text/`, `nodes/files/`, `nodes/utils/`, `nodes/conditioning/`). Все 59 нод на V3 API.
 
 Репозиторий: https://github.com/AlexYez/comfyui-timesaver
 Корень: `ComfyUI/custom_nodes/comfyui-timesaver/`.

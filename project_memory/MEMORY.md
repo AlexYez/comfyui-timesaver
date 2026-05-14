@@ -1,5 +1,5 @@
 - [User language preference](user_language.md) — пользователь общается на русском, ответы и отчёты — на русском
-- [Project overview](project_overview.md) — comfyui-timesaver: 59 нод для ComfyUI (image/video/audio/LLM), v9.11, split-нодки см. ниже
+- [Project overview](project_overview.md) — comfyui-timesaver: 59 нод для ComfyUI (image/video/audio/LLM), v9.12, split-нодки см. ниже
 - [API: only V3](project_api_mix.md) — весь пак на V3 (с 8.9); state через module-level _NodeState (lock_class)
 - [Naming convention TS](feedback_naming.md) — префикс TS_ обязателен; node_id, class и files уже устоявшиеся
 - [One node = one file](feedback_one_node_one_file.md) — нельзя дробить ноду на schema/execute/types
@@ -9,7 +9,7 @@
 - [Loader and dependency policy](project_loader.md) — __init__.py авто-обнаружение nodes/*.py + TSDependencyManager runtime guard
 - [Verification commands](reference_verification.md) — обязательные python -m compileall и pytest tests перед "готово"
 - [Frontend extension IDs](reference_extension_ids.md) — стабильные ID; v9.6: ts.audioPreview, ts.samMediaLoader; слайдеры в js/utils/sliders/
-- [Tests location and stubs](reference_tests.md) — tests/ с pytest, ts_tmp_path fixture; 422 collected / 403 passing + 9 skipped без live API на v9.11
+- [Tests location and stubs](reference_tests.md) — tests/ с pytest, ts_tmp_path fixture; 427 collected / 418 passing + 9 skipped без live API на v9.12
 - [Use comfyui-custom-nodes skill](feedback_use_comfyui_skill.md) — перед нетривиальной работой над нодой подключать /comfyui-custom-nodes (frontend/lifecycle/etc.)
 - [ComfyUI Python для GPU тестов](reference_comfyui_python.md) — D:/AiApps/ComfyUI/comfyui/python/python.exe для numpy/torch/PIL тестов и contract snapshot
 - [DOM widget pitfalls](reference_dom_widget_pitfalls.md) — addDOMWidget layout, parent CSS scale, image cache, incremental tinted mask (уроки из TS_LamaCleanup)
@@ -26,3 +26,4 @@
 - [No Co-Authored-By Claude footer](feedback_no_coauthor_footer.md) — не добавлять Co-Authored-By/🤖 Generated в commit messages; GitHub показывает Claude как второго автора с иконкой
 - [SAM3 Detect coords contract](reference_sam3_detect_contract.md) — родная ComfyUI SAM3_Detect: STRING JSON [{"x":int,"y":int},...] в ПИКСЕЛЯХ; не путать со сторонним comfyui-sam3 пакетом
 - [.comfyignore механика](reference_comfyignore.md) — comfy-cli zip = git ls-files − .comfyignore (gitwildmatch); фикс Flagged-статусов 9.2–9.7 в registry
+- [TS_MultiReference mask handling](reference_multi_reference_mask.md) — маска ТОЛЬКО для bbox-hint (не силуэт); auto-detect convention (4-corner voting) + бинаризация по 0.5; v9.12+
