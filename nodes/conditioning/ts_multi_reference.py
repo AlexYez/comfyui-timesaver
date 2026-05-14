@@ -1,12 +1,17 @@
 """TS Multi Reference — attach up to three IMAGE references to a CONDITIONING.
 
 For each connected reference image the node:
-  1. Crops to the opaque bounding box + 16 px padding when an alpha
-     source (MASK input or RGBA channels) is available, so the VAE
-     does not waste resolution on transparent margins.
-  2. Composites the visible content onto a white background (so a
-     reference-aware model never sees the pre-multiplied black halos
-     that survive a naive RGB strip).
+  1. Crops to the bounding box of the mask (with 16 px padding) when a
+     MASK input is connected, OR to the bounding box of the embedded
+     alpha for RGBA images, so the VAE does not waste resolution on
+     transparent margins. The MASK is binarised at 0.5 and its
+     orientation is auto-detected from the four corners — both
+     ComfyUI Load Image alpha (1.0=transparent) and segmentation
+     outputs (1.0=subject, e.g. SAM, BiRefNet, RemBG, Mask Editor) are
+     handled correctly without any toggles.
+  2. Pixels INSIDE the bbox are preserved as-is — the mask shape is
+     NOT cut out. Only embedded RGBA alpha (rare) is composited onto
+     white to avoid premultiplied-black halos.
   3. Resizes to fit max_megapixels on a configurable pixel grid
      (divide_by widget, default 32).
   4. Encodes through the supplied VAE and appends the result as a
@@ -14,13 +19,13 @@ For each connected reference image the node:
 
 The result is equivalent to chaining three native ReferenceLatent
 nodes after three VAE Encode nodes that share a VAE, with the bonus
-of mask-aware cropping and composing.
+of mask-aware bbox cropping.
 
 The node accepts up to three IMAGE inputs (image_1/image_2/image_3),
 all optional. Use any standard ComfyUI image loader to feed them.
-Each image_N has a matching optional mask_N MASK input — connect the
-MASK output of Load Image to flatten transparent regions onto a white
-background before VAE encoding.
+Each image_N has a matching optional mask_N MASK input — connect any
+mask source (Load Image alpha, SAM3 Detect, BiRefNet, etc.) to tell
+the node where the subject lives so it can bbox-crop around it.
 
 Each image_N input has a matching image_N output that returns the
 resized version (or ExecutionBlocker if the slot is empty so any
@@ -72,6 +77,16 @@ _OPACITY_BBOX_THRESHOLD = 0.01
 # encoding. Kept as a module-level constant (not a node input) so the UI
 # stays compact. Edit here if you need a different default.
 _UPSCALE_METHOD = "area"
+# Threshold for binarizing the input mask before bbox + composite. Anything
+# >= this is "subject side", below is "background side". Hard binarisation
+# eliminates fuzz from soft-edge / low-confidence segmentation masks.
+_BINARIZE_THRESHOLD = 0.5
+# When auto-detecting mask orientation, sample a small square in each of
+# the four image corners. If most corners are bright the mask is treated
+# as ComfyUI-native (1.0 = transparent / background). If most are dark
+# we assume segmentation convention (1.0 = subject) and invert before any
+# downstream operation.
+_CORNER_SAMPLE_FRACTION = 16  # corner box side = min(H, W) // this
 
 
 def _target_dimensions(
@@ -126,6 +141,59 @@ def _coerce_mask(mask: torch.Tensor, batch: int, height: int, width: int) -> tor
         mask = bchw.movedim(1, -1)
 
     return mask.clamp(0.0, 1.0)
+
+
+def _binarize_and_orient_mask(
+    mask: torch.Tensor,
+    image_height: int,
+    image_width: int,
+    batch: int,
+) -> torch.Tensor:
+    """Coerce, binarize and auto-orient a MASK to native ComfyUI convention.
+
+    Two things happen here, both invisible to the user:
+
+    1. **Binarisation** at ``_BINARIZE_THRESHOLD``: removes fuzz from
+       low-confidence segmentation outputs (BiRefNet, SAM, RemBG) so the
+       bbox is sharp and the white-background composite has hard edges
+       instead of a halo. Soft-edge feathering is intentionally lost —
+       the original feathered behaviour ran into the "translucent circle
+       on top" symptom when paired with the wrong convention.
+
+    2. **Orientation** by 4-corner majority voting. Almost every real
+       reference image has its background in the corners. Sample a small
+       square in each of the four corners after binarisation:
+
+       - Most corners bright (≈1) → mask already follows native ComfyUI
+         convention (1.0 = transparent / background). Pass through.
+       - Most corners dark (≈0) → mask follows segmentation convention
+         (1.0 = subject). Invert, so downstream code keeps using the
+         "alpha = 1 - mask" formula.
+
+       Ties (2/2) are treated as the native case to preserve the
+       historic behaviour for ambiguous masks.
+
+    Returns ``[B, H, W, 1]`` tensor in {0.0, 1.0}, native convention.
+    """
+
+    aligned = _coerce_mask(mask, batch=batch, height=image_height, width=image_width)
+    binary = (aligned > _BINARIZE_THRESHOLD).to(dtype=torch.float32)
+
+    h, w = binary.shape[1], binary.shape[2]
+    cs = max(4, min(h, w) // _CORNER_SAMPLE_FRACTION)
+    cs = min(cs, h, w)
+    corners = (
+        binary[:, :cs, :cs, :].mean().item(),
+        binary[:, :cs, -cs:, :].mean().item(),
+        binary[:, -cs:, :cs, :].mean().item(),
+        binary[:, -cs:, -cs:, :].mean().item(),
+    )
+    bright_corners = sum(1 for value in corners if value > 0.5)
+    if bright_corners < 2:
+        # Background lives in the corners and is "0" → segmentation
+        # convention. Invert so downstream code sees the native form.
+        binary = 1.0 - binary
+    return binary
 
 
 def _crop_to_mask_bbox(
@@ -237,15 +305,33 @@ def _resize_reference_image(
     size_multiple: int = _DEFAULT_SIZE_MULTIPLE,
     mask: torch.Tensor | None = None,
 ) -> torch.Tensor:
-    # Step 1: tighten the reference around the actual subject. When we
-    # know the alpha (either from the MASK input or from RGBA channels),
-    # crop everything outside the opaque bbox + 16 px padding so the VAE
-    # encoder spends its limited resolution on the object, not on empty
-    # transparent margins.
-    image, mask = _crop_to_mask_bbox(image, mask, padding=_BBOX_PADDING)
+    # Step 0: when a MASK is supplied, binarize it AND auto-detect its
+    # convention (Load Image alpha vs. segmentation models). Producing a
+    # canonical native-convention binary mask once here means downstream
+    # bbox code stays simple — no awareness of inverted masks needed.
+    if isinstance(mask, torch.Tensor):
+        normalized = image if image.ndim == 4 else image.unsqueeze(0)
+        mask = _binarize_and_orient_mask(
+            mask,
+            image_height=int(normalized.shape[1]),
+            image_width=int(normalized.shape[2]),
+            batch=int(normalized.shape[0]),
+        )
 
-    # Step 2: composite alpha onto white (uses mask or embedded RGBA alpha).
-    image = _normalize_image_tensor(image, mask=mask)
+    # Step 1: tighten the reference around the actual subject using the
+    # mask only as a bounding-box hint (with 16 px padding). The pixels
+    # INSIDE the bbox are preserved as-is — we deliberately do NOT
+    # composite by mask shape, because the user wants the original RGB
+    # surrounding to stay intact (silhouette cut-outs were the wrong
+    # default; user explicitly asked for "bbox only").
+    image, _ = _crop_to_mask_bbox(image, mask, padding=_BBOX_PADDING)
+
+    # Step 2: only composite when the IMAGE itself carries embedded
+    # RGBA alpha (rare — most ComfyUI loaders return RGB + MASK
+    # separately). Without this, premultiplied-alpha PNGs would feed
+    # black halos to the VAE. The MASK input is intentionally not
+    # passed here.
+    image = _normalize_image_tensor(image)
 
     height = int(image.shape[1])
     width = int(image.shape[2])
@@ -359,10 +445,15 @@ class TS_MultiReference(IO.ComfyNode):
                     "mask_1",
                     optional=True,
                     tooltip=(
-                        "Optional MASK for image_1. Connect the MASK output of "
-                        "Load Image to flatten transparent regions onto a white "
-                        "background. ComfyUI convention: 1.0 = transparent, "
-                        "0.0 = opaque."
+                        "Optional MASK for image_1. Used ONLY as a bounding-"
+                        "box hint with 16 px padding — pixels inside the "
+                        "bbox are preserved as-is (the mask shape is NOT "
+                        "cut out). The mask is binarised at 0.5 and its "
+                        "orientation is auto-detected from the four corners, "
+                        "so both ComfyUI Load Image alpha (1.0=transparent) "
+                        "and segmentation outputs (1.0=subject, e.g. SAM, "
+                        "BiRefNet, RemBG, Mask Editor) are handled correctly "
+                        "without any toggles."
                     ),
                 ),
                 IO.Image.Input(

@@ -1,7 +1,7 @@
 [project]
 name = "comfyui-timesaver"
 description = "ComfyUI nodes from [Timesaver](https://github.com/AlexYez/comfyui-timesaver)."
-version = "9.11"
+version = "9.12"
 license = { file = "LICENSE.txt" }
 requires-python = ">=3.12"
 # Core runtime: pulled by every node pack on every install. Things that

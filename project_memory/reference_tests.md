@@ -1,6 +1,6 @@
 ---
 name: Tests location and stubs
-description: tests/ — pytest с monkeypatch-стабами для comfy_api/folder_paths/aiohttp; ts_tmp_path fixture; live API smoke на 127.0.0.1:8188; покрытие по категориям; 422 collected (403 passing + 9 skipped без live API) under ComfyUI Python (v9.11)
+description: tests/ — pytest с monkeypatch-стабами для comfy_api/folder_paths/aiohttp; ts_tmp_path fixture; live API smoke на 127.0.0.1:8188; покрытие по категориям; 427 collected (418 passing + 9 skipped без live API) under ComfyUI Python (v9.12)
 type: reference
 originSessionId: 8022fd27-bafd-461a-97d9-dc12a4035284
 ---
@@ -27,7 +27,7 @@ originSessionId: 8022fd27-bafd-461a-97d9-dc12a4035284
 - `tests/test_video_llm_nodes.py` — TS_Free_Video_Memory, TS_RTX_Upscaler, TS_Video_Upscale_With_Model schema, video deps snapshot-only (13 тестов).
 - `tests/test_comfyui_live_api.py` — live ComfyUI smoke (127.0.0.1:8188): /api/object_info полный сравнительный test, /api/system_stats, widget defaults drift (9 тестов). Скипается если ComfyUI не запущен.
 
-**Total на v9.11: 422 collected, 403 passing + 9 skipped под ComfyUI Python без live API** (исключая test_browser_smoke.py + test_comfyui_live_api.py — оба требуют запущенного ComfyUI на 127.0.0.1:8188). Включая test_static_invariants.py, test_qwen_engine.py, test_video_depth_helpers.py, test_image_advanced_nodes.py. Запуск: `--ignore=tests/test_browser_smoke.py --ignore=tests/test_comfyui_live_api.py` когда ComfyUI не активен.
+**Total на v9.12: 427 collected, 418 passing + 9 skipped под ComfyUI Python без live API** (исключая test_browser_smoke.py + test_comfyui_live_api.py — оба требуют запущенного ComfyUI на 127.0.0.1:8188). Включая test_static_invariants.py, test_qwen_engine.py, test_video_depth_helpers.py, test_image_advanced_nodes.py. Запуск: `--ignore=tests/test_browser_smoke.py --ignore=tests/test_comfyui_live_api.py` когда ComfyUI не активен.
 
 **Паттерн contract-тестов:**
 - pytest + `monkeypatch.setitem(sys.modules, ...)` для подмены `comfy_api`, `comfy_api.latest`, `folder_paths`, `aiohttp`/`aiohttp.web`, `comfy.model_management`, `comfy.utils`, `server`.

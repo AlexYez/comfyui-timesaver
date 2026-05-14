@@ -477,6 +477,176 @@ def test_rgb_input_passthrough(monkeypatch):
     assert torch.allclose(out, rgb)
 
 
+def test_resize_handles_segmentation_convention_mask(monkeypatch):
+    """Regression for the "translucent circle on top" symptom.
+
+    Segmentation models (BiRefNet, SAM, RemBG, Mask Editor) emit MASK
+    with 1.0 = subject, 0.0 = background — the OPPOSITE of ComfyUI's
+    Load Image alpha convention. Auto-orient must invert such masks so
+    the bbox crop tightens around the white subject (not the dark
+    background) and the composite blends background to white (not the
+    subject)."""
+    module = _load_module(monkeypatch)
+
+    # 256x256 RGB with a clear pattern; 60-radius white circle in the centre
+    # is the subject, black background.
+    height = width = 256
+    rgb = torch.full((1, height, width, 3), 0.4, dtype=torch.float32)
+
+    yy, xx = torch.meshgrid(
+        torch.arange(height, dtype=torch.float32),
+        torch.arange(width, dtype=torch.float32),
+        indexing="ij",
+    )
+    dist = torch.sqrt((yy - 128) ** 2 + (xx - 128) ** 2)
+    mask = (dist <= 60).to(dtype=torch.float32).unsqueeze(0)  # 1=subject
+
+    out = module._resize_reference_image(
+        rgb, max_megapixels=1.0, upscale_method="area",
+        size_multiple=8, mask=mask,
+    )
+
+    # Bbox should snap to the circle (radius 60 → 120 px) + 16 px pad on
+    # each side → 152 px, then rounded down to multiples of 8 → 152.
+    assert out.shape[1] == 152 and out.shape[2] == 152, (
+        f"Expected bbox crop around the white circle, got {tuple(out.shape)}"
+    )
+
+
+def test_resize_native_convention_mask_unchanged(monkeypatch):
+    """Anti-regression: ComfyUI Load Image alpha (1=transparent,
+    0=opaque, black subject on white background) must keep its existing
+    behaviour — corner-majority is bright, no inversion happens."""
+    module = _load_module(monkeypatch)
+
+    height = width = 256
+    rgb = torch.full((1, height, width, 3), 0.4, dtype=torch.float32)
+
+    yy, xx = torch.meshgrid(
+        torch.arange(height, dtype=torch.float32),
+        torch.arange(width, dtype=torch.float32),
+        indexing="ij",
+    )
+    dist = torch.sqrt((yy - 128) ** 2 + (xx - 128) ** 2)
+    inside = (dist <= 60).to(dtype=torch.float32)
+    mask = (1.0 - inside).unsqueeze(0)  # native: 0=opaque (subject), 1=transparent
+
+    out = module._resize_reference_image(
+        rgb, max_megapixels=1.0, upscale_method="area",
+        size_multiple=8, mask=mask,
+    )
+
+    assert out.shape[1] == 152 and out.shape[2] == 152, (
+        f"Native-convention mask must crop the same way, got {tuple(out.shape)}"
+    )
+
+
+def test_resize_binarises_soft_edge_mask(monkeypatch):
+    """Soft-edge segmentation outputs (e.g. low-confidence BiRefNet
+    edges with values like 0.3 / 0.7) must produce a hard bbox + hard
+    composite — no halo. Pixels >= 0.5 are subject, the rest is dropped."""
+    module = _load_module(monkeypatch)
+
+    height = width = 128
+    rgb = torch.full((1, height, width, 3), 0.5, dtype=torch.float32)
+
+    yy, xx = torch.meshgrid(
+        torch.arange(height, dtype=torch.float32),
+        torch.arange(width, dtype=torch.float32),
+        indexing="ij",
+    )
+    dist = torch.sqrt((yy - 64) ** 2 + (xx - 64) ** 2)
+    # Soft "subject" region: 1.0 in the centre, fading to 0.0 by radius 40.
+    soft = torch.clamp(1.0 - dist / 40.0, 0.0, 1.0).unsqueeze(0)
+
+    out = module._resize_reference_image(
+        rgb, max_megapixels=1.0, upscale_method="area",
+        size_multiple=8, mask=soft,
+    )
+
+    # > 0.5 cutoff (strict) → effective radius 19 → integer span 39 px,
+    # plus 16 px padding on each side → 71. Round down to multiple of 8
+    # → 64. Hard binarisation kicks in: a soft fade outside r=20 vanishes.
+    assert out.shape[1] == 64 and out.shape[2] == 64, (
+        f"Soft-edge mask should binarise to a hard 64x64 bbox, "
+        f"got {tuple(out.shape)}"
+    )
+
+
+def test_binarize_and_orient_mask_inverts_segmentation(monkeypatch):
+    """Unit-level check on the helper itself: dark corners → invert."""
+    module = _load_module(monkeypatch)
+
+    # 64x64 mask: white square in the middle (subject=1), black corners.
+    mask = torch.zeros((1, 64, 64), dtype=torch.float32)
+    mask[:, 24:40, 24:40] = 1.0
+
+    oriented = module._binarize_and_orient_mask(
+        mask, image_height=64, image_width=64, batch=1,
+    )
+
+    # After auto-orient, the centre should be 0 (opaque/native), corners 1.
+    assert oriented[0, 32, 32, 0].item() == 0.0
+    assert oriented[0, 0, 0, 0].item() == 1.0
+
+
+def test_binarize_and_orient_mask_keeps_native(monkeypatch):
+    """Native-convention mask (bright corners) must pass through, only binarised."""
+    module = _load_module(monkeypatch)
+
+    # 64x64 mask: black square in the middle (subject=0 native), white corners.
+    mask = torch.ones((1, 64, 64), dtype=torch.float32)
+    mask[:, 24:40, 24:40] = 0.0
+
+    oriented = module._binarize_and_orient_mask(
+        mask, image_height=64, image_width=64, batch=1,
+    )
+
+    assert oriented[0, 32, 32, 0].item() == 0.0
+    assert oriented[0, 0, 0, 0].item() == 1.0
+
+
+def test_resize_preserves_rgb_inside_bbox_no_silhouette_cutout(monkeypatch):
+    """The MASK is a bbox HINT only. Pixels inside the cropped bbox must
+    keep their original RGB — the mask shape is NOT cut out and no
+    composite-on-white is applied through the mask. Surrounding RGB
+    (e.g. the background showing through the bbox padding) stays intact
+    so the VAE sees the natural context, not a silhouette cutout."""
+    module = _load_module(monkeypatch)
+
+    height = width = 128
+    # Distinct RGB everywhere so we can detect any mask-shape compositing:
+    # subject region is solid red, surroundings are solid blue.
+    rgb = torch.zeros((1, height, width, 3), dtype=torch.float32)
+    rgb[:, :, :, 2] = 0.7  # blue everywhere
+    rgb[:, 48:80, 48:80, :] = torch.tensor([0.9, 0.1, 0.1])  # red subject
+
+    # Segmentation-style mask covering the red square only.
+    mask = torch.zeros((1, height, width), dtype=torch.float32)
+    mask[:, 48:80, 48:80] = 1.0
+
+    out = module._resize_reference_image(
+        rgb, max_megapixels=1.0, upscale_method="area",
+        size_multiple=8, mask=mask,
+    )
+
+    # Bbox = 32 + 16*2 = 64 px square. Round to 8 → 64.
+    assert out.shape[1] == 64 and out.shape[2] == 64
+
+    # The cropped bbox must contain BOTH the red subject (centre) and
+    # the blue surrounding (corners of the bbox). If silhouette compositing
+    # were still active, blue corners would be white instead.
+    centre = out[0, 32, 32, :]
+    corner = out[0, 0, 0, :]
+    assert centre[0].item() > 0.5 and centre[2].item() < 0.5, (
+        f"Centre should still be red, got {centre.tolist()}"
+    )
+    assert corner[2].item() > 0.5 and corner[0].item() < 0.3, (
+        f"Bbox padding corner should still be blue (no white composite), "
+        f"got {corner.tolist()}"
+    )
+
+
 def test_resize_with_custom_divide_by(monkeypatch):
     module = _load_module(monkeypatch)
     image = torch.rand((1, 1080, 1920, 3), dtype=torch.float32)
