@@ -19,6 +19,7 @@ import re
 import subprocess
 import threading
 import time
+import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -56,9 +57,17 @@ from ._helpers import (
     VOICE_MODEL_BASE,
     VOICE_MODEL_CACHE,
     VOICE_MODEL_HIGH_QUALITY,
+    WHISPER_COMPRESSION_RATIO_THRESHOLD,
     WHISPER_DIR,
     WHISPER_HALLUCINATION_FILTER_ENABLED,
     WHISPER_HALLUCINATION_PATTERNS,
+    WHISPER_LOGPROB_THRESHOLD,
+    WHISPER_NO_SPEECH_THRESHOLD,
+    WHISPER_SCRIPT_MIXED_WORD_THRESHOLD,
+    WHISPER_SCRIPT_OTHER_MAX_RATIO,
+    WHISPER_SCRIPT_OTHER_MIN_CHARS,
+    WHISPER_SCRIPT_VALIDATION_ENABLED,
+    WHISPER_TEMPERATURE_FALLBACK,
     send_voice_event,
     send_voice_status,
     voice_log_info,
@@ -718,6 +727,87 @@ def _clean_transcription_text(text: str) -> str:
     return cleaned
 
 
+def _classify_letter(ch: str) -> str:
+    """Return ``cyrillic`` / ``latin`` / ``other`` / ``none`` for a char."""
+
+    if not ch.isalpha():
+        return "none"
+    try:
+        name = unicodedata.name(ch)
+    except ValueError:
+        return "other"
+    if "CYRILLIC" in name:
+        return "cyrillic"
+    if "LATIN" in name:
+        return "latin"
+    return "other"
+
+
+_WORD_SPLIT_RE = re.compile(r"[^\s,.!?;:()\"'`«»…—\-/\\]+")
+
+
+def _looks_like_multilingual_hallucination(text: str, language: str | None) -> bool:
+    """Detect Whisper multilingual decoding loops for Russian dictation.
+
+    Two independent signals, either is sufficient:
+
+    1. **Exotic scripts** — text contains letters from Greek, CJK, Hangul,
+       Devanagari, Arabic, etc. Both an absolute floor
+       (``WHISPER_SCRIPT_OTHER_MIN_CHARS``) and a share threshold
+       (``WHISPER_SCRIPT_OTHER_MAX_RATIO``) must be crossed; one stray
+       char in a long utterance does not fire.
+
+    2. **Mixed-script words** — single tokens containing BOTH Cyrillic
+       and Latin letters (e.g. ``"примms"``, ``"светлухаgeryный"``).
+       Morphologically impossible in legitimate bilingual dictation —
+       English technical terms always live in their own word
+       (``"cinematic кадр"``, not ``"cinematicкадр"``). Threshold:
+       ``WHISPER_SCRIPT_MIXED_WORD_THRESHOLD`` such tokens.
+
+    The check only runs when the source language is Russian — for other
+    languages a different script mix is plausible and we don't want to
+    drop correct output.
+    """
+
+    if not WHISPER_SCRIPT_VALIDATION_ENABLED or not text or language != "ru":
+        return False
+
+    cyrillic = latin = other = 0
+    for ch in text:
+        kind = _classify_letter(ch)
+        if kind == "cyrillic":
+            cyrillic += 1
+        elif kind == "latin":
+            latin += 1
+        elif kind == "other":
+            other += 1
+
+    total = cyrillic + latin + other
+    if total < 10:
+        return False
+
+    # Tier 1: exotic-script letter ratio.
+    if other >= int(WHISPER_SCRIPT_OTHER_MIN_CHARS) and (
+        other / total
+    ) > float(WHISPER_SCRIPT_OTHER_MAX_RATIO):
+        return True
+
+    # Tier 2: mixed-script words.
+    mixed_words = 0
+    for word in _WORD_SPLIT_RE.findall(text):
+        has_cyr = has_lat = False
+        for ch in word:
+            kind = _classify_letter(ch)
+            if kind == "cyrillic":
+                has_cyr = True
+            elif kind == "latin":
+                has_lat = True
+            if has_cyr and has_lat:
+                mixed_words += 1
+                break
+    return mixed_words >= int(WHISPER_SCRIPT_MIXED_WORD_THRESHOLD)
+
+
 # ---------------------------------------------------------------------------
 # Recognition entry point
 # ---------------------------------------------------------------------------
@@ -753,28 +843,27 @@ def transcribe_audio(
 
     # Whisper retries with a higher temperature whenever the previous attempt
     # fails compression_ratio_threshold / logprob_threshold — that's the
-    # built-in escape from a greedy decoding loop. Passing a single 0.0 gives
-    # us no such escape and bakes in repetitive hallucinations; the tuple
-    # below mirrors Whisper's documented default schedule. We still start at
-    # ``TEMPERATURE`` so configured non-zero values are respected.
-    temperature_schedule = (
-        (TEMPERATURE, 0.2, 0.4, 0.6, 0.8, 1.0)
-        if float(TEMPERATURE) == 0.0
-        else float(TEMPERATURE)
-    )
+    # built-in escape from a greedy decoding loop. The ladder is now capped
+    # at WHISPER_TEMPERATURE_FALLBACK (default 0.4) because temperatures
+    # above ~0.5 are effectively random sampling and yield multilingual
+    # gibberish. If TEMPERATURE is configured non-zero we pass it through
+    # as a single value so existing configs aren't silently overridden.
+    if float(TEMPERATURE) == 0.0:
+        temperature_schedule = tuple(WHISPER_TEMPERATURE_FALLBACK)
+    else:
+        temperature_schedule = float(TEMPERATURE)
 
     transcribe_kwargs = {
         "task": task,
         "language": language,
         "fp16": use_fp16,
         "temperature": temperature_schedule,
-        # 1.35 was overly strict and threw away large stretches of normal
-        # speech (compression ratio of typical Russian/English narration sits
-        # near 1.6–2.1), surfacing as "no speech detected" or empty results.
-        # 2.4 is the Whisper-default — it still catches the worst loops.
-        "compression_ratio_threshold": 2.4,
-        "logprob_threshold": -1.0,
-        "no_speech_threshold": 0.6,
+        # Tightened from Whisper defaults (2.4 / -1.0 / 0.6) after observing
+        # the multilingual hallucination cascade — see _helpers.py for the
+        # rationale. Override via WHISPER_*_THRESHOLD constants.
+        "compression_ratio_threshold": float(WHISPER_COMPRESSION_RATIO_THRESHOLD),
+        "logprob_threshold": float(WHISPER_LOGPROB_THRESHOLD),
+        "no_speech_threshold": float(WHISPER_NO_SPEECH_THRESHOLD),
         "condition_on_previous_text": False,
     }
     # ``beam_size`` is only used by Whisper when sampling temperature == 0.0,
@@ -790,6 +879,15 @@ def transcribe_audio(
     send_voice_status(model_name, "Finalizing speech text", 92.0)
     text = _clean_transcription_text(result.get("text") or "")
     detected = result.get("language", language or "?")
+    # Last-line defense: if the cleaned text still looks like a multilingual
+    # decoding loop (Greek/CJK/Hangul mixed in), drop it entirely instead of
+    # letting the user see garbage in their prompt textarea.
+    if _looks_like_multilingual_hallucination(text, language):
+        LOGGER.warning(
+            "%s Multilingual hallucination detected for language=%r — dropped output: %r",
+            VOICE_LOG_PREFIX, language, text[:200],
+        )
+        text = ""
     return {
         "text": text,
         "language": detected,

@@ -388,6 +388,76 @@ def test_detect_speech_bounds_hysteresis_stops_at_silence(monkeypatch):
     assert end < len(audio)  # silence_post must not be fully swallowed
 
 
+def test_multilingual_hallucination_drops_mixed_script_garbage(monkeypatch):
+    """The classic Whisper failure mode: temperature fallback escalates and
+    the model emits text mixing Cyrillic with Greek/CJK/Hangul/etc. When the
+    source language is RU we must drop such output instead of inserting
+    garbage into the user's prompt textarea."""
+    module = _load_module(monkeypatch)
+
+    # Real example reported by the user — Cyrillic + Korean + Spanish +
+    # Italian + German + Greek mixed together.
+    garbage = (
+        "Помно trasx, поменяйте цвет волос на темный все это просто. Также, "
+        "также, перек sodium,latmos quindi Dáit свечку시 примms marc minimizing "
+        "для дет Подровки светлухаgeryный, увидired волос como вообще-же"
+    )
+    assert module._looks_like_multilingual_hallucination(garbage, "ru") is True
+
+
+def test_multilingual_hallucination_keeps_pure_russian(monkeypatch):
+    """Pure Russian must always pass through — false positive here would
+    silently drop legitimate dictation."""
+    module = _load_module(monkeypatch)
+
+    text = "поменяй цвет волос на темный, добавь мягкий контровой свет"
+    assert module._looks_like_multilingual_hallucination(text, "ru") is False
+
+
+def test_multilingual_hallucination_keeps_russian_with_english_terms(monkeypatch):
+    """Bilingual prompt dictation (Russian + ASCII English technical terms)
+    is the normal use case for TS Super Prompt voice — it must NOT trigger
+    the script filter."""
+    module = _load_module(monkeypatch)
+
+    text = (
+        "кинематографичный wide shot, 85mm anamorphic lens, golden hour, "
+        "цветокоррекция в стиле film emulation, soft focus на портрете"
+    )
+    assert module._looks_like_multilingual_hallucination(text, "ru") is False
+
+
+def test_multilingual_hallucination_only_runs_for_russian(monkeypatch):
+    """The check is RU-specific because for other source languages a
+    different script mix is plausible (e.g. Japanese + ASCII)."""
+    module = _load_module(monkeypatch)
+
+    mixed = "hello мир 你好 안녕하세요 γειά σου"
+    assert module._looks_like_multilingual_hallucination(mixed, "en") is False
+    assert module._looks_like_multilingual_hallucination(mixed, None) is False
+    assert module._looks_like_multilingual_hallucination(mixed, "auto") is False
+
+
+def test_multilingual_hallucination_short_text_is_not_judged(monkeypatch):
+    """A handful of letters is too small a sample — one stray exotic char
+    in a short utterance shouldn't kill the whole transcription."""
+    module = _load_module(monkeypatch)
+
+    # Total letters < 10 — below the absolute floor.
+    assert module._looks_like_multilingual_hallucination("привет 世", "ru") is False
+
+
+def test_multilingual_hallucination_can_be_disabled(monkeypatch):
+    """Future Whisper releases may eliminate this failure mode, or a power
+    user may want to inspect raw output. The flag is the escape hatch."""
+    module = _load_module(monkeypatch)
+    voice = _load_voice()
+
+    monkeypatch.setattr(voice, "WHISPER_SCRIPT_VALIDATION_ENABLED", False)
+    garbage = "поменяй цвет волос на темный 你好 안녕 γειά Dáit primms 시간"
+    assert module._looks_like_multilingual_hallucination(garbage, "ru") is False
+
+
 def test_transcription_cleanup_filter_can_be_disabled(monkeypatch):
     """The hallucination filter is gated by a module-level flag so future
     Whisper releases (or debugging sessions) can opt out without code edits."""
