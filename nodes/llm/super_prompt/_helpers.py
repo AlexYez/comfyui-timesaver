@@ -73,6 +73,38 @@ TRANSLATE_TO_ENGLISH = False
 BEAM_SIZE = 5
 TEMPERATURE = 0.0
 
+# Whisper decoding-quality thresholds. Tightened from Whisper defaults
+# (2.4 / -1.0 / 0.6) after observing multilingual decoding loops where
+# the temperature fallback escalated all the way to 1.0 and produced
+# Greek/CJK/Hangul gibberish. Lower compression_ratio catches the loop
+# earlier; stricter logprob rejects unconfident decodes; higher
+# no_speech is more aggressive about discarding silent/noise tails
+# (the most common hallucination trigger).
+WHISPER_COMPRESSION_RATIO_THRESHOLD = 2.0
+WHISPER_LOGPROB_THRESHOLD = -0.7
+WHISPER_NO_SPEECH_THRESHOLD = 0.7
+# Cap the temperature fallback ladder at 0.4. Whisper above ~0.5 is
+# effectively random sampling — better to return empty than to insert
+# multilingual nonsense into the user's prompt.
+WHISPER_TEMPERATURE_FALLBACK = (0.0, 0.2, 0.4)
+
+# Post-decode sanity check: if Whisper outputs text containing letters
+# from "exotic" scripts (Greek, CJK, Hangul, Devanagari, Arabic, …) when
+# the source language was Russian, treat it as a multilingual decoding
+# loop and drop the result. Cyrillic + ASCII Latin are always allowed
+# (English technical terms in prompts are normal).
+WHISPER_SCRIPT_VALIDATION_ENABLED = True
+# Tier 1: exotic-script letter counter (Greek, CJK, Hangul, Devanagari, …).
+# Both bounds must be exceeded to trigger.
+WHISPER_SCRIPT_OTHER_MIN_CHARS = 5
+WHISPER_SCRIPT_OTHER_MAX_RATIO = 0.10
+# Tier 2: mixed-script word counter. Words containing BOTH Cyrillic and
+# Latin letters within a single token (e.g. "примms", "светлухаgeryный")
+# are morphologically impossible and a strong signature of a Whisper
+# temperature-fallback decoding loop. Legitimate Russian + English prompt
+# dictation always keeps the scripts in separate words ("cinematic кадр").
+WHISPER_SCRIPT_MIXED_WORD_THRESHOLD = 2
+
 # Whisper context prompt for prompt-dictation. Keep it concise: Whisper uses it as
 # vocabulary/style context, not as an instruction-following system prompt.
 INITIAL_PROMPT_ENABLED = True
