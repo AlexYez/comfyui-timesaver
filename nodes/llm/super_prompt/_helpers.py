@@ -139,7 +139,14 @@ WHISPER_HALLUCINATION_PATTERNS = (
 # Audio preparation. These steps run before Whisper to reduce silence/noise work
 # and keep the model focused on speech rather than microphone artifacts.
 AUDIO_SAMPLE_RATE = 16000
-AUDIO_TRIM_ENABLED = True
+# Boundary trimming was disabled in v9.11 because it occasionally clipped
+# the very first/last syllable even with hysteresis VAD + 0.40s padding,
+# producing partial words in the transcript. Whisper handles leading and
+# trailing silence well on its own, so passing the full clip is more
+# reliable for short prompt-style dictation. VAD detection itself is
+# still active (AUDIO_VAD_ENABLED below) — empty/silent clips are still
+# rejected fast without burning a Whisper inference.
+AUDIO_TRIM_ENABLED = False
 AUDIO_NORMALIZE_ENABLED = True
 AUDIO_VAD_ENABLED = True
 AUDIO_VAD_FRAME_MS = 30

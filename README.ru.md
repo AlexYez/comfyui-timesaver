@@ -8,7 +8,7 @@
 
 Ресайз, цветокоррекция, кеинг, инпейнтинг, транскрипция, переводы, конструкторы промптов, менеджмент моделей — всё прямо на канвасе.
 
-[![Версия](https://img.shields.io/badge/version-9.10-blue.svg)](pyproject.toml)
+[![Версия](https://img.shields.io/badge/version-9.11-blue.svg)](pyproject.toml)
 [![ComfyUI](https://img.shields.io/badge/ComfyUI-V3%20API-orange.svg)](https://github.com/comfyanonymous/ComfyUI)
 [![Python](https://img.shields.io/badge/python-3.10+-green.svg)](https://www.python.org/)
 [![Лицензия](https://img.shields.io/badge/license-see%20LICENSE.txt-lightgrey.svg)](LICENSE.txt)
