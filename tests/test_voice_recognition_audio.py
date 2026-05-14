@@ -133,7 +133,9 @@ def _load_voice():
     return importlib.import_module("nodes.llm.super_prompt._voice")
 
 
-def test_audio_preprocess_trims_and_normalizes_speech(monkeypatch):
+def test_audio_preprocess_normalizes_speech(monkeypatch):
+    """With AUDIO_TRIM_ENABLED defaulting to False (v9.11), the full clip
+    goes to Whisper untouched in length, but normalization still runs."""
     module = _load_module(monkeypatch)
 
     sample_rate = module.AUDIO_SAMPLE_RATE
@@ -145,11 +147,32 @@ def test_audio_preprocess_trims_and_normalizes_speech(monkeypatch):
     result = module._preprocess_audio(audio)
 
     assert result.speech_detected is True
-    assert result.trimmed is True
+    assert result.trimmed is False  # trim disabled by default
     assert result.normalized is True
     assert result.original_duration == pytest.approx(1.5)
-    assert result.processed_duration < result.original_duration
+    # Length preserved exactly (no nibbling at the edges).
+    assert result.processed_duration == pytest.approx(result.original_duration)
     assert result.peak_after > result.peak_before
+
+
+def test_audio_preprocess_trim_when_explicitly_enabled(monkeypatch):
+    """The trim path still works for users who flip AUDIO_TRIM_ENABLED back
+    on — the disabled default is a behaviour choice, not a removal."""
+    module = _load_module(monkeypatch)
+    voice = _load_voice()
+
+    sample_rate = module.AUDIO_SAMPLE_RATE
+    silence = np.zeros(sample_rate // 2, dtype=np.float32)
+    t = np.linspace(0.0, 0.5, sample_rate // 2, endpoint=False, dtype=np.float32)
+    speech = (0.02 * np.sin(2 * np.pi * 220 * t)).astype(np.float32)
+    audio = np.concatenate([silence, speech, silence])
+
+    monkeypatch.setattr(voice, "AUDIO_TRIM_ENABLED", True)
+    result = module._preprocess_audio(audio)
+
+    assert result.speech_detected is True
+    assert result.trimmed is True
+    assert result.processed_duration < result.original_duration
 
 
 def test_audio_preprocess_fades_trimmed_edges(monkeypatch):

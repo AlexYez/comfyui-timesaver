@@ -8,7 +8,7 @@
 
 Resize, color-grade, key, denoise, transcribe, translate, prompt-build, manage models — without leaving the canvas.
 
-[![Version](https://img.shields.io/badge/version-9.10-blue.svg)](pyproject.toml)
+[![Version](https://img.shields.io/badge/version-9.11-blue.svg)](pyproject.toml)
 [![ComfyUI](https://img.shields.io/badge/ComfyUI-V3%20API-orange.svg)](https://github.com/comfyanonymous/ComfyUI)
 [![Python](https://img.shields.io/badge/python-3.10+-green.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-see%20LICENSE.txt-lightgrey.svg)](LICENSE.txt)
