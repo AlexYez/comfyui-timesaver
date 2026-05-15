@@ -27,7 +27,8 @@ COMFYUI_URL = "http://127.0.0.1:8188"
 
 def _fetch(url: str, timeout: float = 10.0):
     try:
-        with urllib.request.urlopen(url, timeout=timeout) as response:
+        # Local 127.0.0.1 endpoint, opt-in live test — not user input.
+        with urllib.request.urlopen(url, timeout=timeout) as response:  # nosec B310
             return json.loads(response.read().decode("utf-8"))
     except (urllib.error.URLError, ConnectionError, OSError):
         pytest.skip(f"ComfyUI not reachable at {url}")

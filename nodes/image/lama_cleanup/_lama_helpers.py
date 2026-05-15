@@ -485,7 +485,10 @@ class _LamaModel:
         )
         request = Request(MODEL_DOWNLOAD_URL, headers={"User-Agent": "comfyui-timesaver"})
         try:
-            with urlopen(request, timeout=300) as response, tmp_path.open("wb") as handle:
+            # MODEL_DOWNLOAD_URL is a hardcoded HTTPS constant defined at the
+            # top of this module — not user input — so the bandit B310
+            # blacklist (file:/custom scheme abuse) does not apply here.
+            with urlopen(request, timeout=300) as response, tmp_path.open("wb") as handle:  # nosec B310
                 shutil.copyfileobj(response, handle)
             tmp_path.replace(local_path)
         except URLError as exc:

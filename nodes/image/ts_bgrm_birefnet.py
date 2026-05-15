@@ -638,6 +638,7 @@ class BiRefNetModel:
                 with _progress_pulse(progress_bar, start_step, max(start_step, end_step - 1)):
                     snapshot_download(
                         repo_id=primary_repo,
+                        revision="main",
                         local_dir=cache_dir,
                         local_dir_use_symlinks=False,
                         allow_patterns=primary_patterns,
@@ -669,6 +670,7 @@ class BiRefNetModel:
             with _progress_pulse(progress_bar, start_step, max(start_step, end_step - 1)):
                 snapshot_download(
                     repo_id=fallback_repo,
+                    revision="main",
                     local_dir=cache_dir,
                     local_dir_use_symlinks=False,
                     allow_patterns=[

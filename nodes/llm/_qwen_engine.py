@@ -1051,6 +1051,7 @@ class QwenEngine:
 
         kwargs: dict[str, Any] = {
             "repo_id": model_id,
+            "revision": "main",
             "local_dir": local_dir,
             "local_dir_use_symlinks": False,
             "resume_download": True,
