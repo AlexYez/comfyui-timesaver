@@ -1,27 +1,42 @@
-/.idea/
-/venv/
+# Python / build artefacts
 /__pycache__/
 **/__pycache__/
+/.pytest_cache/
+pytest-cache-files-*/
+/pip/
+/venv/
+
+# IDE
+/.idea/
+
+# Local ComfyUI runtime caches (HF model snapshots, pip tmp, test fixtures)
 /.cache/
 **/.cache/
-/.pytest_cache/
-/pip/
-/.codex_tmp/
-/.claude/
 /.test_models/
 /.test_input/
-pytest-cache-files-*/
 
-# Local-only AI assistant instructions; not published to GitHub.
-CLAUDE.md
-MODERNIZATION_PLAN.md
-comfyui-pack-testing-guide.md
+# AI assistant scratch (Claude Code / Codex)
+/.claude/
+/.codex_tmp/
 
-# Local-only development & AI memory; not published to GitHub or the
-# Comfy registry. Tests/tools live in the dev location alongside the
-# pack but stay out of the public repo so the registry security scanner
-# (which inspects the full checkout) cannot find anything in them to
-# flag, and so the GitHub view stays focused on shippable runtime code.
+# Local-only AI memory & developer infrastructure — kept in the dev
+# location alongside the pack, but not published to GitHub or the Comfy
+# registry. Keeps the public repo focused on shippable runtime code and
+# stops the registry security scanner from inspecting test / tooling
+# code that would otherwise trip false-positives.
 /project_memory/
 /tests/
 /tools/
+
+# Local-only AI-assistant instructions and engineering plans
+CLAUDE.md
+AGENTS.md
+MODERNIZATION_PLAN.md
+comfyui-pack-testing-guide.md
+
+# Internal contributor docs — kept in dev only; doc/screenshots/ stays
+# because README.md links to it.
+/doc/AGENTS.md
+/doc/TS_DEPENDENCY_POLICY.md
+/doc/migration.md
+/doc/generate_readme_ru.py
