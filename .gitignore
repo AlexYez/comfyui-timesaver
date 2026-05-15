@@ -16,3 +16,12 @@ pytest-cache-files-*/
 CLAUDE.md
 MODERNIZATION_PLAN.md
 comfyui-pack-testing-guide.md
+
+# Local-only development & AI memory; not published to GitHub or the
+# Comfy registry. Tests/tools live in the dev location alongside the
+# pack but stay out of the public repo so the registry security scanner
+# (which inspects the full checkout) cannot find anything in them to
+# flag, and so the GitHub view stays focused on shippable runtime code.
+/project_memory/
+/tests/
+/tools/
