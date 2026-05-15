@@ -27,3 +27,4 @@
 - [SAM3 Detect coords contract](reference_sam3_detect_contract.md) — родная ComfyUI SAM3_Detect: STRING JSON [{"x":int,"y":int},...] в ПИКСЕЛЯХ; не путать со сторонним comfyui-sam3 пакетом
 - [.comfyignore механика](reference_comfyignore.md) — comfy-cli zip = git ls-files − .comfyignore (gitwildmatch); фикс Flagged-статусов 9.2–9.7 в registry
 - [TS_MultiReference mask handling](reference_multi_reference_mask.md) — маска ТОЛЬКО для bbox-hint (не силуэт); auto-detect convention (4-corner voting) + бинаризация по 0.5; v9.12+
+- [Comfy scanner rules — B615/B310/B108](reference_comfy_scanner_rules.md) — scanner = bandit на full checkout; bandit local self-check перед публикацией; revision="main" + [tool.bandit] skips; v9.13 фикс
