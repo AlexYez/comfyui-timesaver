@@ -180,7 +180,10 @@ def _ensure_rife_model(model_name: str) -> Path:
     tmp_path = target_path.with_suffix(target_path.suffix + ".part")
     request = Request(direct_url, headers={"User-Agent": "comfyui-timesaver"})
     try:
-        with urlopen(request, timeout=300) as response, tmp_path.open("wb") as handle:
+        # direct_url is a hardcoded HTTPS URL built from constants
+        # (_MODEL_REPO_ID, _MODEL_SUBFOLDER) — not user input — so the bandit
+        # B310 blacklist (file:/custom scheme abuse) does not apply here.
+        with urlopen(request, timeout=300) as response, tmp_path.open("wb") as handle:  # nosec B310
             shutil.copyfileobj(response, handle)
         tmp_path.replace(target_path)
     finally:

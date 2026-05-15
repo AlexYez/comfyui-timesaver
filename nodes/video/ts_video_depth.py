@@ -355,6 +355,7 @@ def _load_model_to_offload_cpu(model_filename: str, on_download_start=None):
             raise ValueError(f"Cannot determine repository for model: {model_filename}.")
         snapshot_download(
             repo_id=repo_map[model_key],
+            revision="main",
             allow_patterns=[f"*{model_filename}*"],
             local_dir=download_path,
             local_dir_use_symlinks=False,

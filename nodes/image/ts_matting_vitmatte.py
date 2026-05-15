@@ -312,6 +312,7 @@ def _download_model_files(variant: str) -> Path:
 
     snapshot_download(
         repo_id=repo_id,
+        revision="main",
         local_dir=str(local_dir),
         local_dir_use_symlinks=False,
         allow_patterns=["*.json", "*.safetensors", "*.bin", "*.txt"],
@@ -395,10 +396,14 @@ def _load_model(
 
     if progress is not None:
         _update_progress(progress, 5)
-    processor = VitMatteImageProcessor.from_pretrained(str(local_dir))
+    # local_dir is a fully resolved on-disk path populated by
+    # _download_model_files(); from_pretrained will not hit the network here,
+    # but bandit B615 still requires an explicit revision argument on every
+    # from_pretrained call regardless of source.
+    processor = VitMatteImageProcessor.from_pretrained(str(local_dir), revision="main")
     if progress is not None:
         _update_progress(progress, 15)
-    model = VitMatteForImageMatting.from_pretrained(str(local_dir))
+    model = VitMatteForImageMatting.from_pretrained(str(local_dir), revision="main")
     model.eval()
     if target_dtype == torch.float16:
         model.half()

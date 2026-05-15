@@ -37,7 +37,9 @@ PACKAGE_ROOT = Path(__file__).resolve().parents[1]
 
 def _comfyui_running(url: str = COMFYUI_URL, timeout: float = 3.0) -> bool:
     try:
-        with urllib.request.urlopen(f"{url}/api/system_stats", timeout=timeout) as response:
+        # COMFYUI_URL is a hardcoded local 127.0.0.1 endpoint used only by the
+        # opt-in smoke test against a developer-controlled ComfyUI instance.
+        with urllib.request.urlopen(f"{url}/api/system_stats", timeout=timeout) as response:  # nosec B310
             return response.status == 200
     except (urllib.error.URLError, ConnectionError, OSError):
         return False
@@ -215,7 +217,8 @@ def test_interactive_node_exposes_dom_widget(browser_page, node_id):
 def test_subsystem_http_route_reachable(method, path, accept_status):
     request = urllib.request.Request(f"{COMFYUI_URL}{path}", method=method)
     try:
-        with urllib.request.urlopen(request, timeout=10) as response:
+        # Local 127.0.0.1 endpoint, opt-in smoke test — not user input.
+        with urllib.request.urlopen(request, timeout=10) as response:  # nosec B310
             status = response.status
             body = response.read().decode("utf-8", errors="replace")
     except urllib.error.HTTPError as exc:
