@@ -331,6 +331,11 @@ export function setupAudioLoader(node) {
         return state.viewStartSeconds + getViewSeconds();
     }
     function clampViewStart() {
+        // Skip clamping until duration is known — otherwise a restored
+        // viewStart from node.properties would be zeroed by maxStart=0 during
+        // tab-switch rehydrate (state.duration is 0 before fetchMetadata
+        // resolves), then applyMediaPayload would re-clamp the already-lost 0.
+        if (state.duration <= 0) return;
         const viewSeconds = getViewSeconds();
         const maxStart = Math.max(0, state.duration - viewSeconds);
         state.viewStartSeconds = clamp(state.viewStartSeconds || 0, 0, maxStart);
