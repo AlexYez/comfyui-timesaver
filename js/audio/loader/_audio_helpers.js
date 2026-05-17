@@ -22,6 +22,13 @@ const MIN_NODE_WIDTH = 440;
 const MIN_NODE_HEIGHT = 360;
 const HEADER_FOOTER_HEIGHT = 118;
 const HANDLE_HITBOX = 10;
+const MIN_ZOOM = 1;
+const MAX_ZOOM = 200;
+const ZOOM_STEP = 1.5;
+const WHEEL_ZOOM_STEP = 1.2;
+const SCROLL_THUMB_MIN_PX = 32;
+const PROP_ZOOM = "ts_audio_loader_zoom";
+const PROP_VIEW_START = "ts_audio_loader_view_start";
 const MEDIA_UPLOAD_ACCEPT = [
     ".aac", ".aif", ".aiff", ".avi", ".flac", ".flv", ".m2ts", ".m4a", ".m4v", ".mkv", ".mov",
     ".mp3", ".mp4", ".mpeg", ".mpg", ".mts", ".ogg", ".opus", ".ts", ".wav", ".webm", ".wma",
@@ -70,7 +77,17 @@ function ensureStyles() {
 .ts-audio-loader__play.is-active{background:linear-gradient(180deg,#31d9b1,#1ea98a);border-color:#1ea98a;color:#062018}
 .ts-audio-loader__play svg{width:14px;height:14px;fill:currentColor;pointer-events:none}
 .ts-audio-loader__play svg *{pointer-events:none}
-.ts-audio-loader__hidden-media{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}`;
+.ts-audio-loader__hidden-media{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+.ts-audio-loader__zoom-group{display:inline-flex;align-items:stretch;border:1px solid var(--tsal-border);border-radius:8px;overflow:hidden;background:linear-gradient(180deg,#1f2732,#151b23)}
+.ts-audio-loader__zoom-btn{border:none;background:transparent;color:var(--tsal-text);padding:6px 10px;font-size:12px;line-height:1;cursor:pointer;border-radius:0;min-width:32px}
+.ts-audio-loader__zoom-btn+.ts-audio-loader__zoom-btn{border-left:1px solid var(--tsal-border)}
+.ts-audio-loader__zoom-btn:hover{background:rgba(255,255,255,.06)}
+.ts-audio-loader__zoom-btn:disabled{opacity:.35;cursor:not-allowed}
+.ts-audio-loader__zoom-label{display:inline-flex;align-items:center;justify-content:center;padding:0 8px;font-size:11px;color:var(--tsal-muted);min-width:48px}
+.ts-audio-loader__scrollbar{display:none;height:14px;flex:0 0 14px;background:#0f141a;border:1px solid var(--tsal-border);border-radius:6px;overflow:hidden;position:relative;user-select:none;touch-action:none}
+.ts-audio-loader__scrollbar.is-active{display:block}
+.ts-audio-loader__scrollbar-thumb{position:absolute;top:0;bottom:0;background:linear-gradient(180deg,#3a4858,#28303c);border:1px solid #4a5868;border-radius:5px;min-width:32px;cursor:grab;box-sizing:border-box}
+.ts-audio-loader__scrollbar-thumb:active{cursor:grabbing;background:linear-gradient(180deg,#4a5868,#3a4858)}`;
     document.head.appendChild(style);
 }
 
@@ -177,6 +194,8 @@ export function setupAudioLoader(node) {
         status: isPreviewNode ? "Connect audio and queue once to preview." : "Choose file to upload or record from microphone.",
         isLoading: false, isRecording: false, recordingObjectUrl: null,
         dragMode: null, dragAnchorSeconds: 0, dragStartLeft: 0, dragStartRight: 0, rafId: 0, mediaReady: false,
+        zoom: clamp(Number(node.properties?.[PROP_ZOOM]) || 1, MIN_ZOOM, MAX_ZOOM),
+        viewStartSeconds: Math.max(0, Number(node.properties?.[PROP_VIEW_START]) || 0),
     };
 
     const container = document.createElement("div");
@@ -200,6 +219,29 @@ export function setupAudioLoader(node) {
     resetCropButton.className = "ts-audio-loader__button";
     resetCropButton.textContent = "Reset Crop";
     actions.append(resetCropButton);
+
+    const zoomGroup = document.createElement("div");
+    zoomGroup.className = "ts-audio-loader__zoom-group";
+    const zoomOutButton = document.createElement("button");
+    zoomOutButton.type = "button";
+    zoomOutButton.className = "ts-audio-loader__zoom-btn";
+    zoomOutButton.textContent = "−"; // U+2212 MINUS SIGN
+    zoomOutButton.title = "Zoom out (Ctrl+Wheel down)";
+    const zoomLabel = document.createElement("span");
+    zoomLabel.className = "ts-audio-loader__zoom-label";
+    zoomLabel.textContent = "1.0×"; // U+00D7 MULTIPLICATION SIGN
+    const zoomInButton = document.createElement("button");
+    zoomInButton.type = "button";
+    zoomInButton.className = "ts-audio-loader__zoom-btn";
+    zoomInButton.textContent = "+";
+    zoomInButton.title = "Zoom in (Ctrl+Wheel up)";
+    const zoomFitButton = document.createElement("button");
+    zoomFitButton.type = "button";
+    zoomFitButton.className = "ts-audio-loader__zoom-btn";
+    zoomFitButton.textContent = "Fit";
+    zoomFitButton.title = "Reset zoom and pan to full waveform";
+    zoomGroup.append(zoomOutButton, zoomLabel, zoomInButton, zoomFitButton);
+    actions.append(zoomGroup);
     topbar.append(actions);
 
     const meta = document.createElement("div");
@@ -237,6 +279,12 @@ export function setupAudioLoader(node) {
         waveWrap.append(canvas, empty, audioEl, videoEl);
     }
 
+    const scrollbar = document.createElement("div");
+    scrollbar.className = "ts-audio-loader__scrollbar";
+    const scrollbarThumb = document.createElement("div");
+    scrollbarThumb.className = "ts-audio-loader__scrollbar-thumb";
+    scrollbar.append(scrollbarThumb);
+
     const bottom = document.createElement("div");
     bottom.className = "ts-audio-loader__bottom";
     const transport = document.createElement("div");
@@ -256,13 +304,13 @@ export function setupAudioLoader(node) {
     cropLabel.className = "ts-audio-loader__crop";
     cropLabel.textContent = "Crop: full";
     bottom.append(transport, document.createElement("div"), cropLabel);
-    container.append(topbar, meta, waveWrap, bottom);
+    container.append(topbar, meta, waveWrap, scrollbar, bottom);
 
     stopPropagation(container, ["pointerdown", "pointerup", "mousedown", "mouseup", "mousemove", "wheel", "click", "dblclick", "contextmenu"]);
     const widgetOptions = { serialize: false, hideOnZoom: false };
     if (isNodesV2()) {
         widgetOptions.getMinHeight = () => MIN_NODE_HEIGHT - HEADER_FOOTER_HEIGHT;
-        widgetOptions.afterResize = () => { syncDomSize(); drawWaveform(); };
+        widgetOptions.afterResize = () => { syncDomSize(); updateScrollbar(); drawWaveform(); };
     }
     const domWidget = node.addDOMWidget(DOM_WIDGET_NAME, "div", container, widgetOptions);
     const domWidgetEl = domWidget?.element || domWidget?.el || domWidget?.container;
@@ -274,6 +322,101 @@ export function setupAudioLoader(node) {
         let right = Number.isFinite(state.cropEnd) && state.cropEnd > left ? state.cropEnd : duration;
         right = clamp(right, left, duration);
         return { left, right };
+    }
+    function getViewSeconds() {
+        if (state.duration <= 0) return 0;
+        return state.duration / Math.max(MIN_ZOOM, state.zoom);
+    }
+    function getViewEndSeconds() {
+        return state.viewStartSeconds + getViewSeconds();
+    }
+    function clampViewStart() {
+        const viewSeconds = getViewSeconds();
+        const maxStart = Math.max(0, state.duration - viewSeconds);
+        state.viewStartSeconds = clamp(state.viewStartSeconds || 0, 0, maxStart);
+    }
+    function persistViewport() {
+        node.properties ||= {};
+        node.properties[PROP_ZOOM] = state.zoom;
+        node.properties[PROP_VIEW_START] = state.viewStartSeconds;
+    }
+    function secondsToX(seconds, drawWidth) {
+        const viewSeconds = getViewSeconds();
+        if (viewSeconds <= 0 || drawWidth <= 0) return 0;
+        return ((seconds - state.viewStartSeconds) / viewSeconds) * drawWidth;
+    }
+    function xToSeconds(x, drawWidth) {
+        const viewSeconds = getViewSeconds();
+        if (drawWidth <= 0) return state.viewStartSeconds;
+        return state.viewStartSeconds + (x / drawWidth) * viewSeconds;
+    }
+    function setZoom(nextZoom, anchorSeconds = null) {
+        if (state.duration <= 0) {
+            state.zoom = MIN_ZOOM;
+            state.viewStartSeconds = 0;
+            persistViewport();
+            updateZoomControls();
+            updateScrollbar();
+            drawWaveform();
+            return;
+        }
+        const oldZoom = Math.max(MIN_ZOOM, state.zoom);
+        const clampedNext = clamp(nextZoom, MIN_ZOOM, MAX_ZOOM);
+        if (Math.abs(clampedNext - oldZoom) < 1e-6) return;
+        if (anchorSeconds !== null && Number.isFinite(anchorSeconds)) {
+            const oldViewSeconds = state.duration / oldZoom;
+            const anchorFraction = oldViewSeconds > 0
+                ? (anchorSeconds - state.viewStartSeconds) / oldViewSeconds
+                : 0.5;
+            const newViewSeconds = state.duration / clampedNext;
+            state.viewStartSeconds = anchorSeconds - anchorFraction * newViewSeconds;
+        }
+        state.zoom = clampedNext;
+        clampViewStart();
+        persistViewport();
+        updateZoomControls();
+        updateScrollbar();
+        drawWaveform();
+    }
+    function setViewStart(nextSeconds) {
+        const before = state.viewStartSeconds;
+        state.viewStartSeconds = nextSeconds;
+        clampViewStart();
+        if (Math.abs(state.viewStartSeconds - before) < 1e-6) return;
+        persistViewport();
+        updateScrollbar();
+        drawWaveform();
+    }
+    function resetViewport() {
+        state.zoom = MIN_ZOOM;
+        state.viewStartSeconds = 0;
+        persistViewport();
+        updateZoomControls();
+        updateScrollbar();
+        drawWaveform();
+    }
+    function updateZoomControls() {
+        const zoomText = state.zoom >= 10 ? `${Math.round(state.zoom)}×` : `${state.zoom.toFixed(1)}×`;
+        zoomLabel.textContent = zoomText;
+        const hasMedia = state.duration > 0;
+        zoomInButton.disabled = !hasMedia || state.zoom >= MAX_ZOOM - 1e-3;
+        zoomOutButton.disabled = !hasMedia || state.zoom <= MIN_ZOOM + 1e-3;
+        zoomFitButton.disabled = !hasMedia || (state.zoom <= MIN_ZOOM + 1e-3 && state.viewStartSeconds <= 1e-3);
+    }
+    function updateScrollbar() {
+        const viewSeconds = getViewSeconds();
+        if (state.duration <= 0 || state.zoom <= MIN_ZOOM + 1e-3 || viewSeconds >= state.duration - 1e-3) {
+            scrollbar.classList.remove("is-active");
+            return;
+        }
+        scrollbar.classList.add("is-active");
+        const trackWidth = scrollbar.clientWidth || 1;
+        const thumbWidth = clamp(trackWidth / Math.max(MIN_ZOOM, state.zoom), SCROLL_THUMB_MIN_PX, trackWidth);
+        const maxThumbLeft = Math.max(0, trackWidth - thumbWidth);
+        const maxStart = Math.max(0, state.duration - viewSeconds);
+        const thumbLeft = maxStart > 0 ? (state.viewStartSeconds / maxStart) * maxThumbLeft : 0;
+        scrollbarThumb.style.left = `${thumbLeft}px`;
+        scrollbarThumb.style.width = `${thumbWidth}px`;
     }
     function syncDomSize() {
         const width = Math.max(MIN_NODE_WIDTH, Number(node.size?.[0]) || DEFAULT_NODE_SIZE[0]);
@@ -407,6 +550,9 @@ export function setupAudioLoader(node) {
         if (options.persist !== false) {
             persistPreviewState(payload);
         }
+        clampViewStart();
+        updateZoomControls();
+        updateScrollbar();
         syncWidgets();
         updateText();
         drawWaveform();
@@ -453,39 +599,66 @@ export function setupAudioLoader(node) {
             updateText();
             return;
         }
+        clampViewStart();
+        const viewSeconds = getViewSeconds();
+        const viewStart = state.viewStartSeconds;
+        const viewEnd = viewStart + viewSeconds;
         const bounds = getSelectionBounds();
-        const selectionStartX = (bounds.left / state.duration) * drawWidth;
-        const selectionEndX = (bounds.right / state.duration) * drawWidth;
+        const selectionStartX = secondsToX(bounds.left, drawWidth);
+        const selectionEndX = secondsToX(bounds.right, drawWidth);
+        const dimStartX = clamp(selectionStartX, 0, drawWidth);
+        const dimEndX = clamp(selectionEndX, 0, drawWidth);
         ctx.fillStyle = "rgba(0, 0, 0, 0.28)";
-        ctx.fillRect(0, 0, selectionStartX, drawHeight);
-        ctx.fillRect(selectionEndX, 0, drawWidth - selectionEndX, drawHeight);
-        const step = drawWidth / state.peaks.length;
-        const playheadX = state.duration > 0 ? ((getActiveMedia()?.currentTime || 0) / state.duration) * drawWidth : 0;
-        for (let index = 0; index < state.peaks.length; index += 1) {
-            const peak = clamp(Number(state.peaks[index]) || 0, 0, 1);
-            const x = index * step;
-            const barWidth = Math.max(1, step - 1);
-            const barHeight = Math.max(2, peak * (drawHeight * 0.46));
-            const insideSelection = x + barWidth >= selectionStartX && x <= selectionEndX;
-            ctx.fillStyle = insideSelection ? "#29c7a3" : "rgba(145, 160, 180, 0.38)";
-            ctx.fillRect(x, midY - barHeight, barWidth, barHeight * 2);
+        if (dimStartX > 0) ctx.fillRect(0, 0, dimStartX, drawHeight);
+        if (dimEndX < drawWidth) ctx.fillRect(dimEndX, 0, drawWidth - dimEndX, drawHeight);
+
+        const peakCount = state.peaks.length;
+        const peakSpanSeconds = peakCount > 0 ? state.duration / peakCount : 0;
+        if (peakSpanSeconds > 0) {
+            const firstPeakIdx = clamp(Math.floor(viewStart / peakSpanSeconds), 0, peakCount - 1);
+            const lastPeakIdx = clamp(Math.ceil(viewEnd / peakSpanSeconds), firstPeakIdx, peakCount - 1);
+            const barInsetPx = peakCount > drawWidth ? 0 : 1;
+            for (let index = firstPeakIdx; index <= lastPeakIdx; index += 1) {
+                const peak = clamp(Number(state.peaks[index]) || 0, 0, 1);
+                const peakStartSec = index * peakSpanSeconds;
+                const peakEndSec = peakStartSec + peakSpanSeconds;
+                const x0 = secondsToX(peakStartSec, drawWidth);
+                const x1 = secondsToX(peakEndSec, drawWidth);
+                const barWidth = Math.max(1, (x1 - x0) - barInsetPx);
+                const barHeight = Math.max(2, peak * (drawHeight * 0.46));
+                const insideSelection = peakEndSec >= bounds.left && peakStartSec <= bounds.right;
+                ctx.fillStyle = insideSelection ? "#29c7a3" : "rgba(145, 160, 180, 0.38)";
+                ctx.fillRect(x0, midY - barHeight, barWidth, barHeight * 2);
+            }
         }
-        ctx.fillStyle = "rgba(41, 199, 163, 0.14)";
-        ctx.fillRect(selectionStartX, 0, Math.max(0, selectionEndX - selectionStartX), drawHeight);
+
+        const selectionWidth = Math.max(0, dimEndX - dimStartX);
+        if (selectionWidth > 0) {
+            ctx.fillStyle = "rgba(41, 199, 163, 0.14)";
+            ctx.fillRect(dimStartX, 0, selectionWidth, drawHeight);
+        }
+
         ctx.strokeStyle = "#b9fff1";
         ctx.lineWidth = 2;
         ctx.beginPath();
-        ctx.moveTo(selectionStartX, 0); ctx.lineTo(selectionStartX, drawHeight);
-        ctx.moveTo(selectionEndX, 0); ctx.lineTo(selectionEndX, drawHeight);
+        const leftInView = bounds.left >= viewStart && bounds.left <= viewEnd;
+        const rightInView = bounds.right >= viewStart && bounds.right <= viewEnd;
+        if (leftInView) { ctx.moveTo(selectionStartX, 0); ctx.lineTo(selectionStartX, drawHeight); }
+        if (rightInView) { ctx.moveTo(selectionEndX, 0); ctx.lineTo(selectionEndX, drawHeight); }
         ctx.stroke();
         ctx.fillStyle = "#d3fff6";
-        ctx.fillRect(selectionStartX - 2, 12, 4, drawHeight - 24);
-        ctx.fillRect(selectionEndX - 2, 12, 4, drawHeight - 24);
-        ctx.strokeStyle = "#f4fff9";
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(playheadX, 0); ctx.lineTo(playheadX, drawHeight);
-        ctx.stroke();
+        if (leftInView) ctx.fillRect(selectionStartX - 2, 12, 4, drawHeight - 24);
+        if (rightInView) ctx.fillRect(selectionEndX - 2, 12, 4, drawHeight - 24);
+
+        const playheadSec = getActiveMedia()?.currentTime || 0;
+        if (playheadSec >= viewStart && playheadSec <= viewEnd) {
+            const playheadX = secondsToX(playheadSec, drawWidth);
+            ctx.strokeStyle = "#f4fff9";
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(playheadX, 0); ctx.lineTo(playheadX, drawHeight);
+            ctx.stroke();
+        }
         updateText();
     }
     function scheduleDrawLoop() {
@@ -511,6 +684,8 @@ export function setupAudioLoader(node) {
             videoEl.removeAttribute("src");
             audioEl.load();
             videoEl.load();
+            updateZoomControls();
+            updateScrollbar();
             updateText();
             drawWaveform();
             return;
@@ -532,6 +707,8 @@ export function setupAudioLoader(node) {
             state.status = error?.message || "Failed to load media.";
         } finally {
             state.isLoading = false;
+            updateZoomControls();
+            updateScrollbar();
             updateText();
             drawWaveform();
         }
@@ -566,6 +743,9 @@ export function setupAudioLoader(node) {
             state.recordedPath = "";
             state.cropStart = 0;
             state.cropEnd = -1;
+            state.zoom = MIN_ZOOM;
+            state.viewStartSeconds = 0;
+            persistViewport();
             syncWidgets();
             await fetchMetadata(state.sourcePath);
         } catch (error) {
@@ -679,6 +859,11 @@ export function setupAudioLoader(node) {
             state.status = "Drag on waveform to crop. Double-click resets full range.";
             state.cropStart = 0;
             state.cropEnd = -1;
+            state.zoom = MIN_ZOOM;
+            state.viewStartSeconds = 0;
+            persistViewport();
+            updateZoomControls();
+            updateScrollbar();
             updateText();
             drawWaveform();
         } catch {
@@ -783,15 +968,20 @@ export function setupAudioLoader(node) {
     function canvasSecondsFromPointer(event) {
         const rect = canvas.getBoundingClientRect();
         const x = clamp(event.clientX - rect.left, 0, rect.width);
-        return (rect.width > 0 ? x / rect.width : 0) * state.duration;
+        return xToSeconds(x, rect.width);
     }
     function hitTestHandle(pointerSeconds) {
         const rect = canvas.getBoundingClientRect();
-        const secondsPerPixel = rect.width > 0 ? state.duration / rect.width : state.duration;
+        const viewSeconds = getViewSeconds();
+        const secondsPerPixel = rect.width > 0 ? viewSeconds / rect.width : viewSeconds;
         const hitSeconds = HANDLE_HITBOX * secondsPerPixel;
+        const viewStart = state.viewStartSeconds;
+        const viewEnd = viewStart + viewSeconds;
         const bounds = getSelectionBounds();
-        if (Math.abs(pointerSeconds - bounds.left) <= hitSeconds) return "left";
-        if (Math.abs(pointerSeconds - bounds.right) <= hitSeconds) return "right";
+        const leftInView = bounds.left >= viewStart - hitSeconds && bounds.left <= viewEnd + hitSeconds;
+        const rightInView = bounds.right >= viewStart - hitSeconds && bounds.right <= viewEnd + hitSeconds;
+        if (leftInView && Math.abs(pointerSeconds - bounds.left) <= hitSeconds) return "left";
+        if (rightInView && Math.abs(pointerSeconds - bounds.right) <= hitSeconds) return "right";
         return null;
     }
     function onCanvasPointerDown(event) {
@@ -815,7 +1005,9 @@ export function setupAudioLoader(node) {
         if (state.dragMode === "left") { updateSelectionFromSeconds(pointerSeconds, getSelectionBounds().right); return; }
         if (state.dragMode === "right") { updateSelectionFromSeconds(getSelectionBounds().left, pointerSeconds); return; }
         if (state.dragMode === "pending-range") {
-            if (Math.abs(pointerSeconds - state.dragAnchorSeconds) >= (state.duration / Math.max(80, canvas.clientWidth || 80))) state.dragMode = "range";
+            const widthPx = Math.max(80, canvas.clientWidth || 80);
+            const minDragSeconds = getViewSeconds() / widthPx;
+            if (Math.abs(pointerSeconds - state.dragAnchorSeconds) >= minDragSeconds) state.dragMode = "range";
             else return;
         }
         if (state.dragMode === "range") updateSelectionFromSeconds(Math.min(state.dragAnchorSeconds, pointerSeconds), Math.max(state.dragAnchorSeconds, pointerSeconds));
@@ -830,6 +1022,71 @@ export function setupAudioLoader(node) {
         canvas.releasePointerCapture?.(event.pointerId);
     }
     function resetCrop() { state.cropStart = 0; state.cropEnd = -1; syncWidgets(); drawWaveform(); }
+
+    function onCanvasWheel(event) {
+        if (!event.ctrlKey) return;
+        if (state.duration <= 0) return;
+        event.preventDefault();
+        event.stopPropagation();
+        const anchorSeconds = canvasSecondsFromPointer(event);
+        const factor = event.deltaY < 0 ? WHEEL_ZOOM_STEP : 1 / WHEEL_ZOOM_STEP;
+        setZoom(state.zoom * factor, anchorSeconds);
+    }
+    function zoomFromButton(direction) {
+        if (state.duration <= 0) return;
+        const factor = direction > 0 ? ZOOM_STEP : 1 / ZOOM_STEP;
+        const centerSeconds = state.viewStartSeconds + getViewSeconds() / 2;
+        setZoom(state.zoom * factor, centerSeconds);
+    }
+    let scrollDrag = null;
+    function onScrollbarThumbPointerDown(event) {
+        if (state.duration <= 0 || state.zoom <= MIN_ZOOM + 1e-3) return;
+        event.preventDefault();
+        event.stopPropagation();
+        const trackRect = scrollbar.getBoundingClientRect();
+        const thumbRect = scrollbarThumb.getBoundingClientRect();
+        scrollDrag = {
+            pointerId: event.pointerId,
+            offsetX: event.clientX - thumbRect.left,
+            trackLeft: trackRect.left,
+            trackWidth: trackRect.width,
+        };
+        scrollbarThumb.setPointerCapture?.(event.pointerId);
+    }
+    function onScrollbarThumbPointerMove(event) {
+        if (!scrollDrag || event.pointerId !== scrollDrag.pointerId) return;
+        const viewSeconds = getViewSeconds();
+        if (viewSeconds <= 0 || viewSeconds >= state.duration) return;
+        const thumbWidth = clamp(scrollDrag.trackWidth / Math.max(MIN_ZOOM, state.zoom), SCROLL_THUMB_MIN_PX, scrollDrag.trackWidth);
+        const maxThumbLeft = Math.max(0, scrollDrag.trackWidth - thumbWidth);
+        if (maxThumbLeft <= 0) return;
+        const nextThumbLeft = clamp(event.clientX - scrollDrag.trackLeft - scrollDrag.offsetX, 0, maxThumbLeft);
+        const maxStart = Math.max(0, state.duration - viewSeconds);
+        setViewStart((nextThumbLeft / maxThumbLeft) * maxStart);
+    }
+    function onScrollbarThumbPointerUp(event) {
+        if (!scrollDrag || event.pointerId !== scrollDrag.pointerId) return;
+        scrollbarThumb.releasePointerCapture?.(event.pointerId);
+        scrollDrag = null;
+    }
+    function onScrollbarTrackPointerDown(event) {
+        if (event.target === scrollbarThumb) return;
+        if (state.duration <= 0 || state.zoom <= MIN_ZOOM + 1e-3) return;
+        event.preventDefault();
+        event.stopPropagation();
+        const trackRect = scrollbar.getBoundingClientRect();
+        const viewSeconds = getViewSeconds();
+        const thumbWidth = clamp(trackRect.width / Math.max(MIN_ZOOM, state.zoom), SCROLL_THUMB_MIN_PX, trackRect.width);
+        const maxThumbLeft = Math.max(0, trackRect.width - thumbWidth);
+        if (maxThumbLeft <= 0) return;
+        const clickX = clamp(event.clientX - trackRect.left, 0, trackRect.width);
+        // Center thumb on click point.
+        const targetThumbLeft = clamp(clickX - thumbWidth / 2, 0, maxThumbLeft);
+        const maxStart = Math.max(0, state.duration - viewSeconds);
+        setViewStart((targetThumbLeft / maxThumbLeft) * maxStart);
+    }
+
+    canvas.addEventListener("wheel", onCanvasWheel, { passive: false });
     canvas.addEventListener("pointerdown", onCanvasPointerDown);
     canvas.addEventListener("pointermove", onCanvasPointerMove);
     canvas.addEventListener("pointerup", onCanvasPointerUp);
@@ -844,6 +1101,14 @@ export function setupAudioLoader(node) {
         recordButton.addEventListener("click", async () => { await toggleRecording(); });
     }
     resetCropButton.addEventListener("click", () => resetCrop());
+    zoomInButton.addEventListener("click", () => zoomFromButton(+1));
+    zoomOutButton.addEventListener("click", () => zoomFromButton(-1));
+    zoomFitButton.addEventListener("click", () => resetViewport());
+    scrollbarThumb.addEventListener("pointerdown", onScrollbarThumbPointerDown);
+    scrollbarThumb.addEventListener("pointermove", onScrollbarThumbPointerMove);
+    scrollbarThumb.addEventListener("pointerup", onScrollbarThumbPointerUp);
+    scrollbarThumb.addEventListener("pointercancel", onScrollbarThumbPointerUp);
+    scrollbar.addEventListener("pointerdown", onScrollbarTrackPointerDown);
     playButton.addEventListener("click", async () => { await togglePlay(); });
     loopButton.addEventListener("click", () => { toggleLoop(); });
     if (fileInput) {
@@ -887,10 +1152,11 @@ export function setupAudioLoader(node) {
     node.onResize = function onResize() {
         const result = previousOnResize?.apply(this, arguments);
         syncDomSize();
+        updateScrollbar();
         drawWaveform();
         return result;
     };
-    const resizeObserver = new ResizeObserver(() => drawWaveform());
+    const resizeObserver = new ResizeObserver(() => { updateScrollbar(); drawWaveform(); });
     resizeObserver.observe(container);
     const sourceWidgetPoll = !isPreviewNode ? window.setInterval(() => {
         const nextSourcePath = String(getWidgetValue(node, INPUT_SOURCE_PATH, "") || "");
@@ -935,6 +1201,17 @@ export function setupAudioLoader(node) {
         if (node.properties && Object.prototype.hasOwnProperty.call(node.properties, "ts_audio_loader_loop")) {
             state.isLooping = Boolean(node.properties.ts_audio_loader_loop);
         }
+        const restoredZoom = Number(node.properties?.[PROP_ZOOM]);
+        if (Number.isFinite(restoredZoom)) {
+            state.zoom = clamp(restoredZoom, MIN_ZOOM, MAX_ZOOM);
+        }
+        const restoredViewStart = Number(node.properties?.[PROP_VIEW_START]);
+        if (Number.isFinite(restoredViewStart)) {
+            state.viewStartSeconds = Math.max(0, restoredViewStart);
+        }
+        clampViewStart();
+        updateZoomControls();
+        updateScrollbar();
         if (isPreviewNode) {
             restorePreviewState();
         } else if (state.sourcePath) {
@@ -946,6 +1223,8 @@ export function setupAudioLoader(node) {
     };
     requestAnimationFrame(() => {
         syncDomSize();
+        updateZoomControls();
+        updateScrollbar();
         updateText();
         drawWaveform();
         if (isPreviewNode) {
