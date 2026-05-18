@@ -12,8 +12,12 @@ For each connected reference image the node:
   2. Pixels INSIDE the bbox are preserved as-is — the mask shape is
      NOT cut out. Only embedded RGBA alpha (rare) is composited onto
      white to avoid premultiplied-black halos.
-  3. Resizes to fit max_megapixels on a configurable pixel grid
-     (divide_by widget, default 32).
+  3. Picks the largest (W, H) on a configurable pixel grid (``divide_by``
+     widget, default 32) that fits the ``max_megapixels`` budget and best
+     matches the source aspect ratio. The image is then center-cropped to
+     that exact aspect (typically <3 % off one axis) and scaled — so the
+     output aspect ALWAYS matches its dimensions and the source is never
+     stretched.
   4. Encodes through the supplied VAE and appends the result as a
      reference_latent on the conditioning.
 
@@ -131,7 +135,7 @@ def _target_dimensions(
     max_w_units = max(1, width // multiple)
 
     best: tuple[float, int, int, int] | None = None
-    for dw in range(-2, 3):
+    for dw in range(-3, 4):
         nw = base_w_units + dw
         if nw < 1 or nw > max_w_units:
             continue
@@ -344,6 +348,50 @@ def _normalize_image_tensor(
     return rgb.clone()
 
 
+def _center_crop_to_aspect(
+    image: torch.Tensor,
+    target_width: int,
+    target_height: int,
+) -> torch.Tensor:
+    """Center-crop ``image`` so its aspect matches ``target_width/target_height``.
+
+    Grid-aligned target dimensions on the VAE stride almost never match the
+    source aspect exactly. Stretching to (W, H) distorts the reference;
+    instead we trim a thin band off the longer source axis so the post-crop
+    rectangle has the *exact* target aspect, then the subsequent scale step
+    is stretch-free. The aspect of the output is therefore always exactly
+    ``target_width / target_height``, and the loss is at most a few percent
+    of one axis (typically <3 %), which is acceptable for reference images
+    where preserving proportions matters more than keeping every edge pixel.
+    """
+    if image.ndim != 4:
+        return image
+    src_h = int(image.shape[1])
+    src_w = int(image.shape[2])
+    if src_w <= 0 or src_h <= 0 or target_width <= 0 or target_height <= 0:
+        return image
+
+    src_aspect = src_w / src_h
+    tgt_aspect = target_width / target_height
+    if abs(src_aspect - tgt_aspect) < 1e-6:
+        return image
+
+    if src_aspect > tgt_aspect:
+        # Source is wider than target → trim the sides.
+        new_w = max(1, int(round(src_h * tgt_aspect)))
+        if new_w >= src_w:
+            return image
+        crop_x = (src_w - new_w) // 2
+        return image[:, :, crop_x : crop_x + new_w, :].contiguous()
+
+    # Source is taller than target → trim top/bottom.
+    new_h = max(1, int(round(src_w / tgt_aspect)))
+    if new_h >= src_h:
+        return image
+    crop_y = (src_h - new_h) // 2
+    return image[:, crop_y : crop_y + new_h, :, :].contiguous()
+
+
 def _resize_reference_image(
     image: torch.Tensor,
     max_megapixels: float,
@@ -384,6 +432,14 @@ def _resize_reference_image(
     target_width, target_height = _target_dimensions(
         width, height, max_megapixels, multiple=size_multiple,
     )
+
+    # Center-crop the source so its aspect matches the target's exactly.
+    # Without this, the scale below would stretch the few-percent grid-snap
+    # drift in target dimensions into a visible aspect distortion. Trimming
+    # a small band off the longer axis preserves aspect and grid alignment.
+    image = _center_crop_to_aspect(image, target_width, target_height)
+    height = int(image.shape[1])
+    width = int(image.shape[2])
 
     if target_width == width and target_height == height:
         return image.clamp(0.0, 1.0)
@@ -465,9 +521,12 @@ class TS_MultiReference(IO.ComfyNode):
                     max=_MAX_SIZE_MULTIPLE,
                     step=1,
                     tooltip=(
-                        "Resized dimensions are rounded down to a multiple of this "
-                        "value before VAE encoding. Most VAEs need 8 or 16; the "
-                        "default 32 is a safe choice for Flux 2, Qwen image edit, etc."
+                        "Resized dimensions are an exact multiple of this value before "
+                        "VAE encoding. Most VAEs need 8 or 16; the default 32 is a safe "
+                        "choice for Flux 2, Qwen image edit, etc. If the source aspect "
+                        "does not snap exactly to the grid, a thin band is center-"
+                        "cropped off the longer side so the output aspect always matches "
+                        "and the image is never stretched."
                     ),
                 ),
                 IO.Boolean.Input(
