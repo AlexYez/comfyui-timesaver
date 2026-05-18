@@ -95,6 +95,23 @@ def _target_dimensions(
     max_megapixels: float,
     multiple: int = _DEFAULT_SIZE_MULTIPLE,
 ) -> tuple[int, int]:
+    """Pick the (W, H) on the multiple-grid that best preserves source aspect.
+
+    Constraints:
+      * both dimensions are a multiple of ``multiple`` (VAE stride);
+      * ``W * H <= max_megapixels * 1_000_000`` (pixel budget);
+      * no upscale (W <= width and H <= height);
+      * among all candidates, minimise aspect-ratio drift versus the source
+        ``width / height``; ties broken by larger pixel count (use as much
+        of the budget as possible).
+
+    Independent ``floor((dim * scale) / multiple) * multiple`` on each
+    side — the historic implementation — produced up to ~5.5% aspect drift
+    on common reference shapes like 1500x1000 with multiple=64 because the
+    fractional parts of W and H round inconsistently. A small grid search
+    around the ideal scaled point closes that gap (down to <1% in practice,
+    often 0% when an exact-ratio candidate fits the budget).
+    """
     if width <= 0 or height <= 0:
         raise ValueError("Image dimensions must be positive.")
 
@@ -105,12 +122,41 @@ def _target_dimensions(
         raise ValueError("multiple must be >= 1.")
 
     source_pixels = width * height
-    target_pixels = int(max_megapixels * 1_000_000)
+    target_pixels = max(multiple * multiple, int(max_megapixels * 1_000_000))
     scale = min(1.0, math.sqrt(target_pixels / source_pixels))
+    src_aspect = width / height
 
-    target_width = max(multiple, int(math.floor((width * scale) / multiple)) * multiple)
-    target_height = max(multiple, int(math.floor((height * scale) / multiple)) * multiple)
-    return target_width, target_height
+    ideal_w = width * scale
+    base_w_units = max(1, int(math.floor(ideal_w / multiple)))
+    max_w_units = max(1, width // multiple)
+
+    best: tuple[float, int, int, int] | None = None
+    for dw in range(-2, 3):
+        nw = base_w_units + dw
+        if nw < 1 or nw > max_w_units:
+            continue
+        tw = nw * multiple
+        derived_h = tw / src_aspect
+        for h_units in {
+            max(1, int(math.floor(derived_h / multiple))),
+            max(1, int(math.ceil(derived_h / multiple))),
+        }:
+            th = h_units * multiple
+            if th > height or th < multiple:
+                continue
+            if tw * th > target_pixels:
+                continue
+            drift = abs((tw / th) - src_aspect) / src_aspect
+            # Score: smaller drift wins; ties → larger pixel count (use the budget).
+            score = (drift, -(tw * th))
+            if best is None or score < best[0:2]:
+                best = (drift, -(tw * th), tw, th)
+
+    if best is None:
+        # Degenerate case (e.g. multiple > min(width, height)): fall back to
+        # the smallest grid cell so we never return 0x0.
+        return multiple, multiple
+    return best[2], best[3]
 
 
 def _coerce_mask(mask: torch.Tensor, batch: int, height: int, width: int) -> torch.Tensor:
