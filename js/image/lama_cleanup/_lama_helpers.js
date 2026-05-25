@@ -28,6 +28,23 @@ const SOURCE_POLL_INTERVAL_MS = 300;
 const IMAGE_PAD_TOP = 56;
 const IMAGE_PAD_BOTTOM = 44;
 const IMAGE_PAD_SIDE = 8;
+// User zoom (mouse-wheel on the image). zoomLevel = 1 == "fit-letterbox",
+// zoomLevel > 1 zooms in past fit, < 1 zooms out below fit (we clamp to 1.0
+// so the image never appears smaller than fit). Pan is offset added on top
+// of the centred letterbox position and is also clamped so the image
+// cannot be scrolled completely out of view.
+const MIN_ZOOM_LEVEL = 1.0;
+const MAX_ZOOM_LEVEL = 8.0;
+const ZOOM_STEP = 1.15;
+// How many viewport-pixels of the image must remain inside the usable area
+// at all pan extremes. Keeps the picture findable when user pans aggressively.
+const PAN_SLACK_PX = 120;
+// Brush slider uses a log-scaled mapping (slider 0..100 → image-px 1..400)
+// so small brushes get more granular control where it matters most.
+const BRUSH_MIN_PX = 1;
+const BRUSH_MAX_PX = 400;
+const BRUSH_LOG_MIN = Math.log(BRUSH_MIN_PX);
+const BRUSH_LOG_MAX = Math.log(BRUSH_MAX_PX);
 // Cap how many edits the Undo stack remembers. Older entries are evicted FIFO
 // and their backing temp files are removed via /cleanup_paths so disk usage
 // stays bounded.
@@ -95,6 +112,16 @@ function stopPropagation(element, events) {
 }
 function clamp(value, min, max) {
     return Math.max(min, Math.min(max, value));
+}
+function sliderValueToBrush(sliderValue) {
+    const t = clamp(sliderValue / 100, 0, 1);
+    const logSize = BRUSH_LOG_MIN + t * (BRUSH_LOG_MAX - BRUSH_LOG_MIN);
+    return Math.max(BRUSH_MIN_PX, Math.round(Math.exp(logSize)));
+}
+function brushToSliderValue(brushPx) {
+    const value = clamp(brushPx, BRUSH_MIN_PX, BRUSH_MAX_PX);
+    const t = (Math.log(value) - BRUSH_LOG_MIN) / (BRUSH_LOG_MAX - BRUSH_LOG_MIN);
+    return clamp(Math.round(t * 100), 0, 100);
 }
 export function getWidget(node, name) {
     return node?.widgets?.find((widget) => widget?.name === name) || null;
@@ -253,9 +280,21 @@ export function setupLamaCleanup(node) {
         image: null,
         imageWidth: 0,
         imageHeight: 0,
+        // scale = fitScale * zoomLevel; fitScale recomputed each resize so the
+        // image always letterboxes inside the canvas at zoomLevel = 1.
+        fitScale: 1,
         scale: 1,
+        zoomLevel: 1,
+        panX: 0,
+        panY: 0,
         offsetX: 0,
         offsetY: 0,
+        // Mouse-driven pan state (middle-button drag).
+        isPanning: false,
+        panStartClientX: 0,
+        panStartClientY: 0,
+        panStartPanX: 0,
+        panStartPanY: 0,
         isProcessing: false,
         isModelLoading: false,
         modelStatusPollHandle: null,
@@ -350,16 +389,21 @@ export function setupLamaCleanup(node) {
     const brushLabel = document.createElement("div");
     brushLabel.className = "ts-lama__brush-label";
     brushLabel.textContent = "Brush";
+    // Brush slider uses a log scale (1 → 400 px in image-pixels) so small,
+    // detail brushes get half the slider range instead of being squeezed into
+    // the first few percent. The underlying widget stores the literal image-px
+    // size so existing workflows keep working.
     const brushSlider = makeSlider({
-        min: 1,
-        max: 400,
+        min: 0,
+        max: 100,
         step: 1,
-        value: state.brushSize,
+        value: brushToSliderValue(state.brushSize),
         className: "ts-lama__brush-slider",
-        onInput: (next) => {
-            state.brushSize = next;
-            brushValueLabel.textContent = String(Math.round(next));
-            setWidgetValue(node, INPUT_BRUSH_SIZE, next);
+        onInput: (sliderValue) => {
+            const brushPx = sliderValueToBrush(sliderValue);
+            state.brushSize = brushPx;
+            brushValueLabel.textContent = String(brushPx);
+            setWidgetValue(node, INPUT_BRUSH_SIZE, brushPx);
             updateCursorElement();
         },
     });
@@ -367,6 +411,18 @@ export function setupLamaCleanup(node) {
     brushValueLabel.className = "ts-lama__brush-value";
     brushValueLabel.textContent = String(Math.round(state.brushSize));
     brushGroup.append(brushLabel, brushSlider, brushValueLabel);
+
+    const zoomGroup = document.createElement("div");
+    zoomGroup.className = "ts-lama__group";
+    const fitButton = document.createElement("button");
+    fitButton.className = "ts-lama__btn";
+    fitButton.textContent = "Fit";
+    fitButton.title = "Fit image to view (resets zoom and pan).";
+    const oneToOneButton = document.createElement("button");
+    oneToOneButton.className = "ts-lama__btn";
+    oneToOneButton.textContent = "1:1";
+    oneToOneButton.title = "Show image at 1:1 (one image pixel per screen pixel).";
+    zoomGroup.append(fitButton, oneToOneButton);
 
     const rightGroup = document.createElement("div");
     rightGroup.className = "ts-lama__group";
@@ -376,7 +432,7 @@ export function setupLamaCleanup(node) {
     settingsButton.innerHTML = gearIconSvg();
     rightGroup.append(settingsButton);
 
-    toolbar.append(leftGroup, brushGroup, rightGroup);
+    toolbar.append(leftGroup, brushGroup, zoomGroup, rightGroup);
 
     // Settings popover
     const settings = document.createElement("div");
@@ -449,10 +505,14 @@ export function setupLamaCleanup(node) {
 
     container.append(canvas, empty, overlay, toolbar, settings, statusBar, fileInput, cursorElement, dropHint);
 
+    // Note: "wheel" intentionally NOT stopped here — the canvas has its own
+    // wheel handler that zooms the image, and we want that handler to run.
+    // (LiteGraph graph-zoom would conflict otherwise; wheel-over-image is
+    // handled fully inside the node.)
     stopPropagation(container, [
         "pointerdown", "pointerup", "pointermove",
         "mousedown", "mouseup", "mousemove",
-        "wheel", "click", "dblclick", "contextmenu",
+        "click", "dblclick", "contextmenu",
     ]);
 
     // ComfyUI core (>=1.34) routes DOM widgets through computeLayoutSize:
@@ -502,8 +562,11 @@ export function setupLamaCleanup(node) {
         const historyTag = state.history.length > 1
             ? ` • step ${state.historyIndex + 1}/${state.history.length}`
             : "";
+        const zoomTag = state.image && state.scale > 0
+            ? ` • ${Math.round(state.scale * 100)}%`
+            : "";
         statusMeta.textContent = state.imageWidth && state.imageHeight
-            ? `${filename || "image"} • ${state.imageWidth} × ${state.imageHeight}${historyTag}`
+            ? `${filename || "image"} • ${state.imageWidth} × ${state.imageHeight}${historyTag}${zoomTag}`
             : filename || "";
         empty.style.display = state.image ? "none" : "flex";
         // Hide the native cursor only while an image is loaded (we draw our
@@ -667,18 +730,40 @@ export function setupLamaCleanup(node) {
             canvas.height = height;
             imageCacheValid = false;
         }
-        // Compute the usable image area inside canvas, accounting for the
-        // toolbar (top) and statusbar (bottom) overlays so the image fit-
-        // letterboxes between them. state.offsetX/Y are kept fresh between
-        // redraws so cursor positioning, mask compositing and image cache
-        // stay aligned.
+        // Image placement = letterbox fit, then multiplied by user zoom, then
+        // shifted by user pan. The image cache holds the rendered image at
+        // current scale/offset and must be invalidated when any of those
+        // change (resize, wheel zoom, drag pan, Fit / 1:1 buttons).
         if (state.imageWidth > 0 && state.imageHeight > 0 && rect.width > 0 && rect.height > 0) {
             const usableWidth = Math.max(1, rect.width - IMAGE_PAD_SIDE * 2);
             const usableHeight = Math.max(1, rect.height - IMAGE_PAD_TOP - IMAGE_PAD_BOTTOM);
-            const scale = Math.min(usableWidth / state.imageWidth, usableHeight / state.imageHeight);
-            state.scale = scale;
-            state.offsetX = IMAGE_PAD_SIDE + (usableWidth - state.imageWidth * scale) / 2;
-            state.offsetY = IMAGE_PAD_TOP + (usableHeight - state.imageHeight * scale) / 2;
+            const fitScale = Math.min(usableWidth / state.imageWidth, usableHeight / state.imageHeight);
+            const newScale = fitScale * state.zoomLevel;
+            const drawWidth = state.imageWidth * newScale;
+            const drawHeight = state.imageHeight * newScale;
+            // Clamp pan: overflow ÷ 2 keeps an aligned edge in view; PAN_SLACK
+            // gives a small extra margin so the image never fully leaves the
+            // usable area (Fit button always brings it back regardless).
+            const overflowX = Math.max(0, drawWidth - usableWidth);
+            const overflowY = Math.max(0, drawHeight - usableHeight);
+            const maxPanX = overflowX / 2 + PAN_SLACK_PX;
+            const maxPanY = overflowY / 2 + PAN_SLACK_PX;
+            state.panX = clamp(state.panX, -maxPanX, maxPanX);
+            state.panY = clamp(state.panY, -maxPanY, maxPanY);
+            const newOffsetX = IMAGE_PAD_SIDE + (usableWidth - drawWidth) / 2 + state.panX;
+            const newOffsetY = IMAGE_PAD_TOP + (usableHeight - drawHeight) / 2 + state.panY;
+            // Invalidate the image cache if anything about the rendered image
+            // placement changed since the last cache rebuild — wheel zoom and
+            // pan land here, not just node-resize.
+            if (Math.abs(newScale - state.scale) > 1e-4
+                || Math.abs(newOffsetX - state.offsetX) > 0.5
+                || Math.abs(newOffsetY - state.offsetY) > 0.5) {
+                imageCacheValid = false;
+            }
+            state.fitScale = fitScale;
+            state.scale = newScale;
+            state.offsetX = newOffsetX;
+            state.offsetY = newOffsetY;
         }
         return { rectWidth: rect.width, rectHeight: rect.height, dpr };
     }
@@ -791,6 +876,10 @@ export function setupLamaCleanup(node) {
     }
 
     function pointerToImageCoords(event) {
+        // Refresh placement state before reading it — node resize, wheel zoom
+        // and pan can all leave state.scale/offset stale relative to the live
+        // canvas rect. Without this, withinImage flickers and the brush jumps.
+        resizeCanvas();
         const rect = canvas.getBoundingClientRect();
         const xInCanvas = event.clientX - rect.left;
         const yInCanvas = event.clientY - rect.top;
@@ -842,9 +931,19 @@ export function setupLamaCleanup(node) {
         try {
             const image = await loadImageElement(url);
             if (!image) return;
+            const newWidth = image.naturalWidth || image.width || 0;
+            const newHeight = image.naturalHeight || image.height || 0;
+            // Reset zoom and pan when the image dimensions actually change —
+            // i.e. on a brand-new load. Inpaint refreshes (same w×h) preserve
+            // the user's current zoom/pan so they can keep cleaning a region.
+            if (newWidth !== state.imageWidth || newHeight !== state.imageHeight) {
+                state.zoomLevel = 1;
+                state.panX = 0;
+                state.panY = 0;
+            }
             state.image = image;
-            state.imageWidth = image.naturalWidth || image.width || 0;
-            state.imageHeight = image.naturalHeight || image.height || 0;
+            state.imageWidth = newWidth;
+            state.imageHeight = newHeight;
             imageCacheValid = false;
             ensureMaskCanvasSize();
             if (options.clearMask !== false) clearMask();
@@ -1051,6 +1150,19 @@ export function setupLamaCleanup(node) {
     function onPointerDown(event) {
         if (state.isProcessing) return;
         if (!state.image) return;
+        // Middle-mouse drag pans the image when zoomed in (and is a harmless
+        // no-op at zoomLevel = 1 because the clamp keeps pan small there).
+        if (event.button === 1) {
+            event.preventDefault();
+            state.isPanning = true;
+            state.panStartClientX = event.clientX;
+            state.panStartClientY = event.clientY;
+            state.panStartPanX = state.panX;
+            state.panStartPanY = state.panY;
+            canvas.setPointerCapture?.(event.pointerId);
+            canvas.style.cursor = "grabbing";
+            return;
+        }
         if (event.button !== 0) return;
         const coords = pointerToImageCoords(event);
         if (!coords.withinImage) return;
@@ -1069,12 +1181,29 @@ export function setupLamaCleanup(node) {
 
     function onPointerMove(event) {
         if (!state.image) return;
+        if (state.isPanning) {
+            // panX/Y are stored in viewport-px (rect coords) like state.offsetX,
+            // so the delta is the raw clientX/Y change. resizeCanvas() clamps
+            // pan to keep the image findable.
+            state.panX = state.panStartPanX + (event.clientX - state.panStartClientX);
+            state.panY = state.panStartPanY + (event.clientY - state.panStartClientY);
+            imageCacheValid = false;
+            state.cursorClientX = event.clientX;
+            state.cursorClientY = event.clientY;
+            updateMeta();
+            requestRedraw();
+            return;
+        }
         const coords = pointerToImageCoords(event);
         state.cursorImageX = coords.imageX;
         state.cursorImageY = coords.imageY;
         state.cursorClientX = event.clientX;
         state.cursorClientY = event.clientY;
-        state.cursorVisible = coords.withinImage;
+        // Cursor is visible whenever the pointer is over the canvas and an
+        // image is loaded — outside the image we still want feedback so the
+        // user can see the brush approach the edge. Painting (drawSegment)
+        // remains gated on withinImage so we never write outside bounds.
+        state.cursorVisible = Boolean(state.image);
         if (state.isDrawing && coords.withinImage) {
             drawSegment(state.lastDrawImageX, state.lastDrawImageY, coords.imageX, coords.imageY, state.brushSize * 0.5);
             state.lastDrawImageX = coords.imageX;
@@ -1090,6 +1219,12 @@ export function setupLamaCleanup(node) {
     }
 
     function onPointerUp(event) {
+        if (state.isPanning && (event.button === 1 || event.type === "pointercancel")) {
+            state.isPanning = false;
+            canvas.releasePointerCapture?.(event.pointerId);
+            canvas.style.cursor = "";
+            return;
+        }
         if (!state.isDrawing) return;
         state.isDrawing = false;
         canvas.releasePointerCapture?.(event.pointerId);
@@ -1097,8 +1232,53 @@ export function setupLamaCleanup(node) {
     }
 
     function onPointerLeave() {
+        if (state.isPanning) {
+            state.isPanning = false;
+            canvas.style.cursor = "";
+        }
         state.cursorVisible = false;
         updateCursorElement();
+    }
+
+    function onWheel(event) {
+        // Image-level zoom: anchored on cursor, so the image pixel under the
+        // mouse stays put while the picture grows or shrinks around it.
+        event.preventDefault();
+        event.stopPropagation();
+        if (!state.image || !state.imageWidth || !state.imageHeight) return;
+        if (state.isProcessing) return;
+        resizeCanvas();
+        const rect = canvas.getBoundingClientRect();
+        const xInCanvas = event.clientX - rect.left;
+        const yInCanvas = event.clientY - rect.top;
+        const oldScale = state.scale;
+        if (oldScale <= 0) return;
+        const imageX = (xInCanvas - state.offsetX) / oldScale;
+        const imageY = (yInCanvas - state.offsetY) / oldScale;
+        const factor = event.deltaY < 0 ? ZOOM_STEP : 1 / ZOOM_STEP;
+        const newZoomLevel = clamp(state.zoomLevel * factor, MIN_ZOOM_LEVEL, MAX_ZOOM_LEVEL);
+        if (Math.abs(newZoomLevel - state.zoomLevel) < 1e-4) return;
+        state.zoomLevel = newZoomLevel;
+        // Solve pan so (imageX, imageY) maps back to (xInCanvas, yInCanvas)
+        // under the new scale. Same math the user expects from Photoshop.
+        const newScale = state.fitScale * state.zoomLevel;
+        const newDrawWidth = state.imageWidth * newScale;
+        const newDrawHeight = state.imageHeight * newScale;
+        const usableWidth = Math.max(1, rect.width - IMAGE_PAD_SIDE * 2);
+        const usableHeight = Math.max(1, rect.height - IMAGE_PAD_TOP - IMAGE_PAD_BOTTOM);
+        const centeredOffsetX = IMAGE_PAD_SIDE + (usableWidth - newDrawWidth) / 2;
+        const centeredOffsetY = IMAGE_PAD_TOP + (usableHeight - newDrawHeight) / 2;
+        const desiredOffsetX = xInCanvas - imageX * newScale;
+        const desiredOffsetY = yInCanvas - imageY * newScale;
+        state.panX = desiredOffsetX - centeredOffsetX;
+        state.panY = desiredOffsetY - centeredOffsetY;
+        imageCacheValid = false;
+        state.cursorClientX = event.clientX;
+        state.cursorClientY = event.clientY;
+        state.cursorVisible = Boolean(state.image);
+        updateMeta();
+        updateCursorElement();
+        requestRedraw();
     }
 
     canvas.addEventListener("pointerdown", onPointerDown);
@@ -1107,6 +1287,12 @@ export function setupLamaCleanup(node) {
     canvas.addEventListener("pointercancel", onPointerUp);
     canvas.addEventListener("pointerleave", onPointerLeave);
     canvas.addEventListener("contextmenu", (event) => event.preventDefault());
+    // passive:false because the handler calls preventDefault() to stop the
+    // page from scrolling while the user zooms inside the node.
+    canvas.addEventListener("wheel", onWheel, { passive: false });
+    // Disable middle-click autoscroll on Windows — Chromium opens a vertical-
+    // scroll cursor on middle-button-down by default, which fights our pan.
+    canvas.addEventListener("auxclick", (event) => { if (event.button === 1) event.preventDefault(); });
 
     loadButton.addEventListener("click", (event) => {
         event.stopPropagation();
@@ -1119,6 +1305,28 @@ export function setupLamaCleanup(node) {
     });
     saveButton.addEventListener("click", (event) => { event.stopPropagation(); saveToOutput(); });
     resetButton.addEventListener("click", (event) => { event.stopPropagation(); resetToSource(); });
+    fitButton.addEventListener("click", (event) => {
+        event.stopPropagation();
+        state.zoomLevel = 1;
+        state.panX = 0;
+        state.panY = 0;
+        imageCacheValid = false;
+        updateMeta();
+        updateCursorElement();
+        requestRedraw();
+    });
+    oneToOneButton.addEventListener("click", (event) => {
+        event.stopPropagation();
+        if (state.fitScale > 0) {
+            state.zoomLevel = clamp(1 / state.fitScale, MIN_ZOOM_LEVEL, MAX_ZOOM_LEVEL);
+            state.panX = 0;
+            state.panY = 0;
+            imageCacheValid = false;
+            updateMeta();
+            updateCursorElement();
+            requestRedraw();
+        }
+    });
     undoButton.addEventListener("click", (event) => { event.stopPropagation(); doUndo(); });
     redoButton.addEventListener("click", (event) => { event.stopPropagation(); doRedo(); });
     settingsButton.addEventListener("click", (event) => {
