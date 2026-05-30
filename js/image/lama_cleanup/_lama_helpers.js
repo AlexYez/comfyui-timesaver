@@ -113,15 +113,22 @@ function stopPropagation(element, events) {
 function clamp(value, min, max) {
     return Math.max(min, Math.min(max, value));
 }
+// Slider resolution: one slider step per integer-image-pixel candidate in
+// the BRUSH_MAX_PX range. With 400 steps over a log [1..400] mapping, every
+// integer brush value in 1..200 round-trips cleanly through
+// brushToSliderValue → sliderValueToBrush (a few values above ~390 collapse
+// to the max). At 100 steps the round-trip drifts (e.g. 40 → 62 → 41) and
+// silently mutates persisted workflow brush_size on first interaction.
+const BRUSH_SLIDER_STEPS = BRUSH_MAX_PX;
 function sliderValueToBrush(sliderValue) {
-    const t = clamp(sliderValue / 100, 0, 1);
+    const t = clamp(sliderValue / BRUSH_SLIDER_STEPS, 0, 1);
     const logSize = BRUSH_LOG_MIN + t * (BRUSH_LOG_MAX - BRUSH_LOG_MIN);
     return Math.max(BRUSH_MIN_PX, Math.round(Math.exp(logSize)));
 }
 function brushToSliderValue(brushPx) {
     const value = clamp(brushPx, BRUSH_MIN_PX, BRUSH_MAX_PX);
     const t = (Math.log(value) - BRUSH_LOG_MIN) / (BRUSH_LOG_MAX - BRUSH_LOG_MIN);
-    return clamp(Math.round(t * 100), 0, 100);
+    return clamp(Math.round(t * BRUSH_SLIDER_STEPS), 0, BRUSH_SLIDER_STEPS);
 }
 export function getWidget(node, name) {
     return node?.widgets?.find((widget) => widget?.name === name) || null;
@@ -395,7 +402,7 @@ export function setupLamaCleanup(node) {
     // size so existing workflows keep working.
     const brushSlider = makeSlider({
         min: 0,
-        max: 100,
+        max: BRUSH_SLIDER_STEPS,
         step: 1,
         value: brushToSliderValue(state.brushSize),
         className: "ts-lama__brush-slider",
