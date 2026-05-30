@@ -1329,7 +1329,16 @@ export function setupLamaCleanup(node) {
         if (oldScale <= 0) return;
         const imageX = (xInCanvas - state.offsetX) / oldScale;
         const imageY = (yInCanvas - state.offsetY) / oldScale;
-        const factor = event.deltaY < 0 ? ZOOM_STEP : 1 / ZOOM_STEP;
+        // Normalise wheel delta across input devices. A desktop wheel notch
+        // gives deltaY ~100 in deltaMode=0 (pixels); a macOS trackpad pinch
+        // emits dozens of events with deltaY ~2-6 each. Firefox can use
+        // deltaMode=1 (lines, deltaY ~3 per notch). Without normalisation a
+        // single trackpad pinch saturates the zoom at MAX in one gesture.
+        const deltaModeUnit = event.deltaMode === 1 ? 33 : event.deltaMode === 2 ? 400 : 1;
+        const intensity = clamp(Math.abs(event.deltaY) * deltaModeUnit / 100, 0.05, 1);
+        const factor = event.deltaY < 0
+            ? Math.pow(ZOOM_STEP, intensity)
+            : Math.pow(1 / ZOOM_STEP, intensity);
         const newZoomLevel = clamp(state.zoomLevel * factor, MIN_ZOOM_LEVEL, MAX_ZOOM_LEVEL);
         if (Math.abs(newZoomLevel - state.zoomLevel) < 1e-4) return;
         state.zoomLevel = newZoomLevel;
