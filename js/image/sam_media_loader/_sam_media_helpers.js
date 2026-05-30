@@ -592,6 +592,15 @@ export function setupSamMediaLoader(node) {
         if (canvas.width !== width || canvas.height !== height) {
             canvas.width = width;
             canvas.height = height;
+            // Assigning to canvas.width/height clears the bitmap. When
+            // resizeCanvas ran from inside redraw() the very next instruction
+            // repaints the canvas anyway, but when it ran from pointerToImage
+            // Coords (mouse hover, LiteGraph graph zoom changing the rect
+            // without firing afterResize, etc.) nothing else schedules a
+            // repaint and the image silently disappears until the user
+            // touches the node. Queue a redraw so the cleared canvas is
+            // refilled on the next animation frame.
+            requestRedraw();
         }
         if (state.imageWidth > 0 && state.imageHeight > 0 && rect.width > 0 && rect.height > 0) {
             const usableWidth = Math.max(1, rect.width - IMAGE_PAD_SIDE * 2);
