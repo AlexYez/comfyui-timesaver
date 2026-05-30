@@ -520,14 +520,18 @@ export function setupLamaCleanup(node) {
 
     container.append(canvas, empty, overlay, toolbar, settings, statusBar, fileInput, cursorElement, dropHint);
 
-    // Note: "wheel" intentionally NOT stopped here — the canvas has its own
-    // wheel handler that zooms the image, and we want that handler to run.
-    // (LiteGraph graph-zoom would conflict otherwise; wheel-over-image is
-    // handled fully inside the node.)
+    // "wheel" is stopped at the container level so wheel events fired over
+    // the toolbar / brush slider / settings popover (children of container,
+    // not children of canvas) do not bubble out to LiteGraph and zoom the
+    // graph. The canvas has its own wheel listener registered below that
+    // runs first because the canvas is the innermost target of any wheel
+    // event over the image — that listener calls stopPropagation itself,
+    // so wheel-over-image is consumed by in-node zoom and never reaches the
+    // container handler.
     stopPropagation(container, [
         "pointerdown", "pointerup", "pointermove",
         "mousedown", "mouseup", "mousemove",
-        "click", "dblclick", "contextmenu",
+        "wheel", "click", "dblclick", "contextmenu",
     ]);
 
     // ComfyUI core (>=1.34) routes DOM widgets through computeLayoutSize:
