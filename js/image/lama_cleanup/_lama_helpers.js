@@ -729,6 +729,12 @@ export function setupLamaCleanup(node) {
             canvas.width = width;
             canvas.height = height;
             imageCacheValid = false;
+            // Assigning to canvas.width/height clears the bitmap. Pointer
+            // events and LiteGraph graph-zoom can both call resizeCanvas
+            // outside the redraw cycle (pointerToImageCoords on hover, wheel
+            // handler before scale math). Without this requestRedraw the
+            // image would disappear until the user nudges the node.
+            requestRedraw();
         }
         // Image placement = letterbox fit, then multiplied by user zoom, then
         // shifted by user pan. The image cache holds the rendered image at
