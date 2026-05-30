@@ -828,6 +828,22 @@ export function setupLamaCleanup(node) {
             cursorElement.classList.remove("is-visible");
             return;
         }
+        // Hide the brush ring whenever the pointer hovers (or pointer-capture
+        // drag-paints) over one of the on-canvas overlays — toolbar, status
+        // bar, settings popover. Without this, painting strokes that drag
+        // up into the toolbar leave a brush circle floating on top of the
+        // buttons, and pointer-leave never fires while capture is held so
+        // the ring stays planted until the user releases LMB.
+        const overlays = [toolbar, statusBar, settings];
+        for (const el of overlays) {
+            const r = el.getBoundingClientRect();
+            if (!r.width || !r.height) continue;
+            if (state.cursorClientX >= r.left && state.cursorClientX <= r.right
+                && state.cursorClientY >= r.top && state.cursorClientY <= r.bottom) {
+                cursorElement.classList.remove("is-visible");
+                return;
+            }
+        }
         // CSS `left`/`top` and `width`/`height` are interpreted in the
         // container's LOCAL (pre-transform) pixel space, but `clientX`,
         // `clientY` and `getBoundingClientRect()` are in VIEWPORT (post-
