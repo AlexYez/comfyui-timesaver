@@ -157,6 +157,14 @@ function setWidgetValue(node, name, value) {
 function getWidgetValue(node, name, fallback) {
     return getWidget(node, name)?.value ?? fallback;
 }
+function readNumber(node, name, fallback) {
+    // Distinct from `Number(getWidgetValue(...) || fallback)` which collapses
+    // a legitimate stored 0 into the fallback. We preserve 0 (and any other
+    // finite number) and only fall back when the value is NaN / null /
+    // undefined / non-numeric string.
+    const num = Number(getWidgetValue(node, name, fallback));
+    return Number.isFinite(num) ? num : fallback;
+}
 function removeDomWidget(node) {
     if (!Array.isArray(node?.widgets)) return;
     for (let index = node.widgets.length - 1; index >= 0; index -= 1) {
@@ -278,10 +286,10 @@ export function setupLamaCleanup(node) {
         sessionId,
         sourcePath: String(getWidgetValue(node, INPUT_SOURCE_PATH, "") || ""),
         workingPath: String(getWidgetValue(node, INPUT_WORKING_PATH, "") || ""),
-        brushSize: Number(getWidgetValue(node, INPUT_BRUSH_SIZE, 40) || 40),
-        maxResolution: Number(getWidgetValue(node, INPUT_MAX_RESOLUTION, 512) || 512),
-        maskPadding: Number(getWidgetValue(node, INPUT_MASK_PADDING, 64) || 64),
-        feather: Number(getWidgetValue(node, INPUT_FEATHER, 4) || 4),
+        brushSize: readNumber(node, INPUT_BRUSH_SIZE, 40),
+        maxResolution: readNumber(node, INPUT_MAX_RESOLUTION, 512),
+        maskPadding: readNumber(node, INPUT_MASK_PADDING, 64),
+        feather: readNumber(node, INPUT_FEATHER, 4),
         statusText: "",
         statusKind: "info",
         image: null,
