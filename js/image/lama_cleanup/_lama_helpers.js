@@ -1196,6 +1196,17 @@ export function setupLamaCleanup(node) {
             imageCacheValid = false;
             state.cursorClientX = event.clientX;
             state.cursorClientY = event.clientY;
+            // If the user pressed MMB mid-stroke (LMB still held), keep
+            // lastDrawImageX/Y synced with the current cursor position so
+            // releasing MMB and continuing the LMB stroke resumes from the
+            // pointer instead of jump-painting a segment from the stale
+            // pre-pan position across the canvas. drawSegment is NOT called
+            // here — pan does not paint, it just rebases the anchor.
+            if (state.isDrawing) {
+                const coords = pointerToImageCoords(event);
+                state.lastDrawImageX = coords.imageX;
+                state.lastDrawImageY = coords.imageY;
+            }
             updateMeta();
             requestRedraw();
             return;
