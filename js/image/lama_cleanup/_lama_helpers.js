@@ -1167,6 +1167,15 @@ export function setupLamaCleanup(node) {
         state.workingPath = "";
         setWidgetValue(node, INPUT_WORKING_PATH, "");
         clearMask();
+        // refreshImage only resets zoom/pan when image dimensions actually
+        // change — for a Reset, the re-seeded source has the same dimensions
+        // as what was on screen, so the dimensions-equal heuristic would keep
+        // whatever zoom/pan the user had built up. That contradicts the Reset
+        // button's documented "discard local edits and restart from the
+        // loaded image" semantics; reset them here explicitly.
+        state.zoomLevel = 1;
+        state.panX = 0;
+        state.panY = 0;
         await seedWorkingFile();
     }
 
