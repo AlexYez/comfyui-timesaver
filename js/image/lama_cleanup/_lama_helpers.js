@@ -286,7 +286,10 @@ export function setupLamaCleanup(node) {
         sessionId,
         sourcePath: String(getWidgetValue(node, INPUT_SOURCE_PATH, "") || ""),
         workingPath: String(getWidgetValue(node, INPUT_WORKING_PATH, "") || ""),
-        brushSize: readNumber(node, INPUT_BRUSH_SIZE, 40),
+        // brushSize is clamped at load so a tampered or out-of-range
+        // workflow value (e.g. 1000 from an older schema) cannot reach
+        // drawSegment / drawBrushAt and paint a 500-image-px mask blob.
+        brushSize: clamp(readNumber(node, INPUT_BRUSH_SIZE, 40), BRUSH_MIN_PX, BRUSH_MAX_PX),
         maxResolution: readNumber(node, INPUT_MAX_RESOLUTION, 512),
         maskPadding: readNumber(node, INPUT_MASK_PADDING, 64),
         feather: readNumber(node, INPUT_FEATHER, 4),
