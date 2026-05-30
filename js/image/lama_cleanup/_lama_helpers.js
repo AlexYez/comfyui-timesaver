@@ -780,12 +780,11 @@ export function setupLamaCleanup(node) {
             state.panY = clamp(state.panY, -maxPanY, maxPanY);
             const newOffsetX = IMAGE_PAD_SIDE + (usableWidth - drawWidth) / 2 + state.panX;
             const newOffsetY = IMAGE_PAD_TOP + (usableHeight - drawHeight) / 2 + state.panY;
-            // Invalidate the image cache if anything about the rendered image
-            // placement changed since the last cache rebuild — wheel zoom and
-            // pan land here, not just node-resize.
-            if (Math.abs(newScale - state.scale) > 1e-4
-                || Math.abs(newOffsetX - state.offsetX) > 0.5
-                || Math.abs(newOffsetY - state.offsetY) > 0.5) {
+            // Image cache stores the image at scale, blitted at runtime
+            // offset, so only a scale change invalidates it. Offset changes
+            // (pan) are handled by drawImage's dx/dy in redraw() without a
+            // rebuild.
+            if (Math.abs(newScale - state.scale) > 1e-4) {
                 imageCacheValid = false;
             }
             state.fitScale = fitScale;
@@ -796,25 +795,28 @@ export function setupLamaCleanup(node) {
         return { rectWidth: rect.width, rectHeight: rect.height, dpr };
     }
 
-    function rebuildImageCache(rectWidth, rectHeight, dpr) {
+    function rebuildImageCache(dpr) {
         if (!state.image || !state.imageWidth || !state.imageHeight) {
             imageCacheValid = false;
             return;
         }
-        const cacheW = Math.max(1, Math.floor(rectWidth * dpr));
-        const cacheH = Math.max(1, Math.floor(rectHeight * dpr));
+        // Cache holds the image at its current display scale at the cache's
+        // origin (no offset). redraw() blits the cache into the main canvas
+        // at state.offsetX/Y. Decoupling cache size from the *displayed
+        // position* means pan does not invalidate the cache (only zoom
+        // does), eliminating the per-pointermove rebuild that previously
+        // collapsed FPS on 4K+ images during a pan gesture.
+        const drawWidth = state.imageWidth * state.scale;
+        const drawHeight = state.imageHeight * state.scale;
+        const cacheW = Math.max(1, Math.ceil(drawWidth * dpr));
+        const cacheH = Math.max(1, Math.ceil(drawHeight * dpr));
         if (imageCacheCanvas.width !== cacheW || imageCacheCanvas.height !== cacheH) {
             imageCacheCanvas.width = cacheW;
             imageCacheCanvas.height = cacheH;
         }
         imageCacheCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
-        imageCacheCtx.clearRect(0, 0, rectWidth, rectHeight);
-        // Use the padded transform that resizeCanvas just stored on `state`,
-        // so the cached image matches the placement assumed by mask blits and
-        // pointer→image math.
-        const drawWidth = state.imageWidth * state.scale;
-        const drawHeight = state.imageHeight * state.scale;
-        imageCacheCtx.drawImage(state.image, state.offsetX, state.offsetY, drawWidth, drawHeight);
+        imageCacheCtx.clearRect(0, 0, drawWidth, drawHeight);
+        imageCacheCtx.drawImage(state.image, 0, 0, drawWidth, drawHeight);
         imageCacheValid = true;
     }
 
@@ -884,14 +886,16 @@ export function setupLamaCleanup(node) {
             updateCursorElement();
             return;
         }
-        // Rebuild the cached display-resolution image only when the canvas
-        // size or the loaded image changed. Subsequent redraws (e.g. mask
-        // updates while painting) just blit the cache.
+        // Rebuild the cached display-resolution image only when the image
+        // identity or scale changed. Pan (offsetX/offsetY only) reuses the
+        // cache and just blits it at the new offset.
         if (!imageCacheValid) {
-            rebuildImageCache(rectWidth, rectHeight, dpr);
+            rebuildImageCache(dpr);
         }
-        ctx.setTransform(1, 0, 0, 1, 0, 0);
-        ctx.drawImage(imageCacheCanvas, 0, 0);
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        const cacheBlitW = state.imageWidth * state.scale;
+        const cacheBlitH = state.imageHeight * state.scale;
+        ctx.drawImage(imageCacheCanvas, state.offsetX, state.offsetY, cacheBlitW, cacheBlitH);
         if (tintedMaskCanvas.width && tintedMaskCanvas.height) {
             // tintedMaskCanvas is kept up to date by drawBrushAt/drawSegment,
             // so display only needs a single scaled blit.
@@ -1237,10 +1241,12 @@ export function setupLamaCleanup(node) {
         if (state.isPanning) {
             // panX/Y are stored in viewport-px (rect coords) like state.offsetX,
             // so the delta is the raw clientX/Y change. resizeCanvas() clamps
-            // pan to keep the image findable.
+            // pan to keep the image findable. We deliberately do NOT mark the
+            // image cache invalid here — the cache is sized to the image-at-
+            // scale and blitted at runtime offset, so pan reuses it without
+            // a rebuild.
             state.panX = state.panStartPanX + (event.clientX - state.panStartClientX);
             state.panY = state.panStartPanY + (event.clientY - state.panStartClientY);
-            imageCacheValid = false;
             state.cursorClientX = event.clientX;
             state.cursorClientY = event.clientY;
             // If the user pressed MMB mid-stroke (LMB still held), keep
