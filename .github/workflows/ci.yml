@@ -6,9 +6,23 @@ on:
   pull_request:
     branches: [master, main]
 
+# What this CI actually verifies, post v9.13:
+#
+#   - tests/ and tools/ are intentionally untracked from this repo (see
+#     `.gitignore` and project_memory/feedback_runtime_only_locations.md).
+#     They live only in the developer's dev-location and never reach
+#     GitHub or the Comfy registry zip. So CI cannot run pytest or the
+#     contract-snapshot check — those happen locally before each push.
+#
+#   - What CI CAN do is parse every shipped Python file and lint it.
+#     If a syntax error or import-time crash slipped in, compileall
+#     catches it; ruff catches style and a subset of correctness issues.
+#
+# The matrix covers the three Python versions ComfyUI supports.
+
 jobs:
-  lint-and-test:
-    name: Compile & test
+  compile-and-lint:
+    name: Compile & lint
     runs-on: ubuntu-latest
 
     strategy:
@@ -25,24 +39,14 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Install pytest and ruff
-        # The pack itself ships heavy optional dependencies (torch, demucs,
-        # whisper, etc.) that cannot reliably install on every CI matrix
-        # entry. The smoke and contract tests are designed to run without
-        # those — they parse files and verify discovery logic.
-        run: python -m pip install --upgrade pip pytest ruff
+      - name: Install lint tooling
+        run: python -m pip install --upgrade pip ruff
 
       - name: Compile every Python file
         run: python -m compileall -q .
 
-      - name: Run smoke / contract tests
-        run: python -m pytest tests -q
-
-      - name: Verify node contract snapshot is up to date
-        run: python tools/build_node_contracts.py --check
-
       - name: Lint with ruff (non-blocking)
-        # Surfaces style/quality regressions without blocking merge. Drop
-        # `continue-on-error` once the existing baseline is fixed.
+        # Surfaces style / quality regressions without blocking merge.
+        # Drop `continue-on-error` once the existing baseline is fixed.
         continue-on-error: true
         run: python -m ruff check .
