@@ -770,12 +770,16 @@ export function setupLamaCleanup(node) {
             const drawWidth = state.imageWidth * newScale;
             const drawHeight = state.imageHeight * newScale;
             // Clamp pan: overflow ÷ 2 keeps an aligned edge in view; PAN_SLACK
-            // gives a small extra margin so the image never fully leaves the
-            // usable area (Fit button always brings it back regardless).
+            // gives a small extra margin (only when the image actually
+            // overflows the usable area in that axis) so the user can pan
+            // just beyond the image edge to see context, but cannot drift
+            // off-centre at fit-letterbox where overflow is 0 in both axes.
+            // Previously PAN_SLACK_PX was added unconditionally, letting a
+            // ±120px drift at zoomLevel=1 violate the "Fit" centered guarantee.
             const overflowX = Math.max(0, drawWidth - usableWidth);
             const overflowY = Math.max(0, drawHeight - usableHeight);
-            const maxPanX = overflowX / 2 + PAN_SLACK_PX;
-            const maxPanY = overflowY / 2 + PAN_SLACK_PX;
+            const maxPanX = overflowX > 0 ? overflowX / 2 + PAN_SLACK_PX : 0;
+            const maxPanY = overflowY > 0 ? overflowY / 2 + PAN_SLACK_PX : 0;
             state.panX = clamp(state.panX, -maxPanX, maxPanX);
             state.panY = clamp(state.panY, -maxPanY, maxPanY);
             const newOffsetX = IMAGE_PAD_SIDE + (usableWidth - drawWidth) / 2 + state.panX;
