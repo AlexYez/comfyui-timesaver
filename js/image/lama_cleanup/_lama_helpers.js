@@ -1342,6 +1342,16 @@ export function setupLamaCleanup(node) {
         const desiredOffsetY = yInCanvas - imageY * newScale;
         state.panX = desiredOffsetX - centeredOffsetX;
         state.panY = desiredOffsetY - centeredOffsetY;
+        // Apply the new scale (and offsets) NOW so updateMeta's "XXX%" tag
+        // and updateCursorElement's brush radius reflect the post-zoom value
+        // in the current frame. resizeCanvas will reconfirm them on the next
+        // requestAnimationFrame (and clamp panX/Y), but without writing them
+        // here the status bar and cursor lag one frame behind every wheel
+        // tick — visible as a hitch where the cursor size pops AFTER the
+        // image redraws.
+        state.scale = newScale;
+        state.offsetX = desiredOffsetX;
+        state.offsetY = desiredOffsetY;
         imageCacheValid = false;
         state.cursorClientX = event.clientX;
         state.cursorClientY = event.clientY;
