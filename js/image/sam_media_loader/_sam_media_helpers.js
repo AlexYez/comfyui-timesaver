@@ -677,9 +677,21 @@ export function setupSamMediaLoader(node) {
     }
 
     function pointerToImageCoords(event) {
+        // Refresh placement state before reading it. resizeCanvas() recomputes
+        // state.scale, offsetX and offsetY from the live canvas rect — without
+        // this, any size change between redraws leaves the math stale and the
+        // click lands on the wrong image pixel. The two cases that triggered
+        // user-reported "selection breaks / coordinates fly off" issues:
+        //   - User resizes the node by dragging a corner. afterResize fires
+        //     requestRedraw, but if the user clicks before the next animation
+        //     frame, the click handler sees the previous scale.
+        //   - User changes LiteGraph (or Vue node) zoom. Parent CSS transform
+        //     changes getBoundingClientRect's viewport-px width, which feeds
+        //     into state.scale / offsetX, but only when redraw runs again.
+        // resizeCanvas is idempotent and cheap when nothing changed, so calling
+        // it on every pointer event has no measurable cost.
+        resizeCanvas();
         const rect = canvas.getBoundingClientRect();
-        // rect is in viewport (post-transform) pixels; canvas CSS pixels match
-        // because canvas is full-bleed inside container (per CLAUDE.md §12.5.5).
         const xInCanvas = event.clientX - rect.left;
         const yInCanvas = event.clientY - rect.top;
         const scale = state.scale > 0 ? state.scale : 1;
