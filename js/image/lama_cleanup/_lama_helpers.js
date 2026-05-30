@@ -1434,11 +1434,12 @@ export function setupLamaCleanup(node) {
             fileInput.value = "";
         }
     });
-    document.addEventListener("pointerdown", (event) => {
+    function onDocumentPointerDownForSettings(event) {
         if (!state.settingsOpen) return;
         if (settings.contains(event.target) || settingsButton.contains(event.target)) return;
         toggleSettings(false);
-    });
+    }
+    document.addEventListener("pointerdown", onDocumentPointerDownForSettings);
 
     // ---------- Drag-and-drop image files onto the node ----------
     function dragHasImage(event) {
@@ -1549,6 +1550,7 @@ export function setupLamaCleanup(node) {
         if (state.sourcePollHandle) window.clearInterval(state.sourcePollHandle);
         if (state.modelStatusPollHandle) window.clearInterval(state.modelStatusPollHandle);
         document.removeEventListener("paste", onDocumentPaste);
+        document.removeEventListener("pointerdown", onDocumentPointerDownForSettings);
     };
 
     // Wire cleanup into LiteGraph's onRemoved so polling intervals and the
