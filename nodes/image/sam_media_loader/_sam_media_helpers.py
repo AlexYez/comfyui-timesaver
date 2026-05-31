@@ -920,19 +920,39 @@ class _Sam3PreviewModel:
 
         # SAM3_Detect parses positive_coords / negative_coords with json.loads
         # and expects {"x": int, "y": int} in pixel coordinates of `image`.
+        # We defensively clamp into the image extent — frontend rounds to
+        # int when serializing, so a click on the last pixel column could
+        # round to imageWidth and slip outside the [0, W-1] expected by
+        # SAM3. Drop NaN / unparsable entries instead of inheriting them
+        # into the prompt.
+        img_w = int(rgb.width)
+        img_h = int(rgb.height)
+
         def _coords_json(points: list[dict[str, float]]) -> str:
             payload: list[dict[str, int]] = []
             for point in points:
                 try:
-                    x = int(round(float(point["x"])))
-                    y = int(round(float(point["y"])))
+                    x_f = float(point["x"])
+                    y_f = float(point["y"])
                 except (TypeError, ValueError, KeyError):
                     continue
+                if not (np.isfinite(x_f) and np.isfinite(y_f)):
+                    continue
+                x = int(round(x_f))
+                y = int(round(y_f))
+                if img_w > 0:
+                    x = max(0, min(img_w - 1, x))
+                if img_h > 0:
+                    y = max(0, min(img_h - 1, y))
                 payload.append({"x": x, "y": y})
             return json.dumps(payload, separators=(",", ":"))
 
         positive_json = _coords_json(positive_pts)
         negative_json = _coords_json(negative_pts)
+        _log_info(
+            f"SAM3 preview prompt: image={img_w}x{img_h} "
+            f"positive={positive_json} negative={negative_json}"
+        )
 
         # SAM3_Detect uses comfy.utils.ProgressBar, whose hook reads
         # ``server.PromptServer.instance.last_prompt_id`` / ``last_node_id``.
@@ -969,7 +989,12 @@ class _Sam3PreviewModel:
         else:
             return np.zeros((rgb.height, rgb.width), dtype=np.uint8)
         binary = (mask_2d > 0.5).to(torch.uint8) * 255
-        return binary.detach().cpu().numpy()
+        raw = binary.detach().cpu().numpy()
+        # Visual postprocessing — the SAM3 decoder mask has scattered noise
+        # and small interior holes that the UI overlay magnifies. Cleaning
+        # up here keeps the workflow's actual SAM3 output unmodified (this
+        # is only the in-node preview) while showing the user a tight mask.
+        return _postprocess_mask(raw)
 
 
 # Per-checkpoint asyncio.Lock so concurrent /preview_mask calls don't trample
@@ -984,6 +1009,106 @@ def _get_preview_lock(checkpoint: str) -> asyncio.Lock:
         lock = asyncio.Lock()
         _PREVIEW_LOCKS[safe] = lock
     return lock
+
+
+def _postprocess_mask(
+    mask_u8: "np.ndarray",
+    *,
+    fill_holes: bool = True,
+    min_component_area_px: int = 64,
+    smooth_radius_px: int = 3,
+) -> "np.ndarray":
+    """Clean up the raw SAM3 binary mask so the preview looks tidy.
+
+    The SAM3 decoder produces a tight per-pixel probability map; thresholding
+    at 0.5 gives a usable mask but typically leaves:
+      - small specks of false-positive foreground scattered around the object,
+      - 1-3 pixel holes inside the object where confidence dips,
+      - jagged single-pixel edge stair-stepping.
+
+    Postprocess removes those without smoothing away genuine object structure:
+      1. Morphological CLOSE — bridges 1-2 pixel gaps, smooths concave nibs.
+      2. Flood-fill the exterior background; whatever is NOT flooded but lies
+         inside the bounding hull is an interior hole → OR back into the mask.
+      3. Drop connected components below ``min_component_area_px`` so a single
+         user click does not produce a swarm of dots beside the real object.
+      4. Morphological OPEN with a smaller kernel — softens the boundary.
+
+    All ops use OpenCV which is already a hard runtime dependency. Returns a
+    uint8 ``[H, W]`` 0/255 mask the same shape as the input.
+    """
+    if mask_u8 is None or mask_u8.size == 0:
+        return mask_u8
+    try:
+        import cv2  # type: ignore
+    except ImportError:
+        # Defensive — opencv-python is in requirements, but a misconfigured
+        # install should still see a raw mask rather than an exception.
+        return mask_u8
+
+    arr = mask_u8 if mask_u8.ndim == 2 else np.squeeze(mask_u8)
+    if arr.ndim != 2:
+        return mask_u8
+
+    # Normalise to strict 0/255 (the SAM3 path already does this but be safe).
+    m = (arr > 0).astype(np.uint8) * 255
+    if not m.any():
+        return m
+
+    h, w = m.shape
+
+    # Step 1: morphological CLOSE — fills small gaps in the mask outline,
+    # bridges thin disconnects, smooths short concave nibs. The kernel is
+    # an ellipse so the smoothing is isotropic.
+    if smooth_radius_px > 0:
+        k_close = cv2.getStructuringElement(
+            cv2.MORPH_ELLIPSE,
+            (smooth_radius_px * 2 + 1, smooth_radius_px * 2 + 1),
+        )
+        m = cv2.morphologyEx(m, cv2.MORPH_CLOSE, k_close)
+
+    # Step 2: flood-fill interior holes. Find a background corner as the
+    # seed; flood with white, then invert and OR the holes back in.
+    if fill_holes:
+        seed = None
+        for sy, sx in ((0, 0), (0, w - 1), (h - 1, 0), (h - 1, w - 1)):
+            if m[sy, sx] == 0:
+                seed = (sx, sy)
+                break
+        if seed is not None:
+            flood = m.copy()
+            flood_mask = np.zeros((h + 2, w + 2), dtype=np.uint8)
+            cv2.floodFill(flood, flood_mask, seed, 255)
+            holes = cv2.bitwise_not(flood)
+            m = cv2.bitwise_or(m, holes)
+
+    # Step 3: drop tiny disconnected components. Keeps the largest mass(es)
+    # so an off-object speck does not survive — but the threshold is small
+    # enough that thin object extremities (a finger, a tail, an antenna)
+    # remain attached as long as they connect to the main component.
+    if min_component_area_px > 0:
+        num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(
+            m, connectivity=8
+        )
+        if num_labels > 1:
+            keep = np.zeros_like(m)
+            for i in range(1, num_labels):  # 0 is the background label
+                if stats[i, cv2.CC_STAT_AREA] >= min_component_area_px:
+                    keep[labels == i] = 255
+            m = keep
+
+    # Step 4: morphological OPEN with a smaller kernel softens the boundary
+    # by clipping 1-pixel protrusions. Kernel kept small so we do not shave
+    # off real geometry.
+    if smooth_radius_px > 0:
+        open_radius = max(1, smooth_radius_px - 1)
+        k_open = cv2.getStructuringElement(
+            cv2.MORPH_ELLIPSE,
+            (open_radius * 2 + 1, open_radius * 2 + 1),
+        )
+        m = cv2.morphologyEx(m, cv2.MORPH_OPEN, k_open)
+
+    return m
 
 
 def _mask_to_base64_png(mask: "np.ndarray") -> str:
