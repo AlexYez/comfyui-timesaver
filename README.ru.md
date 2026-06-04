@@ -4,11 +4,11 @@
 
 # 🚀 Timesaver Nodes для ComfyUI
 
-**Дружелюбный набор из 59 нод, чтобы убрать рутину из ваших ComfyUI-графов.**
+**Дружелюбный набор из 58 нод, чтобы убрать рутину из ваших ComfyUI-графов.**
 
 Ресайз, цветокоррекция, кеинг, инпейнтинг, транскрипция, переводы, конструкторы промптов, менеджмент моделей — всё прямо на канвасе.
 
-[![Версия](https://img.shields.io/badge/version-9.12-blue.svg)](pyproject.toml)
+[![Версия](https://img.shields.io/badge/version-9.31-blue.svg)](pyproject.toml)
 [![ComfyUI](https://img.shields.io/badge/ComfyUI-V3%20API-orange.svg)](https://github.com/comfyanonymous/ComfyUI)
 [![Python](https://img.shields.io/badge/python-3.10+-green.svg)](https://www.python.org/)
 [![Лицензия](https://img.shields.io/badge/license-see%20LICENSE.txt-lightgrey.svg)](LICENSE.txt)
@@ -26,7 +26,7 @@
 |  | Категория | Сколько | Чем хороша |
 |---|---|---|---|
 | 🖼️ | **[Изображения](#image)** | 28 | Resize, цвет, маски, кеер, тайлы, 360°, Lama-инпейнтинг, удаление фона BiRefNet, ViTMatte, SAM3 picker |
-| 🎬 | **[Видео](#video)** | 7 | Интерполяция кадров, RTX/Spandrel апскейл, глубина, превью анимации |
+| 🎬 | **[Видео](#video)** | 6 | Интерполяция кадров, RTX/Spandrel апскейл, глубина, превью анимации |
 | 🎵 | **[Аудио](#audio)** | 5 | Whisper-транскрипция, Silero TTS, разделение на стемы Demucs, обрезка аудио |
 | 🤖 | **[LLM](#llm)** | 2 | Qwen 3 VL мультимодальный чат, Super Prompt с голосовым вводом |
 | 📝 | **[Текст и промпты](#text)** | 4 | Конструктор промптов, batch-загрузчик, выбор стиля, ударения для русского |
@@ -34,7 +34,9 @@
 | 🛠️ | **[Утилиты](#utils)** | 4 | Кастомные слайдеры, математика, умный type-aware свитч |
 | 🎨 | **[Conditioning](#conditioning)** | 1 | Multi-reference кондиционинг изображений |
 
-> Все 59 нод используют **ComfyUI V3 API** (`comfy_api.v0_0_2.IO` — pinned namespace для стабильности).
+> Все 58 нод используют **ComfyUI V3 API** (`comfy_api.v0_0_2.IO` — pinned namespace для стабильности).
+>
+> **Плюс доп. samplers и schedulers** прямо в родных дропдаунах KSampler / KSamplerAdvanced / BasicScheduler (нода не нужна — появляются после установки): sampler **`res_2s`** (экспоненциальный RK 2-го порядка / «RES»), schedulers **`bong_tangent`** (двухстадийная arctangent-кривая сигм) и **`beta57`** (`beta` α=0.5/β=0.7). Алгоритмы реализованы clean-room по публичной математике [RES4LYF](https://github.com/ClownsharkBatwing/RES4LYF) (код не копировался).
 
 ---
 
@@ -149,7 +151,7 @@ python -m pip install -r requirements.txt
 ---
 
 <a id="image"></a>
-### 🖼️ Изображения (26 нод)
+### 🖼️ Изображения (28 нод)
 
 Всё, что касается пикселей: ресайз, цвет, маски, удаление фона, кеер, тайлы, панорамы и инпейнтинг.
 
