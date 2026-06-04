@@ -37,6 +37,7 @@ comfyui-pack-testing-guide.md
 # Internal contributor docs — kept in dev only; doc/screenshots/ stays
 # because README.md links to it.
 /doc/AGENTS.md
+/doc/ARCHITECTURE.md
 /doc/TS_DEPENDENCY_POLICY.md
 /doc/migration.md
 /doc/generate_readme_ru.py
