@@ -40,3 +40,6 @@ comfyui-pack-testing-guide.md
 /doc/TS_DEPENDENCY_POLICY.md
 /doc/migration.md
 /doc/generate_readme_ru.py
+
+# Orphan path-manifest, unused at runtime (removed from the repo in 9.31).
+/.tracking
