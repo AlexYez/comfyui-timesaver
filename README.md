@@ -394,7 +394,7 @@ Injects a custom string into the workflow's positive prompt at runtime — usefu
 ---
 
 <a id="video"></a>
-### 🎬 Video (7 nodes)
+### 🎬 Video (6 nodes)
 
 Frame interpolation, model-based upscale, depth, animation preview, and VRAM hygiene.
 
@@ -449,15 +449,6 @@ Depth-Anything-based per-frame depth estimation, optimised for video (temporal c
 Apply LTX-Video keyframe conditioning for the first and (optionally) last frame in one node — equivalent to chaining two `LTXVAddGuide` nodes, with cleaner UX.
 
 **Use when:** you have specific start/end frames and want LTX to interpolate between them.
-
----
-
-#### TS Free Video Memory
-<img src="doc/screenshots/ts_free_video_memory.png" alt="TS Free Video Memory" width="450" />
-
-A pass-through node that runs `gc.collect()` + `torch.cuda.empty_cache()` (and optionally `caching_allocator_delete_caches()`) between heavy steps. Reports memory before/after.
-
-**Use when:** chaining several VRAM-hungry video nodes and you want explicit memory cleanup between them.
 
 ---
 
@@ -723,7 +714,6 @@ Add up to three reference images as `reference_latents` into the conditioning st
 |---|---|
 | Upscale a 4K image | TS Image Tile Splitter → upscaler → TS Image Tile Merger |
 | Process only the face/object | TS Crop To Mask → upscaler/restorer → TS Restore From Crop |
-| Free VRAM mid-graph | TS Free Video Memory between heavy steps |
 | FP8 a model | TS Model Converter Advanced |
 
 ### Where do model files live?
@@ -774,7 +764,6 @@ Timesaver freezes node ids and inputs across versions on purpose. If something b
 <details>
 <summary><b>OOM (out of memory) errors</b></summary>
 
-- Insert a `TS Free Video Memory` between heavy nodes.
 - Reduce `process_resolution` (BiRefNet) or `compute_max_side` (Color Match).
 - For upscaling, use `TS Image Tile Splitter` + tiled processing.
 - For LLM, drop precision to int8 or int4 (`TS Qwen 3 VL V3` → `precision=int8`).
