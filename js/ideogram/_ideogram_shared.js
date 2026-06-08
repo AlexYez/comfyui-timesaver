@@ -16,12 +16,18 @@ export const ASPECT_RATIOS = [
     "1x1", "5x4", "4x3", "3x2", "16x10", "16x9", "2x1", "3x1", "4x1",
 ];
 export const DEFAULT_ASPECT_RATIO = "16x9";
+export const DEFAULT_LANG = "ru";
+export const LANGS = ["ru", "en"];
 export const WEIGHTS = ["Thin", "Regular", "Bold", "Heavy"];
 export const CASES = ["As-typed", "UPPERCASE", "Title"];
 export const PROMINENCE = ["Caption", "Body", "Headline", "Hero"];
 export const PHOTO_MEDIUM = "photograph";
 export const IMAGE_PALETTE_CAP = 16;
 export const ELEMENT_PALETTE_CAP = 5;
+export const DEFAULT_MEGAPIXELS = 1.0;
+export const MIN_MEGAPIXELS = 0.5;
+export const MAX_MEGAPIXELS = 2.0;
+export const DIM_MULTIPLE = 32;
 
 // ── DOM/widget helpers (mirrors of the sam_media_loader patterns) ─────────── //
 export function getWidget(node, name) {
@@ -161,7 +167,10 @@ export function composeTextDesc(block, fontsById) {
 export function makeDefaultDesign() {
     return {
         version: 1,
+        language: DEFAULT_LANG,
+        layout_id: "",
         aspect_ratio: DEFAULT_ASPECT_RATIO,
+        megapixels: DEFAULT_MEGAPIXELS,
         high_level_description: "",
         background: "",
         style: {
@@ -172,6 +181,7 @@ export function makeDefaultDesign() {
             photo: "",
             art_style: "",
             color_palette: [],
+            font_preset_id: "",
         },
         blocks: [],
     };
@@ -213,8 +223,23 @@ export function aspectFitBox(aspect, maxW, maxH) {
     return { w: Math.max(1, Math.round(w)), h: Math.max(1, Math.round(h)) };
 }
 
+// Resolve output pixel dimensions from aspect + megapixels, each a multiple of
+// DIM_MULTIPLE (32). Mirror of dims_from_aspect_mp in _ideogram_helpers.py.
+export function dimsFromAspectMp(aspect, megapixels) {
+    const ratio = aspectToRatio(aspect);
+    let mp = Number(megapixels);
+    if (!(mp > 0)) mp = DEFAULT_MEGAPIXELS;
+    mp = Math.max(MIN_MEGAPIXELS, Math.min(MAX_MEGAPIXELS, mp));
+    const total = mp * 1e6;
+    const h = Math.sqrt(total / ratio);
+    const w = h * ratio;
+    const r32 = (v) => Math.max(DIM_MULTIPLE, Math.round(v / DIM_MULTIPLE) * DIM_MULTIPLE);
+    return { w: r32(w), h: r32(h) };
+}
+
 // ── Backend calls ─────────────────────────────────────────────────────────── //
 let _presetsCache = null;
+export function invalidatePresetsCache() { _presetsCache = null; }
 export async function loadPresets() {
     if (_presetsCache) return _presetsCache;
     try {
@@ -281,31 +306,235 @@ export function inputViewUrl(filename, subfolder = "", type = "input") {
 }
 
 // Cyrillic guard analysis for a text block (soft warnings for the inspector).
-export function cyrillicWarnings(block, allBlocks, fontsById) {
+export function cyrillicWarnings(block, allBlocks, fontsByIdMap, lang = DEFAULT_LANG) {
     const warnings = [];
     const text = block?.text || "";
     if (!hasCyrillic(text)) return warnings;
 
     const words = text.trim().split(/\s+/).filter(Boolean);
-    if (words.length > 3 || text.replace(/\s/g, "").length > 20) {
-        warnings.push("Длинный русский текст рендерится ненадёжно — сократите до 1–3 слов или включите «текст вручную».");
-    }
-    if (block.case !== "UPPERCASE" && /[а-яё]/.test(text)) {
-        warnings.push("Кириллица лучше выходит в ВЕРХНЕМ регистре — включите UPPERCASE.");
-    }
-    const preset = fontsById?.[block.font_preset_id || ""];
-    if (preset && preset.good_for_cyrillic === false) {
-        warnings.push("Этот шрифт-пресет не рекомендуется для кириллицы — выберите Cyrillic-safe.");
-    }
+    if (words.length > 3 || text.replace(/\s/g, "").length > 20) warnings.push(t("cyr_long", lang));
+    if (block.case !== "UPPERCASE" && /[а-яё]/.test(text)) warnings.push(t("cyr_upper", lang));
+    const preset = fontsByIdMap?.[block.font_preset_id || ""];
+    if (preset && preset.good_for_cyrillic === false) warnings.push(t("cyr_font", lang));
     const cyrBlocks = (allBlocks || []).filter((b) => b.type === "text" && !b.visual_only && hasCyrillic(b.text || ""));
-    if (cyrBlocks.length >= 2) {
-        warnings.push("Несколько кириллических блоков снижают точность каждого — оставьте один.");
-    }
+    if (cyrBlocks.length >= 2) warnings.push(t("cyr_multi", lang));
     const latinBlocks = (allBlocks || []).filter(
         (b) => b.type === "text" && !b.visual_only && !hasCyrillic(b.text || "") && /[A-Za-z]/.test(b.text || ""),
     );
-    if (latinBlocks.length > 0) {
-        warnings.push("Кириллица и латиница в одном изображении — лучше разнести на отдельные генерации.");
-    }
+    if (latinBlocks.length > 0) warnings.push(t("cyr_mix", lang));
     return warnings;
+}
+
+// ── Localization ───────────────────────────────────────────────────────────── //
+const I18N = {
+    en: {
+        editor_subtitle: "visual caption designer", language: "Language", clear: "Clear all", mp_label: "MP",
+        add_text: "+ Text", add_obj: "+ Object", duplicate: "Duplicate", delete: "Delete block",
+        reference: "🖼 Reference", clear_ref: "✕ ref", cancel: "Cancel", save: "Save",
+        aspect: "Aspect ratio",
+        card_template: "Template (what to make)", layout_preset: "Layout template",
+        layout_none: "— pick a template —",
+        card_style: "Style", style_preset: "Style preset", style_none: "— custom style —",
+        card_global: "General style",
+        hld: "High-level description", medium: "Medium", aesthetics: "Aesthetics",
+        lighting: "Lighting", art_style: "Art style", photo_label: "Photo (camera/optics)",
+        image_palette: "Image palette (up to {n})", background: "Background", add_color: "Add color",
+        block_text_title: "Text block", block_obj_title: "Object (obj)",
+        text_literal: "Text (rendered literally)",
+        font_preset: "Font preset (the description is the only real lever)",
+        weight: "Weight", case: "Case", size_words: "Size (in words)", text_color: "Text color",
+        legibility: "Legibility", leg_outline: "Outline", leg_contrast: "Contrast", leg_block: "Block",
+        visual_only: "Manual text (visual-only — empty placeholder for a hand overlay)",
+        override: "Extra description (override, appended last)",
+        block_palette: "Block palette (up to {n})", desc_preview: "Final description (desc) for the model:",
+        obj_desc: "Object description (desc)",
+        select_block: "Select a block on the canvas, or add a new one (+ Text / + Object).",
+        visual_only_preview: "(visual-only) this area becomes an empty placeholder — add the text by hand in Figma/Photoshop.",
+        cyr_banner: "Cyrillic in Ideogram 4 is less reliable than Latin. For print, generate the visual and add the Russian text by hand.",
+        cyr_long: "Long Russian text renders unreliably — shorten to 1–3 words or enable 'manual text'.",
+        cyr_upper: "Cyrillic comes out better in UPPERCASE — enable UPPERCASE.",
+        cyr_font: "This font preset is not recommended for Cyrillic — pick a Cyrillic-safe one.",
+        cyr_multi: "Multiple Cyrillic blocks reduce each one's accuracy — keep just one.",
+        cyr_mix: "Cyrillic and Latin in one image — better split into separate generations.",
+        cyr_badge: "Cyrillic hint added", cyr_warn_pill: "⚠ Cyrillic",
+        save_as_layout: "Save as template", save_as_style: "Save as style",
+        export_btn: "⬇ Export", import_btn: "⬆ Import",
+        import_done: "Imported: {n}", import_empty: "No valid presets in the file", export_empty: "Nothing to export yet",
+        medium_hint: "Medium = the image type Ideogram renders (photo, graphic design, illustration, 3D…). It applies to the whole image, not the text: 'photograph' fills the photo field, every other medium fills art_style.",
+        preset_name_prompt: "Preset name:", custom_tag: "custom",
+        summary: "{t} text · {o} obj", empty_hint: "Click \"✎ Edit design\"", edit_btn: "✎ Edit design",
+    },
+    ru: {
+        editor_subtitle: "визуальный дизайнер капшена", language: "Язык", clear: "Очистить всё", mp_label: "МП",
+        add_text: "+ Текст", add_obj: "+ Объект", duplicate: "Дублировать", delete: "Удалить выбранный блок",
+        reference: "🖼 Референс", clear_ref: "✕ реф", cancel: "Отмена", save: "Сохранить",
+        aspect: "Соотношение сторон",
+        card_template: "Шаблон (что делаем)", layout_preset: "Шаблон-лейаут",
+        layout_none: "— выберите шаблон —",
+        card_style: "Стиль", style_preset: "Пресет стиля", style_none: "— свой стиль —",
+        card_global: "Общий стиль",
+        hld: "Высокоуровневое описание", medium: "Medium", aesthetics: "Эстетика",
+        lighting: "Свет", art_style: "Арт-стиль", photo_label: "Фото (камера/оптика)",
+        image_palette: "Палитра изображения (до {n})", background: "Фон (background)", add_color: "Добавить цвет",
+        block_text_title: "Текстовый блок", block_obj_title: "Объект (obj)",
+        text_literal: "Текст (рендерится буква-в-букву)",
+        font_preset: "Шрифт-пресет (описание — единственный реальный рычаг)",
+        weight: "Вес", case: "Регистр", size_words: "Размер (словами)", text_color: "Цвет текста",
+        legibility: "Читаемость", leg_outline: "Обводка", leg_contrast: "Контраст", leg_block: "Плашка",
+        visual_only: "Текст вручную (visual-only — пустая плашка под ручной оверлей)",
+        override: "Доп. описание (override, добавляется в конец)",
+        block_palette: "Палитра блока (до {n})", desc_preview: "Итоговое описание (desc) для модели:",
+        obj_desc: "Описание объекта (desc)",
+        select_block: "Выберите блок на холсте или добавьте новый (+ Текст / + Объект).",
+        visual_only_preview: "(visual-only) область станет пустой плашкой без текста — добавьте надпись вручную в Figma/Photoshop.",
+        cyr_banner: "Кириллица в Ideogram 4 менее надёжна латиницы. Для печати — генерируйте визуал и добавляйте русский текст вручную.",
+        cyr_long: "Длинный русский текст рендерится ненадёжно — сократите до 1–3 слов или включите «текст вручную».",
+        cyr_upper: "Кириллица лучше выходит в ВЕРХНЕМ регистре — включите UPPERCASE.",
+        cyr_font: "Этот шрифт-пресет не рекомендуется для кириллицы — выберите Cyrillic-safe.",
+        cyr_multi: "Несколько кириллических блоков снижают точность каждого — оставьте один.",
+        cyr_mix: "Кириллица и латиница в одном изображении — лучше разнести на отдельные генерации.",
+        cyr_badge: "кириллица: hint добавлен", cyr_warn_pill: "⚠ кириллица",
+        save_as_layout: "Сохранить как шаблон", save_as_style: "Сохранить как стиль",
+        export_btn: "⬇ Экспорт", import_btn: "⬆ Импорт",
+        import_done: "Импортировано: {n}", import_empty: "В файле нет валидных пресетов", export_empty: "Пока нечего экспортировать",
+        medium_hint: "Medium — тип изображения, который рендерит Ideogram (фото, граф. дизайн, иллюстрация, 3D…). Относится ко всей картинке, а не к тексту: «photograph» заполняет поле photo, остальные — art_style.",
+        preset_name_prompt: "Имя пресета:", custom_tag: "свой",
+        summary: "{t} текст · {o} obj", empty_hint: "Нажмите «✎ Edit design»", edit_btn: "✎ Edit design",
+    },
+};
+
+const SEG_LABELS = {
+    weight: { en: { Thin: "Thin", Regular: "Regular", Bold: "Bold", Heavy: "Heavy" },
+              ru: { Thin: "Тонкий", Regular: "Обычный", Bold: "Жирный", Heavy: "Чёрный" } },
+    case: { en: { "As-typed": "As-typed", UPPERCASE: "UPPERCASE", Title: "Title" },
+            ru: { "As-typed": "Как есть", UPPERCASE: "ВЕРХНИЙ", Title: "Заголовок" } },
+    prominence: { en: { Caption: "Caption", Body: "Body", Headline: "Headline", Hero: "Hero" },
+                  ru: { Caption: "Подпись", Body: "Текст", Headline: "Заголовок", Hero: "Гигант" } },
+};
+
+export function t(key, lang = DEFAULT_LANG, vars) {
+    const table = I18N[lang] || I18N.ru;
+    let s = table[key] != null ? table[key] : (I18N.ru[key] != null ? I18N.ru[key] : key);
+    if (vars) for (const k of Object.keys(vars)) s = s.split(`{${k}}`).join(vars[k]);
+    return s;
+}
+
+export function segLabel(group, value, lang = DEFAULT_LANG) {
+    return SEG_LABELS[group]?.[lang]?.[value] ?? SEG_LABELS[group]?.en?.[value] ?? value;
+}
+
+export function localizedName(item, lang = DEFAULT_LANG) {
+    return (item && (item[`name_${lang}`] || item.name_en || item.name_ru || item.id)) || "";
+}
+
+export function localizedDesc(item, lang = DEFAULT_LANG) {
+    return (item && (item[`desc_${lang}`] || item.desc_en || item.desc_ru || "")) || "";
+}
+
+// ── Two-level presets ──────────────────────────────────────────────────────── //
+export function layoutsList(presets) { return presets?.layouts || []; }
+export function stylesList(presets) { return presets?.styles || []; }
+
+// Instantiate a layout template's placeholder blocks for the given language.
+export function instantiateLayout(layout, lang = DEFAULT_LANG) {
+    const blocks = (layout?.blocks || []).map((b) => {
+        const rect = { ...(b.rect || { x: 0.1, y: 0.1, w: 0.4, h: 0.2 }) };
+        if (b.type === "obj") {
+            return {
+                id: makeBlockId(), type: "obj", rect,
+                desc: b.desc_en || "", role: b.role || "", color_palette: [],
+            };
+        }
+        const text = lang === "en" ? (b.text_en ?? b.text_ru ?? "") : (b.text_ru ?? b.text_en ?? "");
+        return {
+            id: makeBlockId(), type: "text", rect, text,
+            font_preset_id: b.font_preset_id || "grotesque_black",
+            weight: b.weight || "Bold", case: b.case || "As-typed", prominence: b.prominence || "Headline",
+            color: normHex(b.color) || "#FFFFFF",
+            legibility: { outline: true, high_contrast: true, solid_block: false },
+            visual_only: false, desc_override: "", role: b.role || "", color_palette: [],
+        };
+    });
+    return {
+        blocks,
+        aspect_ratio: layout?.aspect_ratio || DEFAULT_ASPECT_RATIO,
+        background: layout?.background_en || "",
+        high_level_description: layout?.high_level_description_en || "",
+    };
+}
+
+// Resolve a style preset into the work.style object.
+export function applyStyle(style) {
+    return {
+        preset_id: style?.id || "",
+        aesthetics: style?.aesthetics || "",
+        lighting: style?.lighting || "",
+        medium: style?.medium || "graphic_design",
+        photo: style?.photo || "",
+        art_style: style?.art_style || "",
+        color_palette: cleanPalette(style?.color_palette || [], IMAGE_PALETTE_CAP),
+        font_preset_id: style?.font_preset_id || "",
+    };
+}
+
+// CSS font-family approximation per font preset id — for the canvas style preview only.
+const FONT_FAMILY = {
+    grotesque_black: "'Arial Black','Helvetica Neue',Arial,sans-serif",
+    geometric_sans: "'Century Gothic',Futura,'Trebuchet MS',sans-serif",
+    condensed_bold: "'Arial Narrow','Roboto Condensed',sans-serif",
+    display_poster_sans: "Impact,Haettenschweiler,'Arial Black',sans-serif",
+    slab_serif_heavy: "Rockwell,'Roboto Slab',Georgia,serif",
+    rounded_friendly: "'Varela Round','Comic Sans MS','Trebuchet MS',sans-serif",
+    stencil_block: "Stencil,'Arial Black',sans-serif",
+    humanist_sans: "'Segoe UI','Open Sans',Verdana,sans-serif",
+    retro_70s_round: "'Cooper Black','Comic Sans MS',serif",
+    comic_cartoon: "'Comic Sans MS','Chalkboard SE',cursive",
+    mono_techno: "'Consolas','Courier New',monospace",
+    vintage_serif: "Georgia,'Times New Roman',serif",
+    graffiti_urban: "Impact,sans-serif",
+    didone_luxury: "Didot,'Bodoni MT','Playfair Display',Georgia,serif",
+    formal_script: "'Segoe Script','Brush Script MT',cursive",
+    brush_marker: "'Segoe Script','Bradley Hand',cursive",
+};
+export function fontFamilyForPreset(id) { return FONT_FAMILY[id] || "'Segoe UI',sans-serif"; }
+
+// ── Palette → gradient (shared by the editor artboard/blocks + node canvas) ── //
+export function hexToRgb(hex) {
+    const h = normHex(hex);
+    if (!h) return null;
+    return { r: parseInt(h.slice(1, 3), 16), g: parseInt(h.slice(3, 5), 16), b: parseInt(h.slice(5, 7), 16) };
+}
+
+export function hexToRgba(hex, alpha = 1) {
+    const c = hexToRgb(hex);
+    return c ? `rgba(${c.r},${c.g},${c.b},${alpha})` : `rgba(0,0,0,${alpha})`;
+}
+
+// Deterministic blob anchor points (percent) for the layered "mesh" gradient.
+export const MESH_POSITIONS = [
+    [18, 20], [82, 24], [26, 78], [78, 80], [50, 12], [12, 54], [88, 62], [44, 92],
+];
+
+// CSS background for a palette. alpha<1 → translucent (block tint).
+//   0 colors → "" (caller falls back to a default).
+//   1 color  → soft single-color tint.
+//   ≥2 + mesh=false → clean diagonal multi-stop gradient (block fills).
+//   ≥2 + mesh=true  → layered radial "mesh" gradient (image artboard).
+export function paletteGradientCss(colors, { alpha = 1, angle = 135, mesh = true } = {}) {
+    const pal = cleanPalette(colors || [], IMAGE_PALETTE_CAP);
+    if (!pal.length) return "";
+    if (pal.length === 1) {
+        return `linear-gradient(${angle}deg, ${hexToRgba(pal[0], alpha)}, ${hexToRgba(pal[0], alpha * 0.4)})`;
+    }
+    const stops = pal
+        .map((hex, i) => `${hexToRgba(hex, alpha)} ${Math.round((i / (pal.length - 1)) * 100)}%`)
+        .join(", ");
+    const linear = `linear-gradient(${angle}deg, ${stops})`;
+    if (!mesh) return linear;
+    const layers = pal.map((hex, i) => {
+        const [px, py] = MESH_POSITIONS[i % MESH_POSITIONS.length];
+        return `radial-gradient(circle at ${px}% ${py}%, ${hexToRgba(hex, alpha)} 0%, ${hexToRgba(hex, 0)} 55%)`;
+    });
+    layers.push(linear);
+    return layers.join(", ");
 }

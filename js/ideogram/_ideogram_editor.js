@@ -1,35 +1,51 @@
-// Full-screen modal editor for TS_IdeogramDesigner.
+// Full-screen modal editor for TS_IdeogramDesigner (v2).
 //
-// Mounted on document.body (a fixed overlay) so it is independent of the node
-// render mode and works identically in Nodes 1.0 and Nodes 2.0 (Vue). Lets the
-// user drag/resize text + object blocks on an aspect-correct artboard over an
-// optional reference image, edit per-block font/style via presets, edit the
-// global style/palette/background, and preview the emitted caption live.
+// Mounted on document.body (fixed overlay) so it works identically in Nodes 1.0
+// (LiteGraph) and Nodes 2.0 (Vue). Two-level presets: a layout template (what to
+// make → instantiates placeholder blocks) and a style (aesthetic → palette +
+// fonts + style_description). Localized RU/EN UI, double-click inline editing of
+// text/object blocks, a stylized canvas preview, and custom-preset saving.
 //
-// openIdeogramEditor(node, { design, presets, onSave }) — onSave(newDesign)
-// is called with a fresh design object when the user clicks Save.
+// openIdeogramEditor(node, { design, presets, onSave }) — onSave(newDesign).
 
 import { api } from "/scripts/api.js";
 
 import {
-    ASPECT_RATIOS,
     CASES,
+    DEFAULT_LANG,
     ELEMENT_PALETTE_CAP,
     IMAGE_PALETTE_CAP,
+    LANGS,
     PHOTO_MEDIUM,
     PROMINENCE,
+    ROUTE_BASE,
     WEIGHTS,
+    applyCase,
+    applyStyle,
     aspectFitBox,
+    ASPECT_RATIOS,
     clamp,
     cleanPalette,
     composeTextDesc,
-    cyrillicWarnings,
-    fetchCaptionPreview,
+    DEFAULT_MEGAPIXELS,
+    dimsFromAspectMp,
+    MAX_MEGAPIXELS,
+    MIN_MEGAPIXELS,
+    fontFamilyForPreset,
     fontsById as buildFontsById,
     fracToBbox,
+    instantiateLayout,
     inputViewUrl,
+    invalidatePresetsCache,
+    layoutsList,
+    localizedDesc,
+    localizedName,
     makeBlockId,
     normHex,
+    paletteGradientCss,
+    segLabel,
+    stylesList,
+    t,
 } from "./_ideogram_shared.js";
 
 const STYLE_ID = "ts-ideogram-editor-styles";
@@ -42,7 +58,7 @@ function ensureStyles() {
     style.textContent = `
 .ts-ideoe-overlay{position:fixed;inset:0;z-index:11000;display:flex;flex-direction:column;background:rgba(6,9,13,.86);backdrop-filter:blur(3px);color:#e9eef6;font-family:"Segoe UI",Tahoma,sans-serif;font-size:13px}
 .ts-ideoe-shell{position:absolute;inset:24px;display:flex;flex-direction:column;background:#0e1218;border:1px solid #283040;border-radius:14px;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,.6)}
-.ts-ideoe-header{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid #1c2430;background:#10151d;flex:0 0 auto}
+.ts-ideoe-header{display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid #1c2430;background:#10151d;flex:0 0 auto;flex-wrap:wrap}
 .ts-ideoe-title{font-weight:700;font-size:14px;letter-spacing:.02em}
 .ts-ideoe-title small{color:#8a93a3;font-weight:400;margin-left:8px}
 .ts-ideoe-spacer{flex:1 1 auto}
@@ -53,27 +69,26 @@ function ensureStyles() {
 .ts-ideoe-artboard .grid{position:absolute;inset:0;background-image:linear-gradient(rgba(255,255,255,.05) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.05) 1px,transparent 1px);background-size:10% 10%;pointer-events:none}
 .ts-ideoe-ref{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;pointer-events:none}
 .ts-ideoe-block{position:absolute;box-sizing:border-box;border:1.5px solid #7aa2ff;background:rgba(122,162,255,.14);cursor:move;overflow:hidden;border-radius:2px}
-.ts-ideoe-block.is-obj{border-color:#82d6a8;background:rgba(130,214,168,.14)}
+.ts-ideoe-block.is-obj{border-color:#82d6a8;background:rgba(130,214,168,.16)}
 .ts-ideoe-block.is-visual{border-style:dashed;border-color:#9aa6b8;background:rgba(154,166,184,.12)}
 .ts-ideoe-block.is-selected{box-shadow:0 0 0 2px #ffd500, 0 0 0 4px rgba(255,213,0,.25);z-index:5}
 .ts-ideoe-block__label{position:absolute;left:0;top:0;max-width:100%;padding:1px 5px;font-size:11px;font-weight:600;color:#0b0e13;background:rgba(255,255,255,.82);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none;border-bottom-right-radius:4px}
-.ts-ideoe-block__text{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:6px;font-weight:800;line-height:1.05;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.7);white-space:pre-wrap;overflow:hidden;pointer-events:none}
+.ts-ideoe-block__text{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:6px;font-weight:800;line-height:1.05;text-shadow:0 1px 2px rgba(0,0,0,.7);white-space:pre-wrap;overflow:hidden;pointer-events:none}
+.ts-ideoe-block__obj{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:8px;font-size:12px;font-weight:600;color:rgba(255,255,255,.85);overflow:hidden;pointer-events:none}
 .ts-ideoe-handle{position:absolute;width:11px;height:11px;background:#ffd500;border:1px solid #1c1c1c;border-radius:2px;z-index:6}
-.ts-ideoe-handle.nw{left:-6px;top:-6px;cursor:nwse-resize}
-.ts-ideoe-handle.ne{right:-6px;top:-6px;cursor:nesw-resize}
-.ts-ideoe-handle.sw{left:-6px;bottom:-6px;cursor:nesw-resize}
-.ts-ideoe-handle.se{right:-6px;bottom:-6px;cursor:nwse-resize}
-.ts-ideoe-handle.n{left:50%;top:-6px;transform:translateX(-50%);cursor:ns-resize}
-.ts-ideoe-handle.s{left:50%;bottom:-6px;transform:translateX(-50%);cursor:ns-resize}
-.ts-ideoe-handle.w{left:-6px;top:50%;transform:translateY(-50%);cursor:ew-resize}
-.ts-ideoe-handle.e{right:-6px;top:50%;transform:translateY(-50%);cursor:ew-resize}
+.ts-ideoe-handle.nw{left:-6px;top:-6px;cursor:nwse-resize}.ts-ideoe-handle.ne{right:-6px;top:-6px;cursor:nesw-resize}
+.ts-ideoe-handle.sw{left:-6px;bottom:-6px;cursor:nesw-resize}.ts-ideoe-handle.se{right:-6px;bottom:-6px;cursor:nwse-resize}
+.ts-ideoe-handle.n{left:50%;top:-6px;transform:translateX(-50%);cursor:ns-resize}.ts-ideoe-handle.s{left:50%;bottom:-6px;transform:translateX(-50%);cursor:ns-resize}
+.ts-ideoe-handle.w{left:-6px;top:50%;transform:translateY(-50%);cursor:ew-resize}.ts-ideoe-handle.e{right:-6px;top:50%;transform:translateY(-50%);cursor:ew-resize}
+.ts-ideoe-inline{position:absolute;z-index:20;box-sizing:border-box;border:2px solid #ffd500;border-radius:3px;background:rgba(10,14,20,.94);color:#fff;font:700 14px/1.15 "Segoe UI",sans-serif;padding:4px 6px;resize:none;outline:none;text-align:center}
 .ts-ideoe-inspector{flex:0 0 340px;display:flex;flex-direction:column;border-left:1px solid #1c2430;background:#0c1118;min-height:0}
 .ts-ideoe-inspector__scroll{flex:1 1 auto;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:12px}
 .ts-ideoe-card{border:1px solid #1f2937;border-radius:10px;background:#0f151d;padding:10px;display:flex;flex-direction:column;gap:8px}
 .ts-ideoe-card h3{margin:0;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#8a93a3}
 .ts-ideoe-row{display:flex;flex-direction:column;gap:4px}
 .ts-ideoe-row label{font-size:11px;color:#9aa6b8}
-.ts-ideoe-banner{margin:0 12px 0;padding:8px 10px;border:1px solid #6b561f;background:rgba(255,207,107,.1);color:#ffcf6b;border-radius:8px;font-size:11px;line-height:1.4}
+.ts-ideoe-hint{font-size:11px;color:#8a93a3;line-height:1.4}
+.ts-ideoe-banner{margin:0 12px;padding:8px 10px;border:1px solid #6b561f;background:rgba(255,207,107,.1);color:#ffcf6b;border-radius:8px;font-size:11px;line-height:1.4}
 .ts-ideoe-warns{display:flex;flex-direction:column;gap:4px}
 .ts-ideoe-warn{font-size:11px;color:#ffcf6b;background:rgba(255,207,107,.08);border:1px solid rgba(255,207,107,.25);border-radius:6px;padding:4px 7px}
 .ts-ideoe input[type=text],.ts-ideoe textarea,.ts-ideoe-inspector input[type=text],.ts-ideoe-inspector textarea,.ts-ideoe-inspector select{width:100%;box-sizing:border-box;background:#0a0e14;border:1px solid #28323f;border-radius:6px;color:#e9eef6;padding:6px 8px;font-size:12px;font-family:inherit;outline:none}
@@ -83,11 +98,18 @@ function ensureStyles() {
 .ts-ideoe-seg button{flex:1 1 auto;background:#0a0e14;color:#9aa6b8;border:0;border-right:1px solid #1b232e;padding:5px 4px;font-size:11px;cursor:pointer}
 .ts-ideoe-seg button:last-child{border-right:0}
 .ts-ideoe-seg button.is-on{background:linear-gradient(180deg,#7aa2ff,#3a72ff);color:#0b1530;font-weight:700}
+.ts-ideoe-langseg{display:inline-flex;border:1px solid #28323f;border-radius:8px;overflow:hidden}
+.ts-ideoe-langseg button{background:#0a0e14;color:#9aa6b8;border:0;border-right:1px solid #1b232e;padding:6px 11px;font-size:12px;font-weight:700;cursor:pointer}
+.ts-ideoe-langseg button:last-child{border-right:0}
+.ts-ideoe-langseg button.is-on{background:linear-gradient(180deg,#7aa2ff,#3a72ff);color:#0b1530}
 .ts-ideoe-checks{display:flex;flex-wrap:wrap;gap:8px}
 .ts-ideoe-check{display:flex;align-items:center;gap:5px;font-size:11px;color:#cdd6e6;cursor:pointer}
 .ts-ideoe-pal{display:flex;flex-wrap:wrap;gap:5px;align-items:center}
 .ts-ideoe-sw{width:20px;height:20px;border-radius:4px;border:1px solid rgba(255,255,255,.25);position:relative;cursor:pointer}
 .ts-ideoe-sw:hover::after{content:"×";position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;background:rgba(0,0,0,.45);border-radius:4px}
+.ts-ideoe-paladd{position:relative;overflow:hidden;display:inline-flex;align-items:center;gap:4px;height:20px;padding:0 9px;border:1px dashed #4a5568;border-radius:5px;background:#0f151d;color:#9fb0c8;font-size:11px;cursor:pointer;white-space:nowrap}
+.ts-ideoe-paladd:hover{border-color:#7aa2ff;color:#cfe0ff}
+.ts-ideoe-palinput{position:absolute;inset:0;width:100%;height:100%;margin:0;padding:0;border:0;opacity:0;cursor:pointer}
 .ts-ideoe-descprev{font-size:11px;color:#9fe3c2;background:#08120d;border:1px solid #1c3a2c;border-radius:6px;padding:6px 8px;white-space:pre-wrap;word-break:break-word}
 .ts-ideoe-bbox{font-size:10px;color:#7d899b;font-variant-numeric:tabular-nums}
 .ts-ideoe-btn{display:inline-flex;align-items:center;gap:5px;border:1px solid #28323f;background:#161d27;color:#e9eef6;border-radius:8px;padding:6px 11px;font-size:12px;cursor:pointer;font-weight:600;white-space:nowrap}
@@ -96,10 +118,18 @@ function ensureStyles() {
 .ts-ideoe-btn.primary:hover{background:linear-gradient(180deg,#5ee3ab,#27c08c)}
 .ts-ideoe-btn.danger{background:#3a1d1d;border-color:#6b2f2f;color:#ffb4b1}
 .ts-ideoe-btn.ghost{background:transparent}
+.ts-ideoe-btn.small{padding:5px 9px;font-size:11px}
 .ts-ideoe-select{background:#0a0e14;border:1px solid #28323f;border-radius:6px;color:#e9eef6;padding:6px 8px;font-size:12px}
-.ts-ideoe-json{flex:0 0 auto;max-height:30%;border-top:1px solid #1c2430;background:#080b10;display:none;flex-direction:column}
-.ts-ideoe-json.is-open{display:flex}
-.ts-ideoe-json pre{margin:0;padding:10px 12px;overflow:auto;font-size:11px;color:#cdd6e6;font-family:ui-monospace,Consolas,monospace;white-space:pre-wrap;word-break:break-word}
+.ts-ideoe-mp{display:inline-flex;align-items:center;gap:6px;border:1px solid #28323f;border-radius:8px;padding:3px 8px;background:#0a0e14}
+.ts-ideoe-mplabel{font-size:11px;color:#9aa6b8}
+.ts-ideoe-mpinput{width:54px;background:#10151d;border:1px solid #28323f;border-radius:5px;color:#e9eef6;padding:4px 6px;font-size:12px;text-align:center}
+.ts-ideoe-dims{font-size:11px;color:#7aa2ff;font-variant-numeric:tabular-nums;min-width:74px;text-align:right}
+.ts-ideoe-mprange{-webkit-appearance:none;appearance:none;width:92px;height:4px;border-radius:3px;background:#28323f;outline:none;cursor:pointer}
+.ts-ideoe-mprange::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:14px;height:14px;border-radius:50%;background:linear-gradient(180deg,#7aa2ff,#3a72ff);border:1px solid #2a4a8f;cursor:pointer}
+.ts-ideoe-mprange::-moz-range-thumb{width:13px;height:13px;border:1px solid #2a4a8f;border-radius:50%;background:#5180ff;cursor:pointer}
+.ts-ideoe-mpval{font-size:11px;color:#cdd6e6;font-variant-numeric:tabular-nums;min-width:24px;text-align:center}
+.ts-ideoe-btnrow{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.ts-ideoe-hint{font-size:11px;color:#8a93a3;line-height:1.4;margin:2px 0 0}
 .ts-ideoe-empty{color:#6b7688;font-size:12px;text-align:center;padding:24px 8px}
 `;
     document.head.appendChild(style);
@@ -112,11 +142,11 @@ function el(tag, className, text) {
     return node;
 }
 
-function buildSegmented(options, getValue, onPick) {
+function buildSegmented(options, getValue, onPick, labelFn) {
     const wrap = el("div", "ts-ideoe-seg");
     const buttons = [];
     options.forEach((opt) => {
-        const btn = el("button", null, opt);
+        const btn = el("button", null, labelFn ? labelFn(opt) : opt);
         btn.addEventListener("click", () => { onPick(opt); refresh(); });
         wrap.appendChild(btn);
         buttons.push([opt, btn]);
@@ -126,11 +156,10 @@ function buildSegmented(options, getValue, onPick) {
         buttons.forEach(([opt, btn]) => btn.classList.toggle("is-on", opt === cur));
     }
     refresh();
-    wrap._refresh = refresh;
     return wrap;
 }
 
-function buildPalette(getArr, setArr, cap) {
+function buildPalette(getArr, setArr, cap, lang) {
     const wrap = el("div", "ts-ideoe-pal");
     function render() {
         wrap.innerHTML = "";
@@ -138,7 +167,7 @@ function buildPalette(getArr, setArr, cap) {
         arr.forEach((hex, i) => {
             const sw = el("div", "ts-ideoe-sw");
             sw.style.background = hex;
-            sw.title = `${hex} (клик — удалить)`;
+            sw.title = `${hex}`;
             sw.addEventListener("click", () => {
                 const next = arr.slice();
                 next.splice(i, 1);
@@ -148,13 +177,18 @@ function buildPalette(getArr, setArr, cap) {
             wrap.appendChild(sw);
         });
         if (arr.length < cap) {
-            const add = el("input");
-            add.type = "color";
-            add.className = "ts-ideoe-sw";
-            add.style.padding = "0";
-            add.title = "Добавить цвет";
-            add.addEventListener("change", () => {
-                const hex = normHex(add.value);
+            // A real <input type=color> overlaying the button: the native picker
+            // anchors to the input's on-screen box, so it pops up right at the
+            // button and tracks inspector scroll. A <label> wrapper activates the
+            // input on click natively — the old zero-size hidden input + synthetic
+            // .click() mis-anchored the popup (far below / off-screen when scrolled,
+            // which read as "nothing happens" in the lower block palette).
+            const add = el("label", "ts-ideoe-paladd");
+            const picker = el("input", "ts-ideoe-palinput");
+            picker.type = "color";
+            picker.value = "#3A72FF";
+            picker.addEventListener("change", () => {
+                const hex = normHex(picker.value);
                 if (hex) {
                     const next = (getArr() || []).slice();
                     if (!next.includes(hex)) next.push(hex);
@@ -162,63 +196,125 @@ function buildPalette(getArr, setArr, cap) {
                 }
                 render();
             });
+            // Keep the click from reaching inspector/stage handlers; never
+            // preventDefault — the default action is what opens the picker.
+            picker.addEventListener("click", (ev) => ev.stopPropagation());
+            add.append(document.createTextNode(`＋ ${t("add_color", lang)}`), picker);
             wrap.appendChild(add);
         }
     }
     render();
-    wrap._render = render;
     return wrap;
+}
+
+const WEIGHT_CSS = { Thin: 300, Regular: 400, Bold: 700, Heavy: 900 };
+function weightToCss(w) { return WEIGHT_CSS[w] || 700; }
+
+// Shrink a text element's font-size (binary search) so it fits its own box on
+// both axes — the WYSIWYG auto-fit, since the node has no explicit font-size
+// control. Must be called after the element is in the DOM and sized.
+function fitText(textEl, iters = 12) {
+    const boxW = textEl.clientWidth;
+    const boxH = textEl.clientHeight;
+    if (boxW < 4 || boxH < 4) return;
+    let lo = 6, hi = Math.max(8, boxH), best = 6;
+    for (let i = 0; i < iters && lo <= hi; i++) {
+        const mid = (lo + hi) >> 1;
+        textEl.style.fontSize = `${mid}px`;
+        if (textEl.scrollWidth <= boxW && textEl.scrollHeight <= boxH) { best = mid; lo = mid + 1; }
+        else { hi = mid - 1; }
+    }
+    textEl.style.fontSize = `${best}px`;
 }
 
 export function openIdeogramEditor(node, { design, presets, onSave }) {
     ensureStyles();
 
-    // Work on a deep clone; commit only on Save.
     const work = JSON.parse(JSON.stringify(design));
     work.blocks = Array.isArray(work.blocks) ? work.blocks : [];
-    const fonts = presets?.fonts || [];
-    const styles = presets?.styles || [];
+    work.style = work.style || {};
+    if (!LANGS.includes(work.language)) work.language = DEFAULT_LANG;
+
+    const layouts = layoutsList(presets);
+    const styles = stylesList(presets);
+    const fontList = presets?.fonts || [];
     const fontMap = buildFontsById(presets);
+    const tr = (key, vars) => t(key, work.language, vars);
 
     let selectedId = work.blocks[0]?.id || null;
-    let jsonOpen = false;
+    let lastClickInfo = { id: null, t: 0 };
 
     const overlay = el("div", "ts-ideoe-overlay ts-ideoe");
     const shell = el("div", "ts-ideoe-shell");
 
     // ── Header ──────────────────────────────────────────────────────────── //
     const header = el("div", "ts-ideoe-header");
-    const title = el("div", "ts-ideoe-title");
-    title.innerHTML = `TS Ideogram Designer <small>визуальный дизайнер капшена</small>`;
+    const title = el("div", "ts-ideoe-title", "TS Ideogram Designer");
 
-    const addText = el("button", "ts-ideoe-btn", "+ Текст");
-    const addObj = el("button", "ts-ideoe-btn", "+ Объект");
-    const dupBtn = el("button", "ts-ideoe-btn", "Дублировать");
-    const delBtn = el("button", "ts-ideoe-btn danger", "Удалить");
-    const frontBtn = el("button", "ts-ideoe-btn ghost", "▲ слой");
-    const backBtn = el("button", "ts-ideoe-btn ghost", "▼ слой");
+    const addText = el("button", "ts-ideoe-btn");
+    const addObj = el("button", "ts-ideoe-btn");
+    const dupBtn = el("button", "ts-ideoe-btn");
+    const delBtn = el("button", "ts-ideoe-btn danger");
+    const clearBtn = el("button", "ts-ideoe-btn danger");
+
+    const langSeg = el("div", "ts-ideoe-langseg");
+    const langButtons = LANGS.map((lng) => {
+        const b = el("button", null, lng.toUpperCase());
+        b.addEventListener("click", () => setLanguage(lng));
+        langSeg.appendChild(b);
+        return [lng, b];
+    });
 
     const aspectSel = el("select", "ts-ideoe-select");
     ASPECT_RATIOS.forEach((ar) => {
         const o = el("option", null, ar);
         o.value = ar;
-        if (ar === work.aspect_ratio) o.selected = true;
         aspectSel.appendChild(o);
     });
 
-    const refBtn = el("button", "ts-ideoe-btn", "🖼 Референс");
-    const refClear = el("button", "ts-ideoe-btn ghost", "✕ реф");
-    const jsonBtn = el("button", "ts-ideoe-btn", "{ } JSON");
-    const cancelBtn = el("button", "ts-ideoe-btn", "Отмена");
-    const saveBtn = el("button", "ts-ideoe-btn primary", "Сохранить");
+    const mpWrap = el("div", "ts-ideoe-mp");
+    const mpLabel = el("span", "ts-ideoe-mplabel");
+    const mpInput = el("input", "ts-ideoe-mprange");
+    mpInput.type = "range";
+    mpInput.min = String(MIN_MEGAPIXELS);
+    mpInput.max = String(MAX_MEGAPIXELS);
+    mpInput.step = "0.1";
+    const mpVal = el("span", "ts-ideoe-mpval");
+    const dimsReadout = el("span", "ts-ideoe-dims");
+    mpWrap.append(mpLabel, mpInput, mpVal, dimsReadout);
 
-    header.append(
-        title, addText, addObj, dupBtn, delBtn, frontBtn, backBtn,
-        el("div", "ts-ideoe-spacer"),
-        aspectSel, refBtn, refClear, jsonBtn, cancelBtn, saveBtn,
-    );
+    const refBtn = el("button", "ts-ideoe-btn");
+    const refClear = el("button", "ts-ideoe-btn ghost");
+    const cancelBtn = el("button", "ts-ideoe-btn");
+    const saveBtn = el("button", "ts-ideoe-btn primary");
 
-    // ── Body: stage + inspector ─────────────────────────────────────────── //
+    header.append(title, addText, addObj, dupBtn, delBtn, clearBtn, el("div", "ts-ideoe-spacer"),
+        langSeg, aspectSel, mpWrap, refBtn, refClear, cancelBtn, saveBtn);
+
+    function relabelHeader() {
+        addText.textContent = tr("add_text");
+        addObj.textContent = tr("add_obj");
+        dupBtn.textContent = tr("duplicate");
+        delBtn.textContent = tr("delete");
+        refBtn.textContent = tr("reference");
+        refClear.textContent = tr("clear_ref");
+        cancelBtn.textContent = tr("cancel");
+        saveBtn.textContent = tr("save");
+        clearBtn.textContent = tr("clear");
+        mpLabel.textContent = tr("mp_label");
+        mpInput.value = String(work.megapixels ?? DEFAULT_MEGAPIXELS);
+        mpVal.textContent = Number(work.megapixels ?? DEFAULT_MEGAPIXELS).toFixed(1);
+        aspectSel.value = work.aspect_ratio;
+        updateDimsReadout();
+        langButtons.forEach(([lng, b]) => b.classList.toggle("is-on", lng === work.language));
+    }
+
+    function updateDimsReadout() {
+        const d = dimsFromAspectMp(work.aspect_ratio, work.megapixels ?? DEFAULT_MEGAPIXELS);
+        dimsReadout.textContent = `${d.w}×${d.h}`;
+    }
+
+    // ── Body ────────────────────────────────────────────────────────────── //
     const body = el("div", "ts-ideoe-body");
     const stageWrap = el("div", "ts-ideoe-stagewrap");
     const stage = el("div", "ts-ideoe-stage");
@@ -226,8 +322,7 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
     const grid = el("div", "grid");
     let refImgEl = null;
     const blocksLayer = el("div");
-    blocksLayer.style.position = "absolute";
-    blocksLayer.style.inset = "0";
+    blocksLayer.style.cssText = "position:absolute;inset:0";
     artboard.append(grid, blocksLayer);
     stage.appendChild(artboard);
     stageWrap.appendChild(stage);
@@ -235,30 +330,29 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
     const inspector = el("div", "ts-ideoe-inspector");
     const banner = el("div", "ts-ideoe-banner");
     banner.style.display = "none";
-    banner.textContent = "Кириллица в Ideogram 4 менее надёжна латиницы. Для печати — генерируйте визуал и добавляйте русский текст вручную (тумблер «текст вручную»).";
     const inspectorScroll = el("div", "ts-ideoe-inspector__scroll");
     inspector.append(banner, inspectorScroll);
 
     body.append(stageWrap, inspector);
-
-    // ── JSON preview panel ──────────────────────────────────────────────── //
-    const jsonPanel = el("div", "ts-ideoe-json");
-    const jsonPre = el("pre");
-    jsonPre.textContent = "{ }";
-    jsonPanel.appendChild(jsonPre);
-
-    shell.append(header, body, jsonPanel);
+    shell.append(header, body);
     overlay.appendChild(shell);
     document.body.appendChild(overlay);
 
-    // Hidden file input for reference upload
     const fileInput = el("input");
     fileInput.type = "file";
     fileInput.accept = "image/*";
     fileInput.style.display = "none";
     overlay.appendChild(fileInput);
 
-    // ── Artboard sizing (keeps aspect; blocks use % so they scale) ──────── //
+    const importInput = el("input");
+    importInput.type = "file";
+    importInput.accept = "application/json,.json";
+    importInput.multiple = true;
+    importInput.style.display = "none";
+    overlay.appendChild(importInput);
+    importInput.addEventListener("change", () => { handleImportFiles(Array.from(importInput.files || [])); });
+
+    // ── Artboard sizing + style preview ─────────────────────────────────── //
     function layoutArtboard() {
         const availW = stageWrap.clientWidth - 32;
         const availH = stageWrap.clientHeight - 32;
@@ -269,13 +363,16 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
         artboard.style.width = `${box.w}px`;
         artboard.style.height = `${box.h}px`;
     }
-
     function artboardSize() {
         const r = artboard.getBoundingClientRect();
         return { w: r.width || 1, h: r.height || 1, left: r.left, top: r.top };
     }
+    function applyStylePreview() {
+        if (work.ref) return;  // a reference underlay takes over the artboard background
+        const css = paletteGradientCss(work.style?.color_palette || [], { alpha: 1, mesh: true });
+        artboard.style.background = css || "#0a0d12";
+    }
 
-    // ── Reference image ─────────────────────────────────────────────────── //
     function renderReference() {
         if (refImgEl) { refImgEl.remove(); refImgEl = null; }
         const ref = work.ref;
@@ -284,6 +381,7 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
             refImgEl.src = inputViewUrl(ref.filename, ref.subfolder, ref.type);
             artboard.insertBefore(refImgEl, grid);
         }
+        applyStylePreview();
     }
 
     async function uploadReference(file) {
@@ -297,22 +395,23 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
             const data = await resp.json();
             work.ref = { filename: data.name, subfolder: data.subfolder || "", type: data.type || "input" };
             renderReference();
-            schedulePreview();
         } catch (error) {
             console.error("[TS Ideogram] reference upload failed:", error);
         }
     }
 
-    // ── Blocks rendering ────────────────────────────────────────────────── //
+    // ── Blocks ──────────────────────────────────────────────────────────── //
     function getSelected() {
         return work.blocks.find((b) => b.id === selectedId) || null;
     }
 
     function renderBlocks() {
+        applyStylePreview();
         blocksLayer.innerHTML = "";
         work.blocks.forEach((block) => {
             const r = block.rect || { x: 0.1, y: 0.1, w: 0.3, h: 0.2 };
             const div = el("div", "ts-ideoe-block");
+            div.dataset.id = block.id;
             div.classList.toggle("is-obj", block.type === "obj");
             div.classList.toggle("is-visual", block.type === "text" && !!block.visual_only);
             div.classList.toggle("is-selected", block.id === selectedId);
@@ -320,16 +419,30 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
             div.style.top = `${r.y * 100}%`;
             div.style.width = `${r.w * 100}%`;
             div.style.height = `${r.h * 100}%`;
+            // WYSIWYG: a block's own palette tints/gradients its rectangle live.
+            const bpal = cleanPalette(block.color_palette || [], ELEMENT_PALETTE_CAP);
+            if (bpal.length) div.style.background = paletteGradientCss(bpal, { alpha: 0.55, mesh: false });
 
-            if (block.type === "text" && !block.visual_only && (block.text || "").trim()) {
-                const t = el("div", "ts-ideoe-block__text");
-                t.textContent = block.text;
-                t.style.color = normHex(block.color) || "#ffffff";
-                t.style.fontSize = `${Math.max(10, r.h * artboardSize().h * 0.5)}px`;
-                div.appendChild(t);
+            let textEl = null;
+            if (block.type === "text" && !block.visual_only) {
+                textEl = el("div", "ts-ideoe-block__text");
+                textEl.textContent = applyCase(block.text || "", block.case);
+                textEl.style.color = normHex(block.color) || "#ffffff";
+                textEl.style.fontFamily = fontFamilyForPreset(block.font_preset_id);
+                textEl.style.fontWeight = weightToCss(block.weight);
+                if (block.legibility && block.legibility.outline) {
+                    textEl.style.webkitTextStroke = "1px rgba(0,0,0,.85)";
+                    textEl.style.textShadow = "0 2px 5px rgba(0,0,0,.85)";
+                } else {
+                    textEl.style.webkitTextStroke = "0";
+                    textEl.style.textShadow = "0 1px 2px rgba(0,0,0,.7)";
+                }
+                div.appendChild(textEl);
+            } else if (block.type === "obj") {
+                div.appendChild(el("div", "ts-ideoe-block__obj", block.desc || "obj"));
             }
             const label = el("div", "ts-ideoe-block__label",
-                block.type === "obj" ? "OBJ" : (block.visual_only ? "↳ вручную" : "TXT"));
+                block.type === "obj" ? "OBJ" : (block.visual_only ? "↳" : "TXT"));
             div.appendChild(label);
 
             if (block.id === selectedId) {
@@ -340,13 +453,63 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
                 });
             }
 
+            // Single click → select + drag. Manual double-click detection (the
+            // native dblclick is suppressed by startDrag's preventDefault).
             div.addEventListener("pointerdown", (ev) => {
                 if (ev.target.classList.contains("ts-ideoe-handle")) return;
+                const now = Date.now();
+                if (lastClickInfo.id === block.id && now - lastClickInfo.t < 350) {
+                    lastClickInfo = { id: null, t: 0 };
+                    ev.preventDefault();
+                    ev.stopPropagation();
+                    startInlineEdit(block);
+                    return;
+                }
+                lastClickInfo = { id: block.id, t: now };
                 selectBlock(block.id);
                 startDrag(ev, block, "move");
             });
             blocksLayer.appendChild(div);
+            if (textEl) fitText(textEl);
         });
+    }
+
+    // ── Inline (double-click) editing on the canvas ─────────────────────── //
+    let inlineEl = null;
+    function startInlineEdit(block) {
+        if (inlineEl) inlineEl.remove();
+        if (block.type === "text" && block.visual_only) return;
+        const r = block.rect || { x: 0.1, y: 0.1, w: 0.4, h: 0.2 };
+        const ab = artboardSize();
+        const ta = el("textarea", "ts-ideoe-inline");
+        ta.value = block.type === "obj" ? (block.desc || "") : (block.text || "");
+        ta.style.left = `${r.x * ab.w}px`;
+        ta.style.top = `${r.y * ab.h}px`;
+        ta.style.width = `${Math.max(60, r.w * ab.w)}px`;
+        ta.style.height = `${Math.max(28, r.h * ab.h)}px`;
+        if (block.type === "obj") { ta.style.fontWeight = "600"; ta.style.fontSize = "12px"; }
+        artboard.appendChild(ta);
+        inlineEl = ta;
+        ta.focus();
+        ta.select();
+        const commit = () => {
+            if (!inlineEl) return;
+            const v = ta.value;
+            if (block.type === "obj") block.desc = v; else block.text = v;
+            inlineEl = null;
+            ta.remove();
+            renderBlocks();
+            renderInspector();
+        };
+        const cancel = () => { inlineEl = null; ta.remove(); };
+        ta.addEventListener("blur", commit);
+        ta.addEventListener("keydown", (ev) => {
+            ev.stopPropagation();
+            if (ev.key === "Escape") { ev.preventDefault(); cancel(); }
+            else if (ev.key === "Enter" && (ev.ctrlKey || ev.metaKey)) { ev.preventDefault(); ta.blur(); }
+        });
+        ["pointerdown", "pointermove", "pointerup", "dblclick"].forEach((e) =>
+            ta.addEventListener(e, (ev) => ev.stopPropagation()));
     }
 
     // ── Drag / resize ───────────────────────────────────────────────────── //
@@ -375,6 +538,10 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
                 div.style.top = `${y * 100}%`;
                 div.style.width = `${w * 100}%`;
                 div.style.height = `${h * 100}%`;
+                if (mode !== "move") {
+                    const txt = div.querySelector(".ts-ideoe-block__text");
+                    if (txt) fitText(txt, 8);  // live re-fit while resizing
+                }
             }
             updateBboxReadout();
         }
@@ -382,7 +549,6 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
             window.removeEventListener("pointermove", onMove);
             window.removeEventListener("pointerup", onUp);
             renderBlocks();
-            schedulePreview();
         }
         window.addEventListener("pointermove", onMove);
         window.addEventListener("pointerup", onUp);
@@ -390,22 +556,22 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
 
     // ── Block CRUD ──────────────────────────────────────────────────────── //
     function addBlock(type) {
+        const styleFont = work.style?.font_preset_id || fontList[0]?.id || "grotesque_black";
         const block = type === "text"
             ? {
                 id: makeBlockId(), type: "text", rect: { x: 0.1, y: 0.1, w: 0.5, h: 0.18 },
-                text: "ТЕКСТ", font_preset_id: fonts[0]?.id || "grotesque_black",
+                text: work.language === "en" ? "TEXT" : "ТЕКСТ", font_preset_id: styleFont,
                 weight: "Bold", case: "UPPERCASE", prominence: "Headline",
                 legibility: { outline: true, high_contrast: true, solid_block: false },
                 visual_only: false, color: "#FFFFFF", desc_override: "", color_palette: [],
             }
             : {
                 id: makeBlockId(), type: "obj", rect: { x: 0.55, y: 0.2, w: 0.4, h: 0.7 },
-                desc: "subject / graphic element", color_palette: [],
+                desc: work.language === "en" ? "subject / graphic element" : "субъект / графика", color_palette: [],
             };
         work.blocks.push(block);
         selectBlock(block.id);
         renderBlocks();
-        schedulePreview();
     }
 
     function duplicateSelected() {
@@ -417,7 +583,6 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
         work.blocks.push(copy);
         selectBlock(copy.id);
         renderBlocks();
-        schedulePreview();
     }
 
     function deleteSelected() {
@@ -427,18 +592,6 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
         selectedId = work.blocks[Math.max(0, i - 1)]?.id || null;
         renderBlocks();
         renderInspector();
-        schedulePreview();
-    }
-
-    function reorderSelected(delta) {
-        const i = work.blocks.findIndex((b) => b.id === selectedId);
-        if (i < 0) return;
-        const j = clamp(i + delta, 0, work.blocks.length - 1);
-        if (i === j) return;
-        const [b] = work.blocks.splice(i, 1);
-        work.blocks.splice(j, 0, b);
-        renderBlocks();
-        schedulePreview();
     }
 
     function selectBlock(id) {
@@ -457,103 +610,143 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
         }
     }
 
+    function row(labelKey) {
+        const r = el("div", "ts-ideoe-row");
+        r.appendChild(el("label", null, tr(labelKey)));
+        return r;
+    }
+
+    function templateCard() {
+        const card = el("div", "ts-ideoe-card");
+        card.appendChild(el("h3", null, tr("card_template")));
+        const sel = el("select");
+        const none = el("option", null, tr("layout_none")); none.value = ""; sel.appendChild(none);
+        layouts.forEach((L) => {
+            const o = el("option", null, localizedName(L, work.language) + (L.custom ? ` (${tr("custom_tag")})` : ""));
+            o.value = L.id;
+            if (L.id === work.layout_id) o.selected = true;
+            sel.appendChild(o);
+        });
+        sel.addEventListener("change", () => {
+            const L = layouts.find((x) => x.id === sel.value);
+            if (!L) { work.layout_id = ""; return; }
+            const inst = instantiateLayout(L, work.language);
+            work.layout_id = L.id;
+            work.blocks = inst.blocks;
+            work.aspect_ratio = inst.aspect_ratio;
+            if (inst.background) work.background = inst.background;
+            if (inst.high_level_description) work.high_level_description = inst.high_level_description;
+            selectedId = work.blocks[0]?.id || null;
+            layoutArtboard();
+            renderBlocks();
+            renderInspector();
+            relabelHeader();
+        });
+        const r = el("div", "ts-ideoe-row");
+        r.append(el("label", null, tr("layout_preset")), sel);
+        card.appendChild(r);
+        const cur = layouts.find((x) => x.id === work.layout_id);
+        if (cur) card.appendChild(el("div", "ts-ideoe-hint", localizedDesc(cur, work.language)));
+        const saveBtnL = el("button", "ts-ideoe-btn ghost small", tr("save_as_layout"));
+        saveBtnL.addEventListener("click", () => saveCustomPreset("layout"));
+        const expBtnL = el("button", "ts-ideoe-btn ghost small", tr("export_btn"));
+        expBtnL.addEventListener("click", () => exportPreset("layout"));
+        const impBtnL = el("button", "ts-ideoe-btn ghost small", tr("import_btn"));
+        impBtnL.addEventListener("click", () => importPresets("layout"));
+        const footL = el("div", "ts-ideoe-btnrow");
+        footL.append(saveBtnL, expBtnL, impBtnL);
+        card.appendChild(footL);
+        return card;
+    }
+
     function styleCard() {
         const card = el("div", "ts-ideoe-card");
-        card.appendChild(el("h3", null, "Общий стиль"));
+        card.appendChild(el("h3", null, tr("card_style")));
 
-        const hldRow = el("div", "ts-ideoe-row");
-        hldRow.appendChild(el("label", null, "Высокоуровневое описание (high_level_description)"));
-        const hld = el("textarea");
-        hld.value = work.high_level_description || "";
-        hld.placeholder = "О чём всё изображение (1–2 предложения)…";
-        hld.addEventListener("input", () => { work.high_level_description = hld.value; schedulePreview(); });
-        hldRow.appendChild(hld);
-        card.appendChild(hldRow);
-
-        const presetRow = el("div", "ts-ideoe-row");
-        presetRow.appendChild(el("label", null, "Пресет стиля"));
+        const styleRow = el("div", "ts-ideoe-row");
         const sel = el("select");
-        const none = el("option", null, "— свой стиль —"); none.value = ""; sel.appendChild(none);
+        const none = el("option", null, tr("style_none")); none.value = ""; sel.appendChild(none);
         styles.forEach((s) => {
-            const o = el("option", null, s.name_ru || s.name_en || s.id);
+            const o = el("option", null, localizedName(s, work.language) + (s.custom ? ` (${tr("custom_tag")})` : ""));
             o.value = s.id;
             if (s.id === work.style.preset_id) o.selected = true;
             sel.appendChild(o);
         });
         sel.addEventListener("change", () => {
             const s = styles.find((x) => x.id === sel.value);
-            if (s) {
-                work.style = {
-                    preset_id: s.id,
-                    aesthetics: s.aesthetics || "",
-                    lighting: s.lighting || "",
-                    medium: s.medium || "graphic_design",
-                    photo: s.photo || "",
-                    art_style: s.art_style || "",
-                    color_palette: cleanPalette(s.color_palette || [], IMAGE_PALETTE_CAP),
-                };
-            } else {
-                work.style.preset_id = "";
-            }
+            work.style = s ? applyStyle(s) : { ...work.style, preset_id: "" };
             renderInspector();
-            schedulePreview();
+            renderBlocks();
         });
-        presetRow.appendChild(sel);
-        card.appendChild(presetRow);
+        styleRow.append(el("label", null, tr("style_preset")), sel);
+        card.appendChild(styleRow);
+        const curS = styles.find((x) => x.id === work.style.preset_id);
+        if (curS) card.appendChild(el("div", "ts-ideoe-hint", localizedDesc(curS, work.language)));
 
-        const mediumRow = el("div", "ts-ideoe-row");
-        mediumRow.appendChild(el("label", null, "Medium"));
+        const hldRow = row("hld");
+        const hld = el("textarea");
+        hld.value = work.high_level_description || "";
+        hld.addEventListener("input", () => { work.high_level_description = hld.value; });
+        hldRow.appendChild(hld);
+        card.appendChild(hldRow);
+
+        const medRow = row("medium");
         const med = el("select");
         MEDIA_OPTIONS.forEach((m) => {
             const o = el("option", null, m); o.value = m;
             if (m === work.style.medium) o.selected = true;
             med.appendChild(o);
         });
-        med.addEventListener("change", () => { work.style.medium = med.value; renderInspector(); schedulePreview(); });
-        mediumRow.appendChild(med);
-        card.appendChild(mediumRow);
+        med.addEventListener("change", () => { work.style.medium = med.value; renderInspector(); });
+        medRow.appendChild(med);
+        card.appendChild(medRow);
+        card.appendChild(el("div", "ts-ideoe-hint", tr("medium_hint")));
 
         const isPhoto = work.style.medium === PHOTO_MEDIUM;
-        [["aesthetics", "Aesthetics"], ["lighting", "Lighting"],
-         isPhoto ? ["photo", "Photo (камера/оптика)"] : ["art_style", "Art style"]].forEach(([key, lbl]) => {
-            const row = el("div", "ts-ideoe-row");
-            row.appendChild(el("label", null, lbl));
+        [["aesthetics", "aesthetics"], ["lighting", "lighting"],
+         isPhoto ? ["photo", "photo_label"] : ["art_style", "art_style"]].forEach(([key, lblKey]) => {
+            const rr = row(lblKey);
             const inp = el("textarea");
             inp.value = work.style[key] || "";
-            inp.addEventListener("input", () => { work.style[key] = inp.value; schedulePreview(); });
-            row.appendChild(inp);
-            card.appendChild(row);
+            inp.addEventListener("input", () => { work.style[key] = inp.value; });
+            rr.appendChild(inp);
+            card.appendChild(rr);
         });
 
-        const palRow = el("div", "ts-ideoe-row");
-        palRow.appendChild(el("label", null, `Палитра изображения (до ${IMAGE_PALETTE_CAP})`));
-        palRow.appendChild(buildPalette(
-            () => work.style.color_palette,
-            (next) => { work.style.color_palette = next; schedulePreview(); },
-            IMAGE_PALETTE_CAP,
-        ));
+        const palRow = row2("image_palette", { n: IMAGE_PALETTE_CAP });
+        palRow.appendChild(buildPalette(() => work.style.color_palette, (n) => { work.style.color_palette = n; renderBlocks(); }, IMAGE_PALETTE_CAP, work.language));
         card.appendChild(palRow);
 
-        const bgRow = el("div", "ts-ideoe-row");
-        bgRow.appendChild(el("label", null, "Фон (background)"));
+        const bgRow = row("background");
         const bg = el("textarea");
         bg.value = work.background || "";
-        bg.placeholder = "Описание фона/окружения…";
-        bg.addEventListener("input", () => { work.background = bg.value; schedulePreview(); });
+        bg.addEventListener("input", () => { work.background = bg.value; });
         bgRow.appendChild(bg);
         card.appendChild(bgRow);
 
+        const saveBtnS = el("button", "ts-ideoe-btn ghost small", tr("save_as_style"));
+        saveBtnS.addEventListener("click", () => saveCustomPreset("style"));
+        const expBtnS = el("button", "ts-ideoe-btn ghost small", tr("export_btn"));
+        expBtnS.addEventListener("click", () => exportPreset("style"));
+        const impBtnS = el("button", "ts-ideoe-btn ghost small", tr("import_btn"));
+        impBtnS.addEventListener("click", () => importPresets("style"));
+        const footS = el("div", "ts-ideoe-btnrow");
+        footS.append(saveBtnS, expBtnS, impBtnS);
+        card.appendChild(footS);
         return card;
+    }
+
+    function row2(labelKey, vars) {
+        const r = el("div", "ts-ideoe-row");
+        r.appendChild(el("label", null, tr(labelKey, vars)));
+        return r;
     }
 
     function blockCard() {
         const sel = getSelected();
-        if (!sel) {
-            const empty = el("div", "ts-ideoe-empty", "Выберите блок на холсте или добавьте новый (+ Текст / + Объект).");
-            return empty;
-        }
+        if (!sel) return el("div", "ts-ideoe-empty", tr("select_block"));
         const card = el("div", "ts-ideoe-card");
-        card.appendChild(el("h3", null, sel.type === "obj" ? "Объект (obj)" : "Текстовый блок"));
+        card.appendChild(el("h3", null, sel.type === "obj" ? tr("block_obj_title") : tr("block_text_title")));
 
         const bboxRow = el("div", "ts-ideoe-bbox");
         bboxReadoutEl = bboxRow;
@@ -561,83 +754,66 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
         updateBboxReadout();
 
         if (sel.type === "obj") {
-            const descRow = el("div", "ts-ideoe-row");
-            descRow.appendChild(el("label", null, "Описание объекта (desc)"));
+            const dRow = row("obj_desc");
             const ta = el("textarea");
             ta.value = sel.desc || "";
-            ta.addEventListener("input", () => { sel.desc = ta.value; renderBlocks(); schedulePreview(); });
-            descRow.appendChild(ta);
-            card.appendChild(descRow);
-
-            const palRow = el("div", "ts-ideoe-row");
-            palRow.appendChild(el("label", null, `Палитра блока (до ${ELEMENT_PALETTE_CAP})`));
-            palRow.appendChild(buildPalette(() => sel.color_palette, (n) => { sel.color_palette = n; schedulePreview(); }, ELEMENT_PALETTE_CAP));
+            ta.addEventListener("input", () => { sel.desc = ta.value; renderBlocks(); });
+            dRow.appendChild(ta);
+            card.appendChild(dRow);
+            const palRow = row2("block_palette", { n: ELEMENT_PALETTE_CAP });
+            palRow.appendChild(buildPalette(() => sel.color_palette, (n) => { sel.color_palette = n; renderBlocks(); }, ELEMENT_PALETTE_CAP, work.language));
             card.appendChild(palRow);
             return card;
         }
 
-        // text block
-        const textRow = el("div", "ts-ideoe-row");
-        textRow.appendChild(el("label", null, "Текст (рендерится буква-в-букву)"));
+        const textRow = row("text_literal");
         const ta = el("textarea");
         ta.value = sel.text || "";
-        ta.placeholder = "Текст надписи…";
-        ta.addEventListener("input", () => { sel.text = ta.value; renderBlocks(); renderWarnings(); schedulePreview(); });
+        ta.addEventListener("input", () => { sel.text = ta.value; renderBlocks(); renderWarnings(); });
         textRow.appendChild(ta);
         card.appendChild(textRow);
 
-        const fontRow = el("div", "ts-ideoe-row");
-        fontRow.appendChild(el("label", null, "Шрифт-пресет (описание — единственный реальный рычаг)"));
+        const fontRow = row("font_preset");
         const fontSel = el("select");
         const isCyr = /[Ѐ-ӿ]/.test(sel.text || "");
-        const ordered = fonts.slice().sort((a, b) => {
-            if (isCyr && (a.good_for_cyrillic !== b.good_for_cyrillic)) return a.good_for_cyrillic ? -1 : 1;
-            return 0;
-        });
+        const ordered = fontList.slice().sort((a, b) =>
+            isCyr && a.good_for_cyrillic !== b.good_for_cyrillic ? (a.good_for_cyrillic ? -1 : 1) : 0);
         ordered.forEach((f) => {
-            const safe = f.good_for_cyrillic ? "" : " ⚠";
-            const o = el("option", null, `${f.name_ru || f.name_en}${safe}`);
+            const o = el("option", null, (localizedName(f, work.language)) + (f.good_for_cyrillic ? "" : " ⚠"));
             o.value = f.id;
             if (f.id === sel.font_preset_id) o.selected = true;
             fontSel.appendChild(o);
         });
-        fontSel.addEventListener("change", () => { sel.font_preset_id = fontSel.value; renderDescPreview(); renderWarnings(); schedulePreview(); });
+        fontSel.addEventListener("change", () => { sel.font_preset_id = fontSel.value; renderBlocks(); renderDescPreview(); renderWarnings(); });
         fontRow.appendChild(fontSel);
         card.appendChild(fontRow);
 
-        const segRow = el("div", "ts-ideoe-row");
-        segRow.appendChild(el("label", null, "Вес"));
-        segRow.appendChild(buildSegmented(WEIGHTS, () => sel.weight, (v) => { sel.weight = v; renderDescPreview(); schedulePreview(); }));
+        const segRow = row("weight");
+        segRow.appendChild(buildSegmented(WEIGHTS, () => sel.weight, (v) => { sel.weight = v; renderBlocks(); renderDescPreview(); }, (o) => segLabel("weight", o, work.language)));
         card.appendChild(segRow);
 
-        const caseRow = el("div", "ts-ideoe-row");
-        caseRow.appendChild(el("label", null, "Регистр"));
-        caseRow.appendChild(buildSegmented(CASES, () => sel.case, (v) => { sel.case = v; renderBlocks(); renderDescPreview(); renderWarnings(); schedulePreview(); }));
+        const caseRow = row("case");
+        caseRow.appendChild(buildSegmented(CASES, () => sel.case, (v) => { sel.case = v; renderBlocks(); renderDescPreview(); renderWarnings(); }, (o) => segLabel("case", o, work.language)));
         card.appendChild(caseRow);
 
-        const promRow = el("div", "ts-ideoe-row");
-        promRow.appendChild(el("label", null, "Размер (словами)"));
-        promRow.appendChild(buildSegmented(PROMINENCE, () => sel.prominence, (v) => { sel.prominence = v; renderDescPreview(); schedulePreview(); }));
+        const promRow = row("size_words");
+        promRow.appendChild(buildSegmented(PROMINENCE, () => sel.prominence, (v) => { sel.prominence = v; renderBlocks(); renderDescPreview(); }, (o) => segLabel("prominence", o, work.language)));
         card.appendChild(promRow);
 
-        const colorRow = el("div", "ts-ideoe-row");
-        colorRow.appendChild(el("label", null, "Цвет текста"));
-        const color = el("input");
-        color.type = "color";
-        color.value = normHex(sel.color) || "#FFFFFF";
-        color.addEventListener("input", () => { sel.color = color.value.toUpperCase(); renderBlocks(); renderDescPreview(); schedulePreview(); });
+        const colorRow = row("text_color");
+        const color = el("input"); color.type = "color"; color.value = normHex(sel.color) || "#FFFFFF";
+        color.addEventListener("input", () => { sel.color = color.value.toUpperCase(); renderBlocks(); renderDescPreview(); });
         colorRow.appendChild(color);
         card.appendChild(colorRow);
 
-        const legRow = el("div", "ts-ideoe-row");
-        legRow.appendChild(el("label", null, "Читаемость"));
+        const legRow = row("legibility");
         const checks = el("div", "ts-ideoe-checks");
         sel.legibility = sel.legibility || {};
-        [["outline", "Обводка"], ["high_contrast", "Контраст"], ["solid_block", "Плашка"]].forEach(([key, lbl]) => {
+        [["outline", "leg_outline"], ["high_contrast", "leg_contrast"], ["solid_block", "leg_block"]].forEach(([key, lblKey]) => {
             const c = el("label", "ts-ideoe-check");
             const cb = el("input"); cb.type = "checkbox"; cb.checked = !!sel.legibility[key];
-            cb.addEventListener("change", () => { sel.legibility[key] = cb.checked; renderDescPreview(); schedulePreview(); });
-            c.append(cb, document.createTextNode(lbl));
+            cb.addEventListener("change", () => { sel.legibility[key] = cb.checked; renderBlocks(); renderDescPreview(); });
+            c.append(cb, document.createTextNode(tr(lblKey)));
             checks.appendChild(c);
         });
         legRow.appendChild(checks);
@@ -645,26 +821,21 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
 
         const voRow = el("label", "ts-ideoe-check");
         const vo = el("input"); vo.type = "checkbox"; vo.checked = !!sel.visual_only;
-        vo.addEventListener("change", () => { sel.visual_only = vo.checked; renderBlocks(); renderDescPreview(); renderWarnings(); schedulePreview(); });
-        voRow.append(vo, document.createTextNode("Текст вручную (visual-only — плашка под ручной оверлей)"));
+        vo.addEventListener("change", () => { sel.visual_only = vo.checked; renderBlocks(); renderDescPreview(); renderWarnings(); });
+        voRow.append(vo, document.createTextNode(tr("visual_only")));
         card.appendChild(voRow);
 
-        const ovRow = el("div", "ts-ideoe-row");
-        ovRow.appendChild(el("label", null, "Доп. описание (override, добавляется в конец)"));
+        const ovRow = row("override");
         const ov = el("input"); ov.type = "text"; ov.value = sel.desc_override || "";
-        ov.placeholder = "напр. slight upward tilt";
-        ov.title = "Имена реальных шрифтов Ideogram не выбирают гарнитуру — только описания.";
-        ov.addEventListener("input", () => { sel.desc_override = ov.value; renderDescPreview(); schedulePreview(); });
+        ov.addEventListener("input", () => { sel.desc_override = ov.value; renderDescPreview(); });
         ovRow.appendChild(ov);
         card.appendChild(ovRow);
 
-        const palRow = el("div", "ts-ideoe-row");
-        palRow.appendChild(el("label", null, `Палитра блока (до ${ELEMENT_PALETTE_CAP})`));
-        palRow.appendChild(buildPalette(() => sel.color_palette, (n) => { sel.color_palette = n; schedulePreview(); }, ELEMENT_PALETTE_CAP));
+        const palRow = row2("block_palette", { n: ELEMENT_PALETTE_CAP });
+        palRow.appendChild(buildPalette(() => sel.color_palette, (n) => { sel.color_palette = n; renderBlocks(); }, ELEMENT_PALETTE_CAP, work.language));
         card.appendChild(palRow);
 
-        const prevRow = el("div", "ts-ideoe-row");
-        prevRow.appendChild(el("label", null, "Итоговое описание (desc) для модели:"));
+        const prevRow = row("desc_preview");
         const prev = el("div", "ts-ideoe-descprev");
         prevRow.appendChild(prev);
         card.appendChild(prevRow);
@@ -673,15 +844,10 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
         card.appendChild(warns);
 
         function renderDescPreview() {
-            prev.textContent = sel.visual_only
-                ? "(visual-only) область станет пустой плашкой без текста — добавьте надпись вручную в Figma/Photoshop."
-                : composeTextDesc(sel, fontMap);
+            prev.textContent = sel.visual_only ? tr("visual_only_preview") : composeTextDesc(sel, fontMap);
         }
         function renderWarnings() {
-            warns.innerHTML = "";
-            cyrillicWarnings(sel, work.blocks, fontMap).forEach((w) => warns.appendChild(el("div", "ts-ideoe-warn", w)));
-            const anyCyr = work.blocks.some((b) => b.type === "text" && !b.visual_only && /[Ѐ-ӿ]/.test(b.text || ""));
-            banner.style.display = anyCyr ? "block" : "none";
+            warns.innerHTML = "";  // Cyrillic warnings removed.
         }
         card._renderDescPreview = renderDescPreview;
         card._renderWarnings = renderWarnings;
@@ -692,35 +858,118 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
 
     let currentBlockCard = null;
     function renderDescPreview() { currentBlockCard?._renderDescPreview?.(); }
-    function renderWarnings() {
-        currentBlockCard?._renderWarnings?.();
-        const anyCyr = work.blocks.some((b) => b.type === "text" && !b.visual_only && /[Ѐ-ӿ]/.test(b.text || ""));
-        banner.style.display = anyCyr ? "block" : "none";
+    function renderWarnings() { currentBlockCard?._renderWarnings?.(); updateBanner(); }
+    function updateBanner() {
+        banner.style.display = "none";  // Cyrillic warnings removed (per user: Cyrillic works fine).
     }
 
     function renderInspector() {
         inspectorScroll.innerHTML = "";
+        inspectorScroll.appendChild(templateCard());
         inspectorScroll.appendChild(styleCard());
         currentBlockCard = blockCard();
         inspectorScroll.appendChild(currentBlockCard);
-        renderWarnings();
+        updateBanner();
     }
 
-    // ── Live caption preview (server-authoritative) ─────────────────────── //
-    let previewTimer = null;
-    function schedulePreview() {
-        if (!jsonOpen) return;
-        if (previewTimer) clearTimeout(previewTimer);
-        previewTimer = setTimeout(async () => {
-            const result = await fetchCaptionPreview(JSON.stringify(work));
-            if (result) {
+    // ── Language ────────────────────────────────────────────────────────── //
+    function setLanguage(lang) {
+        if (!LANGS.includes(lang) || lang === work.language) return;
+        work.language = lang;
+        relabelHeader();
+        renderInspector();
+        renderBlocks();
+    }
+
+    // ── Custom presets: save / export / import ──────────────────────────── //
+    function buildLayoutPreset(name, id) {
+        return {
+            id, name_en: name, name_ru: name, desc_en: "", desc_ru: "", custom: true,
+            aspect_ratio: work.aspect_ratio,
+            background_en: work.background || "",
+            high_level_description_en: work.high_level_description || "",
+            blocks: work.blocks.map((b) => b.type === "obj"
+                ? { type: "obj", rect: b.rect, desc_en: b.desc || "", role: b.role || "" }
+                : { type: "text", rect: b.rect, text_en: b.text || "", text_ru: b.text || "", font_preset_id: b.font_preset_id, weight: b.weight, case: b.case, prominence: b.prominence, color: b.color, role: b.role || "" }),
+        };
+    }
+    function buildStylePreset(name, id) {
+        return {
+            id, name_en: name, name_ru: name, desc_en: "", desc_ru: "", custom: true,
+            medium: work.style.medium, aesthetics: work.style.aesthetics || "", lighting: work.style.lighting || "",
+            art_style: work.style.art_style || "", photo: work.style.photo || "",
+            color_palette: work.style.color_palette || [], font_preset_id: work.style.font_preset_id || "",
+        };
+    }
+
+    async function saveCustomPreset(kind) {
+        const name = window.prompt(tr("preset_name_prompt"));
+        if (!name || !name.trim()) return;
+        const id = `user_${kind}_${Date.now().toString(36)}`;
+        let preset;
+        if (kind === "layout") { preset = buildLayoutPreset(name.trim(), id); layouts.push(preset); work.layout_id = id; }
+        else { preset = buildStylePreset(name.trim(), id); styles.push(preset); work.style.preset_id = id; }
+        try {
+            await fetch(api.apiURL(`${ROUTE_BASE}/save_preset`), {
+                method: "POST", headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ kind, preset }),
+            });
+        } catch (e) { console.warn("[TS Ideogram] save_preset failed", e); }
+        renderInspector();
+    }
+
+    // Export the current layout/style as a JSON file (browser save dialog).
+    function downloadJson(filename, obj) {
+        const blob = new Blob([JSON.stringify(obj, null, 2)], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = el("a"); a.href = url; a.download = filename;
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1500);
+    }
+    function exportPreset(kind) {
+        const cur = kind === "layout"
+            ? layouts.find((x) => x.id === work.layout_id)
+            : styles.find((x) => x.id === work.style.preset_id);
+        const name = (cur ? localizedName(cur, work.language) : "") || (kind === "layout" ? "layout" : "style");
+        const id = `user_${kind}_${Date.now().toString(36)}`;
+        const preset = kind === "layout" ? buildLayoutPreset(name, id) : buildStylePreset(name, id);
+        const safe = (name || kind).replace(/[^\w\-]+/g, "_").slice(0, 40) || kind;
+        downloadJson(`ts_ideogram_${kind}_${safe}.json`, preset);
+    }
+
+    // Import layouts/styles: pick JSON file(s), server copies them into the
+    // node's user_presets/ folder, then they show up in the pickers.
+    let importKind = "style";
+    function importPresets(kind) { importKind = kind; importInput.value = ""; importInput.click(); }
+    async function handleImportFiles(files) {
+        let added = 0;
+        for (const file of files) {
+            let data;
+            try { data = JSON.parse(await file.text()); } catch { continue; }
+            const arr = Array.isArray(data) ? data
+                : (importKind === "layout" && Array.isArray(data?.layouts)) ? data.layouts
+                : (importKind === "style" && Array.isArray(data?.styles)) ? data.styles
+                : [data];
+            for (const raw of arr) {
+                if (!raw || typeof raw !== "object") continue;
                 try {
-                    jsonPre.textContent = JSON.stringify(JSON.parse(result.json_prompt || "{}"), null, 2);
-                } catch {
-                    jsonPre.textContent = result.json_prompt || "{ }";
-                }
+                    const resp = await fetch(api.apiURL(`${ROUTE_BASE}/import_preset`), {
+                        method: "POST", headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ kind: importKind, preset: raw }),
+                    });
+                    const out = await resp.json();
+                    if (out?.ok && out.preset) {
+                        const list = importKind === "layout" ? layouts : styles;
+                        const idx = list.findIndex((x) => x.id === out.preset.id);
+                        if (idx >= 0) list[idx] = out.preset; else list.push(out.preset);
+                        added += 1;
+                    }
+                } catch (e) { console.warn("[TS Ideogram] import failed", e); }
             }
-        }, 220);
+        }
+        invalidatePresetsCache();
+        renderInspector();
+        window.alert(added ? tr("import_done", { n: added }) : tr("import_empty"));
     }
 
     // ── Wiring ──────────────────────────────────────────────────────────── //
@@ -728,16 +977,28 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
     addObj.addEventListener("click", () => addBlock("obj"));
     dupBtn.addEventListener("click", duplicateSelected);
     delBtn.addEventListener("click", deleteSelected);
-    frontBtn.addEventListener("click", () => reorderSelected(1));
-    backBtn.addEventListener("click", () => reorderSelected(-1));
-    aspectSel.addEventListener("change", () => { work.aspect_ratio = aspectSel.value; layoutArtboard(); renderBlocks(); schedulePreview(); });
+    aspectSel.addEventListener("change", () => { work.aspect_ratio = aspectSel.value; layoutArtboard(); renderBlocks(); updateDimsReadout(); });
+    mpInput.addEventListener("input", () => {
+        let mp = parseFloat(mpInput.value);
+        if (!(mp > 0)) mp = DEFAULT_MEGAPIXELS;
+        mp = Math.max(MIN_MEGAPIXELS, Math.min(MAX_MEGAPIXELS, mp));
+        work.megapixels = mp;
+        mpVal.textContent = mp.toFixed(1);
+        updateDimsReadout();
+    });
+    clearBtn.addEventListener("click", () => {
+        if (work.blocks.length && !window.confirm(tr("clear") + "?")) return;
+        work.blocks = [];
+        work.layout_id = "";
+        selectedId = null;
+        renderBlocks();
+        renderInspector();
+    });
     refBtn.addEventListener("click", () => fileInput.click());
-    refClear.addEventListener("click", () => { work.ref = null; renderReference(); schedulePreview(); });
+    refClear.addEventListener("click", () => { work.ref = null; renderReference(); });
     fileInput.addEventListener("change", () => { uploadReference(fileInput.files?.[0]); fileInput.value = ""; });
-    jsonBtn.addEventListener("click", () => { jsonOpen = !jsonOpen; jsonPanel.classList.toggle("is-open", jsonOpen); if (jsonOpen) schedulePreview(); });
 
-    // Drag & drop / paste reference onto the stage
-    stageWrap.addEventListener("dragover", (e) => { e.preventDefault(); });
+    stageWrap.addEventListener("dragover", (e) => e.preventDefault());
     stageWrap.addEventListener("drop", (e) => {
         e.preventDefault();
         const file = Array.from(e.dataTransfer?.files || []).find((f) => f.type.startsWith("image/"));
@@ -750,11 +1011,8 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
     }
     document.addEventListener("paste", onPaste);
 
-    // Click empty stage area deselects
     stageWrap.addEventListener("pointerdown", (e) => {
-        if (e.target === stageWrap || e.target === stage || e.target === artboard || e.target === grid) {
-            selectBlock(null);
-        }
+        if (e.target === stageWrap || e.target === stage || e.target === artboard || e.target === grid) selectBlock(null);
     });
 
     function close() {
@@ -764,16 +1022,17 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
         overlay.remove();
     }
     function commit() {
+        if (inlineEl) inlineEl.blur();
         onSave?.(JSON.parse(JSON.stringify(work)));
         close();
     }
     cancelBtn.addEventListener("click", close);
     saveBtn.addEventListener("click", commit);
-    // No click-outside-to-close: avoids discarding edits by an accidental
-    // click on the margin. Use Cancel / Esc to discard, Save to commit.
     function onKey(e) {
+        if (inlineEl) return;
         if (e.key === "Escape") { e.stopPropagation(); close(); }
-        else if ((e.key === "Delete" || e.key === "Backspace") && getSelected() && document.activeElement?.tagName !== "TEXTAREA" && document.activeElement?.tagName !== "INPUT") {
+        else if ((e.key === "Delete" || e.key === "Backspace") && getSelected()
+            && document.activeElement?.tagName !== "TEXTAREA" && document.activeElement?.tagName !== "INPUT") {
             deleteSelected();
         }
     }
@@ -782,17 +1041,9 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
     const resizeObserver = new ResizeObserver(() => { layoutArtboard(); renderBlocks(); });
     resizeObserver.observe(stageWrap);
 
-    // ── Initial paint ───────────────────────────────────────────────────── //
-    // Render synchronously first (reading clientWidth in layoutArtboard forces
-    // a reflow, so the artboard gets sized immediately), then again on the next
-    // frame, and retry on a short timer until the stage actually has width. This
-    // does not rely solely on requestAnimationFrame firing and is robust to the
-    // overlay not being laid out yet on the first tick.
-    function fullRender() {
-        layoutArtboard();
-        renderReference();
-        renderBlocks();
-    }
+    // ── Initial paint (synchronous + retry; robust to layout timing) ────── //
+    function fullRender() { layoutArtboard(); renderReference(); renderBlocks(); }
+    relabelHeader();
     renderInspector();
     fullRender();
     requestAnimationFrame(fullRender);

@@ -61,7 +61,12 @@ LOG_PREFIX = "[TS Ideogram Designer]"
 
 FONTS_FILENAME = "ideogram_fonts.json"
 STYLES_FILENAME = "ideogram_styles.json"
+LAYOUTS_FILENAME = "ideogram_layouts.json"
 LAST_DESIGN_FILENAME = "ideogram_last_design.json"
+USER_PRESETS_FILENAME = "ideogram_user_presets.json"
+# Imported presets are copied here as individual JSON files (one per preset),
+# under per-kind subfolders: user_presets/layouts/*.json, user_presets/styles/*.json.
+USER_PRESETS_DIRNAME = "user_presets"
 
 DEFAULT_ASPECT_RATIO = "16x9"
 # v4 aspect-ratio enum (API uses the 'x' separator).
@@ -72,6 +77,10 @@ ASPECT_RATIOS = [
 PHOTO_MEDIUM = "photograph"
 IMAGE_PALETTE_CAP = 16
 ELEMENT_PALETTE_CAP = 5
+DEFAULT_MEGAPIXELS = 1.0
+MIN_MEGAPIXELS = 0.5
+MAX_MEGAPIXELS = 2.0
+DIM_MULTIPLE = 32
 
 _HEX_RE = re.compile(r"^#[0-9A-Fa-f]{6}$")
 _CYRILLIC_RE = re.compile(r"[Ѐ-ӿ]")
@@ -113,6 +122,114 @@ def load_styles() -> list[dict]:
     if isinstance(data, dict) and isinstance(data.get("styles"), list):
         return [s for s in data["styles"] if isinstance(s, dict)]
     return []
+
+
+def load_layouts() -> list[dict]:
+    data = _load_json_file(_preset_path(LAYOUTS_FILENAME))
+    if isinstance(data, dict) and isinstance(data.get("layouts"), list):
+        return [layout for layout in data["layouts"] if isinstance(layout, dict)]
+    return []
+
+
+def _preset_dir(kind_dir: str) -> str:
+    return os.path.join(_module_dir(), USER_PRESETS_DIRNAME, kind_dir)
+
+
+def _load_preset_dir(kind_dir: str) -> list[dict]:
+    """Load every *.json preset from user_presets/<kind_dir>/ (one preset per file)."""
+    out: list[dict] = []
+    directory = _preset_dir(kind_dir)
+    if not os.path.isdir(directory):
+        return out
+    try:
+        names = sorted(os.listdir(directory))
+    except OSError:
+        return out
+    for name in names:
+        if not name.lower().endswith(".json"):
+            continue
+        data = _load_json_file(os.path.join(directory, name))
+        if isinstance(data, dict) and data.get("id"):
+            data.setdefault("custom", True)
+            out.append(data)
+    return out
+
+
+def load_user_presets() -> dict:
+    """User-saved custom presets: the legacy single JSON file PLUS per-file
+    presets imported into user_presets/<kind>/. Shape: {"layouts": [...], "styles": [...]}."""
+    out = {"layouts": [], "styles": []}
+    path = _preset_path(USER_PRESETS_FILENAME)
+    data = _load_json_file(path) if os.path.isfile(path) else None
+    if isinstance(data, dict):
+        for kind in ("layouts", "styles"):
+            items = data.get(kind)
+            if isinstance(items, list):
+                out[kind] = [it for it in items if isinstance(it, dict) and it.get("id")]
+    # Merge imported folder presets (dedupe by id; an imported file wins on conflict).
+    for kind in ("layouts", "styles"):
+        for it in _load_preset_dir(kind):
+            pid = it.get("id")
+            out[kind] = [x for x in out[kind] if x.get("id") != pid]
+            out[kind].append(it)
+    return out
+
+
+def save_user_preset(kind: str, preset: dict) -> bool:
+    """Append (replacing any same-id entry) a custom layout/style into the user file."""
+    if kind not in ("layouts", "styles") or not isinstance(preset, dict):
+        return False
+    pid = str(preset.get("id") or "").strip()
+    if not pid:
+        return False
+    store = load_user_presets()
+    store[kind] = [it for it in store.get(kind, []) if it.get("id") != pid]
+    store[kind].append(preset)
+    try:
+        with open(_preset_path(USER_PRESETS_FILENAME), "w", encoding="utf-8") as handle:
+            json.dump(store, handle, ensure_ascii=False, indent=2)
+        return True
+    except Exception as exc:  # noqa: BLE001
+        ts_logger.warning("%s Failed to save user preset: %s", LOG_PREFIX, exc)
+        return False
+
+
+def _slug(value) -> str:
+    return re.sub(r"[^0-9A-Za-z_-]+", "_", str(value or "")).strip("_")[:40]
+
+
+def save_imported_preset(kind: str, preset: dict) -> dict | None:
+    """Validate + copy an imported layout/style into user_presets/<kind>/<id>.json.
+
+    Returns the normalized preset (id ensured, custom=True) or None on failure.
+    """
+    if kind not in ("layouts", "styles") or not isinstance(preset, dict):
+        return None
+    import uuid  # noqa: PLC0415 - lazy
+
+    item = dict(preset)
+    pid = str(item.get("id") or "").strip()
+    if not pid:
+        base = _slug(item.get("name_en") or item.get("name_ru") or kind[:-1]) or "preset"
+        pid = f"user_{base}_{uuid.uuid4().hex[:8]}"
+    item["id"] = pid
+    item["custom"] = True
+    # Light shape guards so a malformed file cannot break the pickers later.
+    if kind == "styles":
+        item["color_palette"] = clean_palette(item.get("color_palette"), IMAGE_PALETTE_CAP)
+    elif not isinstance(item.get("blocks"), list):
+        item["blocks"] = []
+
+    directory = _preset_dir(kind)
+    try:
+        os.makedirs(directory, exist_ok=True)
+        filename = f"{_slug(pid) or 'preset'}.json"
+        with open(os.path.join(directory, filename), "w", encoding="utf-8") as handle:
+            json.dump(item, handle, ensure_ascii=False, indent=2)
+        return item
+    except Exception as exc:  # noqa: BLE001
+        ts_logger.warning("%s Failed to save imported preset: %s", LOG_PREFIX, exc)
+        return None
 
 
 def _fonts_by_id() -> dict[str, dict]:
@@ -388,6 +505,53 @@ def build_caption(design_json: str) -> tuple[str, str]:
     return serialized, aspect
 
 
+def aspect_ratio_value(aspect: str) -> float:
+    """Parse a 'WxH' aspect token into the float ratio W/H."""
+    try:
+        w_str, h_str = str(aspect or DEFAULT_ASPECT_RATIO).split("x")
+        w, h = float(w_str), float(h_str)
+        if w > 0 and h > 0:
+            return w / h
+    except (ValueError, TypeError):
+        pass
+    return 16.0 / 9.0
+
+
+def dims_from_aspect_mp(aspect: str, megapixels) -> tuple[int, int]:
+    """Compute (width, height) for ``aspect`` at the target megapixels, each
+    rounded to a multiple of DIM_MULTIPLE (32) and >= DIM_MULTIPLE."""
+    import math
+
+    ratio = aspect_ratio_value(aspect)
+    try:
+        mp = float(megapixels)
+    except (ValueError, TypeError):
+        mp = DEFAULT_MEGAPIXELS
+    mp = max(MIN_MEGAPIXELS, min(MAX_MEGAPIXELS, mp))
+    total = mp * 1_000_000.0
+    height = math.sqrt(total / ratio)
+    width = height * ratio
+
+    def _round32(value: float) -> int:
+        return max(DIM_MULTIPLE, int(round(value / DIM_MULTIPLE)) * DIM_MULTIPLE)
+
+    return _round32(width), _round32(height)
+
+
+def dims_from_design(design_json: str) -> tuple[int, int]:
+    """Resolve (width, height) from the design's aspect_ratio + megapixels."""
+    try:
+        design = json.loads(design_json) if design_json else {}
+    except Exception:  # noqa: BLE001
+        design = {}
+    if not isinstance(design, dict):
+        design = {}
+    aspect = str(design.get("aspect_ratio") or DEFAULT_ASPECT_RATIO)
+    if aspect not in ASPECT_RATIOS:
+        aspect = DEFAULT_ASPECT_RATIO
+    return dims_from_aspect_mp(aspect, design.get("megapixels", DEFAULT_MEGAPIXELS))
+
+
 # --------------------------------------------------------------------------- #
 # Graph IMAGE -> input dir (best-effort preview underlay)
 # --------------------------------------------------------------------------- #
@@ -487,12 +651,46 @@ def register_routes() -> None:
 
     @routes.get("/ts_ideogram/presets")
     async def _presets(_request):
+        user = load_user_presets()
+        for item in user.get("layouts", []):
+            item.setdefault("custom", True)
+        for item in user.get("styles", []):
+            item.setdefault("custom", True)
         return web.json_response({
-            "styles": load_styles(),
+            "layouts": load_layouts() + user.get("layouts", []),
+            "styles": load_styles() + user.get("styles", []),
             "fonts": load_fonts(),
             "aspect_ratios": ASPECT_RATIOS,
             "default_aspect_ratio": DEFAULT_ASPECT_RATIO,
         })
+
+    @routes.post("/ts_ideogram/save_preset")
+    async def _save_preset(request):
+        try:
+            payload = await request.json()
+        except Exception:  # noqa: BLE001
+            return web.Response(status=400)
+        if not isinstance(payload, dict):
+            return web.json_response({"ok": False})
+        kind = payload.get("kind")
+        store_key = "layouts" if kind == "layout" else "styles" if kind == "style" else ""
+        ok = save_user_preset(store_key, payload.get("preset") or {})
+        return web.json_response({"ok": bool(ok)})
+
+    @routes.post("/ts_ideogram/import_preset")
+    async def _import_preset(request):
+        try:
+            payload = await request.json()
+        except Exception:  # noqa: BLE001
+            return web.Response(status=400)
+        if not isinstance(payload, dict):
+            return web.json_response({"ok": False})
+        kind = payload.get("kind")
+        store_key = "layouts" if kind == "layout" else "styles" if kind == "style" else ""
+        saved = save_imported_preset(store_key, payload.get("preset") or {}) if store_key else None
+        if saved:
+            return web.json_response({"ok": True, "preset": saved})
+        return web.json_response({"ok": False})
 
     @routes.get("/ts_ideogram/graph_ref")
     async def _graph_ref(request):
@@ -518,8 +716,10 @@ def register_routes() -> None:
         except Exception:  # noqa: BLE001
             return web.Response(status=400)
         design_json = payload.get("design_json", "") if isinstance(payload, dict) else ""
-        caption, aspect = build_caption(design_json if isinstance(design_json, str) else "")
-        return web.json_response({"json_prompt": caption, "aspect_ratio": aspect})
+        dj = design_json if isinstance(design_json, str) else ""
+        caption, aspect = build_caption(dj)
+        width, height = dims_from_design(dj)
+        return web.json_response({"json_prompt": caption, "aspect_ratio": aspect, "width": width, "height": height})
 
 
 # --------------------------------------------------------------------------- #

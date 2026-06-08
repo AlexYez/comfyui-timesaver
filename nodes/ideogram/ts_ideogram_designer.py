@@ -24,6 +24,7 @@ from comfy_api.v0_0_2 import IO
 
 from ._ideogram_helpers import (
     build_caption,
+    dims_from_design,
     register_routes,
     save_graph_reference,
 )
@@ -57,7 +58,8 @@ class TS_IdeogramDesigner(IO.ComfyNode):
             ],
             outputs=[
                 IO.String.Output(display_name="json_prompt"),
-                IO.String.Output(display_name="aspect_ratio"),
+                IO.Int.Output(display_name="width"),
+                IO.Int.Output(display_name="height"),
             ],
             hidden=[IO.Hidden.unique_id],
         )
@@ -73,8 +75,9 @@ class TS_IdeogramDesigner(IO.ComfyNode):
             except Exception as exc:  # noqa: BLE001 - preview aid must never fail the run
                 logger.warning("%s Graph reference caching failed: %s", LOG_PREFIX, exc)
 
-        json_prompt, aspect_ratio = build_caption(design_json or "")
-        return IO.NodeOutput(json_prompt, aspect_ratio)
+        json_prompt, _aspect = build_caption(design_json or "")
+        width, height = dims_from_design(design_json or "")
+        return IO.NodeOutput(json_prompt, width, height)
 
     @classmethod
     def fingerprint_inputs(cls, image=None, design_json: str = "") -> str:
