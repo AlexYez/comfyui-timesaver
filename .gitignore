@@ -47,3 +47,7 @@ comfyui-pack-testing-guide.md
 
 # Runtime-generated last-design convenience cache for TS Ideogram Designer
 /nodes/ideogram/ideogram_last_design.json
+# User-saved custom layout/style presets for TS Ideogram Designer
+/nodes/ideogram/ideogram_user_presets.json
+# Imported (copied-in) layout/style preset files for TS Ideogram Designer
+/nodes/ideogram/user_presets/

@@ -8,7 +8,7 @@
 
 Resize, color-grade, key, denoise, transcribe, translate, prompt-build, manage models — without leaving the canvas.
 
-[![Version](https://img.shields.io/badge/version-9.34-blue.svg)](pyproject.toml)
+[![Version](https://img.shields.io/badge/version-9.35-blue.svg)](pyproject.toml)
 [![ComfyUI](https://img.shields.io/badge/ComfyUI-V3%20API-orange.svg)](https://github.com/comfyanonymous/ComfyUI)
 [![Python](https://img.shields.io/badge/python-3.10+-green.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-see%20LICENSE.txt-lightgrey.svg)](LICENSE.txt)
@@ -30,7 +30,7 @@ Whether you build pipelines for image generation, video, audio, or just want to 
 | 🎵 | **[Audio](#audio)** | 5 | Whisper transcription, Silero TTS, Demucs stem split, audio cropping |
 | 🤖 | **[LLM](#llm)** | 2 | Qwen 3 VL multimodal chat, Super Prompt with voice input |
 | 📝 | **[Text & Prompts](#text)** | 4 | Prompt builder, batch loader, style picker, Russian stress marks |
-| 🎨 | **[Ideogram](#ideogram)** | 1 | Visual JSON-prompt designer for Ideogram 4 — text/object blocks, bbox layout, style & font presets, Cyrillic-aware |
+| 🎨 | **[Ideogram](#ideogram)** | 1 | Visual JSON-prompt designer for Ideogram 4 — text/object blocks, two-level layout+style presets, live palette colors, width/height output, RU/EN, import/export |
 | 📁 | **[Files & Models](#files)** | 8 | Model scanner, FP8 converter, file path loader, EDL→YouTube chapters |
 | 🛠️ | **[Utils](#utils)** | 4 | Custom sliders, math, smart type-aware switch |
 | 🎨 | **[Conditioning](#conditioning)** | 1 | Multi-reference image conditioning |
@@ -584,7 +584,7 @@ Design tools for the open-weight **Ideogram 4** image model.
 
 #### TS Ideogram Designer
 
-Visual JSON-prompt designer for Ideogram 4. Open a full-screen editor, drag and resize **text** and **object** blocks on an aspect-correct artboard (optionally over a reference image), and pick a font-style preset and overall style per block. The node emits a valid Ideogram 4 **structured-JSON caption** as a `STRING` plus the chosen `aspect_ratio` — feed it to a local Ideogram sampler or an API node. Editor rectangles become normalized `[y_min, x_min, y_max, x_max]` bounding boxes (integers 0–1000, top-left origin). Fonts are *described*, not named (Ideogram has no typeface selector), via a curated descriptor-preset library. First-class **Russian / Cyrillic** support with built-in guards: UPPERCASE + bold defaults, length / case / decorative-font warnings, a persistent reliability banner, and a *visual-only* mode that emits a clean placeholder block so you can overlay the text by hand for print-critical work. Fluid in-node preview that works in both the LiteGraph (Nodes 1.0) and Vue (Nodes 2.0) front-ends.
+Visual JSON-prompt designer for Ideogram 4. Open a full-screen editor, drag and resize **text** and **object** blocks on an aspect-correct artboard (optionally over a reference image), and design with **two-level presets** — 10 layout templates (*what* you're making) and 10 styles (palette + fonts + look) — in a **RU/EN** interface. The node emits a valid Ideogram 4 **structured-JSON caption** as a `STRING` plus **`width` and `height`** (INT), sized from the aspect ratio and a **0.5–2 MP** slider and always rounded to multiples of 32 — wire them straight into an empty-latent / canvas node. Editor rectangles become normalized `[y_min, x_min, y_max, x_max]` bounding boxes (integers 0–1000, top-left origin). Fonts are *described*, not named (Ideogram has no typeface selector), via a curated descriptor-preset library. **Palettes render live (WYSIWYG)** on both the editor canvas and the in-node preview — the image palette tints the artboard with a layered gradient, and each block shows its own colour tint/gradient. Custom layouts and styles can be **saved, exported, and imported as JSON** (imports are copied into the node's `user_presets/` folder). First-class **Russian / Cyrillic** support (UPPERCASE + bold defaults) plus a *visual-only* mode that emits a clean placeholder block so you can overlay the text by hand for print-critical work. Fluid in-node preview that works in both the LiteGraph (Nodes 1.0) and Vue (Nodes 2.0) front-ends.
 
 **Use when:** designing YouTube thumbnails, posters and covers where you need precise control over where text and elements land — and which style Ideogram renders.
 

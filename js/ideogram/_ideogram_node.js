@@ -8,19 +8,26 @@
 // canvas, ResizeObserver, syncDomSize, cleanup on removal.
 
 import {
+    DEFAULT_LANG,
     DESIGN_INPUT,
+    MESH_POSITIONS,
     NODE_NAME,
     aspectFitBox,
+    cleanPalette,
+    dimsFromAspectMp,
     fontsById,
     getWidgetValue,
+    hexToRgba,
     hideWidget,
     inputViewUrl,
     loadPresets,
+    localizedName,
     makeDefaultDesign,
     parseDesign,
     persistDesign,
     setWidgetValue,
     stopPropagation,
+    t,
 } from "./_ideogram_shared.js";
 
 import { openIdeogramEditor } from "./_ideogram_editor.js";
@@ -58,6 +65,45 @@ function removeDomWidget(node) {
         (node.widgets[i].element || node.widgets[i].el || node.widgets[i].container)?.remove?.();
         node.widgets.splice(i, 1);
     }
+}
+
+// Canvas mirror of paletteGradientCss (_ideogram_shared.js): paint a palette
+// onto a rect so the node preview matches the editor's WYSIWYG colors.
+// mesh=true → layered radial blobs (artboard); mesh=false → diagonal gradient
+// (block fills). Returns true if it painted anything.
+function paintPaletteRect(ctx, colors, x, y, w, h, { alpha = 1, mesh = true } = {}) {
+    const pal = cleanPalette(colors || [], 16);
+    if (!pal.length) return false;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(x, y, w, h);
+    ctx.clip();
+    if (pal.length === 1) {
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = pal[0];
+        ctx.fillRect(x, y, w, h);
+    } else {
+        const g = ctx.createLinearGradient(x, y, x + w, y + h);
+        pal.forEach((c, i) => g.addColorStop(i / (pal.length - 1), c));
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = g;
+        ctx.fillRect(x, y, w, h);
+        if (mesh) {
+            const rad = Math.max(w, h) * 0.55;
+            pal.slice(0, 6).forEach((c, i) => {
+                const [px, py] = MESH_POSITIONS[i % MESH_POSITIONS.length];
+                const cx = x + (px / 100) * w;
+                const cy = y + (py / 100) * h;
+                const rg = ctx.createRadialGradient(cx, cy, 0, cx, cy, rad);
+                rg.addColorStop(0, hexToRgba(c, alpha * 0.85));
+                rg.addColorStop(1, hexToRgba(c, 0));
+                ctx.fillStyle = rg;
+                ctx.fillRect(x, y, w, h);
+            });
+        }
+    }
+    ctx.restore();
+    return true;
 }
 
 export function setupIdeogramNode(node) {
@@ -136,19 +182,17 @@ export function setupIdeogramNode(node) {
         const texts = blocks.filter((b) => b.type === "text" && !b.visual_only).length;
         const placeholders = blocks.filter((b) => b.type === "text" && b.visual_only).length;
         const objs = blocks.filter((b) => b.type === "obj").length;
-        const styleName = state.design.style?.preset_id || "—";
-        aspectPill.textContent = state.design.aspect_ratio || "16x9";
+        const lang = state.design.language || DEFAULT_LANG;
+        const styleObj = (state.presets.styles || []).find((s) => s.id === state.design.style?.preset_id);
+        const styleName = styleObj ? localizedName(styleObj, lang) : (state.design.style?.preset_id || "—");
+        editBtn.textContent = t("edit_btn", lang);
+        const dims = dimsFromAspectMp(state.design.aspect_ratio, state.design.megapixels);
+        aspectPill.textContent = `${dims.w}×${dims.h}`;
         summary.innerHTML = "";
         const main = document.createElement("span");
-        main.textContent = `${texts} текст · ${objs} obj${placeholders ? ` · ${placeholders} плашка` : ""} · ${styleName}`;
+        const txtWord = lang === "en" ? "text" : "текст";
+        main.textContent = `${texts} ${txtWord} · ${objs} obj${placeholders ? ` · ${placeholders}↳` : ""} · ${styleName}`;
         summary.appendChild(main);
-        if (blocks.some((b) => b.type === "text" && !b.visual_only && /[Ѐ-ӿ]/.test(b.text || ""))) {
-            const warn = document.createElement("span");
-            warn.className = "ts-ideo-node__warn";
-            warn.textContent = "⚠ кириллица";
-            warn.title = "Кириллица в Ideogram 4 менее надёжна латиницы. Для печати — visual-only + ручной оверлей.";
-            summary.appendChild(warn);
-        }
     }
 
     function ensureRefImage() {
@@ -193,7 +237,9 @@ export function setupIdeogramNode(node) {
         const ax = PAD + (availW - box.w) / 2;
         const ay = TOOLBAR_H + (availH - box.h) / 2;
 
-        // Artboard
+        // Artboard background: a reference underlay wins, else the style palette
+        // mesh gradient (matches the editor artboard).
+        const stylePal = state.design.style?.color_palette || [];
         ctx.fillStyle = "#0a0d12";
         ctx.fillRect(ax, ay, box.w, box.h);
         if (state.refImg) {
@@ -201,6 +247,8 @@ export function setupIdeogramNode(node) {
             ctx.globalAlpha = 0.65;
             ctx.drawImage(state.refImg, ax, ay, box.w, box.h);
             ctx.restore();
+        } else {
+            paintPaletteRect(ctx, stylePal, ax, ay, box.w, box.h, { alpha: 1, mesh: true });
         }
         ctx.strokeStyle = "#3a4658";
         ctx.lineWidth = 1;
@@ -217,9 +265,12 @@ export function setupIdeogramNode(node) {
             const visualOnly = isText && block.visual_only;
             const accent = visualOnly ? "#9aa6b8" : isText ? "#7aa2ff" : "#82d6a8";
             ctx.save();
-            ctx.globalAlpha = 0.18;
-            ctx.fillStyle = accent;
-            ctx.fillRect(bx, by, bw, bh);
+            // A block's own palette tints its rectangle; else the type accent.
+            if (!paintPaletteRect(ctx, block.color_palette, bx, by, bw, bh, { alpha: 0.55, mesh: false })) {
+                ctx.globalAlpha = 0.18;
+                ctx.fillStyle = accent;
+                ctx.fillRect(bx, by, bw, bh);
+            }
             ctx.globalAlpha = 1;
             ctx.strokeStyle = accent;
             ctx.lineWidth = 1.5;
@@ -251,7 +302,7 @@ export function setupIdeogramNode(node) {
             ctx.font = "12px 'Segoe UI', sans-serif";
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
-            ctx.fillText("Нажмите «Edit design»", ax + box.w / 2, ay + box.h / 2);
+            ctx.fillText(t("empty_hint", state.design.language || DEFAULT_LANG), ax + box.w / 2, ay + box.h / 2);
             ctx.textAlign = "start";
         }
     }
