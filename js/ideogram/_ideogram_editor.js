@@ -80,7 +80,7 @@ function ensureStyles() {
 .ts-ideoe-handle.sw{left:-6px;bottom:-6px;cursor:nesw-resize}.ts-ideoe-handle.se{right:-6px;bottom:-6px;cursor:nwse-resize}
 .ts-ideoe-handle.n{left:50%;top:-6px;transform:translateX(-50%);cursor:ns-resize}.ts-ideoe-handle.s{left:50%;bottom:-6px;transform:translateX(-50%);cursor:ns-resize}
 .ts-ideoe-handle.w{left:-6px;top:50%;transform:translateY(-50%);cursor:ew-resize}.ts-ideoe-handle.e{right:-6px;top:50%;transform:translateY(-50%);cursor:ew-resize}
-.ts-ideoe-inline{position:absolute;z-index:20;box-sizing:border-box;border:2px solid #ffd500;border-radius:3px;background:rgba(10,14,20,.94);color:#fff;font:700 14px/1.15 "Segoe UI",sans-serif;padding:4px 6px;resize:none;outline:none;text-align:center}
+.ts-ideoe textarea.ts-ideoe-inline{position:absolute;z-index:20;width:auto;box-sizing:border-box;border:2px solid #ffd500;border-radius:3px;background:#0c1016;color:#fff;caret-color:#ffd500;font:700 14px/1.2 "Segoe UI",sans-serif;padding:6px 8px;resize:none;outline:none;text-align:center;box-shadow:0 4px 18px rgba(0,0,0,.6)}
 .ts-ideoe-inspector{flex:0 0 340px;display:flex;flex-direction:column;border-left:1px solid #1c2430;background:#0c1118;min-height:0}
 .ts-ideoe-inspector__scroll{flex:1 1 auto;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:12px}
 .ts-ideoe-card{border:1px solid #1f2937;border-radius:10px;background:#0f151d;padding:10px;display:flex;flex-direction:column;gap:8px}
@@ -130,6 +130,7 @@ function ensureStyles() {
 .ts-ideoe-mpval{font-size:11px;color:#cdd6e6;font-variant-numeric:tabular-nums;min-width:24px;text-align:center}
 .ts-ideoe-btnrow{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
 .ts-ideoe-hint{font-size:11px;color:#8a93a3;line-height:1.4;margin:2px 0 0}
+.ts-ideoe-tip{position:fixed;z-index:12000;max-width:300px;background:#0b1119;color:#e9eef6;border:1px solid #2a3950;border-radius:8px;padding:7px 10px;font-size:12px;line-height:1.45;box-shadow:0 8px 26px rgba(0,0,0,.6);pointer-events:none;opacity:0;transition:opacity .12s ease;white-space:normal}
 .ts-ideoe-empty{color:#6b7688;font-size:12px;text-align:center;padding:24px 8px}
 `;
     document.head.appendChild(style);
@@ -139,6 +140,16 @@ function el(tag, className, text) {
     const node = document.createElement(tag);
     if (className) node.className = className;
     if (text != null) node.textContent = text;
+    return node;
+}
+
+// Attach a localized hover tooltip: store the i18n KEY (resolved to the current
+// language at show time, so tooltips follow the RU/EN switch for free).
+function tip(node, key, vars) {
+    if (node && key) {
+        node.dataset.tip = key;
+        if (vars && vars.n != null) node.dataset.tipN = String(vars.n);
+    }
     return node;
 }
 
@@ -167,7 +178,7 @@ function buildPalette(getArr, setArr, cap, lang) {
         arr.forEach((hex, i) => {
             const sw = el("div", "ts-ideoe-sw");
             sw.style.background = hex;
-            sw.title = `${hex}`;
+            tip(sw, "tip_palette_swatch");
             sw.addEventListener("click", () => {
                 const next = arr.slice();
                 next.splice(i, 1);
@@ -184,6 +195,7 @@ function buildPalette(getArr, setArr, cap, lang) {
             // .click() mis-anchored the popup (far below / off-screen when scrolled,
             // which read as "nothing happens" in the lower block palette).
             const add = el("label", "ts-ideoe-paladd");
+            tip(add, "tip_add_color");
             const picker = el("input", "ts-ideoe-palinput");
             picker.type = "color";
             picker.value = "#3A72FF";
@@ -291,6 +303,13 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
     header.append(title, addText, addObj, dupBtn, delBtn, clearBtn, el("div", "ts-ideoe-spacer"),
         langSeg, aspectSel, mpWrap, refBtn, refClear, cancelBtn, saveBtn);
 
+    // Hover tooltips for every toolbar control (localized at show time).
+    tip(addText, "tip_add_text"); tip(addObj, "tip_add_obj"); tip(dupBtn, "tip_duplicate");
+    tip(delBtn, "tip_delete"); tip(clearBtn, "tip_clear"); tip(aspectSel, "tip_aspect");
+    tip(mpInput, "tip_megapixels"); tip(refBtn, "tip_reference"); tip(refClear, "tip_clear_ref");
+    tip(cancelBtn, "tip_cancel"); tip(saveBtn, "tip_save");
+    langButtons.forEach(([, b]) => tip(b, "tip_language"));
+
     function relabelHeader() {
         addText.textContent = tr("add_text");
         addObj.textContent = tr("add_obj");
@@ -352,6 +371,45 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
     overlay.appendChild(importInput);
     importInput.addEventListener("change", () => { handleImportFiles(Array.from(importInput.files || [])); });
 
+    // ── Tooltips: one floating bubble, shown on hover over any [data-tip] ───── //
+    // The element stores the i18n KEY; the text is resolved in the current
+    // language at show time, so tooltips localize together with the rest of the UI.
+    const tipEl = el("div", "ts-ideoe-tip");
+    overlay.appendChild(tipEl);
+    let tipTimer = null;
+    let tipTarget = null;
+    function positionTip(target) {
+        const r = target.getBoundingClientRect();
+        const tr2 = tipEl.getBoundingClientRect();
+        let left = r.left + r.width / 2 - tr2.width / 2;
+        let top = r.bottom + 8;
+        left = Math.max(8, Math.min(left, window.innerWidth - tr2.width - 8));
+        if (top + tr2.height > window.innerHeight - 8) top = Math.max(8, r.top - tr2.height - 8);
+        tipEl.style.left = `${left}px`;
+        tipEl.style.top = `${top}px`;
+    }
+    function showTip(target) {
+        const key = target.dataset.tip;
+        if (!key) return;
+        const vars = target.dataset.tipN != null ? { n: target.dataset.tipN } : undefined;
+        tipEl.textContent = t(key, work.language, vars);
+        tipEl.style.opacity = "1";
+        positionTip(target);
+    }
+    function hideTip() { tipTarget = null; clearTimeout(tipTimer); tipEl.style.opacity = "0"; }
+    overlay.addEventListener("mouseover", (e) => {
+        const tEl = e.target.closest?.("[data-tip]");
+        if (!tEl || tEl === tipTarget) return;
+        tipTarget = tEl;
+        clearTimeout(tipTimer);
+        tipTimer = setTimeout(() => { if (tipTarget === tEl) showTip(tEl); }, 350);
+    });
+    overlay.addEventListener("mouseout", (e) => {
+        const tEl = e.target.closest?.("[data-tip]");
+        if (tEl && tEl === tipTarget) hideTip();
+    });
+    overlay.addEventListener("pointerdown", hideTip, true);
+
     // ── Artboard sizing + style preview ─────────────────────────────────── //
     function layoutArtboard() {
         const availW = stageWrap.clientWidth - 32;
@@ -412,6 +470,7 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
             const r = block.rect || { x: 0.1, y: 0.1, w: 0.3, h: 0.2 };
             const div = el("div", "ts-ideoe-block");
             div.dataset.id = block.id;
+            tip(div, "tip_block_rect");
             div.classList.toggle("is-obj", block.type === "obj");
             div.classList.toggle("is-visual", block.type === "text" && !!block.visual_only);
             div.classList.toggle("is-selected", block.id === selectedId);
@@ -424,6 +483,7 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
             if (bpal.length) div.style.background = paletteGradientCss(bpal, { alpha: 0.55, mesh: false });
 
             let textEl = null;
+            let fitEl = null;  // the content element auto-fitted to the block (text OR obj)
             if (block.type === "text" && !block.visual_only) {
                 textEl = el("div", "ts-ideoe-block__text");
                 textEl.textContent = applyCase(block.text || "", block.case);
@@ -438,8 +498,11 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
                     textEl.style.textShadow = "0 1px 2px rgba(0,0,0,.7)";
                 }
                 div.appendChild(textEl);
+                fitEl = textEl;
             } else if (block.type === "obj") {
-                div.appendChild(el("div", "ts-ideoe-block__obj", block.desc || "obj"));
+                const objEl = el("div", "ts-ideoe-block__obj", block.desc || "obj");
+                div.appendChild(objEl);
+                fitEl = objEl;
             }
             const label = el("div", "ts-ideoe-block__label",
                 block.type === "obj" ? "OBJ" : (block.visual_only ? "↳" : "TXT"));
@@ -448,6 +511,7 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
             if (block.id === selectedId) {
                 ["nw", "ne", "sw", "se", "n", "s", "e", "w"].forEach((dir) => {
                     const h = el("div", `ts-ideoe-handle ${dir}`);
+                    tip(h, "tip_resize_handle");
                     h.addEventListener("pointerdown", (ev) => startDrag(ev, block, dir));
                     div.appendChild(h);
                 });
@@ -457,6 +521,18 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
             // native dblclick is suppressed by startDrag's preventDefault).
             div.addEventListener("pointerdown", (ev) => {
                 if (ev.target.classList.contains("ts-ideoe-handle")) return;
+                // Alt+drag clones the block and drags the copy (original stays put).
+                if (ev.altKey) {
+                    ev.preventDefault();
+                    ev.stopPropagation();
+                    lastClickInfo = { id: null, t: 0 };
+                    const copy = JSON.parse(JSON.stringify(block));
+                    copy.id = makeBlockId();
+                    work.blocks.push(copy);
+                    selectBlock(copy.id);
+                    startDrag(ev, copy, "move");
+                    return;
+                }
                 const now = Date.now();
                 if (lastClickInfo.id === block.id && now - lastClickInfo.t < 350) {
                     lastClickInfo = { id: null, t: 0 };
@@ -470,7 +546,7 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
                 startDrag(ev, block, "move");
             });
             blocksLayer.appendChild(div);
-            if (textEl) fitText(textEl);
+            if (fitEl) fitText(fitEl);
         });
     }
 
@@ -483,30 +559,60 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
         const ab = artboardSize();
         const ta = el("textarea", "ts-ideoe-inline");
         ta.value = block.type === "obj" ? (block.desc || "") : (block.text || "");
-        ta.style.left = `${r.x * ab.w}px`;
-        ta.style.top = `${r.y * ab.h}px`;
-        ta.style.width = `${Math.max(60, r.w * ab.w)}px`;
-        ta.style.height = `${Math.max(28, r.h * ab.h)}px`;
-        if (block.type === "obj") { ta.style.fontWeight = "600"; ta.style.fontSize = "12px"; }
+        // Match the on-canvas rendered font size EXACTLY so the text never changes
+        // size when entering/leaving edit mode — identical for every block type.
+        const innerSel = block.type === "obj" ? ".ts-ideoe-block__obj" : ".ts-ideoe-block__text";
+        const renderedEl = blocksLayer.querySelector(`[data-id="${block.id}"] ${innerSel}`);
+        const rendered = renderedEl ? parseFloat(getComputedStyle(renderedEl).fontSize) || 0 : 0;
+        const fs = Math.round(rendered || Math.max(18, Math.min(r.h * ab.h * 0.5, 64)));
+        ta.style.fontSize = `${fs}px`;
+        if (block.type === "obj") ta.style.fontWeight = "600";
+        // Editor box: at least the block's size, but tall/wide enough for the font,
+        // and kept inside the artboard.
+        const w = Math.max(120, r.w * ab.w);
+        const h = Math.max(fs + 28, r.h * ab.h);
+        ta.style.width = `${w}px`;
+        ta.style.height = `${h}px`;
+        ta.style.left = `${clamp(r.x * ab.w, 0, Math.max(0, ab.w - w))}px`;
+        ta.style.top = `${clamp(r.y * ab.h, 0, Math.max(0, ab.h - h))}px`;
         artboard.appendChild(ta);
         inlineEl = ta;
         ta.focus();
         ta.select();
+
+        function onDocDown(ev) {
+            if (!inlineEl) return;
+            if (ta.contains(ev.target)) return;  // clicks inside the editor are fine
+            commit();
+        }
+        function teardown() { document.removeEventListener("pointerdown", onDocDown, true); }
         const commit = () => {
             if (!inlineEl) return;
             const v = ta.value;
-            if (block.type === "obj") block.desc = v; else block.text = v;
             inlineEl = null;
+            teardown();
+            if (block.type === "obj") block.desc = v; else block.text = v;
             ta.remove();
             renderBlocks();
             renderInspector();
         };
-        const cancel = () => { inlineEl = null; ta.remove(); };
+        const cancel = () => {
+            if (!inlineEl) return;
+            inlineEl = null;
+            teardown();
+            ta.remove();
+        };
+        // Reliable outside-click commit: a capture-phase document listener fires
+        // even when the clicked area (stage/artboard/inspector) is non-focusable,
+        // which the textarea's blur alone does not catch. Registered synchronously
+        // — the opening pointerdown already passed document's capture phase, so it
+        // won't self-trigger.
+        document.addEventListener("pointerdown", onDocDown, true);
         ta.addEventListener("blur", commit);
         ta.addEventListener("keydown", (ev) => {
             ev.stopPropagation();
             if (ev.key === "Escape") { ev.preventDefault(); cancel(); }
-            else if (ev.key === "Enter" && (ev.ctrlKey || ev.metaKey)) { ev.preventDefault(); ta.blur(); }
+            else if (ev.key === "Enter" && (ev.ctrlKey || ev.metaKey)) { ev.preventDefault(); commit(); }
         });
         ["pointerdown", "pointermove", "pointerup", "dblclick"].forEach((e) =>
             ta.addEventListener(e, (ev) => ev.stopPropagation()));
@@ -539,8 +645,8 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
                 div.style.width = `${w * 100}%`;
                 div.style.height = `${h * 100}%`;
                 if (mode !== "move") {
-                    const txt = div.querySelector(".ts-ideoe-block__text");
-                    if (txt) fitText(txt, 8);  // live re-fit while resizing
+                    const txt = div.querySelector(".ts-ideoe-block__text, .ts-ideoe-block__obj");
+                    if (txt) fitText(txt, 8);  // live re-fit while resizing (text + obj)
                 }
             }
             updateBboxReadout();
@@ -583,6 +689,22 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
         work.blocks.push(copy);
         selectBlock(copy.id);
         renderBlocks();
+    }
+
+    // Internal block clipboard (Ctrl+C / Ctrl+V).
+    let clipboardBlock = null;
+    function copySelected() {
+        const sel = getSelected();
+        if (sel) clipboardBlock = JSON.parse(JSON.stringify(sel));
+    }
+    function pasteBlock() {
+        if (!clipboardBlock) return;
+        const copy = JSON.parse(JSON.stringify(clipboardBlock));
+        copy.id = makeBlockId();
+        const rc = copy.rect || { x: 0.1, y: 0.1, w: 0.4, h: 0.2 };
+        copy.rect = { ...rc, x: clamp((rc.x || 0) + 0.03, 0, 0.95), y: clamp((rc.y || 0) + 0.03, 0, 0.95) };
+        work.blocks.push(copy);
+        selectBlock(copy.id);
     }
 
     function deleteSelected() {
@@ -643,15 +765,16 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
             relabelHeader();
         });
         const r = el("div", "ts-ideoe-row");
+        tip(sel, "tip_layout_preset");
         r.append(el("label", null, tr("layout_preset")), sel);
         card.appendChild(r);
         const cur = layouts.find((x) => x.id === work.layout_id);
         if (cur) card.appendChild(el("div", "ts-ideoe-hint", localizedDesc(cur, work.language)));
-        const saveBtnL = el("button", "ts-ideoe-btn ghost small", tr("save_as_layout"));
+        const saveBtnL = tip(el("button", "ts-ideoe-btn ghost small", tr("save_as_layout")), "tip_save_as_layout");
         saveBtnL.addEventListener("click", () => saveCustomPreset("layout"));
-        const expBtnL = el("button", "ts-ideoe-btn ghost small", tr("export_btn"));
+        const expBtnL = tip(el("button", "ts-ideoe-btn ghost small", tr("export_btn")), "tip_export_layout");
         expBtnL.addEventListener("click", () => exportPreset("layout"));
-        const impBtnL = el("button", "ts-ideoe-btn ghost small", tr("import_btn"));
+        const impBtnL = tip(el("button", "ts-ideoe-btn ghost small", tr("import_btn")), "tip_import_layout");
         impBtnL.addEventListener("click", () => importPresets("layout"));
         const footL = el("div", "ts-ideoe-btnrow");
         footL.append(saveBtnL, expBtnL, impBtnL);
@@ -659,9 +782,44 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
         return card;
     }
 
-    function styleCard() {
+    // A labelled field row with the control + a one-line plain-language hint
+    // underneath. `hintVars` feeds {n}-style placeholders in the hint string.
+    function fieldRow(card, labelKey, hintKey, control, hintVars) {
+        const r = row(labelKey);
+        if (hintKey) tip(control, hintKey, hintVars);  // hover tooltip mirrors the inline hint
+        r.appendChild(control);
+        card.appendChild(r);
+        if (hintKey) card.appendChild(el("div", "ts-ideoe-hint", tr(hintKey, hintVars)));
+    }
+
+    // Card 1 — "What you're making": the two whole-image decisions.
+    function overallCard() {
         const card = el("div", "ts-ideoe-card");
-        card.appendChild(el("h3", null, tr("card_style")));
+        card.appendChild(el("h3", null, tr("card_overall")));
+
+        // Image type (the renamed Medium) — governs the whole image + the
+        // photo-vs-art_style switch, so it leads the inspector.
+        const med = el("select");
+        MEDIA_OPTIONS.forEach((m) => {
+            const o = el("option", null, m); o.value = m;
+            if (m === work.style.medium) o.selected = true;
+            med.appendChild(o);
+        });
+        med.addEventListener("change", () => { work.style.medium = med.value; renderInspector(); });
+        fieldRow(card, "medium", "medium_hint", med);
+
+        // One-line brief (high_level_description).
+        const hld = el("textarea");
+        hld.value = work.high_level_description || "";
+        hld.addEventListener("input", () => { work.high_level_description = hld.value; });
+        fieldRow(card, "hld", "hld_hint", hld);
+        return card;
+    }
+
+    // Card 2 — "How it should look": style preset + the style_description fields.
+    function lookCard() {
+        const card = el("div", "ts-ideoe-card");
+        card.appendChild(el("h3", null, tr("card_look")));
 
         const styleRow = el("div", "ts-ideoe-row");
         const sel = el("select");
@@ -678,61 +836,57 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
             renderInspector();
             renderBlocks();
         });
+        tip(sel, "tip_style_preset");
         styleRow.append(el("label", null, tr("style_preset")), sel);
         card.appendChild(styleRow);
         const curS = styles.find((x) => x.id === work.style.preset_id);
         if (curS) card.appendChild(el("div", "ts-ideoe-hint", localizedDesc(curS, work.language)));
 
-        const hldRow = row("hld");
-        const hld = el("textarea");
-        hld.value = work.high_level_description || "";
-        hld.addEventListener("input", () => { work.high_level_description = hld.value; });
-        hldRow.appendChild(hld);
-        card.appendChild(hldRow);
+        const aes = el("textarea");
+        aes.value = work.style.aesthetics || "";
+        aes.addEventListener("input", () => { work.style.aesthetics = aes.value; });
+        fieldRow(card, "aesthetics", "aesthetics_hint", aes);
 
-        const medRow = row("medium");
-        const med = el("select");
-        MEDIA_OPTIONS.forEach((m) => {
-            const o = el("option", null, m); o.value = m;
-            if (m === work.style.medium) o.selected = true;
-            med.appendChild(o);
-        });
-        med.addEventListener("change", () => { work.style.medium = med.value; renderInspector(); });
-        medRow.appendChild(med);
-        card.appendChild(medRow);
-        card.appendChild(el("div", "ts-ideoe-hint", tr("medium_hint")));
+        const lig = el("textarea");
+        lig.value = work.style.lighting || "";
+        lig.addEventListener("input", () => { work.style.lighting = lig.value; });
+        fieldRow(card, "lighting", "lighting_hint", lig);
 
+        // photo XOR art_style, decided by the image type.
         const isPhoto = work.style.medium === PHOTO_MEDIUM;
-        [["aesthetics", "aesthetics"], ["lighting", "lighting"],
-         isPhoto ? ["photo", "photo_label"] : ["art_style", "art_style"]].forEach(([key, lblKey]) => {
-            const rr = row(lblKey);
-            const inp = el("textarea");
-            inp.value = work.style[key] || "";
-            inp.addEventListener("input", () => { work.style[key] = inp.value; });
-            rr.appendChild(inp);
-            card.appendChild(rr);
-        });
+        const xorKey = isPhoto ? "photo" : "art_style";
+        const xorLabel = isPhoto ? "photo_label" : "art_style";
+        const xorHint = isPhoto ? "photo_hint" : "art_style_hint";
+        const xor = el("textarea");
+        xor.value = work.style[xorKey] || "";
+        xor.addEventListener("input", () => { work.style[xorKey] = xor.value; });
+        fieldRow(card, xorLabel, xorHint, xor);
 
         const palRow = row2("image_palette", { n: IMAGE_PALETTE_CAP });
         palRow.appendChild(buildPalette(() => work.style.color_palette, (n) => { work.style.color_palette = n; renderBlocks(); }, IMAGE_PALETTE_CAP, work.language));
         card.appendChild(palRow);
+        card.appendChild(el("div", "ts-ideoe-hint", tr("image_palette_hint", { n: IMAGE_PALETTE_CAP })));
 
-        const bgRow = row("background");
-        const bg = el("textarea");
-        bg.value = work.background || "";
-        bg.addEventListener("input", () => { work.background = bg.value; });
-        bgRow.appendChild(bg);
-        card.appendChild(bgRow);
-
-        const saveBtnS = el("button", "ts-ideoe-btn ghost small", tr("save_as_style"));
+        const saveBtnS = tip(el("button", "ts-ideoe-btn ghost small", tr("save_as_style")), "tip_save_as_style");
         saveBtnS.addEventListener("click", () => saveCustomPreset("style"));
-        const expBtnS = el("button", "ts-ideoe-btn ghost small", tr("export_btn"));
+        const expBtnS = tip(el("button", "ts-ideoe-btn ghost small", tr("export_btn")), "tip_export_style");
         expBtnS.addEventListener("click", () => exportPreset("style"));
-        const impBtnS = el("button", "ts-ideoe-btn ghost small", tr("import_btn"));
+        const impBtnS = tip(el("button", "ts-ideoe-btn ghost small", tr("import_btn")), "tip_import_style");
         impBtnS.addEventListener("click", () => importPresets("style"));
         const footS = el("div", "ts-ideoe-btnrow");
         footS.append(saveBtnS, expBtnS, impBtnS);
         card.appendChild(footS);
+        return card;
+    }
+
+    // Card 3 — "What's in the scene": the background (compositional_deconstruction).
+    function sceneCard() {
+        const card = el("div", "ts-ideoe-card");
+        card.appendChild(el("h3", null, tr("card_scene")));
+        const bg = el("textarea");
+        bg.value = work.background || "";
+        bg.addEventListener("input", () => { work.background = bg.value; });
+        fieldRow(card, "background", "background_hint", bg);
         return card;
     }
 
@@ -756,6 +910,7 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
         if (sel.type === "obj") {
             const dRow = row("obj_desc");
             const ta = el("textarea");
+            tip(ta, "tip_obj_desc");
             ta.value = sel.desc || "";
             ta.addEventListener("input", () => { sel.desc = ta.value; renderBlocks(); });
             dRow.appendChild(ta);
@@ -768,6 +923,7 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
 
         const textRow = row("text_literal");
         const ta = el("textarea");
+        tip(ta, "tip_text_literal");
         ta.value = sel.text || "";
         ta.addEventListener("input", () => { sel.text = ta.value; renderBlocks(); renderWarnings(); });
         textRow.appendChild(ta);
@@ -785,23 +941,25 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
             fontSel.appendChild(o);
         });
         fontSel.addEventListener("change", () => { sel.font_preset_id = fontSel.value; renderBlocks(); renderDescPreview(); renderWarnings(); });
+        tip(fontSel, "tip_font_preset");
         fontRow.appendChild(fontSel);
         card.appendChild(fontRow);
 
         const segRow = row("weight");
-        segRow.appendChild(buildSegmented(WEIGHTS, () => sel.weight, (v) => { sel.weight = v; renderBlocks(); renderDescPreview(); }, (o) => segLabel("weight", o, work.language)));
+        segRow.appendChild(tip(buildSegmented(WEIGHTS, () => sel.weight, (v) => { sel.weight = v; renderBlocks(); renderDescPreview(); }, (o) => segLabel("weight", o, work.language)), "tip_weight"));
         card.appendChild(segRow);
 
         const caseRow = row("case");
-        caseRow.appendChild(buildSegmented(CASES, () => sel.case, (v) => { sel.case = v; renderBlocks(); renderDescPreview(); renderWarnings(); }, (o) => segLabel("case", o, work.language)));
+        caseRow.appendChild(tip(buildSegmented(CASES, () => sel.case, (v) => { sel.case = v; renderBlocks(); renderDescPreview(); renderWarnings(); }, (o) => segLabel("case", o, work.language)), "tip_case"));
         card.appendChild(caseRow);
 
         const promRow = row("size_words");
-        promRow.appendChild(buildSegmented(PROMINENCE, () => sel.prominence, (v) => { sel.prominence = v; renderBlocks(); renderDescPreview(); }, (o) => segLabel("prominence", o, work.language)));
+        promRow.appendChild(tip(buildSegmented(PROMINENCE, () => sel.prominence, (v) => { sel.prominence = v; renderBlocks(); renderDescPreview(); }, (o) => segLabel("prominence", o, work.language)), "tip_size_words"));
         card.appendChild(promRow);
 
         const colorRow = row("text_color");
         const color = el("input"); color.type = "color"; color.value = normHex(sel.color) || "#FFFFFF";
+        tip(color, "tip_text_color");
         color.addEventListener("input", () => { sel.color = color.value.toUpperCase(); renderBlocks(); renderDescPreview(); });
         colorRow.appendChild(color);
         card.appendChild(colorRow);
@@ -809,8 +967,9 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
         const legRow = row("legibility");
         const checks = el("div", "ts-ideoe-checks");
         sel.legibility = sel.legibility || {};
-        [["outline", "leg_outline"], ["high_contrast", "leg_contrast"], ["solid_block", "leg_block"]].forEach(([key, lblKey]) => {
+        [["outline", "leg_outline", "tip_leg_outline"], ["high_contrast", "leg_contrast", "tip_leg_contrast"], ["solid_block", "leg_block", "tip_leg_block"]].forEach(([key, lblKey, tipKey]) => {
             const c = el("label", "ts-ideoe-check");
+            tip(c, tipKey);
             const cb = el("input"); cb.type = "checkbox"; cb.checked = !!sel.legibility[key];
             cb.addEventListener("change", () => { sel.legibility[key] = cb.checked; renderBlocks(); renderDescPreview(); });
             c.append(cb, document.createTextNode(tr(lblKey)));
@@ -820,6 +979,7 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
         card.appendChild(legRow);
 
         const voRow = el("label", "ts-ideoe-check");
+        tip(voRow, "tip_visual_only");
         const vo = el("input"); vo.type = "checkbox"; vo.checked = !!sel.visual_only;
         vo.addEventListener("change", () => { sel.visual_only = vo.checked; renderBlocks(); renderDescPreview(); renderWarnings(); });
         voRow.append(vo, document.createTextNode(tr("visual_only")));
@@ -827,6 +987,7 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
 
         const ovRow = row("override");
         const ov = el("input"); ov.type = "text"; ov.value = sel.desc_override || "";
+        tip(ov, "tip_override");
         ov.addEventListener("input", () => { sel.desc_override = ov.value; renderDescPreview(); });
         ovRow.appendChild(ov);
         card.appendChild(ovRow);
@@ -866,7 +1027,9 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
     function renderInspector() {
         inspectorScroll.innerHTML = "";
         inspectorScroll.appendChild(templateCard());
-        inspectorScroll.appendChild(styleCard());
+        inspectorScroll.appendChild(overallCard());
+        inspectorScroll.appendChild(lookCard());
+        inspectorScroll.appendChild(sceneCard());
         currentBlockCard = blockCard();
         inspectorScroll.appendChild(currentBlockCard);
         updateBanner();
@@ -1012,6 +1175,7 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
     document.addEventListener("paste", onPaste);
 
     stageWrap.addEventListener("pointerdown", (e) => {
+        if (inlineEl) return;  // an open inline editor commits via its own document listener
         if (e.target === stageWrap || e.target === stage || e.target === artboard || e.target === grid) selectBlock(null);
     });
 
@@ -1030,11 +1194,21 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
     saveBtn.addEventListener("click", commit);
     function onKey(e) {
         if (inlineEl) return;
-        if (e.key === "Escape") { e.stopPropagation(); close(); }
-        else if ((e.key === "Delete" || e.key === "Backspace") && getSelected()
-            && document.activeElement?.tagName !== "TEXTAREA" && document.activeElement?.tagName !== "INPUT") {
-            deleteSelected();
+        if (e.key === "Escape") { e.stopPropagation(); close(); return; }
+        // Don't hijack shortcuts while typing in a panel field — let native
+        // copy/paste/delete work there.
+        const tag = document.activeElement?.tagName;
+        if (tag === "TEXTAREA" || tag === "INPUT" || tag === "SELECT") return;
+        if (e.key === "Delete" || e.key === "Backspace") {
+            if (getSelected()) { e.preventDefault(); deleteSelected(); }
+            return;
         }
+        const mod = e.ctrlKey || e.metaKey;
+        if (!mod) return;
+        // e.code is the physical key, so these work on any layout (incl. Cyrillic).
+        if (e.code === "KeyC") { if (getSelected()) { copySelected(); e.preventDefault(); } }
+        else if (e.code === "KeyV") { if (clipboardBlock) { pasteBlock(); e.preventDefault(); } }
+        else if (e.code === "KeyD") { if (getSelected()) { duplicateSelected(); e.preventDefault(); } }
     }
     document.addEventListener("keydown", onKey);
 

@@ -186,8 +186,12 @@ export function setupIdeogramNode(node) {
         const styleObj = (state.presets.styles || []).find((s) => s.id === state.design.style?.preset_id);
         const styleName = styleObj ? localizedName(styleObj, lang) : (state.design.style?.preset_id || "—");
         editBtn.textContent = t("edit_btn", lang);
+        // Localized native tooltips for the node-preview controls.
+        editBtn.title = t("tip_edit_design", lang);
+        canvas.title = t("tip_node_canvas", lang);
         const dims = dimsFromAspectMp(state.design.aspect_ratio, state.design.megapixels);
         aspectPill.textContent = `${dims.w}×${dims.h}`;
+        aspectPill.title = t("tip_dims_pill", lang);
         summary.innerHTML = "";
         const main = document.createElement("span");
         const txtWord = lang === "en" ? "text" : "текст";
