@@ -1,7 +1,7 @@
 [project]
 name = "comfyui-timesaver"
 description = "ComfyUI nodes from [Timesaver](https://github.com/AlexYez/comfyui-timesaver)."
-version = "9.33"
+version = "9.34"
 license = { file = "LICENSE.txt" }
 requires-python = ">=3.12"
 # Core runtime: pulled by every node pack on every install. Things that
@@ -17,6 +17,10 @@ dependencies = [
     "opencv-python>=4.5.0",
     "py360convert>=0.1.0",
     "srt>=3.5.0",
+    # Native OpenAI Whisper — the unified engine (nodes/_whisper_engine.py) used
+    # by both TS Whisper and TS Super Prompt voice. Small package; pulls tiktoken
+    # (already core) plus a couple of light native deps.
+    "openai-whisper>=20231117",
     "urllib3>=1.26.0",
     "easydict>=1.10.0",
     "tiktoken",
@@ -40,10 +44,10 @@ audio-stems = [
     "pykeops",
 ]
 
-# Whisper-based transcription (TS_Whisper, TS_SuperPrompt voice). The
-# OpenAI whisper package itself is small but pulls a chain of native deps;
-# transformers (already in core) handles modern Whisper variants directly,
-# so this is only needed for the legacy whisper.load_audio fallback path.
+# Whisper transcription (TS_Whisper + TS_SuperPrompt voice) runs on native
+# openai-whisper, which is now a CORE dependency (see [project.dependencies]).
+# This extra is kept as a backward-compatible alias for anyone who installed
+# `[audio-whisper]` before.
 audio-whisper = ["openai-whisper>=20231117"]
 
 # Russian TTS / stress-marking (TS_Silero_TTS, TS_Silero_Stress). Optional

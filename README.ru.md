@@ -8,7 +8,7 @@
 
 Ресайз, цветокоррекция, кеинг, инпейнтинг, транскрипция, переводы, конструкторы промптов, менеджмент моделей — всё прямо на канвасе.
 
-[![Версия](https://img.shields.io/badge/version-9.33-blue.svg)](pyproject.toml)
+[![Версия](https://img.shields.io/badge/version-9.34-blue.svg)](pyproject.toml)
 [![ComfyUI](https://img.shields.io/badge/ComfyUI-V3%20API-orange.svg)](https://github.com/comfyanonymous/ComfyUI)
 [![Python](https://img.shields.io/badge/python-3.10+-green.svg)](https://www.python.org/)
 [![Лицензия](https://img.shields.io/badge/license-see%20LICENSE.txt-lightgrey.svg)](LICENSE.txt)
@@ -94,7 +94,6 @@ python -m pip install -r requirements.txt
 |---|---|
 | TS Cube ↔ Equirectangular | `py360convert` |
 | TS Music Stems | `demucs`, `geomloss`, `pykeops` |
-| TS Whisper | `openai-whisper` |
 | TS Silero TTS / Stress | `silero`, `silero-stress` |
 | TS RTX Upscaler | `nvvfx` (только NVIDIA RTX) |
 | TS Video Upscale With Model | `spandrel` |
@@ -479,7 +478,7 @@ Speech-to-text, text-to-speech, разделение на стемы плюс д
 #### TS Whisper
 <img src="doc/screenshots/ts_whisper.png" alt="TS Whisper" width="450" />
 
-Speech-to-text через OpenAI Whisper. Сразу три формата: SRT (с тайм-кодами), plain text, TTML. Настраиваемый beam search, язык, temperature fallbacks и OOM-aware retries.
+Speech-to-text на нативном движке OpenAI Whisper, общем с голосом TS Super Prompt (общие веса + кэш моделей в памяти). Выбор модели: **Whisper large-v3** (лучшее качество) или **large-v3-turbo** (быстрее). Сразу три формата: SRT (тайм-коды), plain text, TTML; таймкоды по сегментам или словам, язык / перевод в английский, beam search и temperature fallbacks.
 
 **Когда использовать:** транскрипция озвучки, генерация субтитров, выдёргивание текста из подкастов перед LLM-обработкой.
 

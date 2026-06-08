@@ -1,129 +1,60 @@
-import os
+"""TS Whisper — transcription/translation on the shared native OpenAI Whisper engine.
+
+node_id: TSWhisper
+
+Uses the unified engine in ``nodes/_whisper_engine.py`` (native ``openai-whisper``)
+so model weights and the in-memory model cache are shared with the TS Super
+Prompt voice feature — load ``large-v3`` once and both nodes reuse it.
+
+Native ``model.transcribe()`` returns ``{text, segments:[{start,end,text,words}]}``
+and handles long-form audio internally (30 s windows, sequential decoding), so
+the previous transformers ASR pipeline + manual chunking are gone. SRT / TTML /
+plain-text are built from the returned segments (word-level when requested).
+"""
+
+from __future__ import annotations
+
 import datetime
-import re
 import logging
+import os
+import re
 import xml.etree.ElementTree as ET
 
-import numpy as np
-import torch
-
-import comfy.model_management
-import comfy.utils
 import folder_paths
 import srt
 
 from comfy_api.v0_0_2 import IO
 
+from .. import _whisper_engine as engine
 
-# Lazy heavy imports — `transformers` and `torchaudio.transforms` pull in
-# tokenizers / sox adapters / huge model registries. Importing them at
-# module top adds ~1–3 s to every ComfyUI startup, even when the user
-# never opens the TS Whisper node. Resolved on first use instead.
-def _torchaudio_resample_cls():
-    from torchaudio.transforms import Resample as _Resample
-    return _Resample
-
-
-def _transformers_speech_api():
-    from transformers import AutoModelForSpeechSeq2Seq as _AutoModel
-    from transformers import AutoProcessor as _AutoProcessor
-    from transformers import pipeline as _pipeline
-    return _AutoModel, _AutoProcessor, _pipeline
-
-
-_LOG_NAME = "comfyui_ts_whisper"
 _LOG_PREFIX = "[TS Whisper]"
-
-_logger = logging.getLogger(_LOG_NAME)
-
-
-def _log_info(message):
-    _logger.info(f"{_LOG_PREFIX} {message}")
+_logger = logging.getLogger("comfyui_ts_whisper")
 
 
-def _log_warning(message):
-    _logger.warning(f"{_LOG_PREFIX} {message}")
+def _log_info(message: str) -> None:
+    _logger.info("%s %s", _LOG_PREFIX, message)
 
 
-def _log_error(message):
-    _logger.error(f"{_LOG_PREFIX} {message}")
+def _log_warning(message: str) -> None:
+    _logger.warning("%s %s", _LOG_PREFIX, message)
 
 
-def _log_tensor_shape(label, tensor):
-    if not isinstance(tensor, torch.Tensor):
-        return
-    _log_info(
-        f"{label} shape={tuple(tensor.shape)} dtype={tensor.dtype} device={tensor.device}"
-    )
+def _log_error(message: str) -> None:
+    _logger.error("%s %s", _LOG_PREFIX, message)
 
 
-def _resolve_hf_cache_dir():
-    try:
-        base_path = (
-            folder_paths.base_path
-            if hasattr(folder_paths, "base_path") and folder_paths.base_path
-            else os.getcwd()
-        )
-        comfy_models_dir = os.path.join(base_path, "models")
-        if not hasattr(folder_paths, "base_path") or not folder_paths.base_path:
-            _log_warning(
-                f"folder_paths.base_path not found, using {comfy_models_dir} for models."
-            )
-        cache_dir = os.path.join(comfy_models_dir, "whisper")
-        os.makedirs(cache_dir, exist_ok=True)
-        _log_info(f"Hugging Face Whisper cache dir: {cache_dir}")
-        return cache_dir
-    except Exception as e:
-        _log_warning(
-            f"Failed to set Hugging Face cache dir. Using default cache. Error: {e}"
-        )
-        return None
-
-
-class _WhisperState:
-    """Module-level mutable state. ComfyUI V3 `lock_class` blocks
-    `cls._x = ...` on registered nodes, so the cached HF model / pipeline
-    live here instead of on the node class. Persists across executions
-    just like the V1 ``self.*`` cache used to."""
-    hf_cache_dir = None
-    hf_cache_initialized = False
-    model = None
-    processor = None
-    pipeline = None
-    current_pipeline_config: dict = {
-        "model_name": None,
-        "precision": None,
-        "attn_implementation": None,
-    }
-
-
-_state = _WhisperState()
+# Friendly model labels mapped to native whisper names (shared with the engine
+# and Super Prompt voice → shared weights + cache).
+MODEL_OPTIONS = ["large-v3", "turbo"]
 
 
 class TSWhisper(IO.ComfyNode):
-    """V3 Whisper transcription node. Mutable state lives in
-    `_WhisperState` at module scope (V3 `lock_class` blocks class-attr
-    writes). The class itself stays effectively stateless."""
+    """Native-Whisper transcription node. The class stays effectively stateless;
+    model weights/objects live in the shared engine cache."""
 
-    _LOG_NAME = _LOG_NAME
-    _LOG_PREFIX = _LOG_PREFIX
-    _logger = _logger
-
-    # `_resamplers` mutates only via dict[k] = v (not setattr on the
-    # class), so it is safe to keep as a class attribute.
-    _resamplers: dict = {}
-
-    @classmethod
-    def _ensure_hf_cache(cls):
-        if not _state.hf_cache_initialized:
-            _state.hf_cache_dir = _resolve_hf_cache_dir()
-            _state.hf_cache_initialized = True
-        return _state.hf_cache_dir
-
+    # ----------------------------------------------------------------- helpers
     @staticmethod
     def _safe_float(value, default):
-        if value is None:
-            return default
         try:
             return float(value)
         except (TypeError, ValueError):
@@ -131,30 +62,42 @@ class TSWhisper(IO.ComfyNode):
 
     @staticmethod
     def _safe_int(value, default):
-        if value is None:
-            return default
         try:
             return int(value)
         except (TypeError, ValueError):
             return default
 
     @staticmethod
-    def _is_oom_error(exc):
-        if hasattr(torch, "OutOfMemoryError") and isinstance(exc, torch.OutOfMemoryError):
-            return True
-        if hasattr(torch.cuda, "OutOfMemoryError") and isinstance(
-            exc, torch.cuda.OutOfMemoryError
-        ):
-            return True
-        message = str(exc).lower()
-        return "out of memory" in message or "allocation" in message
+    def _parse_temperature(temperature, fallbacks):
+        """Return a temperature schedule for whisper: a tuple of floats when a
+        comma-separated fallback ladder is supplied, otherwise a single float."""
+        if isinstance(fallbacks, str) and fallbacks.strip():
+            raw = fallbacks
+            for ch in (";", "|", "\n", "\t", " "):
+                raw = raw.replace(ch, ",")
+            temps = []
+            for part in (p.strip() for p in raw.split(",")):
+                if not part:
+                    continue
+                try:
+                    temps.append(float(part))
+                except ValueError:
+                    continue
+            if len(temps) > 1:
+                return tuple(temps)
+            if len(temps) == 1:
+                return temps[0]
+        try:
+            return float(temperature)
+        except (TypeError, ValueError):
+            return 0.0
 
+    # ---- banned-phrase filtering (Russian subtitle-spam hallucinations) -----
     @staticmethod
     def _normalize_text(text):
         if text is None:
             return ""
-        lowered = str(text).lower()
-        lowered = lowered.replace("ё", "е")
+        lowered = str(text).lower().replace("ё", "е")
         cleaned = re.sub(r"[^\w\s]", " ", lowered, flags=re.UNICODE)
         return re.sub(r"\s+", " ", cleaned).strip()
 
@@ -173,21 +116,16 @@ class TSWhisper(IO.ComfyNode):
                 tokens_with_idx.append((tok, idx))
 
         remove_indices = set()
-        total_tokens = len(tokens_with_idx)
+        total = len(tokens_with_idx)
         for phrase_tokens in phrase_tokens_list:
             if not phrase_tokens:
                 continue
-            phrase_len = len(phrase_tokens)
-            if phrase_len > total_tokens:
+            plen = len(phrase_tokens)
+            if plen > total:
                 continue
-            for i in range(0, total_tokens - phrase_len + 1):
-                match = True
-                for j in range(phrase_len):
-                    if tokens_with_idx[i + j][0] != phrase_tokens[j]:
-                        match = False
-                        break
-                if match:
-                    for j in range(phrase_len):
+            for i in range(0, total - plen + 1):
+                if all(tokens_with_idx[i + j][0] == phrase_tokens[j] for j in range(plen)):
+                    for j in range(plen):
                         remove_indices.add(tokens_with_idx[i + j][1])
         return remove_indices
 
@@ -204,585 +142,93 @@ class TSWhisper(IO.ComfyNode):
         filtered_text_segments = text_segments
 
         if segments:
-            segment_texts = [seg.get("text", "") for seg in segments]
-            remove_segment_indices = cls._find_phrase_indices(
-                segment_texts, phrase_tokens_list
-            )
-            if remove_segment_indices:
-                filtered_segments = [
-                    seg
-                    for idx, seg in enumerate(segments)
-                    if idx not in remove_segment_indices
-                ]
-
+            remove = cls._find_phrase_indices([s.get("text", "") for s in segments], phrase_tokens_list)
+            if remove:
+                filtered_segments = [s for i, s in enumerate(segments) if i not in remove]
         if text_segments:
-            remove_text_indices = cls._find_phrase_indices(
-                text_segments, phrase_tokens_list
-            )
-            if remove_text_indices:
-                filtered_text_segments = [
-                    text
-                    for idx, text in enumerate(text_segments)
-                    if idx not in remove_text_indices
-                ]
-
-        if segments is not filtered_segments or text_segments is not filtered_text_segments:
-            removed_segments = 0 if segments is None else len(segments) - len(filtered_segments)
-            removed_text = 0 if text_segments is None else len(text_segments) - len(filtered_text_segments)
-            if removed_segments or removed_text:
-                _log_info(
-                    f"Removed unwanted phrases: segments={removed_segments}, text_chunks={removed_text}"
-                )
-
+            remove = cls._find_phrase_indices(text_segments, phrase_tokens_list)
+            if remove:
+                filtered_text_segments = [t for i, t in enumerate(text_segments) if i not in remove]
         return filtered_segments, filtered_text_segments
 
-    @staticmethod
-    def _parse_temperature_fallbacks(value):
-        if value is None:
-            return None
-        if isinstance(value, (list, tuple)):
-            temps = []
-            for item in value:
-                try:
-                    temps.append(float(item))
-                except (TypeError, ValueError):
-                    continue
-            if not temps:
-                return None
-            return temps if len(temps) > 1 else temps[0]
-        if isinstance(value, str):
-            raw = value.strip()
-            if not raw:
-                return None
-            for ch in [";", "|", "\n", "\t", " "]:
-                raw = raw.replace(ch, ",")
-            parts = [p.strip() for p in raw.split(",") if p.strip()]
-            temps = []
-            for part in parts:
-                try:
-                    temps.append(float(part))
-                except (TypeError, ValueError):
-                    continue
-            if not temps:
-                return None
-            return temps if len(temps) > 1 else temps[0]
-        return None
-
-    @classmethod
-    def _get_resampler(cls, orig_freq, new_freq, device, quality):
-        if quality not in ("fast", "balanced", "high"):
-            quality = "balanced"
-
-        key = (int(orig_freq), int(new_freq), device.type, quality)
-        cached = cls._resamplers.get(key)
-        if cached is not None:
-            return cached
-
-        if quality == "fast":
-            lowpass_filter_width = 4
-            rolloff = 0.95
-        elif quality == "high":
-            lowpass_filter_width = 8
-            rolloff = 0.99
-        else:
-            lowpass_filter_width = 6
-            rolloff = 0.99
-
-        Resample = _torchaudio_resample_cls()
-        resampler = Resample(
-            orig_freq=int(orig_freq),
-            new_freq=int(new_freq),
-            resampling_method="sinc_interp_hann",
-            lowpass_filter_width=lowpass_filter_width,
-            rolloff=rolloff,
-            dtype=torch.float32,
-        )
-        if device.type != "cpu":
-            resampler = resampler.to(device)
-
-        cls._resamplers[key] = resampler
-        return resampler
-
-    @classmethod
-    def _collect_output_segments(cls, output_chunk, start_offset_s, all_segments, all_text_segments):
-        if isinstance(output_chunk, dict) and "chunks" in output_chunk:
-            for seg in output_chunk["chunks"]:
-                text = str(seg.get("text", "")).strip()
-                if not text:
-                    continue
-                all_text_segments.append(text)
-
-                ts = seg.get("timestamp")
-                if ts and isinstance(ts, (tuple, list)) and len(ts) == 2:
-                    s_local, e_local = ts
-                    if s_local is not None and e_local is not None:
-                        abs_start = start_offset_s + float(s_local)
-                        abs_end = start_offset_s + float(e_local)
-                        if abs_end < abs_start:
-                            abs_end = abs_start
-                        all_segments.append(
-                            {"start": abs_start, "end": abs_end, "text": text}
-                        )
-        elif isinstance(output_chunk, dict) and "text" in output_chunk:
-            text = str(output_chunk.get("text", "")).strip()
-            if text:
-                all_text_segments.append(text)
-        elif isinstance(output_chunk, str):
-            text = output_chunk.strip()
-            if text:
-                all_text_segments.append(text)
-
-    @classmethod
-    def _run_chunked_inference(
-        cls,
-        pipe,
-        prepared_audio_numpy,
-        target_sample_rate,
-        return_timestamps,
-        generate_kwargs,
-        manual_chunk_length_s,
-        manual_chunk_overlap_s,
-    ):
-        all_segments = []
-        all_text_segments = []
-
-        total_duration_samples = len(prepared_audio_numpy)
-        chunk_length_samples = max(1, int(manual_chunk_length_s * target_sample_rate))
-        overlap_samples = max(0, int(manual_chunk_overlap_s * target_sample_rate))
-        if overlap_samples >= chunk_length_samples:
-            overlap_samples = max(0, chunk_length_samples - 1)
-
-        step_samples = max(1, chunk_length_samples - overlap_samples)
-        num_chunks = max(
-            1, (total_duration_samples - overlap_samples + step_samples - 1) // step_samples
-        )
-        current_sample_offset = 0
-        pbar = comfy.utils.ProgressBar(num_chunks)
-
-        for _ in range(num_chunks):
-            start_sample = current_sample_offset
-            end_sample = min(start_sample + chunk_length_samples, total_duration_samples)
-            chunk_audio = prepared_audio_numpy[start_sample:end_sample]
-
-            if len(chunk_audio) > 0:
-                try:
-                    with torch.inference_mode():
-                        output_chunk = pipe(
-                            chunk_audio,
-                            return_timestamps=return_timestamps,
-                            generate_kwargs=generate_kwargs,
-                        )
-                except Exception:
-                    _log_error("Pipeline execution failed inside chunk loop.")
-                    cls._logger.error(
-                        f"{cls._LOG_PREFIX} generate_kwargs={generate_kwargs}",
-                        exc_info=True,
-                    )
-                    raise
-
-                cls._collect_output_segments(
-                    output_chunk,
-                    start_sample / target_sample_rate,
-                    all_segments,
-                    all_text_segments,
-                )
-
-            current_sample_offset += step_samples
-            pbar.update(1)
-            if end_sample >= total_duration_samples:
-                break
-
-        merged_segments = []
-        if all_segments:
-            overlap_tolerance_s = max(0.05, manual_chunk_overlap_s * 0.2)
-            merged_segments = cls._merge_segments(all_segments, overlap_tolerance_s)
-
-        return merged_segments, all_text_segments
-
-    @classmethod
-    def _should_reload_pipeline(cls, new_config):
-        if _state.pipeline is None:
-            return True
-        for key, value in new_config.items():
-            if _state.current_pipeline_config.get(key) != value:
-                _log_info(
-                    f"Pipeline config changed: {key} ('{_state.current_pipeline_config.get(key)}' -> '{value}')"
-                )
-                return True
-        return False
-
-    @classmethod
-    def _load_model_and_processor(cls, target_device, model_name, precision, attn_implementation_choice):
-        try:
-            _log_info(
-                f"Loading model: {model_name} (precision={precision}, attn={attn_implementation_choice})"
-            )
-
-            AutoModelForSpeechSeq2Seq, AutoProcessor, _ = _transformers_speech_api()
-
-            actual_torch_dtype = torch.float32
-            target_device_type = target_device.type
-            if target_device_type == "cuda":
-                if precision == "fp16":
-                    actual_torch_dtype = torch.float16
-                elif precision == "bf16":
-                    if hasattr(torch.cuda, "is_bf16_supported") and torch.cuda.is_bf16_supported():
-                        actual_torch_dtype = torch.bfloat16
-                    else:
-                        _log_warning("bf16 not supported, falling back to fp16.")
-                        actual_torch_dtype = torch.float16
-            else:
-                if precision != "fp32":
-                    _log_warning("Non-fp32 precision requested on CPU; using fp32.")
-
-            hf_cache = cls._ensure_hf_cache()
-            model_load_kwargs = {
-                "torch_dtype": actual_torch_dtype,
-                "low_cpu_mem_usage": True,
-                "use_safetensors": True,
-            }
-            if hf_cache:
-                model_load_kwargs["cache_dir"] = hf_cache
-
-            if attn_implementation_choice == "sdpa" and hasattr(
-                torch.nn.functional, "scaled_dot_product_attention"
-            ):
-                model_load_kwargs["attn_implementation"] = "sdpa"
-                _log_info("Using PyTorch SDPA (Scaled Dot Product Attention).")
-            elif attn_implementation_choice == "sdpa":
-                _log_warning("SDPA not available. Using eager attention.")
-
-            _state.model = AutoModelForSpeechSeq2Seq.from_pretrained(
-                model_name, **model_load_kwargs
-            )
-            if _state.model.device != target_device:
-                _state.model.to(target_device)
-
-            _log_info(f"Model loaded on {_state.model.device}")
-
-            processor_load_kwargs = {"cache_dir": hf_cache} if hf_cache else {}
-            _state.processor = AutoProcessor.from_pretrained(model_name, **processor_load_kwargs)
-
-            return _state.model, _state.processor, actual_torch_dtype
-
-        except Exception as e:
-            _log_error(f"Failed to load model/processor: {e}")
-            _state.model, _state.processor, _state.pipeline = None, None, None
-            raise
-
-    @classmethod
-    def _get_pipeline(cls, target_device, model_name, precision, attn_implementation):
-        new_config = {
-            "model_name": model_name,
-            "precision": precision,
-            "attn_implementation": attn_implementation,
-        }
-
-        if cls._should_reload_pipeline(new_config):
-            _log_info("(Re)loading ASR pipeline...")
-            _state.pipeline = None
-            model, processor, actual_torch_dtype = cls._load_model_and_processor(
-                target_device, model_name, precision, attn_implementation
-            )
-
-            _, _, pipeline = _transformers_speech_api()
-            pipeline_kwargs = {
-                "model": model,
-                "tokenizer": processor.tokenizer,
-                "feature_extractor": processor.feature_extractor,
-                "torch_dtype": actual_torch_dtype,
-                "device": target_device,
-            }
-            _state.pipeline = pipeline("automatic-speech-recognition", **pipeline_kwargs)
-            _state.current_pipeline_config = new_config
-            _log_info(f"ASR pipeline ready: {model_name}")
-
-        return _state.pipeline
-
+    # ---- TTML ---------------------------------------------------------------
     @staticmethod
     def _seconds_to_ttml_time(seconds_float):
         td = datetime.timedelta(seconds=seconds_float)
-        total_seconds = int(td.total_seconds())
-        hours = total_seconds // 3600
-        minutes = (total_seconds % 3600) // 60
-        seconds = total_seconds % 60
-        milliseconds = int(td.microseconds / 1000)
-        return f"{hours:02d}:{minutes:02d}:{seconds:02d}.{milliseconds:03d}"
+        total = int(td.total_seconds())
+        ms = int(td.microseconds / 1000)
+        return f"{total // 3600:02d}:{(total % 3600) // 60:02d}:{total % 60:02d}.{ms:03d}"
 
     @classmethod
     def _create_ttml_content(cls, subtitles, language_code):
-        ttml_lang = language_code or "und"
         root = ET.Element(
             "tt",
             attrib={
                 "xmlns": "http://www.w3.org/ns/ttml",
                 "xmlns:tts": "http://www.w3.org/ns/ttml#styling",
-                "xml:lang": ttml_lang,
+                "xml:lang": language_code or "und",
             },
         )
-        body = ET.SubElement(root, "body")
-        div = ET.SubElement(body, "div")
-
+        div = ET.SubElement(ET.SubElement(root, "body"), "div")
         for sub in subtitles:
             p = ET.SubElement(div, "p")
-            start_seconds = sub.start.total_seconds()
-            end_seconds = sub.end.total_seconds()
-            p.set("begin", cls._seconds_to_ttml_time(start_seconds))
-            p.set("end", cls._seconds_to_ttml_time(end_seconds))
+            p.set("begin", cls._seconds_to_ttml_time(sub.start.total_seconds()))
+            p.set("end", cls._seconds_to_ttml_time(sub.end.total_seconds()))
             p.text = sub.content
-
         try:
             return ET.tostring(root, encoding="unicode")
-        except Exception as e:
-            _log_error(f"TTML generation failed: {e}")
+        except Exception as exc:  # noqa: BLE001
+            _log_error(f"TTML generation failed: {exc}")
             return ""
 
-    @classmethod
-    def _prepare_audio(
-        cls,
-        audio,
-        target_sample_rate,
-        normalize_audio,
-        preprocess_device,
-        resample_quality,
-    ):
-        if not isinstance(audio, dict) or "waveform" not in audio or "sample_rate" not in audio:
-            raise ValueError("Invalid audio input format.")
-
-        waveform_tensor = audio["waveform"]
-        sample_rate = audio["sample_rate"]
-
-        if isinstance(waveform_tensor, list):
-            waveform_tensor = waveform_tensor[0]
-
-        if not isinstance(waveform_tensor, torch.Tensor):
-            raise ValueError("Audio waveform is not a torch.Tensor.")
-
-        _log_tensor_shape("Input waveform", waveform_tensor)
-
-        current_waveform = waveform_tensor.detach()
-        if current_waveform.ndim == 3:
-            if current_waveform.shape[0] > 1:
-                _log_warning("Batch size > 1 detected; using first item.")
-            current_waveform = current_waveform[0]
-
-        if current_waveform.ndim == 2:
-            channels_first = (
-                current_waveform.shape[0] <= 8
-                and current_waveform.shape[1] > current_waveform.shape[0]
-            )
-            if not channels_first:
-                current_waveform = current_waveform.transpose(0, 1)
-            force_mono = bool(normalize_audio)
-            if force_mono:
-                current_waveform = current_waveform.mean(dim=0)
-            else:
-                current_waveform = current_waveform[0]
-        elif current_waveform.ndim == 1:
-            pass
-        else:
-            raise ValueError(f"Unsupported waveform dims: {current_waveform.ndim}")
-
-        current_waveform = current_waveform.to(dtype=torch.float32)
-
-        device_choice = preprocess_device or "auto"
-        if device_choice == "cuda" and torch.cuda.is_available():
-            target_device = torch.device("cuda")
-        elif device_choice == "cpu":
-            target_device = torch.device("cpu")
-        else:
-            target_device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-
-        if current_waveform.device != target_device:
-            current_waveform = current_waveform.to(target_device)
-
-        if sample_rate != target_sample_rate:
-            try:
-                resampler = cls._get_resampler(
-                    sample_rate,
-                    target_sample_rate,
-                    current_waveform.device,
-                    resample_quality,
-                )
-                current_waveform = resampler(current_waveform)
-            except Exception as e:
-                _log_warning(
-                    f"Resample failed on device {current_waveform.device}, retrying on CPU: {e}"
-                )
-                current_waveform = current_waveform.cpu()
-                resampler = cls._get_resampler(
-                    sample_rate,
-                    target_sample_rate,
-                    current_waveform.device,
-                    resample_quality,
-                )
-                current_waveform = resampler(current_waveform)
-
-        if normalize_audio:
-            peak = current_waveform.abs().max().item() if current_waveform.numel() else 0.0
-            if peak > 0:
-                current_waveform = current_waveform / peak
-            current_waveform = current_waveform.clamp(-1.0, 1.0)
-
-        _log_tensor_shape("Prepared waveform", current_waveform)
-
-        prepared_audio_numpy = current_waveform.cpu().numpy().astype(np.float32, copy=False)
-        return prepared_audio_numpy, target_sample_rate
-
-    @staticmethod
-    def _merge_segments(segments, overlap_tolerance_s):
-        if not segments:
-            return []
-        segments_sorted = sorted(segments, key=lambda s: (s["start"], s["end"]))
-        merged = []
-        for seg in segments_sorted:
-            if seg["end"] < seg["start"]:
-                seg["end"] = seg["start"]
-            if not merged:
-                merged.append(seg)
-                continue
-            last = merged[-1]
-            if seg["start"] <= last["end"] + overlap_tolerance_s:
-                if seg["text"] == last["text"] or seg["text"] in last["text"]:
-                    last["end"] = max(last["end"], seg["end"])
-                    continue
-                if last["text"] in seg["text"]:
-                    last["text"] = seg["text"]
-                    last["end"] = max(last["end"], seg["end"])
-                    continue
-            merged.append(seg)
-        return merged
-
-    @classmethod
-    def _build_generate_kwargs(
-        cls,
-        task,
-        language,
-        num_beams,
-        temperature,
-        temperature_fallbacks,
-        condition_on_prev_tokens,
-        compression_ratio_threshold,
-        logprob_threshold,
-        no_speech_threshold,
-        initial_prompt,
-    ):
-        generate_kwargs = {"task": task}
-        if language != "auto":
-            generate_kwargs["language"] = language
-        if num_beams and num_beams > 1:
-            generate_kwargs["num_beams"] = int(num_beams)
-        if temperature_fallbacks is not None:
-            generate_kwargs["temperature"] = temperature_fallbacks
-        else:
-            if temperature is None:
-                temperature = 0.0
-            generate_kwargs["temperature"] = float(temperature)
-        if compression_ratio_threshold is None:
-            compression_ratio_threshold = 1.35
-        if logprob_threshold is None:
-            logprob_threshold = -1.0
-        if no_speech_threshold is None:
-            no_speech_threshold = 0.6
-        generate_kwargs["compression_ratio_threshold"] = float(compression_ratio_threshold)
-        generate_kwargs["logprob_threshold"] = float(logprob_threshold)
-        generate_kwargs["no_speech_threshold"] = float(no_speech_threshold)
-        if condition_on_prev_tokens is None:
-            condition_on_prev_tokens = False
-        generate_kwargs["condition_on_prev_tokens"] = bool(condition_on_prev_tokens)
-        if initial_prompt and _state.processor and hasattr(_state.processor, "get_prompt_ids"):
-            try:
-                generate_kwargs["prompt_ids"] = _state.processor.get_prompt_ids(initial_prompt)
-            except Exception as e:
-                _log_warning(f"Failed to build prompt_ids: {e}")
-        return generate_kwargs
-
+    # ----------------------------------------------------------------- schema
     @classmethod
     def define_schema(cls) -> IO.Schema:
         default_output_dir = (
-            folder_paths.get_output_directory()
-            if hasattr(folder_paths, "get_output_directory")
-            else ""
+            folder_paths.get_output_directory() if hasattr(folder_paths, "get_output_directory") else ""
         )
-
-        tooltips = {
+        tt = {
             "audio": "Входной аудиотензор ComfyUI (waveform + sample_rate).",
-            "model": "Модель Whisper из Hugging Face Hub.",
-            "output_filename_prefix": "Префикс имени файла для SRT/TTML.",
-            "task": "transcribe = распознавание на исходном языке; translate_to_english = перевод в английский.",
-            "source_language": "Язык входного аудио. auto = автоопределение. Для русского используйте ru.",
-            "timestamps": "segment = таймкоды по фразам; word = по словам; none = без таймкодов (SRT/TTML отключаются).",
-            "save_srt_file": "Сохранять SRT/TTML в папку output/subtitles.",
-            "precision": "Точность модели. fp16 быстрее на GPU; fp32 стабильнее.",
-            "attn_implementation": "Режим attention: sdpa быстрее на PyTorch 2.x, eager совместимее.",
-            "plain_text_format": "Формат текста: одной строкой или по строке на сегмент.",
-            "long_form_mode": "Режим long-form: chunked = ручной чанкинг (быстро), sequential = последовательный (обычно точнее).",
-            "manual_chunk_length_s": "Длина чанка в секундах. В вашем режиме оптимально ~20с.",
-            "manual_chunk_overlap_s": "Перекрытие чанков в секундах для более плавной стыковки.",
-            "normalize_audio": "Нормализация по пику и сведение в моно (среднее по каналам).",
-            "preprocess_device": "Где выполнять препроцессинг/ресемпл: auto, cpu или cuda.",
-            "resample_quality": "Качество ресемпла: fast быстрее, balanced компромисс, high качественнее (по умолчанию).",
-            "num_beams": "Beam search. 1 = greedy. Больше = точнее, но медленнее.",
+            "model": "Модель Whisper: large-v3 (Whisper 3, лучшее качество) или turbo (Whisper 3 Turbo, быстрее). Веса и кэш общие с TS Super Prompt.",
+            "task": "transcribe = распознавание на исходном языке; translate_to_english = перевод в английский (turbo не умеет переводить — будет транскрипция).",
+            "source_language": "Язык входного аудио. auto = автоопределение. Для русского — ru.",
+            "timestamps": "segment = таймкоды по сегментам; word = по словам; none = без таймкодов (SRT/TTML отключаются).",
+            "precision": "fp16 быстрее на GPU; fp32 стабильнее. На CPU всегда fp32.",
+            "beam_size": "Beam search (используется при temperature=0). 1 = greedy. Больше = точнее/медленнее.",
             "temperature": "Температура декодирования. 0 = детерминированно.",
-            "temperature_fallbacks": "Список температур через запятую (пример: 0.0,0.2,0.4,0.6,0.8,1.0). Если задан, перекрывает temperature.",
-            "condition_on_prev_tokens": "Использовать предыдущие токены как контекст (повышает связность, иногда усиливает дрейф).",
-            "compression_ratio_threshold": "Порог zlib-сжатия для детектора галлюцинаций.",
-            "logprob_threshold": "Порог среднего лог‑проба; ниже — fallback/отсев.",
-            "no_speech_threshold": "Порог отсутствия речи; выше — сегмент может быть отброшен.",
-            "initial_prompt": "Начальная подсказка (лексика/имена) на русском.",
+            "temperature_fallbacks": "Лестница температур через запятую (напр. 0.0,0.2,0.4,0.6,0.8,1.0). Перекрывает temperature.",
+            "condition_on_previous_text": "Контекст из предыдущих сегментов (связнее, но иногда усиливает дрейф).",
+            "compression_ratio_threshold": "Порог zlib-сжатия для детектора галлюцинаций (whisper default 2.4).",
+            "logprob_threshold": "Порог среднего лог-проба (whisper default -1.0).",
+            "no_speech_threshold": "Порог отсутствия речи (whisper default 0.6).",
+            "initial_prompt": "Начальная подсказка (лексика/имена/стиль).",
+            "save_srt_file": "Сохранять SRT/TTML в папку output/subtitles.",
+            "output_filename_prefix": "Префикс имени файла для SRT/TTML.",
             "output_dir": "Папка вывода для SRT/TTML. Пусто = стандартная output.",
         }
-
-        model_list = [
-            "openai/whisper-large-v3",
-            "openai/whisper-large-v3-turbo",
-        ]
-
-        precisions = ["fp32", "fp16"]
-        if (
-            torch.cuda.is_available()
-            and hasattr(torch.cuda, "is_bf16_supported")
-            and torch.cuda.is_bf16_supported()
-        ):
-            precisions.append("bf16")
-
-        attn_implementations = ["eager"]
-        if hasattr(torch.nn.functional, "scaled_dot_product_attention"):
-            attn_implementations.append("sdpa")
-
-        default_attn = "sdpa" if "sdpa" in attn_implementations else "eager"
-        default_precision = "fp16" if "fp16" in precisions else "fp32"
-
+        languages = ["auto", "en", "ru", "fr", "de", "es", "it", "ja", "ko", "zh", "uk", "pl"]
         return IO.Schema(
             node_id="TSWhisper",
             display_name="TS Whisper",
             category="TS/Audio",
             inputs=[
-                IO.Audio.Input("audio", tooltip=tooltips["audio"]),
-                IO.Combo.Input("model", options=model_list, default="openai/whisper-large-v3", tooltip=tooltips["model"]),
-                IO.String.Input("output_filename_prefix", default="transcribed_audio", tooltip=tooltips["output_filename_prefix"]),
-                IO.Combo.Input("task", options=["transcribe", "translate_to_english"], default="transcribe", tooltip=tooltips["task"]),
-                IO.Combo.Input("source_language", options=["auto", "en", "ru", "fr", "de", "es", "it", "ja", "ko", "zh", "uk", "pl"], default="ru", tooltip=tooltips["source_language"]),
-                IO.Combo.Input("timestamps", options=["segment", "word", "none"], default="segment", tooltip=tooltips["timestamps"]),
-                IO.Boolean.Input("save_srt_file", default=True, label_on="Yes (Save SRT & TTML)", label_off="No", tooltip=tooltips["save_srt_file"]),
-                IO.Combo.Input("precision", options=precisions, default=default_precision, tooltip=tooltips["precision"]),
-                IO.Combo.Input("attn_implementation", options=attn_implementations, default=default_attn, tooltip=tooltips["attn_implementation"]),
-                IO.Combo.Input("plain_text_format", options=["single_block", "newline_per_segment"], default="single_block", tooltip=tooltips["plain_text_format"]),
-                IO.Combo.Input("long_form_mode", options=["chunked", "sequential"], default="chunked", tooltip=tooltips["long_form_mode"]),
-                IO.Float.Input("manual_chunk_length_s", default=20.0, min=5.0, max=30.0, step=1.0, tooltip=tooltips["manual_chunk_length_s"]),
-                IO.Float.Input("manual_chunk_overlap_s", default=1.0, min=0.0, max=10.0, step=0.5, tooltip=tooltips["manual_chunk_overlap_s"]),
-                IO.Boolean.Input("normalize_audio", default=True, tooltip=tooltips["normalize_audio"]),
-                IO.Combo.Input("preprocess_device", options=["auto", "cpu", "cuda"], default="auto", tooltip=tooltips["preprocess_device"]),
-                IO.Combo.Input("resample_quality", options=["fast", "balanced", "high"], default="high", tooltip=tooltips["resample_quality"]),
-                IO.Int.Input("num_beams", default=5, min=1, max=10, tooltip=tooltips["num_beams"]),
-                IO.Float.Input("temperature", default=0.0, min=0.0, max=1.0, step=0.1, tooltip=tooltips["temperature"]),
-                IO.String.Input("temperature_fallbacks", default="0.0,0.2,0.4,0.6,0.8,1.0", multiline=False, tooltip=tooltips["temperature_fallbacks"]),
-                IO.Boolean.Input("condition_on_prev_tokens", default=True, tooltip=tooltips["condition_on_prev_tokens"]),
-                IO.Float.Input("compression_ratio_threshold", default=1.35, min=0.0, max=5.0, step=0.1, tooltip=tooltips["compression_ratio_threshold"]),
-                IO.Float.Input("logprob_threshold", default=-1.0, min=-5.0, max=0.0, step=0.1, tooltip=tooltips["logprob_threshold"]),
-                IO.Float.Input("no_speech_threshold", default=0.6, min=0.0, max=1.0, step=0.05, tooltip=tooltips["no_speech_threshold"]),
-                IO.String.Input("initial_prompt", default="", multiline=True, tooltip=tooltips["initial_prompt"]),
-                IO.String.Input("output_dir", default=default_output_dir, multiline=False, optional=True, tooltip=tooltips["output_dir"]),
+                IO.Audio.Input("audio", tooltip=tt["audio"]),
+                IO.Combo.Input("model", options=MODEL_OPTIONS, default="large-v3", tooltip=tt["model"]),
+                IO.Combo.Input("task", options=["transcribe", "translate_to_english"], default="transcribe", tooltip=tt["task"]),
+                IO.Combo.Input("source_language", options=languages, default="ru", tooltip=tt["source_language"]),
+                IO.Combo.Input("timestamps", options=["segment", "word", "none"], default="segment", tooltip=tt["timestamps"]),
+                IO.Combo.Input("precision", options=["fp16", "fp32"], default="fp16", tooltip=tt["precision"]),
+                IO.Int.Input("beam_size", default=5, min=1, max=10, tooltip=tt["beam_size"]),
+                IO.Float.Input("temperature", default=0.0, min=0.0, max=1.0, step=0.1, tooltip=tt["temperature"]),
+                IO.String.Input("temperature_fallbacks", default="0.0,0.2,0.4,0.6,0.8,1.0", multiline=False, tooltip=tt["temperature_fallbacks"]),
+                IO.Boolean.Input("condition_on_previous_text", default=True, tooltip=tt["condition_on_previous_text"]),
+                IO.Float.Input("compression_ratio_threshold", default=2.4, min=0.0, max=10.0, step=0.1, tooltip=tt["compression_ratio_threshold"]),
+                IO.Float.Input("logprob_threshold", default=-1.0, min=-10.0, max=0.0, step=0.1, tooltip=tt["logprob_threshold"]),
+                IO.Float.Input("no_speech_threshold", default=0.6, min=0.0, max=1.0, step=0.05, tooltip=tt["no_speech_threshold"]),
+                IO.String.Input("initial_prompt", default="", multiline=True, tooltip=tt["initial_prompt"]),
+                IO.Boolean.Input("save_srt_file", default=True, label_on="Yes (Save SRT & TTML)", label_off="No", tooltip=tt["save_srt_file"]),
+                IO.String.Input("output_filename_prefix", default="transcribed_audio", tooltip=tt["output_filename_prefix"]),
+                IO.String.Input("output_dir", default=default_output_dir, multiline=False, optional=True, tooltip=tt["output_dir"]),
             ],
             outputs=[
                 IO.String.Output(display_name="srt_content"),
@@ -791,284 +237,158 @@ class TSWhisper(IO.ComfyNode):
             ],
         )
 
+    # ----------------------------------------------------------------- execute
     @classmethod
     def execute(
         cls,
         audio,
         model,
-        output_filename_prefix,
         task,
         source_language,
         timestamps,
-        save_srt_file,
         precision,
-        attn_implementation,
-        plain_text_format,
-        long_form_mode,
-        manual_chunk_length_s,
-        manual_chunk_overlap_s,
-        normalize_audio,
-        preprocess_device,
-        resample_quality,
-        num_beams,
+        beam_size,
         temperature,
         temperature_fallbacks,
-        condition_on_prev_tokens,
+        condition_on_previous_text,
         compression_ratio_threshold,
         logprob_threshold,
         no_speech_threshold,
         initial_prompt,
+        save_srt_file,
+        output_filename_prefix,
         output_dir=None,
     ) -> IO.NodeOutput:
-        if output_filename_prefix is None:
-            output_filename_prefix = "transcribed_audio"
-        if task is None:
-            task = "transcribe"
-        if source_language is None:
-            source_language = "ru"
-        if timestamps is None:
-            timestamps = "segment"
-        if save_srt_file is None:
-            save_srt_file = True
-        if plain_text_format is None:
-            plain_text_format = "single_block"
-        if long_form_mode is None:
-            long_form_mode = "chunked"
-        if long_form_mode not in ("chunked", "sequential"):
-            long_form_mode = "chunked"
-        if preprocess_device not in ("auto", "cpu", "cuda"):
-            preprocess_device = "auto"
-        if resample_quality not in ("fast", "balanced", "high"):
-            resample_quality = "high"
-        if manual_chunk_length_s is None:
-            manual_chunk_length_s = 20.0
-        if manual_chunk_overlap_s is None:
-            manual_chunk_overlap_s = 1.0
-        if normalize_audio is None:
-            normalize_audio = True
-        if num_beams is None:
-            num_beams = 5
-        if temperature is None:
-            temperature = 0.0
-        if temperature_fallbacks is None:
-            temperature_fallbacks = "0.0,0.2,0.4,0.6,0.8,1.0"
-        if condition_on_prev_tokens is None:
-            condition_on_prev_tokens = True
-        if compression_ratio_threshold is None:
-            compression_ratio_threshold = 1.35
-        if logprob_threshold is None:
-            logprob_threshold = -1.0
-        if no_speech_threshold is None:
-            no_speech_threshold = 0.6
-        if initial_prompt is None:
-            initial_prompt = ""
-
-        manual_chunk_length_s = cls._safe_float(manual_chunk_length_s, 20.0)
-        manual_chunk_overlap_s = cls._safe_float(manual_chunk_overlap_s, 1.0)
-        temperature = cls._safe_float(temperature, 0.0)
-        compression_ratio_threshold = cls._safe_float(compression_ratio_threshold, 1.35)
+        model = model if model in MODEL_OPTIONS else "large-v3"
+        task = task or "transcribe"
+        source_language = source_language or "auto"
+        timestamps = timestamps if timestamps in ("segment", "word", "none") else "segment"
+        precision = precision if precision in ("fp16", "fp32") else "fp16"
+        beam_size = cls._safe_int(beam_size, 5)
+        compression_ratio_threshold = cls._safe_float(compression_ratio_threshold, 2.4)
         logprob_threshold = cls._safe_float(logprob_threshold, -1.0)
         no_speech_threshold = cls._safe_float(no_speech_threshold, 0.6)
-        num_beams = cls._safe_int(num_beams, 5)
-        temperature_fallbacks_parsed = cls._parse_temperature_fallbacks(temperature_fallbacks)
+        initial_prompt = initial_prompt or ""
+        output_filename_prefix = output_filename_prefix or "transcribed_audio"
 
-        manual_chunk_length_s = max(1.0, manual_chunk_length_s)
-        manual_chunk_overlap_s = max(0.0, manual_chunk_overlap_s)
-        if num_beams < 1:
-            num_beams = 1
-
-        target_device = comfy.model_management.get_torch_device()
-
-        _log_info(
-            f"Start. Model: '{model}', Task: '{task}', Language: '{source_language}'"
-        )
-        _log_info(
-            "Params: "
-            f"long_form_mode={long_form_mode}, timestamps={timestamps}, num_beams={num_beams}, "
-            f"temperature={temperature}, temperature_fallbacks={temperature_fallbacks_parsed}, "
-            f"condition_on_prev_tokens={condition_on_prev_tokens}, "
-            f"compression_ratio_threshold={compression_ratio_threshold}, "
-            f"logprob_threshold={logprob_threshold}, no_speech_threshold={no_speech_threshold}, "
-            f"chunk_len_s={manual_chunk_length_s}, chunk_overlap_s={manual_chunk_overlap_s}, "
-            f"preprocess_device={preprocess_device}, resample_quality={resample_quality}"
-        )
-
+        # 1) Decode ComfyUI audio -> 16 kHz mono float32 (shared engine helper).
         try:
-            prepared_audio_numpy, target_sample_rate = cls._prepare_audio(
-                audio,
-                target_sample_rate=16000,
-                normalize_audio=normalize_audio,
-                preprocess_device=preprocess_device,
-                resample_quality=resample_quality,
-            )
-        except Exception as e:
-            _log_error(f"Audio preprocessing failed: {e}")
+            audio_np = engine.comfy_audio_to_mono16k(audio, normalize=True, device="auto", resample_quality="high")
+        except Exception as exc:  # noqa: BLE001
+            _log_error(f"Audio preprocessing failed: {exc}")
             return IO.NodeOutput("", "", "")
-
-        if prepared_audio_numpy.size == 0:
+        if audio_np.size == 0:
             _log_warning("Prepared audio is empty.")
             return IO.NodeOutput("", "", "")
 
+        # 2) Task + translate guard (turbo has no translation head).
+        whisper_task = "translate" if task == "translate_to_english" else "transcribe"
+        if whisper_task == "translate" and not engine.supports_translate(model):
+            _log_warning(f"Model '{model}' cannot translate; falling back to transcribe.")
+            whisper_task = "transcribe"
+
+        # 3) Load model via the shared engine (shared weights + in-memory cache).
         try:
-            pipe = cls._get_pipeline(target_device, model, precision, attn_implementation)
-            if pipe is None:
-                return IO.NodeOutput("", "", "")
-        except Exception as e:
-            _log_error(f"Failed to get ASR pipeline: {e}")
-            return IO.NodeOutput("", "", "")
-
-        return_timestamps = True
-        if timestamps == "none":
-            return_timestamps = False
-            if save_srt_file:
-                _log_warning("Timestamps disabled; SRT/TTML saving turned off.")
-                save_srt_file = False
-        elif timestamps == "word":
-            return_timestamps = "word"
-
-        full_srt_path = ""
-        full_ttml_path = ""
-        if save_srt_file:
-            base_output_dir = output_dir or (
-                folder_paths.get_output_directory()
-                if hasattr(folder_paths, "get_output_directory")
-                else None
+            torch, _ = engine.load_runtime()
+            whisper_model, device, use_fp16 = engine.load_model(
+                model, device="auto", fp16_pref=(precision == "fp16")
             )
-            if base_output_dir and os.path.isdir(base_output_dir):
-                subtitles_dir = os.path.join(base_output_dir, "subtitles")
-                try:
-                    os.makedirs(subtitles_dir, exist_ok=True)
-                    timestamp_str = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-                    full_srt_path = os.path.join(
-                        subtitles_dir, f"{output_filename_prefix}_{timestamp_str}.srt"
-                    )
-                    full_ttml_path = os.path.join(
-                        subtitles_dir, f"{output_filename_prefix}_{timestamp_str}.ttml"
-                    )
-                except Exception as e:
-                    _log_error(f"Failed to create subtitles directory: {e}")
-                    save_srt_file = False
-            else:
-                save_srt_file = False
+        except Exception as exc:  # noqa: BLE001
+            _log_error(f"Failed to load Whisper model '{model}': {exc}")
+            return IO.NodeOutput(f"Error: {exc}", "", "")
 
-        all_segments = []
-        all_text_segments = []
-        actual_whisper_task = "translate" if task == "translate_to_english" else "transcribe"
+        language = None if source_language in (None, "", "auto") else source_language
+        kwargs = {
+            "task": whisper_task,
+            "language": language,
+            "fp16": use_fp16,
+            "temperature": cls._parse_temperature(temperature, temperature_fallbacks),
+            "compression_ratio_threshold": compression_ratio_threshold,
+            "logprob_threshold": logprob_threshold,
+            "no_speech_threshold": no_speech_threshold,
+            "condition_on_previous_text": bool(condition_on_previous_text),
+            "word_timestamps": timestamps == "word",
+            "verbose": False,
+        }
+        if beam_size and beam_size > 1:
+            kwargs["beam_size"] = int(beam_size)
+        if initial_prompt.strip():
+            kwargs["initial_prompt"] = initial_prompt
 
-        generate_kwargs = cls._build_generate_kwargs(
-            task=actual_whisper_task,
-            language=source_language,
-            num_beams=num_beams,
-            temperature=temperature,
-            temperature_fallbacks=temperature_fallbacks_parsed,
-            condition_on_prev_tokens=condition_on_prev_tokens,
-            compression_ratio_threshold=compression_ratio_threshold,
-            logprob_threshold=logprob_threshold,
-            no_speech_threshold=no_speech_threshold,
-            initial_prompt=initial_prompt,
-        )
+        _log_info(f"Transcribe: model={model} task={whisper_task} lang={source_language} device={device} timestamps={timestamps}")
 
+        # 4) Run native transcription (handles long-form internally).
         try:
-            merged_segments = []
-            if long_form_mode == "sequential":
-                try:
-                    with torch.inference_mode():
-                        output_chunk = pipe(
-                            prepared_audio_numpy,
-                            return_timestamps=return_timestamps,
-                            generate_kwargs=generate_kwargs,
-                        )
-                except Exception as exc:
-                    if cls._is_oom_error(exc):
-                        _log_warning(
-                            "Sequential mode ran out of memory. Falling back to chunked mode."
-                        )
-                        try:
-                            comfy.model_management.soft_empty_cache()
-                        except Exception as cache_exc:
-                            cls._logger.debug(
-                                "%s soft_empty_cache() failed during retry cleanup: %s",
-                                cls._LOG_PREFIX,
-                                cache_exc,
-                            )
-                        merged_segments, all_text_segments = cls._run_chunked_inference(
-                            pipe=pipe,
-                            prepared_audio_numpy=prepared_audio_numpy,
-                            target_sample_rate=target_sample_rate,
-                            return_timestamps=return_timestamps,
-                            generate_kwargs=generate_kwargs,
-                            manual_chunk_length_s=manual_chunk_length_s,
-                            manual_chunk_overlap_s=manual_chunk_overlap_s,
-                        )
-                    else:
-                        _log_error("Pipeline execution failed in sequential mode.")
-                        cls._logger.error(
-                            f"{cls._LOG_PREFIX} generate_kwargs={generate_kwargs}",
-                            exc_info=True,
-                        )
-                        raise
-                else:
-                    cls._collect_output_segments(
-                        output_chunk, 0.0, all_segments, all_text_segments
-                    )
-                    merged_segments = list(all_segments)
-            else:
-                merged_segments, all_text_segments = cls._run_chunked_inference(
-                    pipe=pipe,
-                    prepared_audio_numpy=prepared_audio_numpy,
-                    target_sample_rate=target_sample_rate,
-                    return_timestamps=return_timestamps,
-                    generate_kwargs=generate_kwargs,
-                    manual_chunk_length_s=manual_chunk_length_s,
-                    manual_chunk_overlap_s=manual_chunk_overlap_s,
+            with torch.inference_mode():
+                result = whisper_model.transcribe(audio_np, **kwargs)
+        except Exception as exc:  # noqa: BLE001
+            cls._logger_error(exc)
+            return IO.NodeOutput(f"Error: {exc}", "", "")
+
+        # 5) Build segments / text from the result.
+        raw_segments = result.get("segments") or []
+        text_segments = [str(s.get("text", "")).strip() for s in raw_segments if str(s.get("text", "")).strip()]
+
+        timed_segments = []
+        if timestamps == "word":
+            for seg in raw_segments:
+                for w in seg.get("words") or []:
+                    word = str(w.get("word", "")).strip()
+                    if word and w.get("start") is not None and w.get("end") is not None:
+                        timed_segments.append({"start": float(w["start"]), "end": float(w["end"]), "text": word})
+        elif timestamps == "segment":
+            for seg in raw_segments:
+                text = str(seg.get("text", "")).strip()
+                if text and seg.get("start") is not None and seg.get("end") is not None:
+                    timed_segments.append({"start": float(seg["start"]), "end": float(seg["end"]), "text": text})
+
+        timed_segments, text_segments = cls._remove_unwanted_phrases(timed_segments, text_segments)
+
+        # 6) Compose SRT / TTML / plain text.
+        subtitles = []
+        for idx, seg in enumerate(timed_segments, start=1):
+            end = max(seg["end"], seg["start"])
+            subtitles.append(
+                srt.Subtitle(
+                    index=idx,
+                    start=datetime.timedelta(seconds=seg["start"]),
+                    end=datetime.timedelta(seconds=end),
+                    content=seg["text"],
                 )
-
-            merged_segments, all_text_segments = cls._remove_unwanted_phrases(
-                merged_segments, all_text_segments
             )
+        generated_srt = srt.compose(subtitles, reindex=True) if subtitles else ""
+        ttml_lang = "en" if whisper_task == "translate" else (
+            source_language if source_language != "auto" else (result.get("language") or "und")
+        )
+        generated_ttml = cls._create_ttml_content(subtitles, ttml_lang) if subtitles else ""
+        plain_text = (str(result.get("text") or "").strip()) or " ".join(text_segments).strip()
 
-            subtitles = []
-            if merged_segments:
-                for idx, seg in enumerate(merged_segments, start=1):
-                    subtitles.append(
-                        srt.Subtitle(
-                            index=idx,
-                            start=datetime.timedelta(seconds=seg["start"]),
-                            end=datetime.timedelta(seconds=seg["end"]),
-                            content=seg["text"],
-                        )
-                    )
-
-            generated_srt = srt.compose(subtitles, reindex=True) if subtitles else ""
-            ttml_lang = "en" if actual_whisper_task == "translate" else (
-                source_language if source_language != "auto" else "und"
+        # 7) Optionally persist SRT/TTML.
+        if save_srt_file and subtitles:
+            base_dir = output_dir or (
+                folder_paths.get_output_directory() if hasattr(folder_paths, "get_output_directory") else None
             )
-            generated_ttml = cls._create_ttml_content(subtitles, ttml_lang) if subtitles else ""
-
-            sep = "\n" if plain_text_format == "newline_per_segment" else " "
-            if merged_segments:
-                plain_text = sep.join([seg["text"] for seg in merged_segments]).strip()
-            else:
-                plain_text = sep.join(all_text_segments).strip()
-
-            if save_srt_file:
-                if full_srt_path:
-                    with open(full_srt_path, "w", encoding="utf-8") as f:
+            if base_dir and os.path.isdir(base_dir):
+                try:
+                    subtitles_dir = os.path.join(base_dir, "subtitles")
+                    os.makedirs(subtitles_dir, exist_ok=True)
+                    stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+                    srt_path = os.path.join(subtitles_dir, f"{output_filename_prefix}_{stamp}.srt")
+                    ttml_path = os.path.join(subtitles_dir, f"{output_filename_prefix}_{stamp}.ttml")
+                    with open(srt_path, "w", encoding="utf-8") as f:
                         f.write(generated_srt)
-                    _log_info(f"SRT saved: {full_srt_path}")
-                if full_ttml_path:
-                    with open(full_ttml_path, "w", encoding="utf-8") as f:
+                    with open(ttml_path, "w", encoding="utf-8") as f:
                         f.write(generated_ttml)
-                    _log_info(f"TTML saved: {full_ttml_path}")
+                    _log_info(f"Saved SRT: {srt_path}")
+                except Exception as exc:  # noqa: BLE001
+                    _log_error(f"Failed to save SRT/TTML: {exc}")
 
-            _log_info(
-                f"Done. Segments: {len(merged_segments)}, Text chars: {len(plain_text)}"
-            )
-            return IO.NodeOutput(generated_srt, plain_text, generated_ttml)
+        _log_info(f"Done. segments={len(subtitles)} text_chars={len(plain_text)}")
+        return IO.NodeOutput(generated_srt, plain_text, generated_ttml)
 
-        except Exception as e:
-            cls._logger.error(f"{cls._LOG_PREFIX} Execution error: {e}", exc_info=True)
-            return IO.NodeOutput(f"Error: {e}", "", "")
+    @classmethod
+    def _logger_error(cls, exc):
+        _logger.error("%s Execution error: %s", _LOG_PREFIX, exc, exc_info=True)
 
 
 NODE_CLASS_MAPPINGS = {"TSWhisper": TSWhisper}

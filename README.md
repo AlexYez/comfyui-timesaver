@@ -8,7 +8,7 @@
 
 Resize, color-grade, key, denoise, transcribe, translate, prompt-build, manage models — without leaving the canvas.
 
-[![Version](https://img.shields.io/badge/version-9.33-blue.svg)](pyproject.toml)
+[![Version](https://img.shields.io/badge/version-9.34-blue.svg)](pyproject.toml)
 [![ComfyUI](https://img.shields.io/badge/ComfyUI-V3%20API-orange.svg)](https://github.com/comfyanonymous/ComfyUI)
 [![Python](https://img.shields.io/badge/python-3.10+-green.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-see%20LICENSE.txt-lightgrey.svg)](LICENSE.txt)
@@ -95,7 +95,6 @@ A few nodes need extra packages — they fail gracefully and tell you what's mis
 | TS Cube ↔ Equirectangular | `py360convert` | (bundled in core) |
 | TS Qwen 3 VL int4/int8 | `bitsandbytes` | `pip install -e .[llm-quant]` |
 | TS Music Stems | `demucs`, `geomloss`, `pykeops` | `pip install -e .[audio-stems]` |
-| TS Whisper (legacy fallback) | `openai-whisper` | `pip install -e .[audio-whisper]` |
 | TS Silero TTS / Stress | `silero`, `silero-stress` | `pip install -e .[audio-silero]` |
 | TS RTX Upscaler | `nvvfx` (NVIDIA RTX only) | install manually |
 | TS Video Upscale With Model | `spandrel` | install manually |
@@ -482,7 +481,7 @@ Same waveform UI as Audio Loader, but for previewing an audio output from upstre
 #### TS Whisper
 <img src="doc/screenshots/ts_whisper.png" alt="TS Whisper" width="450" />
 
-Speech-to-text via OpenAI Whisper. Outputs three formats at once: SRT (with timestamps), plain text, and TTML. Configurable beam search, language, temperature fallbacks, and OOM-aware retries.
+Speech-to-text on the native OpenAI Whisper engine shared with TS Super Prompt voice (same weights + in-memory model cache). Pick **Whisper large-v3** (best quality) or **large-v3-turbo** (faster). Outputs SRT (timestamps), plain text and TTML at once; segment- or word-level timestamps, language / translate-to-English, beam search and temperature fallbacks.
 
 **Use when:** transcribing voiceovers, generating subtitles, or extracting text from podcasts before LLM processing.
 
