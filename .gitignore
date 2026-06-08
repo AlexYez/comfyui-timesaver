@@ -44,3 +44,6 @@ comfyui-pack-testing-guide.md
 
 # Orphan path-manifest, unused at runtime (removed from the repo in 9.31).
 /.tracking
+
+# Runtime-generated last-design convenience cache for TS Ideogram Designer
+/nodes/ideogram/ideogram_last_design.json

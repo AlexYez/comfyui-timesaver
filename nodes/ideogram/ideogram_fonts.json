@@ -1,0 +1,133 @@
+{
+  "version": "1.0.0",
+  "fonts": [
+    {
+      "id": "grotesque_black",
+      "name_en": "Grotesque Black (Thumbnail Hero)",
+      "name_ru": "Гротеск чёрный (для превью)",
+      "desc_snippet": "bold grotesque sans-serif, heavy black weight, tight tracking, minimal stroke contrast",
+      "good_for_cyrillic": true,
+      "legible_small": true
+    },
+    {
+      "id": "geometric_sans",
+      "name_en": "Geometric Sans",
+      "name_ru": "Геометрический гротеск",
+      "desc_snippet": "clean geometric sans-serif, uniform stroke width, circles-and-squares letterforms, Bauhaus-inspired proportions",
+      "good_for_cyrillic": true,
+      "legible_small": true
+    },
+    {
+      "id": "condensed_bold",
+      "name_en": "Condensed Bold (Compact)",
+      "name_ru": "Узкий жирный (компактный)",
+      "desc_snippet": "bold condensed sans-serif, narrow proportions, tight letter spacing, maintains legibility despite compression",
+      "good_for_cyrillic": true,
+      "legible_small": true
+    },
+    {
+      "id": "display_poster_sans",
+      "name_en": "Display Poster Sans",
+      "name_ru": "Постерный дисплейный гротеск",
+      "desc_snippet": "bold display sans-serif with tall proportions, maximum legibility at distance, crisp clean edges, strong contrast strokes",
+      "good_for_cyrillic": true,
+      "legible_small": true
+    },
+    {
+      "id": "slab_serif_heavy",
+      "name_en": "Heavy Slab Serif",
+      "name_ru": "Жирный брусковый (слэб)",
+      "desc_snippet": "heavy slab serif with block-like serifs, minimal stroke contrast, sturdy industrial presence, little to no bracketing",
+      "good_for_cyrillic": true,
+      "legible_small": true
+    },
+    {
+      "id": "rounded_friendly",
+      "name_en": "Rounded Friendly Sans",
+      "name_ru": "Округлый дружелюбный гротеск",
+      "desc_snippet": "bold rounded geometric sans-serif, soft terminals, friendly approachable tone, even stroke weight",
+      "good_for_cyrillic": true,
+      "legible_small": true
+    },
+    {
+      "id": "stencil_block",
+      "name_en": "Stencil Block",
+      "name_ru": "Трафаретный блок",
+      "desc_snippet": "bold stencil block letters, straight strong strokes, military-utilitarian feel, high legibility",
+      "good_for_cyrillic": true,
+      "legible_small": true
+    },
+    {
+      "id": "humanist_sans",
+      "name_en": "Humanist Sans",
+      "name_ru": "Гуманистический гротеск",
+      "desc_snippet": "clean humanist sans-serif, open counters, calligraphic stroke modulation, warm readable tone",
+      "good_for_cyrillic": true,
+      "legible_small": true
+    },
+    {
+      "id": "retro_70s_round",
+      "name_en": "Retro 70s Rounded",
+      "name_ru": "Ретро 70-х (округлый)",
+      "desc_snippet": "bold retro 1970s-inspired rounded letterforms, groovy warm aesthetic, inline or shadow effect",
+      "good_for_cyrillic": true,
+      "legible_small": true
+    },
+    {
+      "id": "comic_cartoon",
+      "name_en": "Comic Cartoon",
+      "name_ru": "Комикс / мультяшный",
+      "desc_snippet": "playful rounded comic cartoon lettering, bold outlines, bulbous friendly letterforms, cheerful personality",
+      "good_for_cyrillic": true,
+      "legible_small": true
+    },
+    {
+      "id": "mono_techno",
+      "name_en": "Monospace Techno",
+      "name_ru": "Моноширинный техно",
+      "desc_snippet": "bold fixed-width monospace lettering, grid-like regularity, terminal and code aesthetic, technical appearance",
+      "good_for_cyrillic": true,
+      "legible_small": true
+    },
+    {
+      "id": "vintage_serif",
+      "name_en": "Vintage Serif",
+      "name_ru": "Винтажная антиква",
+      "desc_snippet": "warm vintage serif, low-to-medium stroke contrast, sloped crossbars, classic editorial feel",
+      "good_for_cyrillic": true,
+      "legible_small": false
+    },
+    {
+      "id": "graffiti_urban",
+      "name_en": "Graffiti / Urban",
+      "name_ru": "Граффити / уличный",
+      "desc_snippet": "bold graffiti street-art lettering, layered fill with outlines, aggressive angles, raw rebellious energy",
+      "good_for_cyrillic": false,
+      "legible_small": false
+    },
+    {
+      "id": "didone_luxury",
+      "name_en": "High-Contrast Didone (Luxury)",
+      "name_ru": "Контрастная антиква (люкс)",
+      "desc_snippet": "extreme-contrast didone serif, hairline horizontals with heavy verticals, unbracketed serifs, elegant luxury flair",
+      "good_for_cyrillic": false,
+      "legible_small": false
+    },
+    {
+      "id": "formal_script",
+      "name_en": "Formal Script",
+      "name_ru": "Каллиграфический скрипт",
+      "desc_snippet": "thin and refined formal script with elegant flourishes, flowing connected letterforms, sweeping curves",
+      "good_for_cyrillic": false,
+      "legible_small": false
+    },
+    {
+      "id": "brush_marker",
+      "name_en": "Brush Marker",
+      "name_ru": "Кистевой маркер",
+      "desc_snippet": "textured brush marker lettering, rough organic strokes, irregular letterforms, varying stroke width, handmade charm",
+      "good_for_cyrillic": false,
+      "legible_small": false
+    }
+  ]
+}

@@ -1,0 +1,126 @@
+{
+  "version": "1.0.0",
+  "comment": "Each preset injects into the Ideogram 4 caption style_description. medium decides photo (photograph) vs art_style (everything else). color_palette is image-level (<=16 uppercase #RRGGBB).",
+  "styles": [
+    {
+      "id": "youtube_thumbnail_bold",
+      "name_en": "YouTube Thumbnail (Bold)",
+      "name_ru": "YouTube-обложка (жирная)",
+      "description": "High-energy clickable thumbnail: bold flat vector, heavy outlines, saturated colors.",
+      "medium": "graphic_design",
+      "aesthetics": "high-energy, bold, high-contrast, punchy, clickbait-clean",
+      "lighting": "bright even key light with a strong rim light separating the subject from the background",
+      "photo": "",
+      "art_style": "bold flat vector graphic design, heavy clean outlines, high-contrast saturated color blocks, strong drop shadows",
+      "color_palette": ["#0B1020", "#FFD500", "#FF2D55", "#FFFFFF", "#1E90FF"]
+    },
+    {
+      "id": "cinematic_photo",
+      "name_en": "Cinematic Photo",
+      "name_ru": "Кинематографичное фото",
+      "description": "Movie-still look: shallow depth of field, dramatic teal-and-orange grade.",
+      "medium": "photograph",
+      "aesthetics": "dramatic cinematic, moody, filmic, premium",
+      "lighting": "dramatic directional lighting with deep shadows and a strong rim light",
+      "photo": "shot on a full-frame camera, 50mm lens, shallow depth of field, sharp focus, teal and orange color grade",
+      "art_style": "",
+      "color_palette": ["#0E1A24", "#1F6F8B", "#E8A33D", "#F2E9DC"]
+    },
+    {
+      "id": "modern_editorial_poster",
+      "name_en": "Modern Editorial Poster",
+      "name_ru": "Современный редакторский постер",
+      "description": "Clean Swiss-grid poster with confident whitespace and crisp typography.",
+      "medium": "graphic_design",
+      "aesthetics": "modern editorial, minimal, clean Swiss grid, confident spacing, subtle paper texture",
+      "lighting": "flat even print-design lighting with no shadows",
+      "photo": "",
+      "art_style": "flat vector graphic design, clean Swiss international typographic grid, generous whitespace, geometric composition",
+      "color_palette": ["#0F172A", "#2563EB", "#67E8F9", "#F8FAFC"]
+    },
+    {
+      "id": "retro_travel_poster",
+      "name_en": "Retro Travel Poster",
+      "name_ru": "Ретро тревел-постер",
+      "description": "Mid-century screen-print travel poster, flat shapes, nostalgic palette.",
+      "medium": "graphic_design",
+      "aesthetics": "nostalgic mid-century, warm vintage, screen-print texture",
+      "lighting": "flat stylized lighting with simple gradient skies",
+      "photo": "",
+      "art_style": "flat vector mid-century travel poster, screen-print look with limited ink colors, simplified geometric shapes",
+      "color_palette": ["#1D3A4B", "#E4572E", "#F3A712", "#F4ECD6", "#2E8B8B"]
+    },
+    {
+      "id": "premium_product",
+      "name_en": "Premium Product Shot",
+      "name_ru": "Премиальная предметка",
+      "description": "Studio product photo: softbox lighting, clean reflections, premium feel.",
+      "medium": "photograph",
+      "aesthetics": "premium, clean, minimal, luxury commercial",
+      "lighting": "soft studio softbox lighting with gentle gradient reflections and a clean falloff",
+      "photo": "studio product photography, macro detail, sharp focus, seamless background, realistic reflections",
+      "art_style": "",
+      "color_palette": ["#111111", "#F5F5F5", "#C9A227", "#8A8F98"]
+    },
+    {
+      "id": "vibrant_illustration",
+      "name_en": "Vibrant Illustration",
+      "name_ru": "Яркая иллюстрация",
+      "description": "Clean modern flat illustration, friendly and vibrant.",
+      "medium": "illustration",
+      "aesthetics": "vibrant, friendly, modern, energetic",
+      "lighting": "bright flat illustration lighting with soft ambient occlusion",
+      "photo": "",
+      "art_style": "clean modern flat illustration, smooth vector shapes, friendly characters, vibrant saturated palette",
+      "color_palette": ["#FF6B6B", "#4ECDC4", "#FFE66D", "#1A535C", "#FFFFFF"]
+    },
+    {
+      "id": "neon_cyberpunk",
+      "name_en": "Neon Cyberpunk",
+      "name_ru": "Неон киберпанк",
+      "description": "Futuristic neon-lit cyberpunk look with glow and dark background.",
+      "medium": "digital_painting",
+      "aesthetics": "futuristic, cyberpunk, moody, high-tech, atmospheric",
+      "lighting": "vivid neon glow lighting, magenta and cyan rim light, dark atmospheric background with haze",
+      "photo": "",
+      "art_style": "detailed digital painting, cyberpunk concept-art style, glowing neon signage, reflective wet surfaces",
+      "color_palette": ["#0A0A12", "#FF2D95", "#00E5FF", "#7A5CFF", "#F5F5F5"]
+    },
+    {
+      "id": "grunge_gaming",
+      "name_en": "Grunge Gaming",
+      "name_ru": "Грандж гейминг",
+      "description": "Aggressive gritty gaming cover with grunge textures and bold contrast.",
+      "medium": "graphic_design",
+      "aesthetics": "aggressive, gritty, intense, energetic gaming",
+      "lighting": "harsh dramatic lighting with strong contrast and glowing accents",
+      "photo": "",
+      "art_style": "gritty grunge graphic design, distressed textures, bold angular shapes, intense high-contrast composition",
+      "color_palette": ["#0D0D0D", "#E10600", "#FF8A00", "#C0C0C0", "#FFFFFF"]
+    },
+    {
+      "id": "soft_pastel_lifestyle",
+      "name_en": "Soft Pastel Lifestyle",
+      "name_ru": "Мягкий пастельный лайфстайл",
+      "description": "Gentle pastel lifestyle aesthetic with soft diffused light.",
+      "medium": "photograph",
+      "aesthetics": "soft, calm, pastel, cozy lifestyle, airy",
+      "lighting": "soft diffused natural window light, gentle shadows, bright airy exposure",
+      "photo": "lifestyle photography, 35mm lens, soft focus background, pastel color grade",
+      "art_style": "",
+      "color_palette": ["#F7E1D7", "#DEDBD2", "#B0C4B1", "#EDAFB8", "#4A5759"]
+    },
+    {
+      "id": "bold_gradient_tech",
+      "name_en": "Bold Gradient Tech",
+      "name_ru": "Яркий градиентный тех",
+      "description": "Sleek modern tech look with smooth gradient mesh and glassmorphism.",
+      "medium": "graphic_design",
+      "aesthetics": "sleek, modern, tech, futuristic, premium SaaS",
+      "lighting": "smooth gradient ambient lighting with soft glow highlights",
+      "photo": "",
+      "art_style": "modern graphic design with smooth gradient mesh backgrounds, glassmorphism panels, clean geometric accents",
+      "color_palette": ["#0F0C29", "#6A11CB", "#2575FC", "#00D2FF", "#FFFFFF"]
+    }
+  ]
+}
