@@ -18,6 +18,20 @@ from typing import Any
 
 import folder_paths
 
+# Whisper model registry, on-disk dir, download lock and in-memory model cache
+# now live in the shared engine (nodes/_whisper_engine.py). Re-exported here so
+# _voice.py and the nodes/llm/ts_super_prompt.py shim keep importing them from
+# this module unchanged — single source of truth shared with TS Whisper.
+from ..._whisper_engine import (  # noqa: F401 - re-exported
+    ALL_MODELS,
+    DOWNLOAD_LOCK,
+    MODEL_FILE_NAMES,
+    MODEL_SIZES,
+    MODELS_WITHOUT_TRANSLATE,
+    WHISPER_DIR,
+    MODEL_CACHE as VOICE_MODEL_CACHE,
+)
+
 try:
     import server
 except Exception:
@@ -169,42 +183,9 @@ AUDIO_EDGE_FADE_MS = 6
 AUDIO_NORMALIZE_TARGET_PEAK = 0.92
 AUDIO_NORMALIZE_MAX_GAIN_DB = 12.0
 
-ALL_MODELS = (
-    "tiny",
-    "tiny.en",
-    "base",
-    "base.en",
-    "small",
-    "small.en",
-    "medium",
-    "medium.en",
-    "large-v1",
-    "large-v2",
-    "large-v3",
-    "turbo",
-)
-
-MODEL_SIZES = {
-    "tiny": 75_000_000,
-    "tiny.en": 75_000_000,
-    "base": 145_000_000,
-    "base.en": 145_000_000,
-    "small": 465_000_000,
-    "small.en": 465_000_000,
-    "medium": 1_500_000_000,
-    "medium.en": 1_500_000_000,
-    "large-v1": 3_000_000_000,
-    "large-v2": 3_000_000_000,
-    "large-v3": 3_000_000_000,
-    "turbo": 1_620_000_000,
-}
-
-MODEL_FILE_NAMES = {
-    "turbo": "large-v3-turbo.pt",
-}
-MODELS_WITHOUT_TRANSLATE = {"turbo"}
+# ALL_MODELS, MODEL_SIZES, MODEL_FILE_NAMES, MODELS_WITHOUT_TRANSLATE and
+# WHISPER_DIR are imported from the shared engine at the top of this module.
 ALLOWED_AUDIO_SUFFIXES = {".aac", ".aiff", ".flac", ".m4a", ".mp3", ".mp4", ".ogg", ".opus", ".wav", ".webm"}
-WHISPER_DIR = Path(getattr(folder_paths, "models_dir", Path.cwd() / "models")) / "whisper"
 
 PROMPT_TARGETS = ("auto", "image", "video", "music")
 
@@ -221,9 +202,8 @@ ENHANCE_MAX_TEXT_LEN = 8192
 VOICE_UPLOAD_MAX_BYTES = 50 * 1024 * 1024
 
 
-# Module-level locks shared across voice + qwen pipelines.
-DOWNLOAD_LOCK = threading.Lock()
-VOICE_MODEL_CACHE: dict[tuple[str, str, bool], Any] = {}
+# DOWNLOAD_LOCK and VOICE_MODEL_CACHE come from the shared engine (re-exported
+# at the top of this module). MODEL_LOCK guards the local Qwen pipeline.
 MODEL_LOCK = threading.Lock()
 
 

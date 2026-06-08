@@ -74,6 +74,11 @@ from ._helpers import (
     voice_log_warning,
 )
 
+# Native Whisper model lifecycle + audio decoding live in the shared engine.
+# This module keeps the dictation-specific layer (VAD/normalize, hallucination
+# cleanup, transcribe_audio) and the Super Prompt UI events.
+from ... import _whisper_engine as _engine
+
 
 def _audio_tmp_dir() -> Path:
     return Path(folder_paths.get_input_directory()) / "ts_voice_recognition_tmp"
@@ -85,34 +90,11 @@ def _ensure_runtime_dirs() -> None:
 
 
 def _missing_runtime_packages() -> list[str]:
-    missing = []
-    if importlib.util.find_spec("torch") is None:
-        missing.append("torch")
-    if importlib.util.find_spec("whisper") is None:
-        missing.append("openai-whisper")
-    if importlib.util.find_spec("numpy") is None:
-        missing.append("numpy")
-    return missing
+    return _engine.missing_runtime_packages()
 
 
 def _load_whisper_runtime():
-    missing = _missing_runtime_packages()
-    if missing:
-        raise RuntimeError(
-            "Missing dependencies for TS Super Prompt voice recognition: "
-            f"{', '.join(missing)}. Install requirements.txt and restart ComfyUI."
-        )
-
-    try:
-        import torch
-        import whisper
-    except ImportError as exc:
-        raise RuntimeError(
-            "TS Super Prompt voice recognition requires openai-whisper and torch. "
-            "Install requirements.txt and restart ComfyUI."
-        ) from exc
-
-    return torch, whisper
+    return _engine.load_runtime()
 
 
 def _configured_initial_prompt() -> str | None:
@@ -220,134 +202,55 @@ class ProgressBroadcaster:
 
 
 def _model_file_path(name: str) -> Path:
-    return WHISPER_DIR / MODEL_FILE_NAMES.get(name, f"{name}.pt")
+    return _engine.model_file_path(name)
 
 
 def is_model_cached(name: str) -> bool:
-    model_file = _model_file_path(name)
-    try:
-        return model_file.is_file() and model_file.stat().st_size > 10_000_000
-    except OSError:
-        return False
+    return _engine.is_model_cached(name)
 
 
 def ensure_model(name: str, force: bool = False) -> Path:
-    if name not in ALL_MODELS:
-        raise ValueError(f"Model '{name}' is not supported. Use one of: {', '.join(ALL_MODELS)}")
+    """Download/verify ``name`` via the shared engine, broadcasting download
+    progress to the Super Prompt voice UI."""
+    progress = ProgressBroadcaster(name)
 
-    _, whisper = _load_whisper_runtime()
-    _ensure_runtime_dirs()
-
-    with DOWNLOAD_LOCK:
-        progress = ProgressBroadcaster(name)
-        target_file = _model_file_path(name)
-
-        if force and target_file.exists():
-            try:
-                target_file.unlink()
-            except OSError as exc:
-                voice_log_warning(f"Could not remove old model file for '{name}': {exc}")
-
-        if not force and is_model_cached(name):
+    def _cb(stage: str, info: dict) -> None:
+        if stage == "cached":
             progress.done(f"{name} file ready")
-            return target_file
-
-        progress.status(f"Downloading {name}")
-        voice_log_info(f"Downloading Whisper model '{name}' to {WHISPER_DIR}")
-
-        stop_monitor = threading.Event()
-        estimated_total = MODEL_SIZES.get(name, 500_000_000)
-
-        def monitor() -> None:
-            while not stop_monitor.is_set():
-                size = 0
-                try:
-                    if target_file.exists():
-                        size = target_file.stat().st_size
-                except OSError:
-                    pass
-                progress.progress(f"{name}.pt", size, estimated_total)
-                stop_monitor.wait(0.4)
-
-        monitor_thread = threading.Thread(target=monitor, daemon=True)
-        monitor_thread.start()
-
-        try:
-            whisper.load_model(
-                name,
-                device="cpu",
-                download_root=str(WHISPER_DIR),
-                in_memory=False,
+        elif stage == "download_start":
+            progress.status(f"Downloading {name}")
+        elif stage == "download_progress":
+            progress.progress(info.get("file", f"{name}.pt"), info.get("downloaded", 0), info.get("total", 1))
+        elif stage == "download_done":
+            progress.progress(
+                info.get("file", f"{name}.pt"), info.get("downloaded", 0), info.get("total", 1), force=True
             )
-        except Exception as exc:
-            progress.error(f"Download failed: {exc}")
-            LOGGER.exception("%s Whisper model download failed for '%s'", VOICE_LOG_PREFIX, name)
-            raise
-        finally:
-            stop_monitor.set()
-            monitor_thread.join(timeout=1)
+            progress.done(f"{name} file ready")
+        elif stage == "download_error":
+            progress.error(f"Download failed: {info.get('error', '')}")
 
-        if not is_model_cached(name):
-            progress.error("Downloaded file was not found")
-            raise RuntimeError(
-                f"Model '{name}' should be available at {_model_file_path(name)}. "
-                f"Check write permissions for {WHISPER_DIR}."
-            )
-
-        final_size = target_file.stat().st_size
-        progress.progress(f"{name}.pt", final_size, final_size, force=True)
-        progress.done(f"{name} file ready")
-        voice_log_info(f"Whisper model '{name}' ready ({final_size / (1024 * 1024):.0f} MB)")
-        return target_file
+    return _engine.ensure_model(name, force=force, progress_cb=_cb)
 
 
 def load_model(name: str, device: str = "auto", progress_start: float = 82.0, progress_end: float = 96.0):
-    torch, whisper = _load_whisper_runtime()
+    """Load ``name`` via the shared engine (shared in-memory cache), emitting
+    Super Prompt voice status events across the configured progress band."""
 
-    if device == "auto":
-        target_device = "cuda" if torch.cuda.is_available() else "cpu"
-    else:
-        target_device = str(device)
-        if target_device == "cuda" and not torch.cuda.is_available():
-            voice_log_warning("CUDA was requested but is not available. Falling back to CPU.")
-            target_device = "cpu"
+    def _cb(stage: str, info: dict) -> None:
+        if stage == "already_cached":
+            send_voice_status(name, "Voice model already in memory", progress_end)
+        elif stage == "download_start":
+            send_voice_status(name, f"Downloading {name}", progress_start)
+        elif stage == "download_done":
+            send_voice_status(name, f"{name} file ready", min(progress_end, progress_start + 3.0))
+        elif stage == "load_start":
+            send_voice_status(name, "Loading model...", progress_start)
+        elif stage == "gpu_fallback":
+            send_voice_status(name, "GPU load failed; using CPU", min(progress_end, progress_start + 2.0))
+        elif stage == "loaded":
+            send_voice_status(name, "Voice model loaded into memory", progress_end)
 
-    use_fp16 = target_device == "cuda" and GPU_PRECISION == "fp16"
-    cache_key = (name, target_device, use_fp16)
-    if cache_key in VOICE_MODEL_CACHE:
-        send_voice_status(name, "Voice model already in memory", progress_end)
-        return VOICE_MODEL_CACHE[cache_key], target_device, use_fp16
-
-    ensure_model(name)
-    voice_log_info(f"Loading Whisper model '{name}' on {target_device} ({'fp16' if use_fp16 else 'fp32'})")
-    send_voice_status(name, "Loading model...", progress_start)
-
-    try:
-        model = whisper.load_model(
-            name,
-            device=target_device,
-            download_root=str(WHISPER_DIR),
-            in_memory=False,
-        )
-    except Exception as exc:
-        if target_device != "cuda":
-            raise
-        voice_log_warning(f"GPU load failed for '{name}': {exc}. Falling back to CPU.")
-        send_voice_status(name, "GPU load failed; using CPU", min(progress_end, progress_start + 2.0))
-        target_device = "cpu"
-        use_fp16 = False
-        cache_key = (name, target_device, use_fp16)
-        send_voice_status(name, "Loading model...", min(progress_end, progress_start + 4.0))
-        model = whisper.load_model(
-            name,
-            device=target_device,
-            download_root=str(WHISPER_DIR),
-            in_memory=False,
-        )
-
-    VOICE_MODEL_CACHE[cache_key] = model
-    send_voice_status(name, "Voice model loaded into memory", progress_end)
-    return model, target_device, use_fp16
+    return _engine.load_model(name, device=device, fp16_pref=(GPU_PRECISION == "fp16"), progress_cb=_cb)
 
 
 # ---------------------------------------------------------------------------
@@ -356,41 +259,7 @@ def load_model(name: str, device: str = "auto", progress_start: float = 82.0, pr
 
 
 def _read_audio(filepath: str):
-    import numpy as np
-
-    command = [
-        _get_ffmpeg_executable(),
-        "-i",
-        filepath,
-        "-f",
-        "f32le",
-        "-ac",
-        "1",
-        "-ar",
-        "16000",
-        "-loglevel",
-        "error",
-        "-",
-    ]
-
-    try:
-        # Voice clips are short (≤10 min after VAD); 5 min is a generous cap
-        # for slow disks and prevents a hung ffmpeg from blocking the worker.
-        result = subprocess.run(command, capture_output=True, check=True, timeout=300)
-        return np.frombuffer(result.stdout, dtype=np.float32).copy()
-    except FileNotFoundError:
-        pass
-    except subprocess.TimeoutExpired:
-        voice_log_warning("ffmpeg timed out decoding voice clip; falling back to whisper.load_audio.")
-    except subprocess.CalledProcessError as exc:
-        stderr = exc.stderr.decode("utf-8", errors="replace")
-        voice_log_warning(f"ffmpeg failed to decode audio: {stderr}")
-
-    _, whisper = _load_whisper_runtime()
-    try:
-        return whisper.load_audio(filepath)
-    except Exception as exc:
-        raise RuntimeError(f"Cannot decode audio: {exc}") from exc
+    return _engine.decode_audio_file(filepath)
 
 
 def _as_float32_audio(audio: Any):
