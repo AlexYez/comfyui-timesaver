@@ -1,3 +1,4 @@
+import ast
 import importlib
 import importlib.util
 import logging
@@ -141,28 +142,35 @@ def _is_internal_or_host_module(root: str) -> bool:
     return False
 
 
-def _extract_import_roots_from_line(line: str) -> list[str]:
-    stripped = line.strip()
-    if not stripped or stripped.startswith("#"):
-        return []
+def _extract_import_roots_from_source(source: str) -> set[str]:
+    """Return the top-level module roots imported by `source`.
 
-    if stripped.startswith("import "):
-        payload = stripped[len("import ") :].split("#", 1)[0].strip()
-        parts = [part.strip() for part in payload.split(",") if part.strip()]
-        roots = []
-        for part in parts:
-            module_name = part.split(" as ", 1)[0].strip()
-            if module_name:
-                roots.append(module_name.split(".", 1)[0].strip())
-        return roots
+    Parses with the AST instead of scanning lines, so prose inside
+    docstrings/comments/string literals can never be mistaken for an
+    import (the old line-based scan flagged text like ``from the public
+    mathematics ...`` as a missing dependency). Walking the tree also
+    catches lazy imports nested in functions. Relative imports
+    (``from . import x``) are skipped — they resolve inside this package.
+    """
+    try:
+        tree = ast.parse(source)
+    except (SyntaxError, ValueError):
+        return set()
 
-    if stripped.startswith("from "):
-        payload = stripped[len("from ") :].split(" import ", 1)[0].strip()
-        if not payload or payload.startswith("."):
-            return []
-        return [payload.split(".", 1)[0].strip()]
-
-    return []
+    roots: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                root = alias.name.split(".", 1)[0].strip()
+                if root:
+                    roots.add(root)
+        elif isinstance(node, ast.ImportFrom):
+            if node.level or not node.module:
+                continue  # relative or `from . import x` — internal
+            root = node.module.split(".", 1)[0].strip()
+            if root:
+                roots.add(root)
+    return roots
 
 
 def _scan_external_imports() -> list[dict]:
@@ -177,11 +185,10 @@ def _scan_external_imports() -> list[dict]:
         except (OSError, UnicodeDecodeError) as exc:
             logger.debug("[TS Loader] Skipping import audit for %s: %s", rel, exc)
             continue
-        for line in content.splitlines():
-            for root in _extract_import_roots_from_line(line):
-                if _is_internal_or_host_module(root):
-                    continue
-                usage.setdefault(root, set()).add(rel)
+        for root in _extract_import_roots_from_source(content):
+            if _is_internal_or_host_module(root):
+                continue
+            usage.setdefault(root, set()).add(rel)
 
     results = []
     for root in sorted(usage.keys()):
