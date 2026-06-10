@@ -20,6 +20,7 @@ import json
 import logging
 import os
 import re
+import threading
 from typing import Any
 
 import comfy.model_management as mm
@@ -1243,6 +1244,15 @@ def apply_chat_template_no_thinking(engine, processor, messages):
 
 
 _ENGINE: QwenEngine | None = None
+
+# Process-wide mutex for exclusive access to the shared model. Both LLM nodes
+# (TS_Qwen3_VL_V3 and TS_SuperPrompt's enhance route) talk to the SAME
+# ``_ENGINE`` singleton and its cached model object, but run on different
+# threads (the ComfyUI prompt worker vs. the Super Prompt aiohttp worker). Any
+# ``model.to()`` / ``model.generate()`` must be serialised through one lock, or
+# clicking "Enhance" mid-generation corrupts the in-flight run. ``_helpers.py``
+# re-exports this as ``MODEL_LOCK`` so both code paths share a single mutex.
+QWEN_MODEL_LOCK = threading.Lock()
 
 
 def get_qwen_engine() -> QwenEngine:

@@ -1226,7 +1226,10 @@ async def ts_sam_media_loader_preview_mask(request: web.Request) -> web.StreamRe
     lock = _get_preview_lock(checkpoint_name)
     async with lock:
         try:
-            preview.ensure_loaded(checkpoint_name)
+            # Multi-GB checkpoint load — must run off the event loop or the
+            # whole ComfyUI server (every other route, every websocket) freezes
+            # for the duration of the load. The inference below already does this.
+            await asyncio.to_thread(preview.ensure_loaded, checkpoint_name)
         except Exception as exc:
             _log_warning(f"SAM3 model load failed: {exc}")
             return web.json_response({"error": str(exc)}, status=500)

@@ -12,7 +12,6 @@ Private — loader skips paths with `_`-prefixed components.
 from __future__ import annotations
 
 import logging
-import threading
 from pathlib import Path
 from typing import Any
 
@@ -203,8 +202,11 @@ VOICE_UPLOAD_MAX_BYTES = 50 * 1024 * 1024
 
 
 # DOWNLOAD_LOCK and VOICE_MODEL_CACHE come from the shared engine (re-exported
-# at the top of this module). MODEL_LOCK guards the local Qwen pipeline.
-MODEL_LOCK = threading.Lock()
+# at the top of this module). MODEL_LOCK guards the shared Qwen model — it is
+# the SAME mutex used by TS_Qwen3_VL_V3 (defined in nodes/llm/_qwen_engine.py),
+# so an Enhance click and a TS_Qwen3_VL_V3 graph run can never touch the shared
+# model concurrently.
+from .._qwen_engine import QWEN_MODEL_LOCK as MODEL_LOCK  # noqa: F401 - re-exported
 
 
 def log_info(message: str) -> None:
