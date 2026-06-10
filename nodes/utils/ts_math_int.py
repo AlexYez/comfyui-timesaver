@@ -3,6 +3,8 @@
 node_id: TS_Math_Int
 """
 
+import math
+
 from comfy_api.v0_0_2 import IO
 
 from .._shared import TS_Logger
@@ -20,6 +22,13 @@ _OPERATIONS = [
     "max",
 ]
 
+# Cap the bit length of a ``power`` result. A naive ``a ** b`` with the int32
+# inputs this node accepts (e.g. ``2 ** 2_000_000_000``) would allocate
+# gigabytes and freeze the worker thread — and a hang/OOM-kill is not catchable
+# by the try/except in execute(). ~1024 bits (≈308 digits) is far beyond any
+# sane integer use yet computes instantly.
+_POW_MAX_RESULT_BITS = 1024
+
 
 class TS_Math_Int(IO.ComfyNode):
     @classmethod
@@ -36,6 +45,30 @@ class TS_Math_Int(IO.ComfyNode):
             ],
             outputs=[IO.Int.Output(display_name="result")],
         )
+
+    @classmethod
+    def _safe_pow(cls, a: int, b: int) -> int:
+        """``a ** b`` guarded against unbounded big-integer blow-up.
+
+        Negative exponents yield a fraction that ``int()`` truncates, so only
+        positive exponents with ``|a| >= 2`` can explode. Those are rejected by
+        estimating the result's bit length *before* computing it.
+        """
+        if b < 0:
+            if a == 0:
+                TS_Logger.error("MathInt", "0 cannot be raised to a negative power")
+                return 0
+            return int(a ** b)
+        if b == 0:
+            return 1
+        base = abs(a)
+        if base > 1 and b * math.log2(base) > _POW_MAX_RESULT_BITS:
+            TS_Logger.error(
+                "MathInt",
+                f"power result too large to compute safely ({a} ** {b}); returning 0",
+            )
+            return 0
+        return pow(a, b)
 
     @classmethod
     def execute(cls, a: int, b: int, operation: str) -> IO.NodeOutput:
@@ -65,7 +98,7 @@ class TS_Math_Int(IO.ComfyNode):
                 else:
                     result = a % b
             elif operation == "power (**)":
-                result = int(pow(a, b))
+                result = cls._safe_pow(a, b)
             elif operation == "min":
                 result = min(a, b)
             elif operation == "max":

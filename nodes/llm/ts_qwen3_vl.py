@@ -21,7 +21,7 @@ import torch
 
 from comfy_api.v0_0_2 import IO
 
-from ._qwen_engine import QwenEngine, get_qwen_engine
+from ._qwen_engine import QWEN_MODEL_LOCK, QwenEngine, get_qwen_engine
 
 
 _LOGGER = logging.getLogger("comfyui_timesaver.ts_qwen3_vl")
@@ -325,27 +325,32 @@ class TS_Qwen3_VL_V3(IO.ComfyNode):
     ) -> IO.NodeOutput:
         _log_versions_once()
         engine = get_qwen_engine()
-        text, processed_images = _run_qwen_generation(
-            engine=engine,
-            model_name=model_name,
-            custom_model_id=custom_model_id,
-            hf_token=hf_token,
-            hf_endpoint="huggingface.co, hf-mirror.com",
-            system_preset=system_preset,
-            prompt=prompt,
-            seed=seed,
-            max_new_tokens=max_new_tokens,
-            precision=precision,
-            attention_mode=attention_mode,
-            offline_mode=offline_mode,
-            unload_after_generation=unload_after_generation,
-            enable=enable,
-            max_image_size=max_image_size,
-            video_max_frames=video_max_frames,
-            image=image,
-            video=video,
-            custom_system_prompt=custom_system_prompt,
-        )
+        # Serialise all shared-model work (load / move / generate / offload)
+        # through the engine-wide lock. TS_SuperPrompt's enhance route holds the
+        # SAME lock, so the two nodes can never drive the cached model from two
+        # threads at once.
+        with QWEN_MODEL_LOCK:
+            text, processed_images = _run_qwen_generation(
+                engine=engine,
+                model_name=model_name,
+                custom_model_id=custom_model_id,
+                hf_token=hf_token,
+                hf_endpoint="huggingface.co, hf-mirror.com",
+                system_preset=system_preset,
+                prompt=prompt,
+                seed=seed,
+                max_new_tokens=max_new_tokens,
+                precision=precision,
+                attention_mode=attention_mode,
+                offline_mode=offline_mode,
+                unload_after_generation=unload_after_generation,
+                enable=enable,
+                max_image_size=max_image_size,
+                video_max_frames=video_max_frames,
+                image=image,
+                video=video,
+                custom_system_prompt=custom_system_prompt,
+            )
         return IO.NodeOutput(text, engine.pil_to_tensor(processed_images))
 
 
