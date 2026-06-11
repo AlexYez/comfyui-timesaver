@@ -182,12 +182,38 @@ class TS_DownloadFilesNode(IO.ComfyNode):
         return domains[0]
 
     @staticmethod
-    def _get_headers_for_url(url, hf_token, ms_token):
+    def _url_host(url):
+        try:
+            host = urlparse(url).netloc.lower()
+        except Exception:
+            return ""
+        if "@" in host:
+            host = host.rsplit("@", 1)[-1]
+        return host.split(":", 1)[0]
+
+    @classmethod
+    def _is_modelscope_url(cls, url):
+        host = cls._url_host(url)
+        return host == "modelscope.cn" or host.endswith(".modelscope.cn")
+
+    @classmethod
+    def _get_headers_for_url(cls, url, hf_token, ms_token, hf_domain_active=None):
+        # Host-based matching only: the old substring checks ("hf-" in url,
+        # "modelscope.cn" in url) attached the Bearer token to any URL that
+        # merely contained those strings in its path — a credential leak to
+        # arbitrary hosts. `hf_domain_active` extends the HF allowlist to the
+        # user-configured mirror the download actually targets.
         headers = {}
-        if "huggingface.co" in url or "hf-mirror.com" in url or "hf-" in url:
+        host = cls._url_host(url)
+        hf_hosts_ok = cls._is_hf_url(url)
+        if not hf_hosts_ok and hf_domain_active:
+            mirror = cls._parse_mirror_domains(hf_domain_active)[0].lower()
+            mirror = mirror.split("/", 1)[0].split(":", 1)[0]
+            hf_hosts_ok = bool(mirror) and (host == mirror or host.endswith("." + mirror))
+        if hf_hosts_ok:
             if hf_token and hf_token.strip():
                 headers["Authorization"] = f"Bearer {hf_token.strip()}"
-        elif "modelscope.cn" in url:
+        elif cls._is_modelscope_url(url):
             headers["Referer"] = "https://www.modelscope.cn/"
             if ms_token and ms_token.strip():
                 headers["Authorization"] = f"Bearer {ms_token.strip()}"
@@ -547,7 +573,9 @@ class TS_DownloadFilesNode(IO.ComfyNode):
             processed_url = cls._process_dropbox_url(processed_url)
 
             os.makedirs(target_dir, exist_ok=True)
-            domain_headers = cls._get_headers_for_url(processed_url, hf_token, ms_token)
+            domain_headers = cls._get_headers_for_url(
+                processed_url, hf_token, ms_token, hf_domain_active=hf_domain_active
+            )
 
             logger.info(f"{LOG_PREFIX} Connecting to: {processed_url}")
             remote_info = cls._probe_remote_file(session, processed_url, domain_headers)
