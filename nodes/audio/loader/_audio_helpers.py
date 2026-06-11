@@ -32,6 +32,7 @@ import math
 import os
 import re
 import subprocess
+import threading
 import time
 import urllib.parse
 import wave
@@ -311,15 +312,44 @@ def _build_waveform_preview(metadata: MediaMetadata, target_bins: int = PREVIEW_
     samples_per_bin = max(1, int(math.ceil(expected_samples / max(1, target_bins))))
     peaks: list[float] = []
     remainder = np.empty(0, dtype=np.int16)
-    # Hard wall-clock cap: even a 4-hour audiobook decodes in well under 10 min
-    # at 4 kHz preview rate. Anything past that is almost certainly a hung
-    # ffmpeg on a corrupt file.
-    deadline = time.monotonic() + 600.0
     process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=0)
+
+    # stderr must be drained concurrently with the stdout loop: a corrupt
+    # file can make ffmpeg emit >64 KB of errors, filling the pipe buffer
+    # and deadlocking it against our blocking stdout read. Keep only the
+    # tail — that's where ffmpeg puts the actionable message.
+    stderr_chunks: list[bytes] = []
+
+    def _drain_stderr() -> None:
+        while True:
+            data = process.stderr.read(65536)
+            if not data:
+                return
+            stderr_chunks.append(data)
+            if len(stderr_chunks) > 4:
+                del stderr_chunks[0]
+
+    stderr_thread = threading.Thread(target=_drain_stderr, daemon=True)
+    stderr_thread.start()
+
+    # Hard wall-clock cap enforced by a kill timer: even a 4-hour audiobook
+    # decodes in well under 10 min at 4 kHz preview rate. A deadline checked
+    # between blocking read() calls can never fire on a silently hung ffmpeg,
+    # so the timer kills the process, which closes the pipes and unblocks us.
+    timed_out = threading.Event()
+
+    def _kill_on_timeout() -> None:
+        timed_out.set()
+        try:
+            process.kill()
+        except OSError:
+            pass
+
+    kill_timer = threading.Timer(600.0, _kill_on_timeout)
+    kill_timer.daemon = True
+    kill_timer.start()
     try:
         while True:
-            if time.monotonic() > deadline:
-                raise RuntimeError("ffmpeg waveform preview timed out (>10 min).")
             chunk = process.stdout.read(65536)
             if not chunk:
                 break
@@ -331,8 +361,11 @@ def _build_waveform_preview(metadata: MediaMetadata, target_bins: int = PREVIEW_
                 reshaped = data[:full_count].reshape(-1, samples_per_bin)
                 peaks.extend((np.max(np.abs(reshaped), axis=1) / 32768.0).astype(np.float32).tolist())
             remainder = data[full_count:]
-        stderr_text = process.stderr.read().decode("utf-8", errors="replace")
         return_code = process.wait(timeout=10)
+        stderr_thread.join(timeout=10)
+        stderr_text = b"".join(stderr_chunks).decode("utf-8", errors="replace")
+        if timed_out.is_set():
+            raise RuntimeError("ffmpeg waveform preview timed out (>10 min).")
     except Exception:
         process.kill()
         try:
@@ -340,6 +373,8 @@ def _build_waveform_preview(metadata: MediaMetadata, target_bins: int = PREVIEW_
         except subprocess.TimeoutExpired:
             pass
         raise
+    finally:
+        kill_timer.cancel()
     if return_code != 0 and not peaks and not remainder.size:
         raise RuntimeError(stderr_text.strip() or "ffmpeg failed to generate waveform preview.")
     if remainder.size:
