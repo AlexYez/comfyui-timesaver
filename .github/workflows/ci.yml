@@ -50,3 +50,70 @@ jobs:
         # Drop `continue-on-error` once the existing baseline is fixed.
         continue-on-error: true
         run: python -m ruff check .
+
+  # Behavioural smoke: load the pack through a real ComfyUI checkout exactly
+  # the way the runtime loader does, and fail on any module that ERRORs at
+  # import time or if the registered node count regresses. compileall above
+  # only proves the files parse; this proves the import graph (comfy_api
+  # surface, cross-module imports, route registration) actually resolves.
+  smoke-import:
+    name: Smoke import via ComfyUI
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          path: pack
+
+      - name: Check out ComfyUI
+        run: git clone --depth 1 https://github.com/comfyanonymous/ComfyUI.git comfyui
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            comfyui/requirements.txt
+            pack/requirements.txt
+
+      - name: Install dependencies (CPU torch)
+        run: |
+          python -m pip install --upgrade pip
+          pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+          pip install -r comfyui/requirements.txt
+          pip install -r pack/requirements.txt
+
+      - name: Install pack into custom_nodes
+        run: |
+          mkdir -p comfyui/custom_nodes
+          cp -r pack comfyui/custom_nodes/comfyui-timesaver
+
+      - name: Import every node module through the loader
+        working-directory: comfyui
+        run: |
+          python - <<'EOF'
+          import importlib
+          import sys
+
+          sys.path.insert(0, ".")
+          sys.path.insert(0, "custom_nodes")
+
+          pack = importlib.import_module("comfyui-timesaver")
+          results = pack._MODULE_LOAD_RESULTS
+          errors = [r for r in results if r["status"] == "ERROR"]
+          skipped = [r for r in results if r["status"] == "SKIPPED"]
+          nodes = len(pack.NODE_CLASS_MAPPINGS)
+
+          print(f"modules={len(results)} nodes={nodes} "
+                f"errors={len(errors)} skipped={len(skipped)}")
+          for r in skipped:
+              print(f"  SKIPPED {r['module']}: {r['details']}")
+          for r in errors:
+              print(f"  ERROR   {r['module']}: {r['details']}")
+
+          # Optional-deps modules (silero, demucs) may legitimately SKIP;
+          # an ERROR is always a shipped regression.
+          assert not errors, f"{len(errors)} module(s) failed to import"
+          assert nodes >= 50, f"node count regressed: {nodes} < 50"
+          EOF
