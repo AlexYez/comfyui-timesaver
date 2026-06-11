@@ -74,7 +74,6 @@ class TS_ModelConverterAdvancedNode(IO.ComfyNode):
                 IO.Combo.Input("model_name", options=_build_file_list()),
                 IO.Combo.Input("fp8_mode", options=["e4m3fn", "e5m2"], default="e5m2"),
                 IO.Combo.Input("conversion_preset", options=["WAN", "Flux2"], default="WAN"),
-                IO.String.Input("shard_subdir", default="fp8_shards", multiline=False),
                 IO.String.Input("final_filename", default="converted_model_fp8.safetensors", multiline=False),
                 IO.Model.Input("model", optional=True),
             ],
@@ -180,8 +179,18 @@ class TS_ModelConverterAdvancedNode(IO.ComfyNode):
             logs.append(f"  [WARN] {tensor_name} FP8 CPU convert failed: {e}")
             return tensor.to("cpu"), False
 
+    @staticmethod
+    def _summarize_conversion(logs, converted, kept, sample_kept):
+        """Append a compact conversion summary instead of one line per tensor —
+        a full per-tensor dump produced multi-thousand-line output strings."""
+        logs.append(f"Converted to FP8: {converted} tensors | Kept original dtype: {kept} tensors")
+        if sample_kept:
+            shown = ", ".join(sample_kept[:8])
+            suffix = ", ..." if len(sample_kept) > 8 else ""
+            logs.append(f"Kept (sample): {shown}{suffix}")
+
     @classmethod
-    def _convert_loaded_model(cls, model, fp8_mode, conversion_preset, shard_subdir, final_filename):
+    def _convert_loaded_model(cls, model, fp8_mode, conversion_preset, final_filename):
         logs = []
         device = "cuda" if torch.cuda.is_available() else "cpu"
         target_dtype = torch.float8_e4m3fn if fp8_mode == "e4m3fn" else torch.float8_e5m2
@@ -201,6 +210,9 @@ class TS_ModelConverterAdvancedNode(IO.ComfyNode):
             comfy.sd.save_checkpoint(temp_path, model, clip=None, vae=None, clip_vision=None, metadata={}, extra_keys={})
             logs.append(f"Temp saved: {temp_path}")
 
+            converted_count = 0
+            kept_count = 0
+            kept_sample: list[str] = []
             with safe_open(temp_path, framework="pt", device="cpu") as f_in:
                 tensor_names = f_in.keys()
                 for tensor_name in tqdm(tensor_names, desc="Converting"):
@@ -210,12 +222,15 @@ class TS_ModelConverterAdvancedNode(IO.ComfyNode):
                         tensor, tensor_name, target_dtype, device, logs, conversion_preset=conversion_preset
                     )
                     if converted:
-                        logs.append(f"  [FP8] {tensor_name}")
+                        converted_count += 1
                     else:
-                        logs.append(f"  [KEEP] {tensor_name}")
+                        kept_count += 1
+                        if len(kept_sample) < 9:
+                            kept_sample.append(tensor_name)
 
                     shard_state[tensor_name] = tensor
 
+            cls._summarize_conversion(logs, converted_count, kept_count, kept_sample)
             save_file(shard_state, out_path)
             logs.append(f"OK Saved to: {out_path}")
         except Exception as e:
@@ -240,9 +255,12 @@ class TS_ModelConverterAdvancedNode(IO.ComfyNode):
         return "\n".join(logs)
 
     @classmethod
-    def execute(cls, model_name, fp8_mode, conversion_preset, shard_subdir, final_filename, model=None) -> IO.NodeOutput:
+    def execute(cls, model_name, fp8_mode, conversion_preset, final_filename, model=None, shard_subdir=None) -> IO.NodeOutput:
+        # `shard_subdir` was a dead input (the sharded writer was removed long
+        # ago); it is gone from the schema but stays as a tolerated kwarg so
+        # workflows saved with the old widget still validate.
         if model is not None:
-            return IO.NodeOutput(cls._convert_loaded_model(model, fp8_mode, conversion_preset, shard_subdir, final_filename))
+            return IO.NodeOutput(cls._convert_loaded_model(model, fp8_mode, conversion_preset, final_filename))
 
         logs = []
         device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -281,6 +299,9 @@ class TS_ModelConverterAdvancedNode(IO.ComfyNode):
             out_path = _safe_output_path(output_dir, final_filename)
 
             try:
+                converted_count = 0
+                kept_count = 0
+                kept_sample = []
                 with safe_open(model_path, framework="pt", device="cpu") as f_in:
                     tensor_names = f_in.keys()
                     for tensor_name in tqdm(tensor_names, desc="Converting"):
@@ -290,12 +311,15 @@ class TS_ModelConverterAdvancedNode(IO.ComfyNode):
                             tensor, tensor_name, target_dtype, device, logs, conversion_preset=conversion_preset
                         )
                         if converted:
-                            logs.append(f"  [FP8] {tensor_name}")
+                            converted_count += 1
                         else:
-                            logs.append(f"  [KEEP] {tensor_name}")
+                            kept_count += 1
+                            if len(kept_sample) < 9:
+                                kept_sample.append(tensor_name)
 
                         shard_state[tensor_name] = tensor
 
+                cls._summarize_conversion(logs, converted_count, kept_count, kept_sample)
                 save_file(shard_state, out_path)
                 logs.append(f"Saved to: {out_path}")
 
