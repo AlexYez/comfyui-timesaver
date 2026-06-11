@@ -24,6 +24,7 @@ __all__ = [
 
 import asyncio
 import base64
+import gc
 import hashlib
 import io
 import logging
@@ -254,15 +255,24 @@ def _versioned_working_path(session_id: str, suffix: str) -> Path:
 # Per-session asyncio.Lock used to serialise /inpaint requests for the same
 # editing session. Without it, double-clicks on Save or rapid mouseup events
 # producing back-to-back inpaint calls can race and produce confused state.
+# Bounded LRU: session ids are client-supplied, so an unbounded dict would
+# grow for the lifetime of the server. Idle (unlocked) entries past the cap
+# are evicted oldest-first.
+_SESSION_LOCKS_MAX = 64
 _session_locks: dict[str, asyncio.Lock] = {}
 
 
 def _get_session_lock(session_id: str) -> asyncio.Lock:
     safe = _safe_session_id(session_id)
-    lock = _session_locks.get(safe)
+    lock = _session_locks.pop(safe, None)
     if lock is None:
         lock = asyncio.Lock()
-        _session_locks[safe] = lock
+    _session_locks[safe] = lock  # re-insert => most-recently-used
+    while len(_session_locks) > _SESSION_LOCKS_MAX:
+        oldest_key = next(iter(_session_locks))
+        if _session_locks[oldest_key].locked():
+            break  # never drop a lock that is in use
+        _session_locks.pop(oldest_key)
     return lock
 
 
@@ -538,6 +548,17 @@ class _LamaModel:
                 state_dict = self._load_state_dict(model_path)
                 model = build_lama_inpainter(state_dict)
                 device = self._resolve_device()
+                # Ask ComfyUI to evict its own models first so LaMa doesn't
+                # OOM-fight the resident diffusion pipeline for VRAM. ~3x the
+                # weight size covers activations during inference.
+                if model_management is not None and device.type != "cpu":
+                    weight_bytes = sum(
+                        t.numel() * t.element_size() for t in state_dict.values()
+                    )
+                    try:
+                        model_management.free_memory(weight_bytes * 3, device)
+                    except Exception as exc:
+                        _log_warning(f"free_memory before LaMa load failed: {exc}")
                 model.to(device)
                 self._model = model
                 self._set_status(
@@ -556,6 +577,29 @@ class _LamaModel:
                 )
                 _log_error(f"Failed to load LaMa model: {exc}")
                 raise
+
+    def unload(self) -> None:
+        """Release the model and its VRAM. Safe to call when nothing is loaded."""
+        with self._load_lock:
+            if self._model is None:
+                return
+            self._model = None
+            self._device = None
+            gc.collect()
+            if model_management is not None:
+                try:
+                    model_management.soft_empty_cache()
+                except Exception as exc:
+                    _log_warning(f"soft_empty_cache after LaMa unload failed: {exc}")
+            elif torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            self._set_status(
+                loaded=False,
+                loading=False,
+                error="",
+                message="Model unloaded.",
+            )
+            _log_info("LaMa model unloaded.")
 
     def inpaint(self, image_rgb: np.ndarray, mask_gray: np.ndarray) -> np.ndarray:
         """Run LaMa inference on a single RGB image with a binary mask.
@@ -772,6 +816,13 @@ async def ts_lama_cleanup_view(request: web.Request) -> web.StreamResponse:
 async def ts_lama_cleanup_model_status(_: web.Request) -> web.StreamResponse:
     status = _LamaModel.instance().get_status()
     return web.json_response(status)
+
+
+@_register_post("/ts_lama_cleanup/unload_model")
+async def ts_lama_cleanup_unload_model(_: web.Request) -> web.StreamResponse:
+    """Explicitly release the LaMa weights and their VRAM."""
+    await asyncio.to_thread(_LamaModel.instance().unload)
+    return web.json_response({"ok": True})
 
 
 @_register_post("/ts_lama_cleanup/inpaint")

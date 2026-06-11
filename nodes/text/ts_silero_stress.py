@@ -9,6 +9,7 @@ import logging
 import os
 import re
 import shutil
+import threading
 from typing import Any
 
 import torch
@@ -139,24 +140,37 @@ class TS_SileroStress(IO.ComfyNode):
 
         return str(target_device)
 
+    # device_name -> loaded accentor. torch.package unpickling + weight
+    # restoration on every execute() made each run pay a multi-second load.
+    _ACCENTOR_CACHE: dict[str, Any] = {}
+    _ACCENTOR_CACHE_LOCK = threading.Lock()
+
     @classmethod
     def _load_accentor_runtime(cls, device_name: str):
-        try:
-            importlib.import_module("silero_stress")
-        except Exception as exc:
-            raise RuntimeError(
-                "Missing dependency 'silero_stress'. Install package 'silero-stress' to enable TS Silero Stress."
-            ) from exc
+        with cls._ACCENTOR_CACHE_LOCK:
+            cached = cls._ACCENTOR_CACHE.get(device_name)
+            if cached is not None:
+                return cached
 
-        model_path = cls._ensure_stress_model_exists()
-        accentor = torch.package.PackageImporter(model_path).load_pickle(
-            cls._MODEL_PICKLE_PACKAGE,
-            cls._MODEL_PICKLE_NAME,
-        )
-        cls._restore_stress_weights(accentor)
-        if hasattr(accentor, "to"):
-            accentor.to(device=device_name)
-        return accentor
+            try:
+                importlib.import_module("silero_stress")
+            except Exception as exc:
+                raise RuntimeError(
+                    "Missing dependency 'silero_stress'. Install package 'silero-stress' to enable TS Silero Stress."
+                ) from exc
+
+            model_path = cls._ensure_stress_model_exists()
+            accentor = torch.package.PackageImporter(model_path).load_pickle(
+                cls._MODEL_PICKLE_PACKAGE,
+                cls._MODEL_PICKLE_NAME,
+            )
+            cls._restore_stress_weights(accentor)
+            if hasattr(accentor, "to"):
+                accentor.to(device=device_name)
+            # Keep a single resident copy across device switches.
+            cls._ACCENTOR_CACHE.clear()
+            cls._ACCENTOR_CACHE[device_name] = accentor
+            return accentor
 
     @classmethod
     def _stress_model_path(cls) -> str:
