@@ -51,9 +51,13 @@ app.registerExtension({
                     "1",
                     (value) => {
                         value = value.trim()[0] || "1";
-                        if (value !== "") {
-                            this.title = `${BOOKMARK_ICON} ${value}`;
+                        // Persist the sanitized single character back into the
+                        // widget — a multi-character value never matched any
+                        // keypress, silently breaking the shortcut.
+                        if (this.widgets?.[0] && this.widgets[0].value !== value) {
+                            this.widgets[0].value = value;
                         }
+                        this.title = `${BOOKMARK_ICON} ${value}`;
                     },
                     {
                         y: 8,

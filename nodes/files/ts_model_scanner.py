@@ -11,6 +11,16 @@ from comfy_api.v0_0_2 import IO
 from safetensors import safe_open
 
 
+# safetensors header dtype tags -> the torch-style labels this node has
+# always printed (keeps stats keys stable for users parsing the report).
+_SAFETENSORS_DTYPE_LABELS = {
+    "F64": "float64", "F32": "float32", "F16": "float16", "BF16": "bfloat16",
+    "I64": "int64", "I32": "int32", "I16": "int16", "I8": "int8",
+    "U8": "uint8", "BOOL": "bool",
+    "F8_E4M3": "float8_e4m3fn", "F8_E5M2": "float8_e5m2",
+}
+
+
 def _build_model_choices():
     diffusion_models = folder_paths.get_filename_list("diffusion_models")
     model_files = [f for f in diffusion_models if f.endswith(".safetensors")]
@@ -103,11 +113,19 @@ class TS_ModelScanner(IO.ComfyNode):
         try:
             with safe_open(model_path, framework="pt", device="cpu") as f_in:
                 for name in f_in.keys():
-                    tensor = f_in.get_tensor(name)
-                    shape_str = str(tuple(tensor.shape))
-                    dtype_str = str(tensor.dtype).replace("torch.", "")
+                    # get_slice reads only the header metadata — get_tensor
+                    # materialized every tensor (a full multi-GB read) just to
+                    # report shape/dtype.
+                    sl = f_in.get_slice(name)
+                    shape = tuple(sl.get_shape())
+                    shape_str = str(shape)
+                    dtype_str = _SAFETENSORS_DTYPE_LABELS.get(
+                        str(sl.get_dtype()), str(sl.get_dtype()).lower()
+                    )
                     device_str = "cpu"
-                    num_params = tensor.numel()
+                    num_params = 1
+                    for dim in shape:
+                        num_params *= int(dim)
 
                     total_params += num_params
                     if dtype_str not in stats:
@@ -116,8 +134,6 @@ class TS_ModelScanner(IO.ComfyNode):
 
                     if not summary_only:
                         output_lines.append(f"{name:<50} | {shape_str:<20} | {dtype_str:<10} | {device_str:<6}")
-
-                    del tensor
 
         except Exception as e:
             return f"Error scanning safetensors file: {str(e)}"

@@ -177,6 +177,12 @@ class TS_ImageResize(IO.ComfyNode):
         if is_cover_crop_mode or is_free_distort_mode:
             final_w = int(round(ideal_w))
             final_h = int(round(ideal_h))
+            # divisible_by used to be silently ignored when both target dims
+            # were set. Honor it here too: the explicit dims are aligned down
+            # to the nearest multiple (a set parameter must never be a no-op).
+            if _divisible_by > 1:
+                final_w = max(_divisible_by, (final_w // _divisible_by) * _divisible_by)
+                final_h = max(_divisible_by, (final_h // _divisible_by) * _divisible_by)
         else:
             if _divisible_by > 1:
                 final_w = math.floor(ideal_w / _divisible_by) * _divisible_by

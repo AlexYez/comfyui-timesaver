@@ -372,9 +372,22 @@ class TSWhisper(IO.ComfyNode):
                 try:
                     subtitles_dir = os.path.join(base_dir, "subtitles")
                     os.makedirs(subtitles_dir, exist_ok=True)
+                    # basename + charset filter: the free-form prefix could
+                    # escape subtitles_dir via ../ or an absolute path.
+                    safe_prefix = re.sub(
+                        r"[^0-9A-Za-z._-]+", "_",
+                        os.path.basename(str(output_filename_prefix)),
+                    ).strip("._") or "transcribed_audio"
                     stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-                    srt_path = os.path.join(subtitles_dir, f"{output_filename_prefix}_{stamp}.srt")
-                    ttml_path = os.path.join(subtitles_dir, f"{output_filename_prefix}_{stamp}.ttml")
+                    srt_path = os.path.join(subtitles_dir, f"{safe_prefix}_{stamp}.srt")
+                    ttml_path = os.path.join(subtitles_dir, f"{safe_prefix}_{stamp}.ttml")
+                    # Same-second collisions (batch runs) silently overwrote
+                    # the previous pair — add a counter suffix instead.
+                    counter = 1
+                    while os.path.exists(srt_path) or os.path.exists(ttml_path):
+                        srt_path = os.path.join(subtitles_dir, f"{safe_prefix}_{stamp}_{counter}.srt")
+                        ttml_path = os.path.join(subtitles_dir, f"{safe_prefix}_{stamp}_{counter}.ttml")
+                        counter += 1
                     with open(srt_path, "w", encoding="utf-8") as f:
                         f.write(generated_srt)
                     with open(ttml_path, "w", encoding="utf-8") as f:

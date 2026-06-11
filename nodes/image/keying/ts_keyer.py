@@ -310,10 +310,16 @@ class TS_Keyer(IO.ComfyNode):
             spill_weight = torch.ones_like(alpha)
 
         reduction = excess * despill_strength * spill_weight
-        out[..., key_idx] = torch.clamp(key_channel - reduction, 0.0, 1.0)
+        new_key = torch.clamp(key_channel - reduction, 0.0, 1.0)
+        # Compensation must reflect what was ACTUALLY removed (post-clamp):
+        # with despill_strength > 1 the raw reduction exceeds the removable
+        # amount and used to over-inject brightness into the other channels.
+        # key_channel is a view into `out`, so compute before writing back.
+        actual_removed = key_channel - new_key
+        out[..., key_idx] = new_key
 
         if despill_compensate:
-            compensation = 0.5 * reduction
+            compensation = 0.5 * actual_removed
             out[..., other_idx[0]] = torch.clamp(out[..., other_idx[0]] + compensation, 0.0, 1.0)
             out[..., other_idx[1]] = torch.clamp(out[..., other_idx[1]] + compensation, 0.0, 1.0)
 

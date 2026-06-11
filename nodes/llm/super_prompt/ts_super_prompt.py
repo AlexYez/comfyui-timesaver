@@ -189,7 +189,23 @@ async def _read_audio_upload(request: web.Request) -> tuple[dict[str, Any] | Non
             upload = {"filename": part.filename, "data": b"".join(chunks)}
             continue
         if part.name:
-            fields[part.name] = await part.text()
+            # Cap text fields too: part.text() used to read without limit,
+            # so the audio size cap could be bypassed via any other field.
+            max_field_bytes = 64 * 1024
+            chunks = []
+            total = 0
+            while True:
+                chunk = await part.read_chunk(size=8192)
+                if not chunk:
+                    break
+                total += len(chunk)
+                if total > max_field_bytes:
+                    raise web.HTTPRequestEntityTooLarge(
+                        max_size=max_field_bytes,
+                        actual_size=total,
+                    )
+                chunks.append(chunk)
+            fields[part.name] = b"".join(chunks).decode("utf-8", errors="replace")
 
 
 @register_post(f"{VOICE_ROUTE_BASE}/transcribe")

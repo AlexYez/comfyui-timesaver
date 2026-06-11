@@ -946,7 +946,13 @@ class TS_Matting_ViTMatte(IO.ComfyNode):
         trimap_full = _make_trimap(mask_np, trimap_erode_px, trimap_dilate_px)
 
         if auto_crop:
-            bbox = _bbox_with_padding(binary, full_w, full_h, crop_padding_pct)
+            # The crop must keep the whole unknown band: for small bboxes the
+            # percent padding can be thinner than the dilation radius, and the
+            # band ViTMatte needs got clipped at the crop edge.
+            bbox = _bbox_with_padding(
+                binary, full_w, full_h, crop_padding_pct,
+                min_padding_px=int(trimap_dilate_px) + 8,
+            )
         else:
             bbox = (0, 0, full_w, full_h)
         x1, y1, x2, y2 = bbox
@@ -1013,10 +1019,11 @@ def _bbox_with_padding(
     image_w: int,
     image_h: int,
     padding_pct: int,
+    min_padding_px: int = 0,
 ) -> tuple[int, int, int, int]:
     """Return ``(x1, y1, x2, y2)`` enclosing the mask, padded by ``padding_pct``
-    percent of the bbox side. Clipped to the image bounds. Falls back to the
-    full frame if the mask is empty."""
+    percent of the bbox side (but never less than ``min_padding_px``). Clipped
+    to the image bounds. Falls back to the full frame if the mask is empty."""
     ys, xs = np.where(binary_mask > 0)
     if ys.size == 0 or xs.size == 0:
         return (0, 0, int(image_w), int(image_h))
@@ -1024,8 +1031,8 @@ def _bbox_with_padding(
     y1, y2 = int(ys.min()), int(ys.max()) + 1
     bw = x2 - x1
     bh = y2 - y1
-    pad_x = int(bw * padding_pct / 100)
-    pad_y = int(bh * padding_pct / 100)
+    pad_x = max(int(bw * padding_pct / 100), int(min_padding_px))
+    pad_y = max(int(bh * padding_pct / 100), int(min_padding_px))
     x1 = max(0, x1 - pad_x)
     y1 = max(0, y1 - pad_y)
     x2 = min(int(image_w), x2 + pad_x)

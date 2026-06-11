@@ -94,7 +94,9 @@ _IMPORT_AUDIT_RESULTS: list[dict] = []
 
 
 def _truncate(value: object, width: int) -> str:
-    text = str(value)
+    # Newlines from multi-line exception messages would break the ASCII
+    # table layout — fold them into a visible marker first.
+    text = " ⏎ ".join(str(value).splitlines()) or str(value)
     if width <= 3:
         return text[:width]
     if len(text) <= width:
