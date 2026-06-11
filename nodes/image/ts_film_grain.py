@@ -36,8 +36,14 @@ class TS_FilmGrain(IO.ComfyNode):
         noise_h_octave = max(1, int(target_h / scale_factor))
         noise_w_octave = max(1, int(target_w / scale_factor))
 
-        torch.manual_seed(current_seed)
-        base_noise = torch.randn(batch_dim, noise_h_octave, noise_w_octave, channels, device=device, dtype=dtype)
+        # Local generator: torch.manual_seed would clobber the process-wide
+        # RNG state mid-workflow (sampling reproducibility) from this node.
+        generator = torch.Generator(device=device)
+        generator.manual_seed(int(current_seed) & 0xFFFFFFFFFFFFFFFF)
+        base_noise = torch.randn(
+            batch_dim, noise_h_octave, noise_w_octave, channels,
+            generator=generator, device=device, dtype=dtype,
+        )
 
         upscaled_noise = F.interpolate(
             base_noise.permute(0, 3, 1, 2),
@@ -54,6 +60,11 @@ class TS_FilmGrain(IO.ComfyNode):
     def execute(cls, images, force_gpu, grain_size, grain_intensity, grain_speed,
                 grain_softness, color_grain_strength, mid_tone_grain_bias, seed) -> IO.NodeOutput:
         B, H, W, C = images.shape
+
+        # IMAGE contract: give back what we received. force_gpu may compute in
+        # fp16/CUDA, but the output must return to the caller's device/dtype.
+        input_device = images.device
+        input_dtype = images.dtype
 
         target_device = images.device
         target_dtype = images.dtype
@@ -165,6 +176,11 @@ class TS_FilmGrain(IO.ComfyNode):
         output_images = (images + final_grain).clamp(0.0, 1.0)
 
         del final_grain
+
+        if output_images.device != input_device or output_images.dtype != input_dtype:
+            output_images = output_images.to(device=input_device, dtype=input_dtype)
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
 
         return IO.NodeOutput(output_images)
 

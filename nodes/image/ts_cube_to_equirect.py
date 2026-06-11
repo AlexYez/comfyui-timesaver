@@ -29,16 +29,16 @@ class TS_CubemapFacesToEquirectangularNode(IO.ComfyNode):
         )
 
     @staticmethod
-    def tensor_to_image(tensor_in):
-        img_np = tensor_in.squeeze(0).numpy()
-        img_uint8 = (img_np * 255).astype(np.uint8)
-        return img_uint8
+    def tensor_to_image(tensor_in, index):
+        # .cpu(): upstream may hand us CUDA tensors; index selects the batch
+        # frame (the old squeeze(0) silently broke on batches).
+        frame = tensor_in[index].detach().cpu().float().clamp(0.0, 1.0).numpy()
+        return (frame * 255).astype(np.uint8)
 
     @staticmethod
     def image_to_tensor(img_array):
         img_float32 = np.array(img_array).astype(np.float32) / 255.0
-        tensor = torch.from_numpy(img_float32).unsqueeze(0)
-        return tensor
+        return torch.from_numpy(img_float32)
 
     @classmethod
     def execute(cls, front, right, back, left, top, bottom, output_width, output_height) -> IO.NodeOutput:
@@ -48,16 +48,19 @@ class TS_CubemapFacesToEquirectangularNode(IO.ComfyNode):
                 "Install it to enable 360 conversion."
             )
 
-        cubemap_dict = {
-            'F': cls.tensor_to_image(front), 'R': cls.tensor_to_image(right),
-            'B': cls.tensor_to_image(back), 'L': cls.tensor_to_image(left),
-            'U': cls.tensor_to_image(top), 'D': cls.tensor_to_image(bottom),
-        }
+        faces = {'F': front, 'R': right, 'B': back, 'L': left, 'U': top, 'D': bottom}
+        batch = min(int(t.shape[0]) for t in faces.values())
+        frames = []
+        for index in range(batch):
+            cubemap_dict = {
+                key: cls.tensor_to_image(tensor, index) for key, tensor in faces.items()
+            }
+            equirectangular_img = py360convert.c2e(
+                cubemap_dict, h=output_height, w=output_width, mode='bilinear'
+            )
+            frames.append(cls.image_to_tensor(equirectangular_img))
 
-        equirectangular_img = py360convert.c2e(cubemap_dict, h=output_height, w=output_width, mode='bilinear')
-
-        equirectangular_tensor = cls.image_to_tensor(equirectangular_img)
-        return IO.NodeOutput(equirectangular_tensor)
+        return IO.NodeOutput(torch.stack(frames, dim=0))
 
 
 NODE_CLASS_MAPPINGS = {

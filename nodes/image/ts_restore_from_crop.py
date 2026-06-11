@@ -98,6 +98,19 @@ class TSRestoreFromCrop(IO.ComfyNode):
             orig_img = original_images[i].clone()
             c_img, data = cropped_images[i], crop_data[i]
 
+            # Harmonize channels with the paste target: an RGBA crop pasted
+            # into an RGB original used to crash with a shape mismatch.
+            orig_c = orig_img.shape[-1]
+            if c_img.shape[-1] != orig_c:
+                if c_img.shape[-1] > orig_c:
+                    c_img = c_img[..., :orig_c]
+                else:
+                    pad = torch.ones(
+                        (*c_img.shape[:2], orig_c - c_img.shape[-1]),
+                        device=c_img.device, dtype=c_img.dtype,
+                    )
+                    c_img = torch.cat([c_img, pad], dim=-1)
+
             if c_img.shape[0] != data["initial_crop_height"] or c_img.shape[1] != data["initial_crop_width"]:
                 c_img = F.interpolate(c_img.permute(2, 0, 1).unsqueeze(0), size=(data["initial_crop_height"], data["initial_crop_width"]), mode='bilinear', align_corners=False).squeeze(0).permute(1, 2, 0)
 
@@ -107,7 +120,9 @@ class TSRestoreFromCrop(IO.ComfyNode):
             paste_x_in_crop = p_x - data["crop_x"]
             paste_y_in_crop = p_y - data["crop_y"]
 
-            temp_canvas = torch.zeros((p_h, p_w, 3), device=target_device, dtype=c_img.dtype)
+            # Channel count follows the cropped image (RGBA crops used to hit a
+            # shape-mismatch RuntimeError against a hardcoded 3 here).
+            temp_canvas = torch.zeros((p_h, p_w, c_img.shape[-1]), device=target_device, dtype=c_img.dtype)
             src_y_s, src_x_s = max(0, paste_y_in_crop), max(0, paste_x_in_crop)
             src_y_e, src_x_e = min(c_img.shape[0], paste_y_in_crop + p_h), min(c_img.shape[1], paste_x_in_crop + p_w)
             dst_y_s, dst_x_s = max(0, -paste_y_in_crop), max(0, -paste_x_in_crop)

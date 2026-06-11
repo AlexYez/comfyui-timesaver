@@ -575,6 +575,11 @@ class BiRefNetModel:
             return False, "Missing model weights (.safetensors / .bin)"
         if self._find_model_py(cache_dir) is None:
             return False, "Missing birefnet.py / birefnet_lite.py"
+        # load_model() hard-requires this file too. Without this check a
+        # partial cache passed verification, load failed, and re-runs never
+        # re-downloaded — a permanently broken node.
+        if not os.path.isfile(os.path.join(cache_dir, "BiRefNet_config.py")):
+            return False, "Missing BiRefNet_config.py"
         return True, "Model cache verified"
 
     def download_model(self, model_name, progress_bar=None, start_step=5, end_step=30):
@@ -779,12 +784,14 @@ class BiRefNetModel:
                 self.model.load_state_dict(state_dict)
 
                 self.model.eval()
+                # Note: deliberately NOT calling
+                # torch.set_float32_matmul_precision('high') here any more —
+                # it silently changed fp32 matmul accuracy for the WHOLE
+                # process (samplers included), which is not this node's call.
                 if target_dtype == torch.float16:
                     self.model.half()
-                    torch.set_float32_matmul_precision('high')
                 elif target_dtype == torch.bfloat16:
                     self.model.to(dtype=torch.bfloat16)
-                    torch.set_float32_matmul_precision('high')
                 else:
                     self.model.float()
 

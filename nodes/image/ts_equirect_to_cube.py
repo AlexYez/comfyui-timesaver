@@ -32,8 +32,7 @@ class TS_EquirectangularToCubemapFacesNode(IO.ComfyNode):
     @staticmethod
     def image_to_tensor(img_array):
         img_float32 = np.array(img_array).astype(np.float32) / 255.0
-        tensor = torch.from_numpy(img_float32).unsqueeze(0)
-        return tensor
+        return torch.from_numpy(img_float32)
 
     @classmethod
     def execute(cls, image, cube_size) -> IO.NodeOutput:
@@ -43,17 +42,22 @@ class TS_EquirectangularToCubemapFacesNode(IO.ComfyNode):
                 "Install it to enable 360 conversion."
             )
 
-        image_np = image.squeeze(0).numpy()
-        image_uint8 = (image_np * 255).astype(np.uint8)
-        cubemap_dict = py360convert.e2c(image_uint8, face_w=cube_size, cube_format='dict')
+        # .cpu(): the upstream node may hand us a CUDA tensor; .float(): keep
+        # the uint8 math safe for fp16 inputs. Process every frame — the old
+        # squeeze(0) silently broke on batches.
+        batch_np = image.detach().cpu().float().clamp(0.0, 1.0).numpy()
+        faces: dict[str, list[torch.Tensor]] = {k: [] for k in "FRBLUD"}
+        for frame_np in batch_np:
+            frame_uint8 = (frame_np * 255).astype(np.uint8)
+            cubemap_dict = py360convert.e2c(frame_uint8, face_w=cube_size, cube_format='dict')
+            for key in faces:
+                faces[key].append(cls.image_to_tensor(cubemap_dict[key]))
 
-        front = cls.image_to_tensor(cubemap_dict['F'])
-        right = cls.image_to_tensor(cubemap_dict['R'])
-        back = cls.image_to_tensor(cubemap_dict['B'])
-        left = cls.image_to_tensor(cubemap_dict['L'])
-        top = cls.image_to_tensor(cubemap_dict['U'])
-        bottom = cls.image_to_tensor(cubemap_dict['D'])
-        return IO.NodeOutput(front, right, back, left, top, bottom)
+        stacked = {key: torch.stack(tensors, dim=0) for key, tensors in faces.items()}
+        return IO.NodeOutput(
+            stacked['F'], stacked['R'], stacked['B'],
+            stacked['L'], stacked['U'], stacked['D'],
+        )
 
 
 NODE_CLASS_MAPPINGS = {
