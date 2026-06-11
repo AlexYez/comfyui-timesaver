@@ -21,15 +21,15 @@ class TS_ModelConverterAdvancedDirectNode(TS_ModelConverterAdvancedNode):
                 IO.Model.Input("model"),
                 IO.Combo.Input("fp8_mode", options=["e4m3fn", "e5m2"], default="e5m2"),
                 IO.Combo.Input("conversion_preset", options=["WAN", "Flux2"], default="WAN"),
-                IO.String.Input("shard_subdir", default="fp8_shards", multiline=False),
                 IO.String.Input("final_filename", default="converted_model_fp8.safetensors", multiline=False),
             ],
             outputs=[IO.String.Output(display_name="log")],
         )
 
     @classmethod
-    def execute(cls, model, fp8_mode, conversion_preset, shard_subdir, final_filename) -> IO.NodeOutput:
-        return IO.NodeOutput(cls._convert_loaded_model(model, fp8_mode, conversion_preset, shard_subdir, final_filename))
+    def execute(cls, model, fp8_mode, conversion_preset, final_filename, shard_subdir=None) -> IO.NodeOutput:
+        # `shard_subdir` tolerated for workflows saved with the old widget.
+        return IO.NodeOutput(cls._convert_loaded_model(model, fp8_mode, conversion_preset, final_filename))
 
 
 NODE_CLASS_MAPPINGS = {"TS_ModelConverterAdvancedDirect": TS_ModelConverterAdvancedDirectNode}
