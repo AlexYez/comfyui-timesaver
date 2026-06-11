@@ -354,6 +354,7 @@ class TS_Color_Match(IO.ComfyNode):
                 IO.Int.Input("mkl_sample_points", default=_DEFAULT_MKL_SAMPLE_POINTS, min=0, max=2000000, step=1, tooltip="Рекомендуется 200k–500k. При 0 берутся все пиксели, что может вызвать OOM на 4K."),
                 IO.Int.Input("sinkhorn_max_points", default=_DEFAULT_SINKHORN_MAX_POINTS, min=0, max=65536, step=1, tooltip="Для 4K обычно 1024–2048. Слишком большое значение может дать OOM."),
                 IO.Boolean.Input("reuse_reference", default=True, tooltip="Ускоряет и стабилизирует видео, когда референс один на весь батч."),
+                IO.Boolean.Input("temporal_smoothing", default=True, tooltip="EMA-сглаживание цветовых трансформов между кадрами. Включайте для видео (подавляет мерцание); выключайте для батча НЕсвязанных изображений — иначе коррекция кадров смешивается между собой."),
                 IO.Int.Input("chunk_size", default=4, min=0, max=256, step=1, tooltip="Рекомендуется 4–8 для длинных 4K видео. 0 обрабатывает весь батч разом."),
                 IO.Boolean.Input("logging", default=False, tooltip="При включении пишет в консоль стадии обработки, номер чанка и состояние памяти GPU."),
             ],
@@ -439,6 +440,7 @@ class TS_Color_Match(IO.ComfyNode):
         output_device,
         use_threads,
         log_enabled,
+        temporal_smoothing=True,
     ):
         batch = fix_image.shape[0]
         output = torch.empty((batch, fix_image.shape[1], fix_image.shape[2], fix_image.shape[3]), device=output_device, dtype=fix_image.dtype)
@@ -518,7 +520,9 @@ class TS_Color_Match(IO.ComfyNode):
 
             _log_info(f"stage=apply_transforms chunk={chunk_index}/{num_chunks}", log_enabled)
             for idx, (A, b) in zip(indices, transforms):
-                if prev_a is not None:
+                # EMA is for video flicker only — for a batch of unrelated
+                # stills it bleeds one image's correction into the next.
+                if temporal_smoothing and prev_a is not None:
                     A = prev_a * _TEMPORAL_EMA + A * (1.0 - _TEMPORAL_EMA)
                     b = prev_b * _TEMPORAL_EMA + b * (1.0 - _TEMPORAL_EMA)
                 prev_a, prev_b = A, b
@@ -563,6 +567,7 @@ class TS_Color_Match(IO.ComfyNode):
         reuse_reference,
         chunk_size,
         logging,
+        temporal_smoothing=True,
     ) -> IO.NodeOutput:
         _validate_image_tensor("reference", reference)
         _validate_image_tensor("target", target)
@@ -639,6 +644,7 @@ class TS_Color_Match(IO.ComfyNode):
             output_device,
             use_threads,
             log_enabled,
+            temporal_smoothing=bool(temporal_smoothing),
         )
 
         return IO.NodeOutput(output.clamp(0.0, 1.0))

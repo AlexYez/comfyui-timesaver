@@ -191,6 +191,13 @@ def _compute_global_normalization(
             sub = depth[start:end, ::stride_h, ::stride_w].reshape(-1).float()
             samples_list.append(sub.cpu())
         samples = torch.cat(samples_list, dim=0)
+        # torch.quantile rejects inputs over 2^24 elements; at ~4k samples per
+        # frame that limit is hit around the 4000-frame mark (2.5 min of
+        # video). Uniform stride keeps the subsample unbiased.
+        max_quantile_samples = 8_000_000
+        if samples.numel() > max_quantile_samples:
+            stride = (samples.numel() + max_quantile_samples - 1) // max_quantile_samples
+            samples = samples[::stride]
         lo = float(torch.quantile(samples, 0.01).item())
         hi = float(torch.quantile(samples, 0.99).item())
         if hi <= lo:
@@ -900,14 +907,20 @@ class TS_VideoDepth(IO.ComfyNode):
                 except UnboundLocalError:
                     pass
                 _hard_reclaim_vram()
-                # Move the patcher's model off-GPU temporarily so the
-                # allocator can defragment, then load it back. Otherwise
-                # CUDAMallocAsync sometimes refuses smaller allocations
-                # even with plenty of headroom reported.
+                # Release the model THROUGH model_management so its
+                # bookkeeping stays consistent. The old code called
+                # patcher.model.to("cpu") behind the ModelPatcher's back:
+                # load_model_gpu() then saw an "already loaded" patcher,
+                # no-opped, and the retry crashed with a device mismatch —
+                # and the cached MODEL stayed desynced for later prompts.
+                # A clean unload also lets CUDAMallocAsync defragment.
                 try:
-                    patcher.model.to("cpu")
-                except Exception:
-                    pass
+                    if hasattr(mm, "unload_model_and_clones"):
+                        mm.unload_model_and_clones(patcher)
+                    elif hasattr(mm, "unload_model_clones"):
+                        mm.unload_model_clones(patcher)
+                except Exception as unload_exc:
+                    logger.debug("%s unload between OOM retries failed: %s", LOG_PREFIX, unload_exc)
                 _hard_reclaim_vram()
                 if attempt_idx + 1 < len(attempt_sizes):
                     logger.warning(

@@ -198,6 +198,7 @@ def _binarize_and_orient_mask(
     image_height: int,
     image_width: int,
     batch: int,
+    orientation: str = "auto",
 ) -> torch.Tensor:
     """Coerce, binarize and auto-orient a MASK to native ComfyUI convention.
 
@@ -228,6 +229,13 @@ def _binarize_and_orient_mask(
 
     aligned = _coerce_mask(mask, batch=batch, height=image_height, width=image_width)
     binary = (aligned > _BINARIZE_THRESHOLD).to(dtype=torch.float32)
+
+    # Manual override for full-bleed subjects, where the corner heuristic
+    # has nothing to vote on and can invert the mask.
+    if orientation == "comfy (1=background)":
+        return binary
+    if orientation == "segmentation (1=subject)":
+        return 1.0 - binary
 
     h, w = binary.shape[1], binary.shape[2]
     cs = max(4, min(h, w) // _CORNER_SAMPLE_FRACTION)
@@ -398,6 +406,7 @@ def _resize_reference_image(
     upscale_method: str,
     size_multiple: int = _DEFAULT_SIZE_MULTIPLE,
     mask: torch.Tensor | None = None,
+    mask_orientation: str = "auto",
 ) -> torch.Tensor:
     # Step 0: when a MASK is supplied, binarize it AND auto-detect its
     # convention (Load Image alpha vs. segmentation models). Producing a
@@ -410,6 +419,7 @@ def _resize_reference_image(
             image_height=int(normalized.shape[1]),
             image_width=int(normalized.shape[2]),
             batch=int(normalized.shape[0]),
+            orientation=mask_orientation,
         )
 
     # Step 1: tighten the reference around the actual subject using the
@@ -581,6 +591,19 @@ class TS_MultiReference(IO.ComfyNode):
                     optional=True,
                     tooltip="Optional MASK for image_3. See mask_1 tooltip.",
                 ),
+                IO.Combo.Input(
+                    "mask_orientation",
+                    options=["auto", "comfy (1=background)", "segmentation (1=subject)"],
+                    default="auto",
+                    optional=True,
+                    tooltip=(
+                        "How to read the MASK inputs. auto = 4-corner voting "
+                        "(works for typical photos, can guess wrong on "
+                        "full-bleed subjects that cover the corners). Pick an "
+                        "explicit convention if the crop lands on the wrong "
+                        "region."
+                    ),
+                ),
             ],
             outputs=[
                 IO.Image.Output(display_name="image_1"),
@@ -623,6 +646,7 @@ class TS_MultiReference(IO.ComfyNode):
         mask_1: Optional[torch.Tensor] = None,
         mask_2: Optional[torch.Tensor] = None,
         mask_3: Optional[torch.Tensor] = None,
+        mask_orientation: str = "auto",
     ):
         # Per-slot input → per-slot output (resized image, ExecutionBlocker, or None).
         input_slots = (image_1, image_2, image_3)
@@ -656,6 +680,7 @@ class TS_MultiReference(IO.ComfyNode):
                 upscale_method=_UPSCALE_METHOD,
                 size_multiple=divide_by,
                 mask=slot_mask if isinstance(slot_mask, torch.Tensor) else None,
+                mask_orientation=mask_orientation,
             )
             if attach_reference:
                 latent = _encode_reference_latent(vae, processed_image)
