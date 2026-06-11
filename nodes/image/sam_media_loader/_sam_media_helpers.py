@@ -874,14 +874,25 @@ class _Sam3PreviewModel:
         if self._model is None:
             return
         try:
-            if _comfy_model_management is not None and hasattr(
-                _comfy_model_management, "unload_model_clones"
-            ):
-                _comfy_model_management.unload_model_clones(self._model)
+            if _comfy_model_management is not None:
+                # API renamed over ComfyUI releases: prefer the current
+                # unload_model_and_clones, fall back to the legacy name. The
+                # old hasattr-on-one-name check silently no-opped on modern
+                # ComfyUI, leaving the previous multi-GB SAM3 checkpoint in
+                # model_management's bookkeeping (and VRAM) on every switch.
+                if hasattr(_comfy_model_management, "unload_model_and_clones"):
+                    _comfy_model_management.unload_model_and_clones(self._model)
+                elif hasattr(_comfy_model_management, "unload_model_clones"):
+                    _comfy_model_management.unload_model_clones(self._model)
         except Exception as exc:
             _log_warning(f"Failed to unload previous SAM3 preview model: {exc}")
         self._model = None
         self._loaded_name = ""
+        if _comfy_model_management is not None:
+            try:
+                _comfy_model_management.soft_empty_cache()
+            except Exception as exc:
+                _log_warning(f"soft_empty_cache after SAM3 unload failed: {exc}")
 
     def segment_first_frame(
         self,

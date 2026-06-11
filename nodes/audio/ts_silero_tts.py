@@ -1,6 +1,7 @@
 ﻿import logging
 import os
 import re
+import threading
 from typing import Any
 
 import torch
@@ -166,16 +167,31 @@ class TS_SileroTTS(IO.ComfyNode):
 
         return target_device
 
+    # (path, device) -> loaded model. torch.package unpickling takes seconds
+    # for the multi-hundred-MB Silero archive; reloading it from disk on every
+    # execute() dominated the node's runtime.
+    _MODEL_CACHE: dict[tuple[str, str], Any] = {}
+    _MODEL_CACHE_LOCK = threading.Lock()
+
     @classmethod
     def _load_model(cls, model_path: str, device: torch.device):
-        try:
-            package = torch.package.PackageImporter(model_path)
-            model = package.load_pickle(cls._MODEL_PACKAGE, cls._MODEL_PICKLE)
-            if hasattr(model, "to"):
-                model.to(device)
+        cache_key = (model_path, str(device))
+        with cls._MODEL_CACHE_LOCK:
+            cached = cls._MODEL_CACHE.get(cache_key)
+            if cached is not None:
+                return cached
+            try:
+                package = torch.package.PackageImporter(model_path)
+                model = package.load_pickle(cls._MODEL_PACKAGE, cls._MODEL_PICKLE)
+                if hasattr(model, "to"):
+                    model.to(device)
+            except Exception as exc:
+                raise RuntimeError(f"Failed to load Silero model from '{model_path}'.") from exc
+            # One resident model is enough: drop entries for other devices so a
+            # gpu->cpu switch doesn't keep both copies alive.
+            cls._MODEL_CACHE.clear()
+            cls._MODEL_CACHE[cache_key] = model
             return model
-        except Exception as exc:
-            raise RuntimeError(f"Failed to load Silero model from '{model_path}'.") from exc
 
     @classmethod
     def _extract_audio_path(cls, value: Any) -> str | None:
@@ -337,7 +353,10 @@ class TS_SileroTTS(IO.ComfyNode):
 
         if hasattr(model, "apply_tts"):
             try:
-                audio = model.apply_tts(**tts_kwargs)
+                # inference_mode: synthesis must not build an autograd graph
+                # (it slowly leaked memory across long batch runs).
+                with torch.inference_mode():
+                    audio = model.apply_tts(**tts_kwargs)
                 return cls._normalize_generated_audio(audio)
             except TypeError:
                 # Some builds may not accept all flags or SSML-specific kwargs.
@@ -348,7 +367,8 @@ class TS_SileroTTS(IO.ComfyNode):
                     fallback_kwargs["text"] = text
                     fallback_kwargs["put_accent"] = put_accent
                     fallback_kwargs["put_yo"] = put_yo
-                audio = model.apply_tts(**fallback_kwargs)
+                with torch.inference_mode():
+                    audio = model.apply_tts(**fallback_kwargs)
                 return cls._normalize_generated_audio(audio)
 
         if is_ssml:
@@ -357,13 +377,15 @@ class TS_SileroTTS(IO.ComfyNode):
         if hasattr(model, "save_wav"):
             save_kwargs = dict(tts_kwargs)
             try:
-                path_value = model.save_wav(**save_kwargs)
+                with torch.inference_mode():
+                    path_value = model.save_wav(**save_kwargs)
             except TypeError:
-                path_value = model.save_wav(
-                    text=text,
-                    speaker=speaker,
-                    sample_rate=cls._SAMPLE_RATE,
-                )
+                with torch.inference_mode():
+                    path_value = model.save_wav(
+                        text=text,
+                        speaker=speaker,
+                        sample_rate=cls._SAMPLE_RATE,
+                    )
 
             audio_path = cls._extract_audio_path(path_value)
             if audio_path is None or not os.path.isfile(audio_path):
