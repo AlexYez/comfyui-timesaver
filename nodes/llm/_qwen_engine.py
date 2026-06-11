@@ -1244,6 +1244,7 @@ def apply_chat_template_no_thinking(engine, processor, messages):
 
 
 _ENGINE: QwenEngine | None = None
+_ENGINE_INIT_LOCK = threading.Lock()
 
 # Process-wide mutex for exclusive access to the shared model. Both LLM nodes
 # (TS_Qwen3_VL_V3 and TS_SuperPrompt's enhance route) talk to the SAME
@@ -1256,9 +1257,16 @@ QWEN_MODEL_LOCK = threading.Lock()
 
 
 def get_qwen_engine() -> QwenEngine:
-    """Return the process-wide ``QwenEngine`` singleton (lazy-initialised)."""
+    """Return the process-wide ``QwenEngine`` singleton (lazy-initialised).
+
+    Locked: the prompt worker and the Super Prompt aiohttp route can race on
+    first use — without the lock each would construct its own engine (and its
+    own model cache), loading the multi-GB model twice.
+    """
 
     global _ENGINE
     if _ENGINE is None:
-        _ENGINE = QwenEngine()
+        with _ENGINE_INIT_LOCK:
+            if _ENGINE is None:
+                _ENGINE = QwenEngine()
     return _ENGINE

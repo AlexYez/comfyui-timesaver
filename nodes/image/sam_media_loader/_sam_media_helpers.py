@@ -1010,15 +1010,27 @@ class _Sam3PreviewModel:
 
 # Per-checkpoint asyncio.Lock so concurrent /preview_mask calls don't trample
 # each other while sharing the same SAM3 model on GPU.
+# Bounded LRU: checkpoint names are client-supplied, so an unbounded dict
+# would grow for the lifetime of the server (same policy as the LaMa
+# session-lock cache). Idle (unlocked) entries past the cap are evicted
+# oldest-first; locked entries are skipped, never dropped.
+_PREVIEW_LOCKS_MAX = 64
 _PREVIEW_LOCKS: dict[str, asyncio.Lock] = {}
 
 
 def _get_preview_lock(checkpoint: str) -> asyncio.Lock:
     safe = re.sub(r"[^A-Za-z0-9._-]+", "_", checkpoint or "default")
-    lock = _PREVIEW_LOCKS.get(safe)
+    lock = _PREVIEW_LOCKS.pop(safe, None)
     if lock is None:
         lock = asyncio.Lock()
-        _PREVIEW_LOCKS[safe] = lock
+    _PREVIEW_LOCKS[safe] = lock  # re-insert => most-recently-used
+    if len(_PREVIEW_LOCKS) > _PREVIEW_LOCKS_MAX:
+        for key in list(_PREVIEW_LOCKS):
+            if len(_PREVIEW_LOCKS) <= _PREVIEW_LOCKS_MAX:
+                break
+            if key == safe or _PREVIEW_LOCKS[key].locked():
+                continue
+            _PREVIEW_LOCKS.pop(key)
     return lock
 
 

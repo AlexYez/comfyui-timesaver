@@ -268,11 +268,17 @@ def _get_session_lock(session_id: str) -> asyncio.Lock:
     if lock is None:
         lock = asyncio.Lock()
     _session_locks[safe] = lock  # re-insert => most-recently-used
-    while len(_session_locks) > _SESSION_LOCKS_MAX:
-        oldest_key = next(iter(_session_locks))
-        if _session_locks[oldest_key].locked():
-            break  # never drop a lock that is in use
-        _session_locks.pop(oldest_key)
+    if len(_session_locks) > _SESSION_LOCKS_MAX:
+        # Evict idle entries oldest-first. Locked entries are SKIPPED (not a
+        # loop break): the old code stopped evicting entirely whenever the
+        # single oldest entry happened to be busy, letting the dict grow past
+        # the cap behind one long-running session.
+        for key in list(_session_locks):
+            if len(_session_locks) <= _SESSION_LOCKS_MAX:
+                break
+            if key == safe or _session_locks[key].locked():
+                continue
+            _session_locks.pop(key)
     return lock
 
 
