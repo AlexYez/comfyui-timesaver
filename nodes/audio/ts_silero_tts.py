@@ -577,47 +577,45 @@ class TS_SileroTTS(IO.ComfyNode):
         put_stress_homo: bool = True,
         put_yo_homo: bool = True,
     ) -> IO.NodeOutput:
-        try:
-            model_path = cls._model_path()
-            cls._ensure_model_exists(model_path)
-            device = cls._resolve_device(run_device)
-            model = cls._load_model(model_path, device=device)
-            progress_bar = ProgressBar(max(1, len(cls._build_chunks(
-                input_format=input_format,
-                text=text.strip(),
-                enable_chunking=enable_chunking,
-                max_chunk_chars=max_chunk_chars,
-            ))))
+        # Errors propagate to the pack's runtime guard. The old behaviour
+        # (catch everything, return 1024 samples of silence) made every
+        # failure — missing model, bad SSML, OOM — look like a successful
+        # synthesis of silent audio.
+        model_path = cls._model_path()
+        cls._ensure_model_exists(model_path)
+        device = cls._resolve_device(run_device)
+        model = cls._load_model(model_path, device=device)
+        progress_bar = ProgressBar(max(1, len(cls._build_chunks(
+            input_format=input_format,
+            text=text.strip(),
+            enable_chunking=enable_chunking,
+            max_chunk_chars=max_chunk_chars,
+        ))))
 
-            waveform = cls._synthesize(
-                model=model,
-                input_format=input_format,
-                text=text.strip(),
-                speaker=speaker,
-                put_accent=put_accent,
-                put_yo=put_yo,
-                put_stress_homo=put_stress_homo,
-                put_yo_homo=put_yo_homo,
-                enable_chunking=enable_chunking,
-                max_chunk_chars=max_chunk_chars,
-                chunk_pause_ms=chunk_pause_ms,
-                progress_bar=progress_bar,
-            )
+        waveform = cls._synthesize(
+            model=model,
+            input_format=input_format,
+            text=text.strip(),
+            speaker=speaker,
+            put_accent=put_accent,
+            put_yo=put_yo,
+            put_stress_homo=put_stress_homo,
+            put_yo_homo=put_yo_homo,
+            enable_chunking=enable_chunking,
+            max_chunk_chars=max_chunk_chars,
+            chunk_pause_ms=chunk_pause_ms,
+            progress_bar=progress_bar,
+        )
 
-            audio_output = {
-                "waveform": waveform.unsqueeze(0).contiguous(),
-                "sample_rate": cls._SAMPLE_RATE,
-            }
-            cls._log_info(
-                f"Generated audio: mode={input_format}, speaker={speaker}, device={device}, "
-                f"samples={int(waveform.shape[-1])}, sample_rate={cls._SAMPLE_RATE}"
-            )
-            return IO.NodeOutput(audio_output)
-        except Exception as exc:
-            cls._log_warning(f"Execution fallback activated: {exc}")
-            # Return short silence fallback to keep workflow execution stable.
-            silence = torch.zeros((1, 1, 1024), dtype=torch.float32)
-            return IO.NodeOutput({"waveform": silence, "sample_rate": cls._SAMPLE_RATE})
+        audio_output = {
+            "waveform": waveform.unsqueeze(0).contiguous(),
+            "sample_rate": cls._SAMPLE_RATE,
+        }
+        cls._log_info(
+            f"Generated audio: mode={input_format}, speaker={speaker}, device={device}, "
+            f"samples={int(waveform.shape[-1])}, sample_rate={cls._SAMPLE_RATE}"
+        )
+        return IO.NodeOutput(audio_output)
 
 
 

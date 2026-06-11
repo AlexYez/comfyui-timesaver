@@ -204,7 +204,12 @@ class TS_ModelConverterAdvancedNode(IO.ComfyNode):
             save_file(shard_state, out_path)
             logs.append(f"OK Saved to: {out_path}")
         except Exception as e:
-            logs.append(f"Conversion failed: {e}")
+            # Surface the failure as a node error instead of returning a
+            # success-shaped log string; the partial temp file is still
+            # cleaned up by the finally block below.
+            raise RuntimeError(
+                f"TS Model Converter Advanced: conversion failed: {e}"
+            ) from e
         finally:
             if os.path.exists(temp_path):
                 try:
@@ -233,8 +238,9 @@ class TS_ModelConverterAdvancedNode(IO.ComfyNode):
         if " | " in model_name:
             type_key, filename = model_name.split(" | ", 1)
         else:
-            logs.append("Invalid model selection")
-            return IO.NodeOutput("\n".join(logs))
+            raise ValueError(
+                f"TS Model Converter Advanced: invalid model selection '{model_name}'."
+            )
 
         model_path = None
 
@@ -246,8 +252,9 @@ class TS_ModelConverterAdvancedNode(IO.ComfyNode):
             model_path = os.path.join(output_dir, "diffusion_models", filename)
 
         if not model_path or not os.path.exists(model_path):
-            logs.append(f"ERROR: File not found: {model_path}")
-            return IO.NodeOutput("\n".join(logs))
+            raise FileNotFoundError(
+                f"TS Model Converter Advanced: model file not found: {model_path}"
+            )
 
         logs.append("--- START FP8 CONVERSION ---")
         logs.append(f"File: {model_path}")
@@ -278,7 +285,9 @@ class TS_ModelConverterAdvancedNode(IO.ComfyNode):
                 logs.append(f"Saved to: {out_path}")
 
             except Exception as e:
-                logs.append(f"Conversion failed: {e}")
+                raise RuntimeError(
+                    f"TS Model Converter Advanced: conversion failed: {e}"
+                ) from e
 
             del shard_state
             gc.collect()

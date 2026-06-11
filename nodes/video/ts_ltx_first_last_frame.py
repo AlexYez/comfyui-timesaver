@@ -1,5 +1,4 @@
 import logging
-import traceback
 
 import torch
 
@@ -79,60 +78,60 @@ class TS_LTX_FirstLastFrame(IO.ComfyNode):
         first_image: torch.Tensor = None,
         last_image: torch.Tensor = None,
     ) -> IO.NodeOutput:
-        try:
-            positive_out = positive
-            negative_out = negative
-            latent_out = cls._clone_latent(latent)
+        # No blanket try/except here: a failed LTXVAddGuide (VAE OOM, size
+        # mismatch, upstream API change) must surface as a node error. The old
+        # fallback returned the inputs untouched, silently turning a guided
+        # I2V workflow into text-to-video.
+        positive_out = positive
+        negative_out = negative
+        latent_out = cls._clone_latent(latent)
 
-            has_first = cls._is_valid_image(first_image)
-            has_last = cls._is_valid_image(last_image)
+        has_first = cls._is_valid_image(first_image)
+        has_last = cls._is_valid_image(last_image)
 
-            if has_first and has_last:
-                cls._log("First frame to last frame")
-            elif has_first:
-                cls._log("First frame only")
-            elif has_last:
-                cls._log("Last frame only")
-            else:
-                cls._log("Text to video (no frames)")
+        if has_first and has_last:
+            cls._log("First frame to last frame")
+        elif has_first:
+            cls._log("First frame only")
+        elif has_last:
+            cls._log("Last frame only")
+        else:
+            cls._log("Text to video (no frames)")
 
-            if not has_first and not has_last:
-                return IO.NodeOutput(positive_out, negative_out, latent_out)
-
-            if has_first and first_strength > 0.0:
-                positive_out, negative_out, latent_out = cls._unpack_node_output(
-                    LTXVAddGuide.execute(
-                        positive=positive_out,
-                        negative=negative_out,
-                        vae=vae,
-                        latent=latent_out,
-                        image=first_image,
-                        frame_idx=0,
-                        strength=first_strength,
-                    )
-                )
-            elif first_image is not None and not has_first:
-                cls._log("First frame input is not a valid image tensor. Skipping first-frame guide.")
-
-            if has_last and last_strength > 0.0:
-                positive_out, negative_out, latent_out = cls._unpack_node_output(
-                    LTXVAddGuide.execute(
-                        positive=positive_out,
-                        negative=negative_out,
-                        vae=vae,
-                        latent=latent_out,
-                        image=last_image,
-                        frame_idx=-1,
-                        strength=last_strength,
-                    )
-                )
-            elif last_image is not None and not has_last:
-                cls._log("Last frame input is not a valid image tensor. Skipping last-frame guide.")
-
+        if not has_first and not has_last:
             return IO.NodeOutput(positive_out, negative_out, latent_out)
-        except Exception as exc:
-            logger.error("%s %s\n%s", LOG_PREFIX, exc, traceback.format_exc())
-            return IO.NodeOutput(positive, negative, latent)
+
+        if has_first and first_strength > 0.0:
+            positive_out, negative_out, latent_out = cls._unpack_node_output(
+                LTXVAddGuide.execute(
+                    positive=positive_out,
+                    negative=negative_out,
+                    vae=vae,
+                    latent=latent_out,
+                    image=first_image,
+                    frame_idx=0,
+                    strength=first_strength,
+                )
+            )
+        elif has_first and first_strength <= 0.0:
+            cls._log("first_strength is 0. Skipping first-frame guide.")
+
+        if has_last and last_strength > 0.0:
+            positive_out, negative_out, latent_out = cls._unpack_node_output(
+                LTXVAddGuide.execute(
+                    positive=positive_out,
+                    negative=negative_out,
+                    vae=vae,
+                    latent=latent_out,
+                    image=last_image,
+                    frame_idx=-1,
+                    strength=last_strength,
+                )
+            )
+        elif has_last and last_strength <= 0.0:
+            cls._log("last_strength is 0. Skipping last-frame guide.")
+
+        return IO.NodeOutput(positive_out, negative_out, latent_out)
 
 
 NODE_CLASS_MAPPINGS = {

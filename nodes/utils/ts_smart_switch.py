@@ -87,57 +87,58 @@ class TS_Smart_Switch(IO.ComfyNode):
 
     @classmethod
     def execute(cls, data_type: str, switch: bool, input_1=None, input_2=None) -> IO.NodeOutput:
-        try:
-            valid_1 = _is_valid_by_type(input_1, data_type)
-            valid_2 = _is_valid_by_type(input_2, data_type)
+        valid_1 = _is_valid_by_type(input_1, data_type)
+        valid_2 = _is_valid_by_type(input_2, data_type)
 
-            if input_1 is not None and not valid_1:
-                TS_Logger.warn(
-                    "SmartSwitch",
-                    f"Input 1 ignored: type mismatch for data_type={data_type}",
-                )
-            if input_2 is not None and not valid_2:
-                TS_Logger.warn(
-                    "SmartSwitch",
-                    f"Input 2 ignored: type mismatch for data_type={data_type}",
-                )
+        if input_1 is not None and not valid_1:
+            TS_Logger.warn(
+                "SmartSwitch",
+                f"Input 1 ignored: type mismatch for data_type={data_type}",
+            )
+        if input_2 is not None and not valid_2:
+            TS_Logger.warn(
+                "SmartSwitch",
+                f"Input 2 ignored: type mismatch for data_type={data_type}",
+            )
 
-            if valid_1 and valid_2:
-                if switch:
-                    result = input_1
-                    selected_source = "Input 1"
-                    status_msg = "(Switch: ON)"
-                else:
-                    result = input_2
-                    selected_source = "Input 2"
-                    status_msg = "(Switch: OFF)"
-            elif valid_1:
+        if valid_1 and valid_2:
+            if switch:
                 result = input_1
                 selected_source = "Input 1"
-                status_msg = "(Auto-Failover)"
-            elif valid_2:
+                status_msg = "(Switch: ON)"
+            else:
                 result = input_2
                 selected_source = "Input 2"
-                status_msg = "(Auto-Failover)"
-            else:
-                TS_Logger.warn("SmartSwitch", "Both inputs are None.")
-                return IO.NodeOutput(None)
-
-            info = "Unknown"
-            if hasattr(result, "shape"):
-                info = f"Tensor {result.shape}"
-            elif isinstance(result, (int, float, str)):
-                info = str(result)
-
-            TS_Logger.log(
-                "SmartSwitch",
-                f"Selected: {selected_source} {status_msg} | {info}",
+                status_msg = "(Switch: OFF)"
+        elif valid_1:
+            result = input_1
+            selected_source = "Input 1"
+            status_msg = "(Auto-Failover)"
+        elif valid_2:
+            result = input_2
+            selected_source = "Input 2"
+            status_msg = "(Auto-Failover)"
+        else:
+            # Auto-failover covers ONE missing branch; with no valid input at
+            # all, emitting None just crashes a downstream node far from the
+            # real cause. Fail here, at the switch, with an actionable message.
+            raise RuntimeError(
+                f"TS Smart Switch: neither input matches data_type='{data_type}' "
+                "(both disconnected, None, or wrong type). Connect at least one "
+                "matching input or fix data_type."
             )
-            return IO.NodeOutput(result)
 
-        except Exception as e:
-            TS_Logger.error("SmartSwitch", f"Error: {str(e)}")
-            return IO.NodeOutput(None)
+        info = "Unknown"
+        if hasattr(result, "shape"):
+            info = f"Tensor {result.shape}"
+        elif isinstance(result, (int, float, str)):
+            info = str(result)
+
+        TS_Logger.log(
+            "SmartSwitch",
+            f"Selected: {selected_source} {status_msg} | {info}",
+        )
+        return IO.NodeOutput(result)
 
 
 NODE_CLASS_MAPPINGS = {"TS_Smart_Switch": TS_Smart_Switch}

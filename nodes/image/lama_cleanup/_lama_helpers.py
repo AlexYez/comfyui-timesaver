@@ -350,13 +350,21 @@ def _load_image_tensor(filepath: str) -> torch.Tensor:
     """Load an image file as a ComfyUI IMAGE tensor [1, H, W, 3] float32 in [0, 1]."""
     if Image is None:
         raise RuntimeError("Pillow is required to load images.")
-    if not filepath or not os.path.isfile(filepath):
-        return torch.zeros((1, 64, 64, 3), dtype=torch.float32)
+    if not filepath:
+        raise RuntimeError(
+            f"{LOG_PREFIX} No image selected. Upload or pick an image in the "
+            "LaMa Cleanup editor before queueing."
+        )
+    if not os.path.isfile(filepath):
+        raise RuntimeError(
+            f"{LOG_PREFIX} Image file not found: {filepath}. The working file "
+            "may have been deleted — re-open the editor and save again."
+        )
     with Image.open(filepath) as handle:
         image = handle.convert("RGB")
         array = np.asarray(image, dtype=np.float32) / 255.0
     if array.ndim != 3:
-        return torch.zeros((1, 64, 64, 3), dtype=torch.float32)
+        raise RuntimeError(f"{LOG_PREFIX} Unsupported image data in {filepath}.")
     tensor = torch.from_numpy(array).unsqueeze(0).contiguous()
     return tensor
 
