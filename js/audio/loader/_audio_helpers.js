@@ -1188,6 +1188,17 @@ export function setupAudioLoader(node) {
         if (mediaRecorder && state.isRecording) { try { mediaRecorder.stop(); } catch {} }
         if (mediaStream) { mediaStream.getTracks().forEach((track) => track.stop()); mediaStream = null; }
     };
+    // Without this hook a deleted node leaks its poll interval, RAF loop,
+    // ResizeObserver, object URLs and — worst — the live microphone stream.
+    // The original onRemoved is captured once so repeated setup calls don't
+    // stack wrappers; the wrapper always calls the *current* cleanup.
+    if (!node._tsAudioLoaderOriginalOnRemoved) {
+        node._tsAudioLoaderOriginalOnRemoved = node.onRemoved;
+        node.onRemoved = function onRemovedWithAudioCleanup() {
+            try { node._tsAudioLoaderCleanup?.(); } catch { /* already torn down */ }
+            return node._tsAudioLoaderOriginalOnRemoved?.apply(this, arguments);
+        };
+    }
     node._tsAudioLoaderApplyPayload = (payload, persist = true) => {
         if (!payload) return;
         applyMediaPayload(payload, { persist });
