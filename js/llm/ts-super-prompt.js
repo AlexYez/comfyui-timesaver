@@ -1099,6 +1099,12 @@ function setupSuperPrompt(node) {
     textarea.addEventListener("input", () => syncTextFromUi());
     textarea.addEventListener("blur", () => syncTextFromUi());
     hqToggle.addEventListener("click", () => {
+        // Switching models mid-recording/transcription resets modelReady and
+        // desyncs the model the recording will be transcribed with.
+        if (state.isRecording || state.isVoiceBusy) {
+            setStatus("Finish recording before switching HQ", "info", STATUS_RESET_DELAY_MS);
+            return;
+        }
         hqToggle.classList.toggle("is-on");
         syncHighQualityFromUi();
         syncActiveVoiceModel();

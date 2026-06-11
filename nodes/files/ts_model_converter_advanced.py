@@ -22,6 +22,21 @@ logger = logging.getLogger("comfyui_timesaver.ts_model_converter_advanced")
 LOG_PREFIX = "[TS Model Converter Advanced]"
 
 
+def _safe_output_path(output_dir: str, filename: str) -> str:
+    """Join a user-supplied filename to output_dir, refusing escapes.
+
+    ``os.path.join`` with an absolute path or ``..`` segments in ``filename``
+    used to allow writing anywhere on disk.
+    """
+    name = os.path.basename(str(filename).strip())
+    if not name or name in (".", ".."):
+        name = "converted_model_fp8.safetensors"
+    candidate = os.path.abspath(os.path.join(output_dir, name))
+    if os.path.commonpath([candidate, os.path.abspath(output_dir)]) != os.path.abspath(output_dir):
+        raise ValueError(f"{LOG_PREFIX} unsafe output filename: {filename!r}")
+    return candidate
+
+
 def _build_file_list():
     checkpoints = folder_paths.get_filename_list("checkpoints")
     unets = folder_paths.get_filename_list("diffusion_models")
@@ -172,7 +187,7 @@ class TS_ModelConverterAdvancedNode(IO.ComfyNode):
         target_dtype = torch.float8_e4m3fn if fp8_mode == "e4m3fn" else torch.float8_e5m2
 
         output_dir = folder_paths.get_output_directory()
-        out_path = os.path.join(output_dir, final_filename)
+        out_path = _safe_output_path(output_dir, final_filename)
 
         logs.append("--- START FP8 CONVERSION (DIRECT) ---")
         logs.append(f"Target: {fp8_mode}")
@@ -263,7 +278,7 @@ class TS_ModelConverterAdvancedNode(IO.ComfyNode):
 
         if os.path.isfile(model_path):
             shard_state = OrderedDict()
-            out_path = os.path.join(output_dir, final_filename)
+            out_path = _safe_output_path(output_dir, final_filename)
 
             try:
                 with safe_open(model_path, framework="pt", device="cpu") as f_in:

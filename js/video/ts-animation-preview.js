@@ -428,6 +428,22 @@ function setupAnimationPreview(node) {
         node.properties.ts_animation_preview = payload;
     };
 
+    // Teardown on node deletion: without this the looping <video> kept
+    // decoding (CPU + memory) for as long as the tab lived.
+    node._tsAnimPreviewCleanup = () => {
+        try {
+            video.pause();
+            video.removeAttribute("src");
+            video.load();
+        } catch { /* already torn down */ }
+        node._tsAnimPreviewInit = false;
+    };
+    const prevOnRemoved = node.onRemoved;
+    node.onRemoved = function onRemovedWithPreviewCleanup() {
+        node._tsAnimPreviewCleanup?.();
+        return prevOnRemoved?.apply(this, arguments);
+    };
+
     if (node.properties?.ts_animation_preview) {
         node._tsAnimPreviewApply(node.properties.ts_animation_preview);
     } else {

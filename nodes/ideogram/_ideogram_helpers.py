@@ -186,8 +186,13 @@ def save_user_preset(kind: str, preset: dict) -> bool:
     store[kind] = [it for it in store.get(kind, []) if it.get("id") != pid]
     store[kind].append(preset)
     try:
-        with open(_preset_path(USER_PRESETS_FILENAME), "w", encoding="utf-8") as handle:
+        # Atomic write (tmp + os.replace): a crash mid-write used to truncate
+        # the store and lose every saved preset.
+        target = _preset_path(USER_PRESETS_FILENAME)
+        tmp_path = f"{target}.tmp-{os.getpid()}"
+        with open(tmp_path, "w", encoding="utf-8") as handle:
             json.dump(store, handle, ensure_ascii=False, indent=2)
+        os.replace(tmp_path, target)
         return True
     except Exception as exc:  # noqa: BLE001
         ts_logger.warning("%s Failed to save user preset: %s", LOG_PREFIX, exc)
@@ -308,12 +313,28 @@ def _bbox_from_block(block: dict) -> list[int] | None:
     return frac_to_bbox(x, y, w, h)
 
 
+def _title_case_word(word: str) -> str:
+    """Capitalize only the first letter; leave the rest of the word alone.
+
+    str.title() corrupted acronyms ("AI" -> "Ai") and apostrophe
+    contractions ("don't" -> "Don'T") — it treats every non-letter as a
+    word boundary.
+    """
+    for index, char in enumerate(word):
+        if char.isalpha():
+            return word[:index] + char.upper() + word[index + 1:]
+    return word
+
+
 def _apply_case(text: str, case: str) -> str:
     if case == "UPPERCASE":
         return text.upper()
     if case == "Title":
         # Per-line title casing keeps explicit \n line breaks intact.
-        return "\n".join(line.title() for line in text.split("\n"))
+        return "\n".join(
+            " ".join(_title_case_word(word) for word in line.split(" "))
+            for line in text.split("\n")
+        )
     return text
 
 

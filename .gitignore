@@ -51,3 +51,8 @@ comfyui-pack-testing-guide.md
 /nodes/ideogram/ideogram_user_presets.json
 # Imported (copied-in) layout/style preset files for TS Ideogram Designer
 /nodes/ideogram/user_presets/
+
+# Local review artifacts (multi-agent code review scratch + reports)
+/_review_results.json
+/_verify_quantile.py
+/code-review-report.md

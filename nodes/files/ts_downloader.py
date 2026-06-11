@@ -862,22 +862,23 @@ class TS_DownloadFilesNode(IO.ComfyNode):
         if not files_to_download:
             return IO.NodeOutput()
 
-        session = cls._create_session_with_retries(proxy_url)
+        # close the Session in all paths — it leaked its connection pool on
+        # every execution (including the early offline-mode return).
+        with cls._create_session_with_retries(proxy_url) as session:
+            if not cls._check_connectivity_to_targets(files_to_download, session, hf_domain):
+                logger.warning(f"{LOG_PREFIX} All target servers are unreachable. Switching to OFFLINE MODE. Execution finished.")
+                return IO.NodeOutput()
 
-        if not cls._check_connectivity_to_targets(files_to_download, session, hf_domain):
-            logger.warning(f"{LOG_PREFIX} All target servers are unreachable. Switching to OFFLINE MODE. Execution finished.")
-            return IO.NodeOutput()
+            active_mirror = cls._select_best_mirror(session, hf_domain)
+            logger.info(f"{LOG_PREFIX} Using HF Mirror: '{active_mirror}'")
 
-        active_mirror = cls._select_best_mirror(session, hf_domain)
-        logger.info(f"{LOG_PREFIX} Using HF Mirror: '{active_mirror}'")
-
-        success = 0
-        failed = 0
-        for file_info in files_to_download:
-            if cls._download_single_file(session, file_info['url'], file_info['target_dir'], skip_existing, verify_size, chunk_size_bytes, active_mirror, hf_token, modelscope_token, unzip_after_download, integrity_mode_value):
-                success += 1
-            else:
-                failed += 1
+            success = 0
+            failed = 0
+            for file_info in files_to_download:
+                if cls._download_single_file(session, file_info['url'], file_info['target_dir'], skip_existing, verify_size, chunk_size_bytes, active_mirror, hf_token, modelscope_token, unzip_after_download, integrity_mode_value):
+                    success += 1
+                else:
+                    failed += 1
 
         logger.info("%s Done. Success: %d, Failed: %d", LOG_PREFIX, success, failed)
         return IO.NodeOutput()
