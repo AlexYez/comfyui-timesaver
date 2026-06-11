@@ -271,66 +271,65 @@ class TS_SileroStress(IO.ComfyNode):
         if not normalized_text.strip():
             return IO.NodeOutput("")
 
-        try:
-            if not use_accentor and not use_homosolver:
-                return IO.NodeOutput(normalized_text)
-
-            accentor = cls._load_accentor_runtime(cls._resolve_stress_device(run_device))
-            ignore_words = cls._parse_words_to_ignore(words_to_ignore)
-
-            common_kwargs = {}
-            if ignore_words:
-                common_kwargs["words_to_ignore"] = ignore_words
-
-            if use_accentor and use_homosolver:
-                stressed_text = cls._invoke_stress_processor(
-                    accentor,
-                    normalized_text,
-                    put_stress=put_stress,
-                    put_yo=put_yo,
-                    put_stress_homo=put_stress_homo,
-                    put_yo_homo=put_yo_homo,
-                    stress_single_vowel=stress_single_vowel,
-                    **common_kwargs,
-                )
-            elif use_accentor:
-                accentor_processor = getattr(accentor, "accentor", None)
-                if accentor_processor is None or not callable(accentor_processor):
-                    raise RuntimeError("silero-stress accentor processor is not available.")
-                stressed_text = cls._invoke_stress_processor(
-                    accentor_processor,
-                    normalized_text,
-                    put_stress=put_stress,
-                    put_yo=put_yo,
-                    stress_single_vowel=stress_single_vowel,
-                    **common_kwargs,
-                )
-            else:
-                homosolver_processor = getattr(accentor, "homosolver", None)
-                if homosolver_processor is None or not callable(homosolver_processor):
-                    raise RuntimeError("silero-stress homosolver processor is not available.")
-                stressed_text = cls._invoke_stress_processor(
-                    homosolver_processor,
-                    normalized_text,
-                    put_stress_homo=put_stress_homo,
-                    put_yo_homo=put_yo_homo,
-                    **common_kwargs,
-                )
-
-            output_text = (
-                stressed_text
-                if stress_marker == "silero_plus"
-                else cls._convert_stress_marks_to_unicode(stressed_text)
-            )
-            cls._stress_log_info(
-                f"Processed text: device={run_device}, stress_marker={stress_marker}, use_accentor={use_accentor}, "
-                f"use_homosolver={use_homosolver}, input_length={len(normalized_text)}, "
-                f"output_length={len(output_text)}"
-            )
-            return IO.NodeOutput(output_text)
-        except Exception as exc:
-            cls._stress_log_warning(f"Execution fallback activated: {exc}")
+        if not use_accentor and not use_homosolver:
             return IO.NodeOutput(normalized_text)
+
+        # Errors (including a missing 'silero-stress' package) propagate to the
+        # runtime guard. The old fallback returned the input text unchanged, so
+        # a broken install looked like a successful run with no stress marks.
+        accentor = cls._load_accentor_runtime(cls._resolve_stress_device(run_device))
+        ignore_words = cls._parse_words_to_ignore(words_to_ignore)
+
+        common_kwargs = {}
+        if ignore_words:
+            common_kwargs["words_to_ignore"] = ignore_words
+
+        if use_accentor and use_homosolver:
+            stressed_text = cls._invoke_stress_processor(
+                accentor,
+                normalized_text,
+                put_stress=put_stress,
+                put_yo=put_yo,
+                put_stress_homo=put_stress_homo,
+                put_yo_homo=put_yo_homo,
+                stress_single_vowel=stress_single_vowel,
+                **common_kwargs,
+            )
+        elif use_accentor:
+            accentor_processor = getattr(accentor, "accentor", None)
+            if accentor_processor is None or not callable(accentor_processor):
+                raise RuntimeError("silero-stress accentor processor is not available.")
+            stressed_text = cls._invoke_stress_processor(
+                accentor_processor,
+                normalized_text,
+                put_stress=put_stress,
+                put_yo=put_yo,
+                stress_single_vowel=stress_single_vowel,
+                **common_kwargs,
+            )
+        else:
+            homosolver_processor = getattr(accentor, "homosolver", None)
+            if homosolver_processor is None or not callable(homosolver_processor):
+                raise RuntimeError("silero-stress homosolver processor is not available.")
+            stressed_text = cls._invoke_stress_processor(
+                homosolver_processor,
+                normalized_text,
+                put_stress_homo=put_stress_homo,
+                put_yo_homo=put_yo_homo,
+                **common_kwargs,
+            )
+
+        output_text = (
+            stressed_text
+            if stress_marker == "silero_plus"
+            else cls._convert_stress_marks_to_unicode(stressed_text)
+        )
+        cls._stress_log_info(
+            f"Processed text: device={run_device}, stress_marker={stress_marker}, use_accentor={use_accentor}, "
+            f"use_homosolver={use_homosolver}, input_length={len(normalized_text)}, "
+            f"output_length={len(output_text)}"
+        )
+        return IO.NodeOutput(output_text)
 
 
 

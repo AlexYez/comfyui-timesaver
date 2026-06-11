@@ -56,62 +56,52 @@ class TS_Math_Int(IO.ComfyNode):
         """
         if b < 0:
             if a == 0:
-                TS_Logger.error("MathInt", "0 cannot be raised to a negative power")
-                return 0
+                raise ValueError("TS Math Int: 0 cannot be raised to a negative power.")
             return int(a ** b)
         if b == 0:
             return 1
         base = abs(a)
         if base > 1 and b * math.log2(base) > _POW_MAX_RESULT_BITS:
-            TS_Logger.error(
-                "MathInt",
-                f"power result too large to compute safely ({a} ** {b}); returning 0",
+            raise ValueError(
+                f"TS Math Int: power result too large to compute safely ({a} ** {b}); "
+                f"the result would exceed {_POW_MAX_RESULT_BITS} bits."
             )
-            return 0
         return pow(a, b)
 
     @classmethod
     def execute(cls, a: int, b: int, operation: str) -> IO.NodeOutput:
-        try:
-            if operation == "add (+)":
-                result = a + b
-            elif operation == "subtract (-)":
-                result = a - b
-            elif operation == "multiply (*)":
-                result = a * b
-            elif operation == "divide (/)":
-                if b == 0:
-                    TS_Logger.error("MathInt", "Division by zero")
-                    result = 0
-                else:
-                    result = int(a / b)
-            elif operation == "floor_divide (//)":
-                if b == 0:
-                    TS_Logger.error("MathInt", "Division by zero")
-                    result = 0
-                else:
-                    result = a // b
-            elif operation == "modulo (%)":
-                if b == 0:
-                    TS_Logger.error("MathInt", "Modulo by zero")
-                    result = 0
-                else:
-                    result = a % b
-            elif operation == "power (**)":
-                result = cls._safe_pow(a, b)
-            elif operation == "min":
-                result = min(a, b)
-            elif operation == "max":
-                result = max(a, b)
-            else:
-                TS_Logger.error("MathInt", f"Unknown operation: {operation}")
-                result = 0
+        # No silent sentinels: a 0 emitted on division-by-zero used to flow
+        # into the graph as a "valid" size/seed/count and break things far
+        # from this node. Errors propagate to the pack's runtime guard.
+        if operation == "add (+)":
+            result = a + b
+        elif operation == "subtract (-)":
+            result = a - b
+        elif operation == "multiply (*)":
+            result = a * b
+        elif operation == "divide (/)":
+            if b == 0:
+                raise ZeroDivisionError("TS Math Int: division by zero.")
+            result = int(a / b)
+        elif operation == "floor_divide (//)":
+            if b == 0:
+                raise ZeroDivisionError("TS Math Int: floor division by zero.")
+            result = a // b
+        elif operation == "modulo (%)":
+            if b == 0:
+                raise ZeroDivisionError("TS Math Int: modulo by zero.")
+            result = a % b
+        elif operation == "power (**)":
+            result = cls._safe_pow(a, b)
+        elif operation == "min":
+            result = min(a, b)
+        elif operation == "max":
+            result = max(a, b)
+        else:
+            raise ValueError(f"TS Math Int: unknown operation '{operation}'.")
 
-            TS_Logger.log("MathInt", f"{a} {operation} {b} = {result}")
-            return IO.NodeOutput(int(result))
-        except Exception as e:
-            TS_Logger.error("MathInt", f"Error: {str(e)}")
-            return IO.NodeOutput(0)
+        TS_Logger.log("MathInt", f"{a} {operation} {b} = {result}")
+        return IO.NodeOutput(int(result))
 
 
 NODE_CLASS_MAPPINGS = {"TS_Math_Int": TS_Math_Int}
