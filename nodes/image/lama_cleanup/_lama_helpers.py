@@ -774,7 +774,7 @@ def _process_inpaint(
 
             kernel_size = max(3, int(feather) * 2 + 1)
             soft_mask = cv2.GaussianBlur(soft_mask, (kernel_size, kernel_size), 0)
-        except (ImportError, Exception) as exc:
+        except Exception as exc:
             LOGGER.debug("%s Feather GaussianBlur skipped: %s", LOG_PREFIX, exc)
     soft_mask = np.clip(soft_mask, 0.0, 1.0)[..., None]
     blended = inpainted_crop.astype(np.float32) * soft_mask + crop_image.astype(np.float32) * (1.0 - soft_mask)

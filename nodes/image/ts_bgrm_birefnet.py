@@ -763,7 +763,6 @@ class BiRefNetModel:
                     "Re-run the node to re-download the model."
                 )
             model_filename = os.path.basename(model_path)
-            weights_filename = os.path.basename(weights_path)
 
             try:
                 package_name = f"_ts_birefnet_{_safe_module_name(model_name)}"
@@ -1179,7 +1178,9 @@ class TS_BGRM_BiRefNet(IO.ComfyNode):
 
             image_output = torch.cat(processed_images, dim=0)
             mask_output = torch.cat(processed_masks, dim=0)
-            mask_image_output = mask_output.unsqueeze(-1).expand(-1, -1, -1, 3)
+            # .contiguous(): expand() returns a stride-0 view; some downstream
+            # consumers (.numpy(), in-place ops) require real memory.
+            mask_image_output = mask_output.unsqueeze(-1).expand(-1, -1, -1, 3).contiguous()
             return IO.NodeOutput(image_output, mask_output, mask_image_output)
         except Exception as e:
             handle_model_error(f"Error in image processing: {str(e)}", cause=e)

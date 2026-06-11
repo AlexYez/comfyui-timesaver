@@ -270,16 +270,23 @@ class TS_DownloadFilesNode(IO.ComfyNode):
             if not line or line.startswith('#'):
                 continue
             parts = line.split(maxsplit=1)
-            if len(parts) == 2:
-                url, target_path = parts[0].strip(), parts[1].strip()
-                if not url.startswith(('http://', 'https://')):
-                    logger.warning(f"{LOG_PREFIX} Line {i+1}: Invalid URL.")
-                    continue
-                target_path = cls._resolve_target_directory(target_path)
-                if not target_path:
-                    logger.warning(f"{LOG_PREFIX} Line {i+1}: Invalid target path.")
-                    continue
-                files.append({'url': url, 'target_dir': target_path})
+            if len(parts) != 2:
+                # A bare URL without a target path was previously dropped
+                # with no message at all — the user just saw nothing happen.
+                logger.warning(
+                    f"{LOG_PREFIX} Line {i+1}: Expected '<url> <target_dir>' "
+                    f"(two fields), got: {line[:120]!r}. Skipping."
+                )
+                continue
+            url, target_path = parts[0].strip(), parts[1].strip()
+            if not url.startswith(('http://', 'https://')):
+                logger.warning(f"{LOG_PREFIX} Line {i+1}: Invalid URL.")
+                continue
+            target_path = cls._resolve_target_directory(target_path)
+            if not target_path:
+                logger.warning(f"{LOG_PREFIX} Line {i+1}: Invalid target path.")
+                continue
+            files.append({'url': url, 'target_dir': target_path})
         return files
 
     @staticmethod
