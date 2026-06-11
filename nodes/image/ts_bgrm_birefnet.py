@@ -358,6 +358,29 @@ def _safe_module_name(model_name):
     return "".join(ch if ch.isalnum() else "_" for ch in model_name)
 
 
+@contextmanager
+def _scoped_sys_modules(aliases: dict):
+    """Install bare sys.modules aliases for the duration of the block only.
+
+    The bundled ``birefnet.py`` does ``import BiRefNet_config`` at module
+    top-level, so the bare name must exist while we exec it — but leaving it
+    installed permanently collided with other packs that bundle BiRefNet
+    (e.g. ComfyUI-RMBG) and register the same global names: whoever loaded
+    second silently fed the other's model the wrong module.
+    """
+    _missing = object()
+    previous = {name: sys.modules.get(name, _missing) for name in aliases}
+    sys.modules.update(aliases)
+    try:
+        yield
+    finally:
+        for name, prev in previous.items():
+            if prev is _missing:
+                sys.modules.pop(name, None)
+            else:
+                sys.modules[name] = prev
+
+
 def _mask_to_pil(mask):
     mask_np = np.clip(mask.detach().cpu().numpy() * 255.0, 0, 255).astype(np.uint8)
     return Image.fromarray(mask_np)
@@ -755,8 +778,8 @@ class BiRefNetModel:
                     raise RuntimeError("Could not load BiRefNet_config module")
                 config_module = importlib.util.module_from_spec(spec)
                 sys.modules[f"{package_name}.BiRefNet_config"] = config_module
-                sys.modules["BiRefNet_config"] = config_module
-                spec.loader.exec_module(config_module)
+                with _scoped_sys_modules({"BiRefNet_config": config_module}):
+                    spec.loader.exec_module(config_module)
 
                 model_module_name = os.path.splitext(model_filename)[0]
                 spec = importlib.util.spec_from_file_location(f"{package_name}.{model_module_name}", model_path)
@@ -764,8 +787,9 @@ class BiRefNetModel:
                     raise RuntimeError("Could not load BiRefNet model module")
                 model_module = importlib.util.module_from_spec(spec)
                 sys.modules[f"{package_name}.{model_module_name}"] = model_module
-                sys.modules[model_module_name] = model_module
-                with _progress_pulse(progress_bar, start_step + 2, start_step + 8):
+                with _scoped_sys_modules(
+                    {"BiRefNet_config": config_module, model_module_name: model_module}
+                ), _progress_pulse(progress_bar, start_step + 2, start_step + 8):
                     spec.loader.exec_module(model_module)
 
                 _update_progress(progress_bar, start_step + 10)
