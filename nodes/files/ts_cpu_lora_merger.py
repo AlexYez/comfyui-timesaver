@@ -276,7 +276,9 @@ class TS_CPULoraMergerNode(IO.ComfyNode):
 
         try:
             if base_model == "No compatible models found":
-                return IO.NodeOutput("Error: no compatible models were found in checkpoints/diffusion_models.", "")
+                raise ValueError(
+                    "No compatible models were found in checkpoints/diffusion_models."
+                )
 
             model_type, model_path = cls._resolve_model_path(base_model)
             output_path = cls._prepare_output_path(model_type, output_model_name)
@@ -313,14 +315,16 @@ class TS_CPULoraMergerNode(IO.ComfyNode):
             return IO.NodeOutput("\n".join(logs), output_path)
 
         except Exception as e:
+            # Fail loudly (series-1 policy): returning a success-shaped output
+            # with an empty saved_model_path let downstream nodes silently
+            # consume a merge that never happened. The runtime guard surfaces
+            # the message in the workflow UI.
             error_text = str(e).strip()
             if not error_text:
                 error_text = e.__class__.__name__
-            cls._log(logs, f"ERROR: {error_text}")
             traceback_text = _ts_traceback.format_exc()
-            logs.append(traceback_text.rstrip())
             _logger.error("%s %s\n%s", _LOG_PREFIX, error_text, traceback_text)
-            return IO.NodeOutput("\n".join(logs), "")
+            raise RuntimeError(f"{_LOG_PREFIX} merge failed: {error_text}") from e
         finally:
             if merged_state_dict is not None:
                 del merged_state_dict
