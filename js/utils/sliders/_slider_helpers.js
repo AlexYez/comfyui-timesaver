@@ -28,6 +28,20 @@ export function tsCountDecimals(tsValue) {
     return tsIndex >= 0 ? tsText.length - tsIndex - 1 : 0;
 }
 
+export function tsReadRealStep(tsOptions, tsType) {
+    // ComfyUI's V3 widget factory stores the step TWICE: `options.step2` is the
+    // real step from the input spec, while `options.step` is litegraph's
+    // deprecated 10x-inflated alias (factory: options.step = realStep * 10).
+    // Read step2; fall back to step/10, then to a type default. Reading `step`
+    // directly would seed the slider with a 10x step (0.1 -> 1.0, 8 -> 80) — the
+    // bug that made a configured 0.1 step collapse to integer/0.01 behaviour.
+    const tsStep2 = tsNormalizeNumber(tsOptions?.step2);
+    if (tsStep2 !== null && tsStep2 > 0) return tsStep2;
+    const tsStep = tsNormalizeNumber(tsOptions?.step);
+    if (tsStep !== null && tsStep > 0) return tsStep / 10;
+    return tsType === "int" ? 1 : 0.1;
+}
+
 export function tsSnapToStep(tsValue, tsMin, tsStep, tsType, tsAnchor) {
     if (!Number.isFinite(tsStep) || tsStep <= 0) return tsValue;
     // Anchor on default (when supplied) instead of min. With min=-1e9 and
@@ -61,7 +75,7 @@ export function tsEnsureProperties(tsNode, tsWidget, tsType) {
         tsNode.properties[TS_PROPERTY_MAX] = tsOptions.max ?? (tsType === "int" ? 1 : 1.0);
     }
     if (tsNode.properties[TS_PROPERTY_STEP] === undefined) {
-        tsNode.properties[TS_PROPERTY_STEP] = tsOptions.step ?? (tsType === "int" ? 1 : 0.1);
+        tsNode.properties[TS_PROPERTY_STEP] = tsReadRealStep(tsOptions, tsType);
     }
     if (tsNode.properties[TS_PROPERTY_DEFAULT] === undefined) {
         const tsValue = tsNormalizeNumber(tsWidget.value);
@@ -91,7 +105,7 @@ export function tsGetSanitizedConfig(tsNode, tsWidget, tsType) {
         tsChanged = true;
     }
     if (!Number.isFinite(tsStep) || tsStep <= 0) {
-        tsStep = tsNormalizeNumber(tsOptions.step) ?? (tsType === "int" ? 1 : 0.1);
+        tsStep = tsReadRealStep(tsOptions, tsType);
         tsChanged = true;
     }
 
@@ -132,22 +146,29 @@ export function tsApplyConfig(tsNode, tsWidget, tsType, tsConfig, tsForceDefault
     const tsOptions = tsWidget.options || (tsWidget.options = {});
     tsOptions.min = tsConfig.min;
     tsOptions.max = tsConfig.max;
-    tsOptions.step = tsConfig.step;
+    // `step2` is the real step the modern widget reads; `step` is litegraph's
+    // legacy 10x-inflated alias. Keep both in the factory's convention so every
+    // code path (legacy canvas + Vue) recovers the same real step — and so
+    // tsReadRealStep reads back exactly what we wrote on the next sync.
+    tsOptions.step = tsConfig.step * 10;
     tsOptions.step2 = tsConfig.step;
 
     if (tsType === "int") {
         tsOptions.precision = 0;
     } else {
-        // ComfyUI multiplies the V3 step by 10 for slider widgets, so a
-        // 0.1 step lands as 1 and tsCountDecimals(step) returns 0 — the
-        // UI then formats float defaults as integers (0.5 shown as 1).
-        // Honor the user-declared `round` (V3 IO.Float.Input(round=...))
-        // when it carries more decimals than the step.
-        const stepDecimals = tsCountDecimals(tsConfig.step);
-        const roundDecimals = Number.isFinite(tsOptions.round)
-            ? tsCountDecimals(tsOptions.round)
-            : 0;
-        tsOptions.precision = Math.max(stepDecimals, roundDecimals);
+        // Float slider rounding must track the CONFIGURED step (the `step`
+        // property the user edits), NOT the node's fixed schema `round`. Two
+        // layers round the live value and both key off these options:
+        // litegraph snaps to `options.round` then cleans float noise via
+        // toFixed(precision), and the Vue number widget formats to `precision`
+        // fraction digits. Deriving both from the step makes the slider grid by
+        // exactly the step that was set — a 0.1 step gives 0.1 increments.
+        // (Previously precision was max(step, round)-decimals while round stayed
+        // pinned to the schema's 0.01, so a user-set 0.1 step still snapped to
+        // 0.01.) tsConfig.step is the REAL step (see tsReadRealStep), so its
+        // decimal count is correct with no `round` fallback needed.
+        tsOptions.precision = tsCountDecimals(tsConfig.step);
+        tsOptions.round = tsConfig.step;
     }
 
     let tsValue = tsNormalizeNumber(tsWidget.value);
