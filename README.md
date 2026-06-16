@@ -4,7 +4,7 @@
 
 # 🚀 Timesaver Nodes for ComfyUI
 
-**A friendly toolkit of 59 production-ready nodes that take the boring busywork out of your ComfyUI graphs.**
+**A friendly toolkit of 60 production-ready nodes that take the boring busywork out of your ComfyUI graphs.**
 
 Resize, color-grade, key, denoise, transcribe, translate, prompt-build, manage models — without leaving the canvas.
 
@@ -25,7 +25,7 @@ Whether you build pipelines for image generation, video, audio, or just want to 
 
 |  | Category | Count | Highlights |
 |---|---|---|---|
-| 🖼️ | **[Image](#image)** | 28 | Resize, color, masks, keyer, tiling, 360°, Lama cleanup, BiRefNet bg removal, ViTMatte, SAM3 picker |
+| 🖼️ | **[Image](#image)** | 29 | Resize, color, masks, keyer, tiling, 360°, Lama cleanup, Smart Inpaint, BiRefNet bg removal, ViTMatte, SAM3 picker |
 | 🎬 | **[Video](#video)** | 6 | Frame interpolation, RTX/spandrel upscale, depth, animation preview |
 | 🎵 | **[Audio](#audio)** | 5 | Whisper transcription, Silero TTS, Demucs stem split, audio cropping |
 | 🤖 | **[LLM](#llm)** | 2 | Qwen 3 VL multimodal chat, Super Prompt with voice input |
@@ -35,7 +35,7 @@ Whether you build pipelines for image generation, video, audio, or just want to 
 | 🛠️ | **[Utils](#utils)** | 4 | Custom sliders, math, smart type-aware switch |
 | 🎨 | **[Conditioning](#conditioning)** | 1 | Multi-reference image conditioning |
 
-> All 59 nodes use the **ComfyUI V3 API** (`comfy_api.v0_0_2.IO` — pinned namespace for stability).
+> All 60 nodes use the **ComfyUI V3 API** (`comfy_api.v0_0_2.IO` — pinned namespace for stability).
 >
 > **Plus extra samplers & schedulers** added straight into the native KSampler / KSamplerAdvanced / BasicScheduler dropdowns (no node to wire — they just appear after install): sampler **`res_2s`** (2nd-order exponential RK / "RES"), schedulers **`bong_tangent`** (two-stage arctangent sigma curve) and **`beta57`** (`beta` α=0.5/β=0.7). Algorithms reimplemented clean-room from [RES4LYF](https://github.com/ClownsharkBatwing/RES4LYF)'s public math (no code copied).
 
@@ -155,7 +155,7 @@ Every node below shows the actual look in ComfyUI (English UI). Click any image 
 ---
 
 <a id="image"></a>
-### 🖼️ Image (28 nodes)
+### 🖼️ Image (29 nodes)
 
 Everything that touches pixels: resize, color, masks, background removal, keying, tiling, panoramas, and inpainting.
 
@@ -278,6 +278,14 @@ Standalone despill with four algorithms: `classic`, `balanced`, `adaptive` (edge
 Built-in inpainting node powered by LaMa — paint a mask right on the node's canvas (brush + undo/redo + reset), then run to fill. Stores intermediate edits per session, no external Photoshop trip required. Since v9.3 the architecture is pure PyTorch (no upstream `lama-cleaner` dependency) and weights load from `.safetensors` in `models/lama/` instead of pickled `.ckpt`.
 
 **Use when:** removing tourists from photos, erasing watermarks, fixing artifacts, prototyping cleanup before a heavier inpainter.
+
+---
+
+#### TS Smart Inpaint
+
+Mask-driven regenerate **or** refine in one node: feed the full image + a painted mask and it crops the region (+ context padding), upscales the crop to a megapixel budget, VAE-encodes, samples, then feather-composites and latent-blends the result back so untouched pixels stay bit-exact. The `replace` toggle picks the mode — **Replace** = Smart Inpaint, regenerating the masked area from scratch as a Kontext edit (the crop becomes `reference_latents`, denoise locked to 1.0); an optional `reference` image is chained as a second reference ("fill the hole with THIS"). **Refine** = an ADetailer-style partial-denoise pass at the `denoise` value, no reference. Headless port of ComfyUI-Angelo's "Xtra-Fine" inpaint path (MIT) — the crop + composite happen in-node, so the workflow only feeds the source + mask.
+
+**Use when:** object replacement, generative fill, or a high-detail pass on a painted selection — without wiring up a manual crop → sampler → stitch chain yourself.
 
 ---
 
@@ -792,7 +800,7 @@ Timesaver freezes node ids and inputs across versions on purpose. If something b
 
 ```text
 comfyui-timesaver/
-├─ nodes/                  # 59 node modules, organised by category
+├─ nodes/                  # 60 node modules, organised by category
 ├─ js/                     # frontend extensions for DOM-widget nodes
 ├─ doc/screenshots/        # node screenshots (this README uses them)
 ├─ requirements.txt        # runtime dependencies
