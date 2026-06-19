@@ -6,6 +6,7 @@ import os
 import re
 import time
 import zipfile
+from pathlib import Path
 from urllib.parse import urlparse
 
 # Third-party imports
@@ -35,12 +36,48 @@ except ImportError:
     folder_paths = None
 
 
+def _resolve_pack_version() -> str:
+    """Best-effort read of the pack version from pyproject.toml.
+
+    Custom nodes are git-cloned (not pip-installed) into custom_nodes/, so
+    importlib.metadata usually can't find us. Read the version straight from
+    the sibling pyproject.toml with a small regex (no tomllib dependency, so
+    this still works on Python 3.10). Falls back to "dev" if unreadable.
+    """
+    try:
+        pyproject = Path(__file__).resolve().parents[2] / "pyproject.toml"
+        match = re.search(
+            r'^\s*version\s*=\s*["\']([^"\']+)["\']',
+            pyproject.read_text(encoding="utf-8"),
+            re.MULTILINE,
+        )
+        if match:
+            return match.group(1)
+    except OSError:
+        pass
+    return "dev"
+
+
+# Honest client identifier sent on every download request. This was previously
+# a spoofed desktop-Chrome User-Agent, which static-analysis security scanners
+# (including the Comfy registry scanner) flag as evasion/masquerading. Sending
+# the pack's real name + version removes that signal and is the polite thing to
+# advertise to the hosts we pull from.
+_USER_AGENT = f"comfyui-timesaver/{_resolve_pack_version()}"
+
+
 class TS_DownloadFilesNode(IO.ComfyNode):
     """
     A ComfyUI node to download files.
     Features: Offline Mode (Target-based check), Enable/Disable Toggle,
     Auto-Unzip, UI Progress Bar, Resume / Mirrors / Proxies.
     """
+
+    # Offline detection tuning: a short (connect, read) timeout used by the
+    # no-retry probe session (see execute) so a machine with no internet flips
+    # to OFFLINE MODE within a few seconds per target instead of hanging for a
+    # minute on retry storms.
+    _CONNECTIVITY_TIMEOUT = (4, 6)
 
     @classmethod
     def define_schema(cls) -> IO.Schema:
@@ -71,20 +108,26 @@ class TS_DownloadFilesNode(IO.ComfyNode):
         )
 
     @staticmethod
-    def _create_session_with_retries(proxy_url=None):
+    def _create_session_with_retries(proxy_url=None, total_retries=3):
         session = requests.Session()
-        retries = Retry(
-            total=3,
-            backoff_factor=0.5,
-            status_forcelist=[429, 500, 502, 503, 504],
-            allowed_methods=frozenset(['HEAD', 'GET'])
-        )
-        adapter = HTTPAdapter(max_retries=retries)
+        if total_retries and total_retries > 0:
+            retries = Retry(
+                total=total_retries,
+                backoff_factor=0.5,
+                status_forcelist=[429, 500, 502, 503, 504],
+                allowed_methods=frozenset(['HEAD', 'GET'])
+            )
+            adapter = HTTPAdapter(max_retries=retries)
+        else:
+            # total_retries=0 -> a connection error raises on the first attempt
+            # instead of retrying 3x with exponential backoff. The connectivity
+            # probe uses this so OFFLINE MODE is detected fast (see execute).
+            adapter = HTTPAdapter(max_retries=0)
         session.mount("http://", adapter)
         session.mount("https://", adapter)
 
         session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'User-Agent': _USER_AGENT,
         })
 
         if proxy_url and proxy_url.strip():
@@ -151,7 +194,7 @@ class TS_DownloadFilesNode(IO.ComfyNode):
         logger.info(f"{LOG_PREFIX} Checking connectivity to targets: {list(probes.keys())} ...")
         for base_url, probe_url in probes.items():
             try:
-                session.head(probe_url, timeout=(5, 5), allow_redirects=True)
+                session.head(probe_url, timeout=cls._CONNECTIVITY_TIMEOUT, allow_redirects=True)
                 logger.info(f"{LOG_PREFIX} Target '{base_url}' is REACHABLE.")
                 return True
             except requests.RequestException:
@@ -897,18 +940,24 @@ class TS_DownloadFilesNode(IO.ComfyNode):
         if not files_to_download:
             return IO.NodeOutput()
 
-        # close the Session in all paths — it leaked its connection pool on
-        # every execution (including the early offline-mode return).
-        with cls._create_session_with_retries(proxy_url) as session:
-            if not cls._check_connectivity_to_targets(files_to_download, session, hf_domain):
+        # Offline detection must fail FAST. The download session retries
+        # connection errors 3x with exponential backoff (~20s per dead host),
+        # so probing connectivity through it turned a no-internet run into a
+        # minute-long hang. Probe with a throwaway no-retry session (and a short
+        # connect timeout) first; only build the retry-enabled download session
+        # once we know at least one target is reachable. Both sessions are
+        # context-managed so their connection pools never leak.
+        with cls._create_session_with_retries(proxy_url, total_retries=0) as probe_session:
+            if not cls._check_connectivity_to_targets(files_to_download, probe_session, hf_domain):
                 logger.warning(f"{LOG_PREFIX} All target servers are unreachable. Switching to OFFLINE MODE. Execution finished.")
                 return IO.NodeOutput()
+            active_mirror = cls._select_best_mirror(probe_session, hf_domain)
 
-            active_mirror = cls._select_best_mirror(session, hf_domain)
-            logger.info(f"{LOG_PREFIX} Using HF Mirror: '{active_mirror}'")
+        logger.info(f"{LOG_PREFIX} Using HF Mirror: '{active_mirror}'")
 
-            success = 0
-            failed = 0
+        success = 0
+        failed = 0
+        with cls._create_session_with_retries(proxy_url) as session:
             for file_info in files_to_download:
                 if cls._download_single_file(session, file_info['url'], file_info['target_dir'], skip_existing, verify_size, chunk_size_bytes, active_mirror, hf_token, modelscope_token, unzip_after_download, integrity_mode_value):
                     success += 1

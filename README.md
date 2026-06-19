@@ -610,6 +610,8 @@ Multi-file downloader that takes a list of `URL <space> target_path` lines and d
 
 **Use when:** distributing a workflow that needs N specific models — give users a Files Downloader node pre-filled with the URLs.
 
+> **Network behaviour (for security review):** the node issues standard HTTPS `HEAD`/`GET` requests **only** to the URLs you type into `file_list`, identifying itself with an honest `comfyui-timesaver/<version>` User-Agent. It does **not** execute, import, or run anything it downloads — files are written to disk only. There are no hardcoded callback/telemetry endpoints. Optional `hf_token` / `modelscope_token` are sent as an `Authorization` header **only** to their matching host (HuggingFace / ModelScope respectively) and are never logged or forwarded elsewhere. Auto-unzip is validated against zip-slip path traversal before extraction.
+
 ---
 
 #### TS Model Scanner
