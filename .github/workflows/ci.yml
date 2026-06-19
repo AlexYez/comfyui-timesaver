@@ -99,6 +99,13 @@ jobs:
           sys.path.insert(0, ".")
           sys.path.insert(0, "custom_nodes")
 
+          # The runner has no GPU and installs a CPU-only torch wheel. ComfyUI's
+          # model_management probes the CUDA device at import time, which raises
+          # "Torch not compiled with CUDA enabled" and makes every node module
+          # that imports comfy.model_management ERROR. Force CPU before loading.
+          from comfy.cli_args import args
+          args.cpu = True
+
           pack = importlib.import_module("comfyui-timesaver")
           results = pack._MODULE_LOAD_RESULTS
           errors = [r for r in results if r["status"] == "ERROR"]
