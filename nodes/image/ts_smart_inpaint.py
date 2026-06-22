@@ -7,13 +7,14 @@ positive / negative, this node reproduces the algorithm BYTE-FOR-BYTE — the
 extracted verbatim BELOW (deliberately kept in this ONE file — it's small enough
 that a single file reads clearer than a split):
 
-  bbox(mask) + context_pad band -> crop pixels -> resize to `megapixels`
-  (upscale capped at `max_linear`; with `limit_resolution` ON an OVERSIZED crop
-  is also downscaled to the budget) -> VAE-encode -> [Smart Inpaint:
-  reference_latents = the crop + zero the masked latent] -> noise-injection
-  inpaint (denoise) -> VAE-decode -> resize back to native bbox ->
-  feather-composite back -> VAE-encode + latent-blend (mask alpha) so unaltered
-  regions stay bit-exact.
+  bbox(mask) + context_pad band -> crop pixels -> resize to the `megapixels`
+  budget (small crops upscale, capped at `max_linear`; oversized crops downscale,
+  so the VAE/sampler workload is bounded at any mask size) -> VAE-encode ->
+  [Smart Inpaint: reference_latents = the crop + zero the masked latent] ->
+  noise-injection inpaint (denoise) -> VAE-decode -> resize back to native bbox
+  -> [color_correct: neutralise Flux's per-channel colour shift from the
+  preserved ring] -> feather-composite back into the source frame (the composite
+  IS the output; no full-frame re-encode — see A0).
 
 `replace` (checkbox, label_on="Replace" / label_off="Refine"):
   - Replace (ON)  = "Smart Inpaint": reference_latents = the crop + zero the
@@ -27,23 +28,23 @@ CHAINED as a SECOND `reference_latents` entry (after the crop) — "fill the hol
 with THIS picture". Left unconnected (or fed a non-image), the second reference
 chain is simply not engaged and Replace behaves exactly as above.
 
-`hard_edge` (optional boolean, default OFF — local option, not from upstream):
-when ON, the masked region is regenerated with a HARD binary sampling mask (so
-the model fully replaces it instead of cross-fading a soft feather band that
-ghosts thin/irregular strokes), and the feather is moved to a narrow OUTWARD
-pixel-composite ramp (dilate the painted shape, then blur) so the painted
-interior stays at alpha=1 and the soft ramp falls into the surrounding context.
-OFF reproduces the original symmetric-feather behaviour byte-for-byte. This is
-the same split the 5D (Qwen/Wan) path already used internally, exposed as a
-toggle for 4D (FLUX/Klein) too.
+`color_correct` (boolean, default ON — local option, not from upstream): the
+Flux VAE round-trip introduces a slight systematic colour shift (mild reddening)
+on the decoded patch. This estimates that shift from the PRESERVED ring around
+the mask — pixels inside the crop but outside the painted region, where the
+decoded patch and the original are the SAME content, so their per-channel
+difference is purely Flux's shift (independent of whatever was generated inside
+the mask). The inverse per-channel gain+offset is applied to the patch before
+compositing, so the new content matches the surrounding colours WITHOUT being
+tinted toward them (a red object on a blue surround stays red). To anchor the
+estimate the crop is grown by a small analysis margin when `color_correct` is on.
+OFF skips the correction.
 
-`limit_resolution` (boolean, default ON): makes `megapixels` a true processing
-cap. Upstream only ever UPSCALES the crop toward `megapixels` and clamps to ≥1.0,
-so a large masked region (e.g. a big selection in a 6-8K image) is VAE-encoded +
-sampled at native resolution and the node hangs/OOMs. ON downscales an oversized
-crop to the budget before encode/sample, then scales the refined patch back up
-to native for the composite — bounded VRAM/time at any mask size; raise
-`megapixels` for more detail. OFF restores the legacy native-resolution path.
+`megapixels` is always a true processing cap: an oversized masked crop (e.g. a
+big selection in a 6-8K image) is downscaled to the budget before encode/sample
+and scaled back up for the composite — so the node never hangs/OOMs on a large
+mask. Small crops upscale toward the budget (capped by `max_linear`). Raise
+`megapixels` for more detail.
 
 The crop + composite happen INSIDE the node, so the app just uploads the full
 source + mask (+ optional reference).
@@ -97,6 +98,11 @@ from comfy_api.v0_0_2 import IO
 
 
 _FINE_UPSCALE_RESIZE_METHODS = ["nearest-exact", "bilinear", "area", "bicubic", "bislerp", "lanczos"]
+
+# Colour correction samples Flux's shift from a PRESERVED ring around the mask.
+# When color_correct is on, the crop's context band is grown to at least this
+# many image pixels so that ring always exists (even at context_pad=0).
+_CC_ANALYSIS_MARGIN_PX = 32
 
 
 def _guider_sample(
@@ -256,31 +262,25 @@ def _fine_upscale_factor(
     scale_y: float,
     target_mp: float,
     max_linear: float,
-    allow_downscale: bool = False,
 ) -> float:
-    """Linear scale factor to apply to the cropped latent so that the crop is
-    processed at target_mp (in image-pixel-equivalent terms), clamped to
-    max_linear on the upscale side.
+    """Linear scale factor to process the cropped region at the `target_mp`
+    budget (in image-pixel-equivalent terms). `target_mp` is a true TARGET, not
+    just a floor:
 
-    Default (allow_downscale=False): target_mp is a LOWER bound only — small
-    crops upscale toward it, but a crop already at/above target stays native
-    (returns 1.0). This never shrinks a big crop, so a huge masked region gets
-    VAE-encoded + sampled at full resolution — the cause of hangs/OOM on 6-8K
-    inputs.
+    - a crop SMALLER than target upscales toward it, capped at `max_linear`
+      (so a tiny mask isn't blown up 8-10x);
+    - a crop LARGER than target scales DOWN to it (factor < 1.0), so the
+      VAE/sampler workload is bounded at any mask size — a big selection in a
+      6-8K image no longer hangs/OOMs.
 
-    allow_downscale=True (the `limit_resolution` option): target_mp becomes a
-    true TARGET — an oversized crop is scaled DOWN to it (factor < 1.0) so the
-    VAE/sampler workload is bounded regardless of mask size. The refined patch
-    is scaled back up to native bbox size for the pixel composite downstream, so
-    only the processed detail is reduced, not the output resolution."""
+    The refined patch is resized back to native bbox size for the pixel composite
+    downstream, so downscaling only reduces processed detail, not output res."""
     if scale_x <= 0 or scale_y <= 0:
         return 1.0
     bbox_w_pix = bbox_w_latent / scale_x
     bbox_h_pix = bbox_h_latent / scale_y
     current_mp = bbox_w_pix * bbox_h_pix / 1_000_000.0
     if current_mp <= 0:
-        return 1.0
-    if current_mp >= target_mp and not allow_downscale:
         return 1.0
     needed = math.sqrt(target_mp / current_mp)
     return min(needed, max_linear)
@@ -409,35 +409,77 @@ def _gaussian_blur_2d(mask: torch.Tensor, sigma_latent: float) -> torch.Tensor:
     return m
 
 
-def _dilate_mask_2d(mask: torch.Tensor, radius: int) -> torch.Tensor:
-    """Square-structuring-element dilation of a [H,W] / [B,H,W] / [B,1,H,W]
-    mask by `radius`, via max-pool (stride 1, padding=radius). radius <= 0
-    returns the mask unchanged.
+def _color_correct_patch(
+    refined: torch.Tensor,      # [B, h, w, C] decoded patch (Flux round-trip / generated)
+    original: torch.Tensor,     # [B, h, w, C] original crop (ground truth)
+    alpha: torch.Tensor,        # [B, h, w, 1] composite alpha — 1 = painted, ~0 = preserved
+    *,
+    alpha_eps: float = 0.02,
+    min_samples: int = 256,
+    strength: float = 1.0,
+) -> torch.Tensor:
+    """Neutralise Flux's systematic per-channel colour shift (the mild reddening)
+    on the decoded patch.
 
-    Used ONLY by the optional hard-edge path to push the composite feather
-    OUTWARD: dilate the binary painted shape, then gaussian-blur it, so the
-    painted interior stays alpha=1 (fully regenerated, no soft cross-fade
-    eating into thin strokes) while the soft ramp lands entirely OUTSIDE the
-    painted region, in the surrounding context. max_pool2d pads with negative
-    infinity, so border cells dilate only from real in-bounds neighbours."""
-    if radius <= 0:
-        return mask
-    orig_ndim = mask.dim()
-    if orig_ndim == 2:
-        m = mask.unsqueeze(0).unsqueeze(0)
-    elif orig_ndim == 3:
-        m = mask.unsqueeze(1)
-    elif orig_ndim == 4:
-        m = mask
-    else:
-        raise ValueError(f"_dilate_mask_2d: unexpected mask ndim {orig_ndim}")
-    k = 2 * int(radius) + 1
-    m = torch.nn.functional.max_pool2d(m, kernel_size=k, stride=1, padding=int(radius))
-    if orig_ndim == 2:
-        return m.squeeze(0).squeeze(0)
-    if orig_ndim == 3:
-        return m.squeeze(1)
-    return m
+    The estimate is taken ONLY from the PRESERVED ring — pixels where `alpha` is
+    ~0, i.e. inside the crop but outside the painted region. There the refine
+    pipeline merely round-tripped the ORIGINAL content (it was never denoised),
+    so `refined` and `original` are the SAME content and their per-channel
+    difference is purely Flux's shift. Crucially this is a SHIFT estimate from
+    paired same-content pixels, NOT a "match the new content to the surround"
+    transfer — so however much (or however differently-coloured) the new content
+    is, it cannot bias the estimate, and a red object painted on a blue surround
+    stays red (we only undo the tint Flux added).
+
+    Per channel: a robust gain+offset (least squares on MAD-trimmed ring samples,
+    clamped to a sane range, offset-only on a flat channel) maps refined→original;
+    it is applied to the WHOLE patch (the preserved part is discarded by the
+    composite anyway). Falls back to a no-op when the ring is too small. Returns a
+    NEW tensor; never mutates inputs."""
+    if refined.shape != original.shape or refined.dim() != 4:
+        return refined
+    channels = int(refined.shape[-1])
+    preserved = (alpha[..., 0] < alpha_eps).reshape(-1)        # [B*h*w] bool
+    n = int(preserved.sum().item())
+    if n < min_samples:
+        return refined  # not enough paired anchor → leave the patch untouched
+
+    ref_flat = refined.reshape(-1, channels).float()
+    org_flat = original.reshape(-1, channels).float()
+    ref_ring = ref_flat[preserved]                             # [n, C]
+    org_ring = org_flat[preserved]                             # [n, C]
+
+    gain = torch.ones(channels, dtype=torch.float32, device=refined.device)
+    offset = torch.zeros(channels, dtype=torch.float32, device=refined.device)
+    for c in range(channels):
+        x = ref_ring[:, c]
+        y = org_ring[:, c]
+        # Reject outliers (VAE edge artefacts / mis-registration) by MAD on the
+        # residual before fitting, so a few bad pixels can't tilt the estimate.
+        diff = y - x
+        med = diff.median()
+        mad = (diff - med).abs().median()
+        if mad > 0:
+            keep = (diff - med).abs() <= (3.0 * 1.4826 * mad)
+            x = x[keep]
+            y = y[keep]
+        if x.numel() < 16:
+            continue
+        mx = x.mean()
+        my = y.mean()
+        var_x = ((x - mx) ** 2).mean()
+        if var_x > 1e-6:
+            a = (((x - mx) * (y - my)).mean() / var_x).clamp(0.5, 2.0)
+        else:
+            a = torch.ones((), dtype=torch.float32, device=refined.device)  # flat channel → offset only
+        b = (my - a * mx).clamp(-0.25, 0.25)
+        gain[c] = a
+        offset[c] = b
+
+    corrected = (refined.float() * gain + offset).clamp(0.0, 1.0)
+    if strength < 1.0:
+        corrected = refined.float() * (1.0 - strength) + corrected * strength
+    return corrected.to(refined.dtype)
 
 
 def _refine_with_fine_upscaling(
@@ -451,7 +493,6 @@ def _refine_with_fine_upscaling(
     scale_y: float,
     target_mp: float,
     max_linear: float,
-    allow_downscale: bool,        # `limit_resolution`: cap oversized crops at target_mp (downscale)
     resize_method: str,
     context_pad_pixel: int,
     inpainting_mode: str,
@@ -474,13 +515,10 @@ def _refine_with_fine_upscaling(
     # the crop's own reference in Smart Inpaint mode — e.g. a user "fill with
     # THIS picture" image. None / empty = behaves exactly like upstream.
     extra_reference_latents=None,
-    # LOCAL option (not from upstream): hard-edge sampling mask. When given, the
-    # SAMPLING step (latent masked-zero + noise_mask) uses THIS binary latent
-    # mask instead of the feathered `mask`, so the painted region is fully
-    # regenerated and the feather lives only in the outward pixel composite.
-    # None = upstream behaviour (sample with the feathered mask; 5D still hardens
-    # it internally). Same [1, H_lat, W_lat] shape as `mask`.
-    sample_mask_override=None,
+    # LOCAL option (not from upstream): when True, neutralise Flux's per-channel
+    # colour shift on the decoded patch using the preserved ring (see
+    # _color_correct_patch) right before the composite.
+    color_correct: bool = True,
 ) -> tuple[torch.Tensor | None, torch.Tensor | None]:
     """Pixel-space crop + upscale + VAE encode + refine + VAE decode +
     downscale + composite. The latent-space crop+upscale
@@ -491,10 +529,9 @@ def _refine_with_fine_upscaling(
     "natural" latent at the higher resolution to denoise from.
 
     Returns (new_latent, new_pixels). `new_pixels` is the feathered composite —
-    the node's actual output. `new_latent` is None on the crop path (A1: the
-    caller only ever consumes `new_pixels` there); it is a real latent only on
-    the no-upscale Refine shortcut, which `execute` then decodes. On an empty /
-    degenerate mask returns (current, current_pixels) unchanged.
+    the node's actual output, always non-None on the processing path (A1: the
+    caller only ever consumes `new_pixels`). `new_latent` is always None here.
+    On an empty / degenerate mask returns (current, current_pixels) unchanged.
     """
     bbox = _mask_bbox_latent(mask)
     if bbox is None:
@@ -525,62 +562,14 @@ def _refine_with_fine_upscaling(
     if bbox_h_lat <= 0 or bbox_w_lat <= 0:
         return current, current_pixels
 
+    # `megapixels` is a true cap (see _fine_upscale_factor): small crops upscale
+    # toward it, oversized crops scale DOWN to it. Every mode goes through the
+    # crop+composite path below — there is no whole-frame latent shortcut (it
+    # would sample the entire 6-8K latent and hang; the bounded crop path is
+    # always used instead).
     scale = _fine_upscale_factor(
-        bbox_w_lat, bbox_h_lat, scale_x, scale_y, target_mp, max_linear, allow_downscale,
+        bbox_w_lat, bbox_h_lat, scale_x, scale_y, target_mp, max_linear,
     )
-    if scale <= 1.0 and inpainting_mode != "Smart Inpaint" and not allow_downscale:
-        # Refine with no upscale needed — fall back to the standard latent-space
-        # noise-injection inpaint. Avoids unnecessary VAE round-trips when the
-        # painted region already meets the MP target.
-        #
-        # `limit_resolution` (allow_downscale): this shortcut samples the WHOLE
-        # frame latent at native res — fine for small images, but it hangs/OOMs
-        # on 6-8K inputs (the very thing the option fixes). When the option is on,
-        # skip the shortcut so a large Refine crop goes through the bounded
-        # crop+downscale path below instead. Off → legacy shortcut preserved.
-        #
-        # Smart Inpaint must NOT take this shortcut. It needs the crop +
-        # reference_latents + masked-zero treatment below regardless of rect
-        # size; skipping it made a LARGE rectangle (already at/above the MP
-        # target, so scale<=1.0 — roughly >1024px on FLUX 2) degrade to a
-        # whole-latent edit with NO crop reference, so the model worked on the
-        # whole image instead of the selected rect.
-        print(f"[Angelo fine-upscale] scale=1.0 — using latent-space path (no VAE round-trip)")
-        # A1: this no-upscale Refine path is the ONLY one that consumes the
-        # full-image latent, so encode it lazily here (it is None on A1's
-        # geometry-only fast path). Smart Inpaint never reaches this branch.
-        # hard_edge note: sample_mask_override is intentionally NOT applied here —
-        # this whole-frame latent path has no pixel composite to host the outward
-        # feather, so a hard noise_mask would risk a bare latent seam. The
-        # hard-edge option targets the crop+composite path (all Smart Inpaint, and
-        # Refine when an upscale is needed); this is the only branch it skips.
-        if current is None:
-            current = _vae_encode(vae, current_pixels)
-        noise = comfy.sample.prepare_noise(current, seed, None)
-        new_latent = _do_sample(
-            guider=ov_guider, sampler=ov_sampler, sigmas=ov_sigmas,
-            model=model, noise=noise,
-            steps=steps, cfg=cfg, sampler_name=sampler_name, scheduler=scheduler,
-            positive=positive, negative=negative,
-            source_latent=current,
-            denoise=denoise,
-            noise_mask=mask,
-            callback=callback,
-            disable_pbar=disable_pbar,
-            seed=seed,
-        )
-        # Return None for pixels because the latent was modified directly;
-        # this forces a fresh VAE decode for the preview in the main run() method.
-        return new_latent, None
-
-    # Smart Inpaint with a large rectangle still crops + references the selected
-    # region; by default it just doesn't upscale (and must never downscale) —
-    # clamp the factor to identity so the crop is taken at native resolution.
-    # `limit_resolution` (allow_downscale) lifts this clamp so an oversized
-    # selection is scaled DOWN to the megapixels budget (bounded VRAM/time on
-    # huge masks); the refined patch is scaled back up for the composite.
-    if inpainting_mode == "Smart Inpaint" and not allow_downscale:
-        scale = max(1.0, scale)
 
     # ----- VAE decode the full cached latent → cached pixels -----
     # Optimization: Reuse cached pixels if available to prevent VAE degradation 
@@ -674,18 +663,7 @@ def _refine_with_fine_upscaling(
     # Mask used for the SAMPLING step (both the masked-zero and the noise_mask).
     # Defaults to the feathered mask; hardened to binary for Smart Inpaint on
     # 5D temporal latents — see the note in the Smart Inpaint block below.
-    # LOCAL option (hard_edge): when sample_mask_override is given, sample with a
-    # BINARY mask cropped from the un-feathered painted shape (same bbox + upscale
-    # as mask_crop_up, re-binarised after the bilinear upscale). The model then
-    # fully regenerates the painted region instead of partially denoising a soft
-    # feather band; the visible feather is produced ONLY by the outward pixel
-    # composite (the `mask` arg). Applies to 4D (FLUX/Klein) and 5D alike.
-    if sample_mask_override is not None:
-        sm_crop = sample_mask_override[..., y0:y1, x0:x1].contiguous()
-        sm_crop_up = _resize_latent(sm_crop, target_h_lat, target_w_lat, "bilinear").clamp(0.0, 1.0)
-        sample_mask = (sm_crop_up >= 0.5).to(sm_crop_up.dtype)
-    else:
-        sample_mask = mask_crop_up
+    sample_mask = mask_crop_up
     if inpainting_mode == "Smart Inpaint":
         reference_latent = latent_up.clone()
         positive = node_helpers.conditioning_set_values(
@@ -715,7 +693,7 @@ def _refine_with_fine_upscaling(
         # visible edge is still produced downstream by the feathered PIXEL
         # composite + final latent blend (both use the full-res feathered
         # `mask`), so the feather is preserved without the sampling artifacts.
-        if sample_mask_override is None and latent_up.ndim == 5:
+        if latent_up.ndim == 5:
             sample_mask = (mask_crop_up >= 0.5).to(mask_crop_up.dtype)
         latent_up = (1.0 - sample_mask.unsqueeze(0)) * latent_up
 
@@ -758,6 +736,13 @@ def _refine_with_fine_upscaling(
 
     new_pixels = cached_pixels.clone()
     pixel_orig_crop = cached_pixels[:, y0_p:y1_p, x0_p:x1_p, :]
+    # Neutralise Flux's per-channel colour shift (the mild reddening) on the
+    # decoded patch BEFORE compositing. The estimate comes from the preserved
+    # ring (alpha≈0), where refined and original are the SAME content — so it
+    # measures only Flux's shift and never drifts with the generated content's
+    # colours. No-op when color_correct is off or the ring is too small.
+    if color_correct:
+        refined_pixel = _color_correct_patch(refined_pixel, pixel_orig_crop, pixel_alpha_crop)
     composited = refined_pixel * pixel_alpha_crop + pixel_orig_crop * (1.0 - pixel_alpha_crop)
     new_pixels[:, y0_p:y1_p, x0_p:x1_p, :] = composited
 
@@ -769,8 +754,8 @@ def _refine_with_fine_upscaling(
     # re-encode + blend produced a latent the caller always discarded (A0).
     # Dropping it removes one whole VAE pass over the FULL image (the dominant
     # cost at 6-8K) and changes the output by exactly zero pixels. Return None
-    # for the latent: `execute` uses `new_pixels` whenever it is not None (always
-    # on this crop path); only the no-upscale Refine shortcut returns a latent.
+    # for the latent: `execute` uses `new_pixels`, which is always non-None on
+    # this (the only) processing path.
     return None, new_pixels
 
 
@@ -815,45 +800,6 @@ class TSSmartInpaint(IO.ComfyNode):
                 IO.Float.Input("cfg", default=1.0, min=0.0, max=30.0, step=0.1),
                 IO.Combo.Input("sampler_name", options=comfy.samplers.KSampler.SAMPLERS, default="euler"),
                 IO.Combo.Input("scheduler", options=comfy.samplers.KSampler.SCHEDULERS, default="simple"),
-                # Optional hard-edge fix for "smudge"/ghosting on the freshly
-                # generated area (worst on thin/irregular brush strokes). OFF
-                # (default) = unchanged symmetric feather. ON = regenerate the
-                # region with a HARD binary mask + a narrow OUTWARD-only composite
-                # feather. Added last so existing workflows keep their widgets.
-                IO.Boolean.Input(
-                    "hard_edge",
-                    default=False,
-                    label_on="Hard edge",
-                    label_off="Soft (default)",
-                    tooltip="Sharpen freshly generated content — fixes the "
-                    "'smudge'/ghost on thin or irregular brush strokes. OFF "
-                    "(default): original symmetric feather (unchanged). ON: the "
-                    "masked region is regenerated with a HARD binary mask (full "
-                    "replace, no old content leaking in) and the feather becomes a "
-                    "narrow ramp pushed OUTWARD into the surrounding context, so "
-                    "the painted area stays crisp at alpha=1. With Hard edge, "
-                    "`feather` controls only this outward seam width (≈1/3 of the "
-                    "soft-mode width); lower it for a tighter blend, 0 for a hard cut.",
-                ),
-                # Make `megapixels` a true processing cap. ON (default) downscales
-                # oversized crops to the budget so the node never hangs/OOMs on a
-                # large mask in a 6-8K image. Appended after hard_edge so existing
-                # workflows keep their widget order.
-                IO.Boolean.Input(
-                    "limit_resolution",
-                    default=True,
-                    label_on="Limit to Resolution",
-                    label_off="Native (no limit)",
-                    tooltip="Process the masked crop at the `megapixels` budget "
-                    "regardless of mask size. ON (default): an oversized crop "
-                    "(bigger than `megapixels`) is downscaled to the budget before "
-                    "VAE-encode/sample, then scaled back up for the composite — "
-                    "this is what makes `megapixels` the real processing resolution "
-                    "and prevents hangs/OOM on huge masks (e.g. a large selection in "
-                    "a 6-8K image). Raise `megapixels` for more detail. OFF: legacy "
-                    "behaviour — large crops are processed at NATIVE resolution (max "
-                    "detail, but can hang/OOM on big images).",
-                ),
                 # Optional "fill with THIS picture" image (Replace mode only) —
                 # chained as a 2nd Kontext reference. Absent → plain Smart Inpaint.
                 IO.Image.Input(
@@ -863,6 +809,22 @@ class TSSmartInpaint(IO.ComfyNode):
                     "chained as a 2nd reference_latents after the crop, so the masked "
                     "region is filled toward THIS picture's content. Leave unconnected "
                     "for plain Smart Inpaint.",
+                ),
+                # Colour-correct the generated patch to remove Flux's slight
+                # reddening. Added LAST so it doesn't disturb existing workflows.
+                IO.Boolean.Input(
+                    "color_correct",
+                    default=True,
+                    label_on="Color correct",
+                    label_off="Off",
+                    tooltip="Remove Flux's slight colour shift (mild reddening) from "
+                    "the generated area. ON (default): the shift is measured on the "
+                    "PRESERVED ring around the mask — where the patch and the "
+                    "original are the same content — and the inverse per-channel "
+                    "gain+offset is applied to the new content. Because it is "
+                    "measured on the unchanged surroundings, it never drifts even if "
+                    "the new content is large or very differently coloured, and it "
+                    "does NOT tint the new content toward the surround. OFF: skip it.",
                 ),
             ],
             outputs=[IO.Image.Output(display_name="image")],
@@ -889,9 +851,8 @@ class TSSmartInpaint(IO.ComfyNode):
         cfg,
         sampler_name,
         scheduler,
-        hard_edge=False,
-        limit_resolution=True,
         reference=None,
+        color_correct=True,
     ) -> IO.NodeOutput:
         # Replace = "Smart Inpaint" mode; unchecked = "Refine".
         inpainting_mode = "Smart Inpaint" if replace else "Refine"
@@ -939,36 +900,10 @@ class TSSmartInpaint(IO.ComfyNode):
             m = m[:1, 0]  # [1, H, W]
         else:
             m = m[:1]  # [1, H, W] from [B, H, W]
-        mask_lat_raw = _resize_latent(m, H_lat, W_lat, "bilinear").clamp(0.0, 1.0)
+        mask_lat = _resize_latent(m, H_lat, W_lat, "bilinear").clamp(0.0, 1.0)
         sigma_latent = (float(feather) * scale_geom) if feather > 0 else 0.0
-
-        # `mask_lat` drives the bbox crop + the PIXEL COMPOSITE alpha.
-        # `sample_mask_override` (hard_edge only) drives the SAMPLING mask
-        # (latent masked-zero + noise_mask). None → the core samples with the
-        # feathered mask exactly as before (default path, byte-identical).
-        sample_mask_override = None
-        if hard_edge:
-            # Hard edge: regenerate the painted region with a BINARY mask (any
-            # latent cell the painted shape touches, threshold >0.01 to match the
-            # core's bbox), and confine the feather to a narrow OUTWARD composite
-            # ramp. Dilate the binary shape outward by ~3*seam_sigma, then blur by
-            # seam_sigma, so the painted interior stays alpha=1 (fully replaced —
-            # no soft cross-fade eating into thin strokes) while the ramp falls
-            # entirely into the surrounding context. seam_sigma ≈ 1/3 of the
-            # soft-mode feather → a tighter, outward-only seam.
-            binary = (mask_lat_raw > 0.01).to(mask_lat_raw.dtype)
-            sample_mask_override = binary
-            if sigma_latent > 0:
-                seam_sigma = max(0.5, sigma_latent / 3.0)
-                dilate_r = int(math.ceil(3.0 * seam_sigma))
-                mask_lat = _dilate_mask_2d(binary, dilate_r)
-                mask_lat = _gaussian_blur_2d(mask_lat, seam_sigma).clamp(0.0, 1.0)
-            else:
-                mask_lat = binary  # feather=0 → hard cut, no ramp
-        else:
-            mask_lat = mask_lat_raw
-            if sigma_latent > 0:
-                mask_lat = _gaussian_blur_2d(mask_lat, max(0.5, sigma_latent)).clamp(0.0, 1.0)
+        if sigma_latent > 0:
+            mask_lat = _gaussian_blur_2d(mask_lat, max(0.5, sigma_latent)).clamp(0.0, 1.0)
 
         # Optional reference image (Replace only) → a 2nd chained reference_latent
         # ("fill with THIS"). Skip when not connected (None) or not an image
@@ -993,10 +928,17 @@ class TSSmartInpaint(IO.ComfyNode):
         callback = latent_preview.prepare_callback(model, int(steps))
         disable_pbar = not comfy.utils.PROGRESS_BAR_ENABLED
 
+        # Colour correction needs a preserved ring around the mask to measure the
+        # Flux shift; grow the context band to at least the analysis margin so the
+        # ring exists even at context_pad=0 (the extra context also aids generation).
+        effective_context_pad = (
+            max(int(context_pad), _CC_ANALYSIS_MARGIN_PX) if color_correct else int(context_pad)
+        )
+
         logger.info(
-            "%s mode=%s hard_edge=%s limit_res=%s denoise=%.2f mp=%.2f max_linear=%.1f ctx_pad=%d feather=%d img=%dx%d lat=%dx%d",
-            LOG_PREFIX, inpainting_mode, bool(hard_edge), bool(limit_resolution), effective_denoise,
-            float(megapixels), float(max_linear), int(context_pad), int(feather), W_img, H_img, W_lat, H_lat,
+            "%s mode=%s color_correct=%s denoise=%.2f mp=%.2f max_linear=%.1f ctx_pad=%d feather=%d img=%dx%d lat=%dx%d",
+            LOG_PREFIX, inpainting_mode, bool(color_correct), effective_denoise,
+            float(megapixels), float(max_linear), effective_context_pad, int(feather), W_img, H_img, W_lat, H_lat,
         )
 
         new_latent, new_pixels = _refine_with_fine_upscaling(
@@ -1009,9 +951,8 @@ class TSSmartInpaint(IO.ComfyNode):
             scale_y=scale_y,
             target_mp=float(megapixels),
             max_linear=float(max_linear),
-            allow_downscale=bool(limit_resolution),
             resize_method=resize_method,
-            context_pad_pixel=int(context_pad),
+            context_pad_pixel=effective_context_pad,
             inpainting_mode=inpainting_mode,
             seed=int(seed),
             steps=int(steps),
@@ -1024,7 +965,7 @@ class TSSmartInpaint(IO.ComfyNode):
             callback=callback,
             disable_pbar=disable_pbar,
             extra_reference_latents=extra_reference_latents,
-            sample_mask_override=sample_mask_override,
+            color_correct=bool(color_correct),
         )
 
         out = new_pixels if new_pixels is not None else _vae_decode(vae, new_latent)
