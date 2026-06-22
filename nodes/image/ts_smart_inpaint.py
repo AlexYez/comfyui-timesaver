@@ -25,6 +25,16 @@ CHAINED as a SECOND `reference_latents` entry (after the crop) — "fill the hol
 with THIS picture". Left unconnected (or fed a non-image), the second reference
 chain is simply not engaged and Replace behaves exactly as above.
 
+`hard_edge` (optional boolean, default OFF — local option, not from upstream):
+when ON, the masked region is regenerated with a HARD binary sampling mask (so
+the model fully replaces it instead of cross-fading a soft feather band that
+ghosts thin/irregular strokes), and the feather is moved to a narrow OUTWARD
+pixel-composite ramp (dilate the painted shape, then blur) so the painted
+interior stays at alpha=1 and the soft ramp falls into the surrounding context.
+OFF reproduces the original symmetric-feather behaviour byte-for-byte. This is
+the same split the 5D (Qwen/Wan) path already used internally, exposed as a
+toggle for 4D (FLUX/Klein) too.
+
 The crop + composite happen INSIDE the node, so the app just uploads the full
 source + mask (+ optional reference).
 
@@ -375,6 +385,37 @@ def _gaussian_blur_2d(mask: torch.Tensor, sigma_latent: float) -> torch.Tensor:
     return m
 
 
+def _dilate_mask_2d(mask: torch.Tensor, radius: int) -> torch.Tensor:
+    """Square-structuring-element dilation of a [H,W] / [B,H,W] / [B,1,H,W]
+    mask by `radius`, via max-pool (stride 1, padding=radius). radius <= 0
+    returns the mask unchanged.
+
+    Used ONLY by the optional hard-edge path to push the composite feather
+    OUTWARD: dilate the binary painted shape, then gaussian-blur it, so the
+    painted interior stays alpha=1 (fully regenerated, no soft cross-fade
+    eating into thin strokes) while the soft ramp lands entirely OUTSIDE the
+    painted region, in the surrounding context. max_pool2d pads with negative
+    infinity, so border cells dilate only from real in-bounds neighbours."""
+    if radius <= 0:
+        return mask
+    orig_ndim = mask.dim()
+    if orig_ndim == 2:
+        m = mask.unsqueeze(0).unsqueeze(0)
+    elif orig_ndim == 3:
+        m = mask.unsqueeze(1)
+    elif orig_ndim == 4:
+        m = mask
+    else:
+        raise ValueError(f"_dilate_mask_2d: unexpected mask ndim {orig_ndim}")
+    k = 2 * int(radius) + 1
+    m = torch.nn.functional.max_pool2d(m, kernel_size=k, stride=1, padding=int(radius))
+    if orig_ndim == 2:
+        return m.squeeze(0).squeeze(0)
+    if orig_ndim == 3:
+        return m.squeeze(1)
+    return m
+
+
 def _refine_with_fine_upscaling(
     *,
     model,
@@ -408,6 +449,13 @@ def _refine_with_fine_upscaling(
     # the crop's own reference in Smart Inpaint mode — e.g. a user "fill with
     # THIS picture" image. None / empty = behaves exactly like upstream.
     extra_reference_latents=None,
+    # LOCAL option (not from upstream): hard-edge sampling mask. When given, the
+    # SAMPLING step (latent masked-zero + noise_mask) uses THIS binary latent
+    # mask instead of the feathered `mask`, so the painted region is fully
+    # regenerated and the feather lives only in the outward pixel composite.
+    # None = upstream behaviour (sample with the feathered mask; 5D still hardens
+    # it internally). Same [1, H_lat, W_lat] shape as `mask`.
+    sample_mask_override=None,
 ) -> tuple[torch.Tensor | None, torch.Tensor | None]:
     """Pixel-space crop + upscale + VAE encode + refine + VAE decode +
     downscale + composite. The latent-space crop+upscale
@@ -468,6 +516,11 @@ def _refine_with_fine_upscaling(
         # A1: this no-upscale Refine path is the ONLY one that consumes the
         # full-image latent, so encode it lazily here (it is None on A1's
         # geometry-only fast path). Smart Inpaint never reaches this branch.
+        # hard_edge note: sample_mask_override is intentionally NOT applied here —
+        # this whole-frame latent path has no pixel composite to host the outward
+        # feather, so a hard noise_mask would risk a bare latent seam. The
+        # hard-edge option targets the crop+composite path (all Smart Inpaint, and
+        # Refine when an upscale is needed); this is the only branch it skips.
         if current is None:
             current = _vae_encode(vae, current_pixels)
         noise = comfy.sample.prepare_noise(current, seed, None)
@@ -585,7 +638,18 @@ def _refine_with_fine_upscaling(
     # Mask used for the SAMPLING step (both the masked-zero and the noise_mask).
     # Defaults to the feathered mask; hardened to binary for Smart Inpaint on
     # 5D temporal latents — see the note in the Smart Inpaint block below.
-    sample_mask = mask_crop_up
+    # LOCAL option (hard_edge): when sample_mask_override is given, sample with a
+    # BINARY mask cropped from the un-feathered painted shape (same bbox + upscale
+    # as mask_crop_up, re-binarised after the bilinear upscale). The model then
+    # fully regenerates the painted region instead of partially denoising a soft
+    # feather band; the visible feather is produced ONLY by the outward pixel
+    # composite (the `mask` arg). Applies to 4D (FLUX/Klein) and 5D alike.
+    if sample_mask_override is not None:
+        sm_crop = sample_mask_override[..., y0:y1, x0:x1].contiguous()
+        sm_crop_up = _resize_latent(sm_crop, target_h_lat, target_w_lat, "bilinear").clamp(0.0, 1.0)
+        sample_mask = (sm_crop_up >= 0.5).to(sm_crop_up.dtype)
+    else:
+        sample_mask = mask_crop_up
     if inpainting_mode == "Smart Inpaint":
         reference_latent = latent_up.clone()
         positive = node_helpers.conditioning_set_values(
@@ -615,7 +679,7 @@ def _refine_with_fine_upscaling(
         # visible edge is still produced downstream by the feathered PIXEL
         # composite + final latent blend (both use the full-res feathered
         # `mask`), so the feather is preserved without the sampling artifacts.
-        if latent_up.ndim == 5:
+        if sample_mask_override is None and latent_up.ndim == 5:
             sample_mask = (mask_crop_up >= 0.5).to(mask_crop_up.dtype)
         latent_up = (1.0 - sample_mask.unsqueeze(0)) * latent_up
 
@@ -715,6 +779,26 @@ class TSSmartInpaint(IO.ComfyNode):
                 IO.Float.Input("cfg", default=1.0, min=0.0, max=30.0, step=0.1),
                 IO.Combo.Input("sampler_name", options=comfy.samplers.KSampler.SAMPLERS, default="euler"),
                 IO.Combo.Input("scheduler", options=comfy.samplers.KSampler.SCHEDULERS, default="simple"),
+                # Optional hard-edge fix for "smudge"/ghosting on the freshly
+                # generated area (worst on thin/irregular brush strokes). OFF
+                # (default) = unchanged symmetric feather. ON = regenerate the
+                # region with a HARD binary mask + a narrow OUTWARD-only composite
+                # feather. Added last so existing workflows keep their widgets.
+                IO.Boolean.Input(
+                    "hard_edge",
+                    default=False,
+                    label_on="Hard edge",
+                    label_off="Soft (default)",
+                    tooltip="Sharpen freshly generated content — fixes the "
+                    "'smudge'/ghost on thin or irregular brush strokes. OFF "
+                    "(default): original symmetric feather (unchanged). ON: the "
+                    "masked region is regenerated with a HARD binary mask (full "
+                    "replace, no old content leaking in) and the feather becomes a "
+                    "narrow ramp pushed OUTWARD into the surrounding context, so "
+                    "the painted area stays crisp at alpha=1. With Hard edge, "
+                    "`feather` controls only this outward seam width (≈1/3 of the "
+                    "soft-mode width); lower it for a tighter blend, 0 for a hard cut.",
+                ),
                 # Optional "fill with THIS picture" image (Replace mode only) —
                 # chained as a 2nd Kontext reference. Absent → plain Smart Inpaint.
                 IO.Image.Input(
@@ -750,6 +834,7 @@ class TSSmartInpaint(IO.ComfyNode):
         cfg,
         sampler_name,
         scheduler,
+        hard_edge=False,
         reference=None,
     ) -> IO.NodeOutput:
         # Replace = "Smart Inpaint" mode; unchecked = "Refine".
@@ -798,10 +883,36 @@ class TSSmartInpaint(IO.ComfyNode):
             m = m[:1, 0]  # [1, H, W]
         else:
             m = m[:1]  # [1, H, W] from [B, H, W]
-        mask_lat = _resize_latent(m, H_lat, W_lat, "bilinear").clamp(0.0, 1.0)
+        mask_lat_raw = _resize_latent(m, H_lat, W_lat, "bilinear").clamp(0.0, 1.0)
         sigma_latent = (float(feather) * scale_geom) if feather > 0 else 0.0
-        if sigma_latent > 0:
-            mask_lat = _gaussian_blur_2d(mask_lat, max(0.5, sigma_latent)).clamp(0.0, 1.0)
+
+        # `mask_lat` drives the bbox crop + the PIXEL COMPOSITE alpha.
+        # `sample_mask_override` (hard_edge only) drives the SAMPLING mask
+        # (latent masked-zero + noise_mask). None → the core samples with the
+        # feathered mask exactly as before (default path, byte-identical).
+        sample_mask_override = None
+        if hard_edge:
+            # Hard edge: regenerate the painted region with a BINARY mask (any
+            # latent cell the painted shape touches, threshold >0.01 to match the
+            # core's bbox), and confine the feather to a narrow OUTWARD composite
+            # ramp. Dilate the binary shape outward by ~3*seam_sigma, then blur by
+            # seam_sigma, so the painted interior stays alpha=1 (fully replaced —
+            # no soft cross-fade eating into thin strokes) while the ramp falls
+            # entirely into the surrounding context. seam_sigma ≈ 1/3 of the
+            # soft-mode feather → a tighter, outward-only seam.
+            binary = (mask_lat_raw > 0.01).to(mask_lat_raw.dtype)
+            sample_mask_override = binary
+            if sigma_latent > 0:
+                seam_sigma = max(0.5, sigma_latent / 3.0)
+                dilate_r = int(math.ceil(3.0 * seam_sigma))
+                mask_lat = _dilate_mask_2d(binary, dilate_r)
+                mask_lat = _gaussian_blur_2d(mask_lat, seam_sigma).clamp(0.0, 1.0)
+            else:
+                mask_lat = binary  # feather=0 → hard cut, no ramp
+        else:
+            mask_lat = mask_lat_raw
+            if sigma_latent > 0:
+                mask_lat = _gaussian_blur_2d(mask_lat, max(0.5, sigma_latent)).clamp(0.0, 1.0)
 
         # Optional reference image (Replace only) → a 2nd chained reference_latent
         # ("fill with THIS"). Skip when not connected (None) or not an image
@@ -827,8 +938,8 @@ class TSSmartInpaint(IO.ComfyNode):
         disable_pbar = not comfy.utils.PROGRESS_BAR_ENABLED
 
         logger.info(
-            "%s mode=%s denoise=%.2f mp=%.2f max_linear=%.1f ctx_pad=%d feather=%d img=%dx%d lat=%dx%d",
-            LOG_PREFIX, inpainting_mode, effective_denoise, float(megapixels), float(max_linear),
+            "%s mode=%s hard_edge=%s denoise=%.2f mp=%.2f max_linear=%.1f ctx_pad=%d feather=%d img=%dx%d lat=%dx%d",
+            LOG_PREFIX, inpainting_mode, bool(hard_edge), effective_denoise, float(megapixels), float(max_linear),
             int(context_pad), int(feather), W_img, H_img, W_lat, H_lat,
         )
 
@@ -856,6 +967,7 @@ class TSSmartInpaint(IO.ComfyNode):
             callback=callback,
             disable_pbar=disable_pbar,
             extra_reference_latents=extra_reference_latents,
+            sample_mask_override=sample_mask_override,
         )
 
         out = new_pixels if new_pixels is not None else _vae_decode(vae, new_latent)
