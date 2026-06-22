@@ -371,6 +371,7 @@ const I18N = {
         medium_hint: "Sets the look of the WHOLE image, not the text. 'Photograph' fills the camera field below; every other type fills the art-style field.",
         preset_name_prompt: "Preset name:", custom_tag: "custom",
         summary: "{t} text · {o} obj", empty_hint: "Click \"✎ Edit design\"", edit_btn: "✎ Edit design",
+        badge_text: "Text", badge_obj: "Object", bbox_label: "bbox [y,x,y,x]",
         tip_add_text: "Drops a new text block on the canvas — type the words you want printed on the image.",
         tip_add_obj: "Adds an object block — describe a thing to place in the scene, like a product or icon.",
         tip_duplicate: "Makes an exact copy of the selected block, so you can reuse it without starting over (Ctrl+D).",
@@ -437,9 +438,9 @@ const I18N = {
         font_preset: "Шрифт-пресет (описание — единственный реальный рычаг)",
         weight: "Вес", case: "Регистр", size_words: "Размер (словами)", text_color: "Цвет текста",
         legibility: "Читаемость", leg_outline: "Обводка", leg_contrast: "Контраст", leg_block: "Плашка",
-        visual_only: "Текст вручную (visual-only — пустая плашка под ручной оверлей)",
-        override: "Доп. описание (override, добавляется в конец)",
-        block_palette: "Палитра блока (до {n})", desc_preview: "Итоговое описание (desc) для модели:",
+        visual_only: "Текст вручную (пустая плашка под ручной оверлей)",
+        override: "Доп. описание (добавляется в конец)",
+        block_palette: "Палитра блока (до {n})", desc_preview: "Итоговое описание для модели:",
         obj_desc: "Описание объекта (desc)",
         select_block: "Выберите блок на холсте или добавьте новый (+ Текст / + Объект).",
         visual_only_preview: "(visual-only) область станет пустой плашкой без текста — добавьте надпись вручную в Figma/Photoshop.",
@@ -455,7 +456,8 @@ const I18N = {
         import_done: "Импортировано: {n}", import_empty: "В файле нет валидных пресетов", export_empty: "Пока нечего экспортировать",
         medium_hint: "Задаёт вид ВСЕЙ картинки, а не текста. «Фото» заполняет поле камеры ниже; остальные типы — поле художественного стиля.",
         preset_name_prompt: "Имя пресета:", custom_tag: "свой",
-        summary: "{t} текст · {o} obj", empty_hint: "Нажмите «✎ Edit design»", edit_btn: "✎ Edit design",
+        summary: "{t} текст · {o} obj", empty_hint: "Нажмите «✎ Редактировать»", edit_btn: "✎ Редактировать",
+        badge_text: "Текст", badge_obj: "Объект", bbox_label: "рамка [y,x,y,x]",
         tip_add_text: "Добавляет на холст новый текстовый блок — впишите слова, которые должны быть на картинке.",
         tip_add_obj: "Добавляет блок-объект — опишите предмет для сцены, например товар или иконку.",
         tip_duplicate: "Делает точную копию выбранного блока, чтобы не создавать его заново (Ctrl+D).",
@@ -517,6 +519,20 @@ export function t(key, lang = DEFAULT_LANG, vars) {
 
 export function segLabel(group, value, lang = DEFAULT_LANG) {
     return SEG_LABELS[group]?.[lang]?.[value] ?? SEG_LABELS[group]?.en?.[value] ?? value;
+}
+
+// Localized display labels for the image-type (medium) <select>. The option
+// VALUES stay the raw tokens (used by the caption); only the visible text changes.
+const MEDIA_LABELS = {
+    graphic_design: { en: "Graphic design", ru: "Графический дизайн" },
+    photograph: { en: "Photograph", ru: "Фотография" },
+    illustration: { en: "Illustration", ru: "Иллюстрация" },
+    "3d_render": { en: "3D render", ru: "3D-рендер" },
+    painting: { en: "Painting", ru: "Живопись" },
+    digital_painting: { en: "Digital painting", ru: "Цифровая живопись" },
+};
+export function mediumLabel(token, lang = DEFAULT_LANG) {
+    return MEDIA_LABELS[token]?.[lang] ?? MEDIA_LABELS[token]?.en ?? token;
 }
 
 export function localizedName(item, lang = DEFAULT_LANG) {

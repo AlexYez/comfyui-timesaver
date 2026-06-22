@@ -61,7 +61,7 @@
     {
       "id": "editorial",
       "name_en": "Editorial",
-      "name_ru": "Журнальный (Editorial)",
+      "name_ru": "Журнальный",
       "desc_en": "Modern magazine / design-article style. Fashionable, stylish, visually composed.",
       "desc_ru": "Стиль современного журнала или дизайнерской статьи. Модно, стильно, визуально собранно. Подходит для: обложек книг, соцсетей, афиш, брендинга, баннеров.",
       "medium": "graphic_design",
@@ -117,7 +117,7 @@
     {
       "id": "handcrafted_artistic",
       "name_en": "Handcrafted Artistic",
-      "name_ru": "Художественный hand-made",
+      "name_ru": "Художественный (ручная работа)",
       "desc_en": "More creative, artistic, hand-made style. Illustrative, authorial vibe, creativity.",
       "desc_ru": "Более творческий, художественный, «ручной» стиль. Иллюстративность, авторский вайб, креативность. Подходит для: книг, мерча, постеров, упаковки, музыкальных обложек.",
       "medium": "illustration",

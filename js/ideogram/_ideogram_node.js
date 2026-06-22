@@ -140,7 +140,7 @@ export function setupIdeogramNode(node) {
     toolbar.className = "ts-ideo-node__toolbar";
     const editBtn = document.createElement("button");
     editBtn.className = "ts-ideo-node__btn";
-    editBtn.textContent = "✎ Edit design";
+    editBtn.textContent = t("edit_btn", DEFAULT_LANG);
     const aspectPill = document.createElement("div");
     aspectPill.className = "ts-ideo-node__pill";
     aspectPill.textContent = "16x9";
@@ -195,7 +195,8 @@ export function setupIdeogramNode(node) {
         summary.innerHTML = "";
         const main = document.createElement("span");
         const txtWord = lang === "en" ? "text" : "текст";
-        main.textContent = `${texts} ${txtWord} · ${objs} obj${placeholders ? ` · ${placeholders}↳` : ""} · ${styleName}`;
+        const objWord = lang === "en" ? "obj" : "об.";
+        main.textContent = `${texts} ${txtWord} · ${objs} ${objWord}${placeholders ? ` · ${placeholders}↳` : ""} · ${styleName}`;
         summary.appendChild(main);
     }
 

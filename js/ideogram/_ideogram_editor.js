@@ -41,6 +41,7 @@ import {
     localizedDesc,
     localizedName,
     makeBlockId,
+    mediumLabel,
     normHex,
     paletteGradientCss,
     segLabel,
@@ -505,7 +506,7 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
                 fitEl = objEl;
             }
             const label = el("div", "ts-ideoe-block__label",
-                block.type === "obj" ? "OBJ" : (block.visual_only ? "↳" : "TXT"));
+                block.type === "obj" ? tr("badge_obj") : (block.visual_only ? "↳" : tr("badge_text")));
             div.appendChild(label);
 
             if (block.id === selectedId) {
@@ -728,7 +729,7 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
         const sel = getSelected();
         if (bboxReadoutEl && sel?.rect) {
             const b = fracToBbox(sel.rect.x, sel.rect.y, sel.rect.w, sel.rect.h);
-            bboxReadoutEl.textContent = `bbox [y,x,y,x] = [${b.join(", ")}]  (0–1000)`;
+            bboxReadoutEl.textContent = `${tr("bbox_label")} = [${b.join(", ")}]  (0–1000)`;
         }
     }
 
@@ -801,7 +802,7 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
         // photo-vs-art_style switch, so it leads the inspector.
         const med = el("select");
         MEDIA_OPTIONS.forEach((m) => {
-            const o = el("option", null, m); o.value = m;
+            const o = el("option", null, mediumLabel(m, work.language)); o.value = m;
             if (m === work.style.medium) o.selected = true;
             med.appendChild(o);
         });

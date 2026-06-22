@@ -111,7 +111,7 @@
     {
       "id": "product_card",
       "name_en": "Product Card / Product Ad",
-      "name_ru": "Карточка товара / product ad",
+      "name_ru": "Карточка товара / реклама товара",
       "desc_en": "Visual for marketplaces, ads, product promo: cosmetics, food, clothing, gadgets.",
       "desc_ru": "Визуал для маркетплейса, рекламы, промо товара, косметики, еды, одежды, гаджетов.",
       "aspect_ratio": "4x5",
