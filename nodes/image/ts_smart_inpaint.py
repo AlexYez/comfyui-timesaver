@@ -7,11 +7,13 @@ positive / negative, this node reproduces the algorithm BYTE-FOR-BYTE — the
 extracted verbatim BELOW (deliberately kept in this ONE file — it's small enough
 that a single file reads clearer than a split):
 
-  bbox(mask) + context_pad band -> crop pixels -> upscale to `megapixels`
-  (capped at `max_linear`) -> VAE-encode -> [Smart Inpaint: reference_latents =
-  the crop + zero the masked latent] -> noise-injection inpaint (denoise) ->
-  VAE-decode -> downscale -> feather-composite back -> VAE-encode + latent-blend
-  (mask alpha) so unaltered regions stay bit-exact.
+  bbox(mask) + context_pad band -> crop pixels -> resize to `megapixels`
+  (upscale capped at `max_linear`; with `limit_resolution` ON an OVERSIZED crop
+  is also downscaled to the budget) -> VAE-encode -> [Smart Inpaint:
+  reference_latents = the crop + zero the masked latent] -> noise-injection
+  inpaint (denoise) -> VAE-decode -> resize back to native bbox ->
+  feather-composite back -> VAE-encode + latent-blend (mask alpha) so unaltered
+  regions stay bit-exact.
 
 `replace` (checkbox, label_on="Replace" / label_off="Refine"):
   - Replace (ON)  = "Smart Inpaint": reference_latents = the crop + zero the
@@ -34,6 +36,14 @@ interior stays at alpha=1 and the soft ramp falls into the surrounding context.
 OFF reproduces the original symmetric-feather behaviour byte-for-byte. This is
 the same split the 5D (Qwen/Wan) path already used internally, exposed as a
 toggle for 4D (FLUX/Klein) too.
+
+`limit_resolution` (boolean, default ON): makes `megapixels` a true processing
+cap. Upstream only ever UPSCALES the crop toward `megapixels` and clamps to ≥1.0,
+so a large masked region (e.g. a big selection in a 6-8K image) is VAE-encoded +
+sampled at native resolution and the node hangs/OOMs. ON downscales an oversized
+crop to the budget before encode/sample, then scales the refined patch back up
+to native for the composite — bounded VRAM/time at any mask size; raise
+`megapixels` for more detail. OFF restores the legacy native-resolution path.
 
 The crop + composite happen INSIDE the node, so the app just uploads the full
 source + mask (+ optional reference).
@@ -246,17 +256,31 @@ def _fine_upscale_factor(
     scale_y: float,
     target_mp: float,
     max_linear: float,
+    allow_downscale: bool = False,
 ) -> float:
-    """Linear scale factor to apply to the cropped latent so that the
-    crop is processed at ≥ target_mp (in image-pixel-equivalent terms),
-    clamped to max_linear. Returns 1.0 when the crop already meets
-    target — no upscale needed."""
+    """Linear scale factor to apply to the cropped latent so that the crop is
+    processed at target_mp (in image-pixel-equivalent terms), clamped to
+    max_linear on the upscale side.
+
+    Default (allow_downscale=False): target_mp is a LOWER bound only — small
+    crops upscale toward it, but a crop already at/above target stays native
+    (returns 1.0). This never shrinks a big crop, so a huge masked region gets
+    VAE-encoded + sampled at full resolution — the cause of hangs/OOM on 6-8K
+    inputs.
+
+    allow_downscale=True (the `limit_resolution` option): target_mp becomes a
+    true TARGET — an oversized crop is scaled DOWN to it (factor < 1.0) so the
+    VAE/sampler workload is bounded regardless of mask size. The refined patch
+    is scaled back up to native bbox size for the pixel composite downstream, so
+    only the processed detail is reduced, not the output resolution."""
     if scale_x <= 0 or scale_y <= 0:
         return 1.0
     bbox_w_pix = bbox_w_latent / scale_x
     bbox_h_pix = bbox_h_latent / scale_y
     current_mp = bbox_w_pix * bbox_h_pix / 1_000_000.0
-    if current_mp <= 0 or current_mp >= target_mp:
+    if current_mp <= 0:
+        return 1.0
+    if current_mp >= target_mp and not allow_downscale:
         return 1.0
     needed = math.sqrt(target_mp / current_mp)
     return min(needed, max_linear)
@@ -427,6 +451,7 @@ def _refine_with_fine_upscaling(
     scale_y: float,
     target_mp: float,
     max_linear: float,
+    allow_downscale: bool,        # `limit_resolution`: cap oversized crops at target_mp (downscale)
     resize_method: str,
     context_pad_pixel: int,
     inpainting_mode: str,
@@ -500,11 +525,19 @@ def _refine_with_fine_upscaling(
     if bbox_h_lat <= 0 or bbox_w_lat <= 0:
         return current, current_pixels
 
-    scale = _fine_upscale_factor(bbox_w_lat, bbox_h_lat, scale_x, scale_y, target_mp, max_linear)
-    if scale <= 1.0 and inpainting_mode != "Smart Inpaint":
+    scale = _fine_upscale_factor(
+        bbox_w_lat, bbox_h_lat, scale_x, scale_y, target_mp, max_linear, allow_downscale,
+    )
+    if scale <= 1.0 and inpainting_mode != "Smart Inpaint" and not allow_downscale:
         # Refine with no upscale needed — fall back to the standard latent-space
         # noise-injection inpaint. Avoids unnecessary VAE round-trips when the
         # painted region already meets the MP target.
+        #
+        # `limit_resolution` (allow_downscale): this shortcut samples the WHOLE
+        # frame latent at native res — fine for small images, but it hangs/OOMs
+        # on 6-8K inputs (the very thing the option fixes). When the option is on,
+        # skip the shortcut so a large Refine crop goes through the bounded
+        # crop+downscale path below instead. Off → legacy shortcut preserved.
         #
         # Smart Inpaint must NOT take this shortcut. It needs the crop +
         # reference_latents + masked-zero treatment below regardless of rect
@@ -541,9 +574,12 @@ def _refine_with_fine_upscaling(
         return new_latent, None
 
     # Smart Inpaint with a large rectangle still crops + references the selected
-    # region; it just doesn't upscale (and must never downscale) — clamp the
-    # factor to identity so the crop is taken at native resolution.
-    if inpainting_mode == "Smart Inpaint":
+    # region; by default it just doesn't upscale (and must never downscale) —
+    # clamp the factor to identity so the crop is taken at native resolution.
+    # `limit_resolution` (allow_downscale) lifts this clamp so an oversized
+    # selection is scaled DOWN to the megapixels budget (bounded VRAM/time on
+    # huge masks); the refined patch is scaled back up for the composite.
+    if inpainting_mode == "Smart Inpaint" and not allow_downscale:
         scale = max(1.0, scale)
 
     # ----- VAE decode the full cached latent → cached pixels -----
@@ -799,6 +835,25 @@ class TSSmartInpaint(IO.ComfyNode):
                     "`feather` controls only this outward seam width (≈1/3 of the "
                     "soft-mode width); lower it for a tighter blend, 0 for a hard cut.",
                 ),
+                # Make `megapixels` a true processing cap. ON (default) downscales
+                # oversized crops to the budget so the node never hangs/OOMs on a
+                # large mask in a 6-8K image. Appended after hard_edge so existing
+                # workflows keep their widget order.
+                IO.Boolean.Input(
+                    "limit_resolution",
+                    default=True,
+                    label_on="Limit to Resolution",
+                    label_off="Native (no limit)",
+                    tooltip="Process the masked crop at the `megapixels` budget "
+                    "regardless of mask size. ON (default): an oversized crop "
+                    "(bigger than `megapixels`) is downscaled to the budget before "
+                    "VAE-encode/sample, then scaled back up for the composite — "
+                    "this is what makes `megapixels` the real processing resolution "
+                    "and prevents hangs/OOM on huge masks (e.g. a large selection in "
+                    "a 6-8K image). Raise `megapixels` for more detail. OFF: legacy "
+                    "behaviour — large crops are processed at NATIVE resolution (max "
+                    "detail, but can hang/OOM on big images).",
+                ),
                 # Optional "fill with THIS picture" image (Replace mode only) —
                 # chained as a 2nd Kontext reference. Absent → plain Smart Inpaint.
                 IO.Image.Input(
@@ -835,6 +890,7 @@ class TSSmartInpaint(IO.ComfyNode):
         sampler_name,
         scheduler,
         hard_edge=False,
+        limit_resolution=True,
         reference=None,
     ) -> IO.NodeOutput:
         # Replace = "Smart Inpaint" mode; unchecked = "Refine".
@@ -938,9 +994,9 @@ class TSSmartInpaint(IO.ComfyNode):
         disable_pbar = not comfy.utils.PROGRESS_BAR_ENABLED
 
         logger.info(
-            "%s mode=%s hard_edge=%s denoise=%.2f mp=%.2f max_linear=%.1f ctx_pad=%d feather=%d img=%dx%d lat=%dx%d",
-            LOG_PREFIX, inpainting_mode, bool(hard_edge), effective_denoise, float(megapixels), float(max_linear),
-            int(context_pad), int(feather), W_img, H_img, W_lat, H_lat,
+            "%s mode=%s hard_edge=%s limit_res=%s denoise=%.2f mp=%.2f max_linear=%.1f ctx_pad=%d feather=%d img=%dx%d lat=%dx%d",
+            LOG_PREFIX, inpainting_mode, bool(hard_edge), bool(limit_resolution), effective_denoise,
+            float(megapixels), float(max_linear), int(context_pad), int(feather), W_img, H_img, W_lat, H_lat,
         )
 
         new_latent, new_pixels = _refine_with_fine_upscaling(
@@ -953,6 +1009,7 @@ class TSSmartInpaint(IO.ComfyNode):
             scale_y=scale_y,
             target_mp=float(megapixels),
             max_linear=float(max_linear),
+            allow_downscale=bool(limit_resolution),
             resize_method=resize_method,
             context_pad_pixel=int(context_pad),
             inpainting_mode=inpainting_mode,
