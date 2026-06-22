@@ -379,8 +379,8 @@ def _refine_with_fine_upscaling(
     *,
     model,
     vae,
-    current: torch.Tensor,               # [B, C, H_lat, W_lat] cached full-res latent
-    current_pixels: torch.Tensor | None, # [B, H_pix, W_pix, C] cached full-res pixels to avoid redundant VAE decode
+    current: torch.Tensor | None,        # full-res latent; None under A1 (lazily encoded ONLY by the no-upscale Refine path). Geometry now comes from `mask` + `current_pixels`.
+    current_pixels: torch.Tensor,        # [B, H_pix, W_pix, C] full-res pixels — the canvas this node composites into and returns
     mask: torch.Tensor,                  # [1, H_lat, W_lat] feathered mask, latent res
     scale_x: float,
     scale_y: float,
@@ -408,17 +408,20 @@ def _refine_with_fine_upscaling(
     # the crop's own reference in Smart Inpaint mode — e.g. a user "fill with
     # THIS picture" image. None / empty = behaves exactly like upstream.
     extra_reference_latents=None,
-) -> tuple[torch.Tensor, torch.Tensor | None]:
+) -> tuple[torch.Tensor | None, torch.Tensor | None]:
     """Pixel-space crop + upscale + VAE encode + refine + VAE decode +
-    downscale + composite + VAE encode. The latent-space crop+upscale
+    downscale + composite. The latent-space crop+upscale
     approach smears bilinearly-interpolated latents into a low-freq
     starting state that the model can't recover detail from. Going
     through pixel space (where there's an image-upscale toolkit that's
     been tuned for natural images) and re-encoding gives the model a
     "natural" latent at the higher resolution to denoise from.
 
-    Returns a tuple of (new_latent, new_pixels). Returns (current, current_pixels)
-    if the mask bbox is empty / degenerate.
+    Returns (new_latent, new_pixels). `new_pixels` is the feathered composite —
+    the node's actual output. `new_latent` is None on the crop path (A1: the
+    caller only ever consumes `new_pixels` there); it is a real latent only on
+    the no-upscale Refine shortcut, which `execute` then decodes. On an empty /
+    degenerate mask returns (current, current_pixels) unchanged.
     """
     bbox = _mask_bbox_latent(mask)
     if bbox is None:
@@ -433,8 +436,10 @@ def _refine_with_fine_upscaling(
     # injection inpaint preserves them as context (the model uses them
     # to inform what to draw inside the mask, but doesn't overwrite
     # them). All downstream code uses the PADDED bbox.
-    H_lat = current.shape[-2]
-    W_lat = current.shape[-1]
+    # A1: latent dims come from the feathered `mask` (already at latent res),
+    # so the core no longer needs a full-image `current` just to read its shape.
+    H_lat = mask.shape[-2]
+    W_lat = mask.shape[-1]
     pad_lat_y = max(0, round(context_pad_pixel * scale_y))
     pad_lat_x = max(0, round(context_pad_pixel * scale_x))
     y0 = max(0, y0_tight - pad_lat_y)
@@ -460,6 +465,11 @@ def _refine_with_fine_upscaling(
         # whole-latent edit with NO crop reference, so the model worked on the
         # whole image instead of the selected rect.
         print(f"[Angelo fine-upscale] scale=1.0 — using latent-space path (no VAE round-trip)")
+        # A1: this no-upscale Refine path is the ONLY one that consumes the
+        # full-image latent, so encode it lazily here (it is None on A1's
+        # geometry-only fast path). Smart Inpaint never reaches this branch.
+        if current is None:
+            current = _vae_encode(vae, current_pixels)
         noise = comfy.sample.prepare_noise(current, seed, None)
         new_latent = _do_sample(
             guider=ov_guider, sampler=ov_sampler, sigmas=ov_sigmas,
@@ -488,8 +498,12 @@ def _refine_with_fine_upscaling(
     # (loss of high-frequency details) across multiple consecutive edits.
     if current_pixels is not None:
         cached_pixels = current_pixels
-    else:
+    elif current is not None:
         cached_pixels = _vae_decode(vae, current)  # (B, H_pix, W_pix, C) float [0,1]
+    else:
+        raise ValueError(
+            "_refine_with_fine_upscaling needs current_pixels or current (both None)"
+        )
         
     H_pix = cached_pixels.shape[1]
     W_pix = cached_pixels.shape[2]
@@ -498,8 +512,8 @@ def _refine_with_fine_upscaling(
     # floor-divided gives e.g. 15 for 15.8, drifting the pixel-space bbox
     # ~1px against the latent bbox and leaving a seam in the composite.
     # (#28, from @KursatAs.)
-    px_per_lat_y = max(1, round(H_pix / current.shape[-2]))
-    px_per_lat_x = max(1, round(W_pix / current.shape[-1]))
+    px_per_lat_y = max(1, round(H_pix / H_lat))
+    px_per_lat_x = max(1, round(W_pix / W_lat))
 
     # Pixel-space bbox derived from the latent-space bbox.
     y0_p = y0 * px_per_lat_y
@@ -647,22 +661,17 @@ def _refine_with_fine_upscaling(
     composited = refined_pixel * pixel_alpha_crop + pixel_orig_crop * (1.0 - pixel_alpha_crop)
     new_pixels[:, y0_p:y1_p, x0_p:x1_p, :] = composited
 
-    # ----- VAE encode the composited full image → encoded latent -----
-    encoded_latent = _vae_encode(vae, new_pixels)
-
-    # ----- Blend in LATENT space using the feathered mask as alpha -----
-    # The VAE encode is lossy, so naively returning encoded_latent would
-    # mean the *unaltered* regions of the image drift slightly with every
-    # Fine Upscale click. Avoidable: keep the original cached latent
-    # outside the mask, take the encoded latent inside the mask. Mask is
-    # already feathered, so the transition is smooth. Now unaltered
-    # regions stay bit-exact across successive clicks; only the masked
-    # area accumulates any VAE-roundtrip cost (and it gets a fresh
-    # refine each click anyway, so any drift there is overwritten).
-    alpha_lat = mask.unsqueeze(0)  # [1, 1, H_lat, W_lat]
-    new_latent = encoded_latent * alpha_lat + current * (1.0 - alpha_lat)
-    
-    return new_latent, new_pixels
+    # The feathered pixel composite above IS this node's output. Upstream Angelo
+    # additionally VAE-encoded `new_pixels` and latent-blended it with `current`
+    # here, to (a) carry a bit-exact latent "canvas" across successive
+    # interactive clicks and (b) feed its LATENT output. This headless port has
+    # NEITHER — it is single-shot with only an IMAGE output — so that full-frame
+    # re-encode + blend produced a latent the caller always discarded (A0).
+    # Dropping it removes one whole VAE pass over the FULL image (the dominant
+    # cost at 6-8K) and changes the output by exactly zero pixels. Return None
+    # for the latent: `execute` uses `new_pixels` whenever it is not None (always
+    # on this crop path); only the no-upscale Refine shortcut returns a latent.
+    return None, new_pixels
 
 
 logger = logging.getLogger("comfyui_timesaver.ts_smart_inpaint")
@@ -748,15 +757,34 @@ class TSSmartInpaint(IO.ComfyNode):
         # Replace IGNORES the Denoise widget — Smart Inpaint locks denoise=1.0
         # (it regenerates the region from scratch). Refine uses the slider.
         effective_denoise = 1.0 if replace else float(denoise)
-        # The core operates on a cached full-res latent + pixels. We have the
-        # pixels (the IMAGE input); encode them once to get the latent.
-        current = _vae_encode(vae, image)  # native VAE latent shape
-        current_pixels = image  # (B, H_pix, W_pix, C) float [0,1]
+        # A1 — the core needs full-res pixels (the canvas) plus latent GEOMETRY,
+        # NOT a full-image latent. We no longer VAE-encode the whole frame up
+        # front: that latent's only consumers were a final full-frame re-encode +
+        # blend the caller discarded (removed in A0) and the no-upscale Refine
+        # path (which now encodes lazily, only when actually taken). So Smart
+        # Inpaint / Refine-with-upscale push ONLY the crop through the VAE — the
+        # whole point for 6-8K inputs.
+        current_pixels = image  # (B, H_pix, W_pix, C) float [0,1] — the canvas
 
         H_img = int(image.shape[1])
         W_img = int(image.shape[2])
-        H_lat = int(current.shape[-2])
-        W_lat = int(current.shape[-1])
+        # Latent spatial dims WITHOUT a full encode: comfy's VAE center-crops the
+        # pixels to a multiple of spacial_compression_encode() before encoding,
+        # so each latent side is exactly img_side // ratio for crop_input VAEs
+        # (SD/SDXL/FLUX/Qwen/Wan — i.e. everything this node targets). For the
+        # rare crop_input=False VAE, fall back to a real encode so dims stay exact.
+        current = None
+        try:
+            sp = int(vae.spacial_compression_encode())
+        except Exception:
+            sp = 0
+        if sp > 0 and getattr(vae, "crop_input", True):
+            H_lat = max(1, H_img // sp)
+            W_lat = max(1, W_img // sp)
+        else:
+            current = _vae_encode(vae, image)
+            H_lat = int(current.shape[-2])
+            W_lat = int(current.shape[-1])
         scale_x = (W_lat / W_img) if W_img else 1.0
         scale_y = (H_lat / H_img) if H_img else 1.0
         scale_geom = math.sqrt(max(1e-9, scale_x * scale_y))
