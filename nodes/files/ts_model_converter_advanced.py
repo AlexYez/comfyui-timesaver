@@ -14,6 +14,7 @@ from tqdm import tqdm
 
 import folder_paths
 import comfy.sd
+import comfy.model_management as mm
 from comfy_api.v0_0_2 import IO
 from safetensors.torch import save_file
 from safetensors import safe_open
@@ -163,7 +164,7 @@ class TS_ModelConverterAdvancedNode(IO.ComfyNode):
         if not cls.should_convert_to_fp8(tensor_name, conversion_preset):
             return tensor.to("cpu"), False
 
-        if device == "cuda":
+        if device.type == "cuda":
             try:
                 tensor = tensor.to(device, non_blocking=True)
                 tensor = tensor.to(target_dtype)
@@ -192,7 +193,11 @@ class TS_ModelConverterAdvancedNode(IO.ComfyNode):
     @classmethod
     def _convert_loaded_model(cls, model, fp8_mode, conversion_preset, final_filename):
         logs = []
-        device = "cuda" if torch.cuda.is_available() else "cpu"
+        # Respect ComfyUI's device selection (honours --cpu / --cuda-device and
+        # Apple MPS) instead of hardcoding cuda:0. FP8 cast only runs on CUDA;
+        # non-CUDA devices (mps/cpu) fall through to the CPU path below, matching
+        # the prior behaviour while no longer assuming a specific GPU.
+        device = mm.get_torch_device()
         target_dtype = torch.float8_e4m3fn if fp8_mode == "e4m3fn" else torch.float8_e5m2
 
         output_dir = folder_paths.get_output_directory()
@@ -263,7 +268,11 @@ class TS_ModelConverterAdvancedNode(IO.ComfyNode):
             return IO.NodeOutput(cls._convert_loaded_model(model, fp8_mode, conversion_preset, final_filename))
 
         logs = []
-        device = "cuda" if torch.cuda.is_available() else "cpu"
+        # Respect ComfyUI's device selection (honours --cpu / --cuda-device and
+        # Apple MPS) instead of hardcoding cuda:0. FP8 cast only runs on CUDA;
+        # non-CUDA devices (mps/cpu) fall through to the CPU path below, matching
+        # the prior behaviour while no longer assuming a specific GPU.
+        device = mm.get_torch_device()
         target_dtype = torch.float8_e4m3fn if fp8_mode == "e4m3fn" else torch.float8_e5m2
 
         output_dir = folder_paths.get_output_directory()

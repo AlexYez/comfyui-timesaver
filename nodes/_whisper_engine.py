@@ -380,12 +380,10 @@ def comfy_audio_to_mono16k(
 
     wave = wave.to(dtype=torch.float32)
 
-    if device == "cuda" and torch.cuda.is_available():
-        target_device = torch.device("cuda")
-    elif device == "cpu":
-        target_device = torch.device("cpu")
-    else:
-        target_device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+    # Resolve through the same helper load_model() uses so the audio tensor
+    # lands on exactly the device the Whisper model was loaded onto (avoids a
+    # device mismatch at inference) instead of hardcoding cuda:0 here.
+    target_device = torch.device(resolve_device(device))
     if wave.device != target_device:
         wave = wave.to(target_device)
 
