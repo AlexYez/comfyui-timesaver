@@ -433,6 +433,22 @@ def _gaussian_blur_2d(mask: torch.Tensor, sigma_latent: float) -> torch.Tensor:
     return m
 
 
+def _srgb_to_linear(c: torch.Tensor) -> torch.Tensor:
+    """sRGB [0,1] -> linear-light [0,1], exact piecewise transfer. Used so the
+    feather composite blends in linear light (gamma-space alpha blending darkens
+    the cross-fade band — a dark line along the mask edge)."""
+    c = c.float().clamp(0.0, 1.0)
+    return torch.where(c <= 0.04045, c / 12.92, ((c + 0.055) / 1.055) ** 2.4)
+
+
+def _linear_to_srgb(c: torch.Tensor) -> torch.Tensor:
+    """linear-light [0,1] -> sRGB [0,1], exact piecewise transfer (inverse of
+    _srgb_to_linear). Round-trips to the input at the composite's alpha 0/1, so
+    only the soft feather band is changed."""
+    c = c.float().clamp(0.0, 1.0)
+    return torch.where(c <= 0.0031308, c * 12.92, 1.055 * c ** (1.0 / 2.4) - 0.055)
+
+
 def _color_correct_patch(
     refined: torch.Tensor,      # [B, h, w, C] decoded patch (Flux round-trip / generated)
     original: torch.Tensor,     # [B, h, w, C] original crop (ground truth)
@@ -684,12 +700,18 @@ def _refine_with_fine_upscaling(
     # reference, and the whole-image one dominated — so the patch reproduced
     # the entire original scene instead of editing the selected region.
     # Replacing guarantees Klein sees the crop and nothing else.
-    # Mask used for the SAMPLING step (both the masked-zero and the noise_mask).
-    # Defaults to the feathered mask; hardened to binary for Smart Inpaint on
-    # 5D temporal latents — see the note in the Smart Inpaint block below.
-    sample_mask = mask_crop_up
+    # SAMPLING mask (both the masked-zero and the noise_mask) is HARD (binary):
+    # the painted region is fully regenerated and the feather band is NOT
+    # half-zeroed / half-denoised. A SOFT sampling mask scaled the feather-band
+    # latent toward the mean (≈ mid-gray on Flux) and only partially regenerated
+    # it, which decoded to a dark, muddy line along the mask edge. The visible
+    # feather is produced ONLY by the soft PIXEL composite downstream, over this
+    # clean content — the recipe the 5D temporal path (Qwen/Wan) always used, now
+    # applied to 4D (FLUX/Klein) too. The composite still uses the full-res
+    # feathered `mask`, so the soft edge survives without the sampling muddiness.
+    sample_mask = (mask_crop_up >= 0.5).to(mask_crop_up.dtype)
     if inpainting_mode == "Smart Inpaint":
-        reference_latent = latent_up.clone()
+        reference_latent = latent_up.clone()  # PRE-zero patch — Klein's reference
         positive = node_helpers.conditioning_set_values(
             positive, {"reference_latents": [reference_latent]}, append=False,
         )
@@ -701,24 +723,8 @@ def _refine_with_fine_upscaling(
             positive = node_helpers.conditioning_set_values(
                 positive, {"reference_latents": list(extra_reference_latents)}, append=True,
             )
-        # Feather goes in the COMPOSITE, not the denoise mask — for Qwen/Wan.
-        #
-        # FLUX/Klein (4D, ~zero-mean latents): a soft mask works directly as
-        # both the masked-zero and the noise_mask; their inpaint blend handles a
-        # soft boundary cleanly, so keep the feathered mask.
-        #
-        # Qwen Image Edit / Wan (5D temporal latents): sample with a HARD
-        # (binary) mask. These models have no clean soft-mask-during-denoise
-        # behaviour — the community-standard Qwen-edit inpaint recipe is "blank
-        # the region, regenerate, then composite back with a feathered blend",
-        # NOT feathering the denoise mask. A soft noise_mask at denoise=1.0 on a
-        # non-zero-mean latent space distorts exactly the feather band (the
-        # symptom: artifacts only where the feathering happens). The smooth
-        # visible edge is still produced downstream by the feathered PIXEL
-        # composite + final latent blend (both use the full-res feathered
-        # `mask`), so the feather is preserved without the sampling artifacts.
-        if latent_up.ndim == 5:
-            sample_mask = (mask_crop_up >= 0.5).to(mask_crop_up.dtype)
+        # Zero ONLY the painted region (binary sample_mask) so Klein regenerates it
+        # from full noise; the context band is preserved intact (no gray pull).
         latent_up = (1.0 - sample_mask.unsqueeze(0)) * latent_up
 
     # ----- Refine via noise-injection inpaint on the upscaled latent -----
@@ -767,7 +773,14 @@ def _refine_with_fine_upscaling(
     # colours. No-op when color_correct is off or the ring is too small.
     if color_correct:
         refined_pixel = _color_correct_patch(refined_pixel, pixel_orig_crop, pixel_alpha_crop)
-    composited = refined_pixel * pixel_alpha_crop + pixel_orig_crop * (1.0 - pixel_alpha_crop)
+    # Composite in LINEAR light: alpha-blending in gamma (sRGB) space darkens the
+    # cross-fade and leaves a dark line along the feather. Linearise both sides,
+    # blend, re-encode. At alpha 0/1 this round-trips to the input, so only the
+    # soft feather band is affected.
+    composited = _linear_to_srgb(
+        _srgb_to_linear(refined_pixel) * pixel_alpha_crop
+        + _srgb_to_linear(pixel_orig_crop) * (1.0 - pixel_alpha_crop)
+    )
     new_pixels[:, y0_p:y1_p, x0_p:x1_p, :] = composited
 
     # The feathered pixel composite above IS this node's output. Upstream Angelo
