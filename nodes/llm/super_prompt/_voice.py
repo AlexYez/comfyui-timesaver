@@ -14,6 +14,7 @@ Private — loader skips paths with `_`-prefixed components.
 
 from __future__ import annotations
 
+import difflib
 import importlib.util
 import re
 import subprocess
@@ -62,6 +63,8 @@ from ._helpers import (
     WHISPER_HALLUCINATION_FILTER_ENABLED,
     WHISPER_HALLUCINATION_PATTERNS,
     WHISPER_LOGPROB_THRESHOLD,
+    WHISPER_NEAR_DUP_SENTENCE_ENABLED,
+    WHISPER_NEAR_DUP_SENTENCE_THRESHOLD,
     WHISPER_NO_SPEECH_THRESHOLD,
     WHISPER_SCRIPT_MIXED_WORD_THRESHOLD,
     WHISPER_SCRIPT_OTHER_MAX_RATIO,
@@ -536,6 +539,112 @@ def _collapse_repeated_phrases(text: str, *, max_phrase_words: int = _PHRASE_LOO
     return " ".join(words)
 
 
+_SENTENCE_TERMINATOR_RE = re.compile(r"([.!?…]+)")
+_SIMILARITY_WORD_RE = re.compile(r"\w+", re.UNICODE)
+
+
+def _similarity_words(sentence: str) -> list[str]:
+    """Lowercased word tokens used for sentence-similarity comparison."""
+
+    return _SIMILARITY_WORD_RE.findall(sentence.lower())
+
+
+def _is_inflection_variant(first: str, second: str) -> bool:
+    """Whether two words are the same stem differing only by a short ending.
+
+    Catches the case/number inflection Whisper introduces when it repeats a
+    phrase ("плюшевую"/"плюшевого", "мишку"/"мишка", "стол"/"столе") while
+    keeping genuinely different words apart ("десять"/"двадцать",
+    "красный"/"красивый"): the shared prefix must cover the stem (≥4 chars)
+    and at most a 3-character ending may differ on either side.
+    """
+
+    if first == second:
+        return True
+    shorter = min(len(first), len(second))
+    if shorter < 4:
+        return False
+    prefix = 0
+    for char_a, char_b in zip(first, second):
+        if char_a != char_b:
+            break
+        prefix += 1
+    if prefix < 4:
+        return False
+    return (len(first) - prefix) <= 3 and (len(second) - prefix) <= 3
+
+
+def _sentence_similarity(first: str, second: str) -> float:
+    """Word-level similarity in [0, 1] treating inflection variants as equal.
+
+    Aligns the two word sequences with ``difflib`` and counts a replaced word
+    as a match when it is only an inflected form of its counterpart. The score
+    is matches divided by the longer sequence length, so a clean repeat scores
+    ~1.0 while two instructions differing by a meaningful word stay well below.
+    """
+
+    words_a = _similarity_words(first)
+    words_b = _similarity_words(second)
+    if not words_a or not words_b:
+        return 0.0
+
+    matcher = difflib.SequenceMatcher(None, words_a, words_b)
+    matches = 0
+    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+        if tag == "equal":
+            matches += i2 - i1
+        elif tag == "replace":
+            span = min(i2 - i1, j2 - j1)
+            for offset in range(span):
+                if _is_inflection_variant(words_a[i1 + offset], words_b[j1 + offset]):
+                    matches += 1
+    return matches / max(len(words_a), len(words_b))
+
+
+def _collapse_near_duplicate_sentences(text: str) -> str:
+    """Drop a sentence that near-duplicates the one immediately before it.
+
+    Whisper sometimes emits a short utterance twice with a minor inflection
+    change, so the exact-match collapser (_collapse_repeated_phrases) leaves
+    both copies. We split on sentence terminators and keep only the first of
+    each run of near-identical sentences. Comparison is consecutive-only, so
+    legitimately similar-but-separate instructions ("…на десять процентов. …
+    на двадцать процентов.") are preserved.
+    """
+
+    if not WHISPER_NEAR_DUP_SENTENCE_ENABLED or not text:
+        return text
+
+    parts = _SENTENCE_TERMINATOR_RE.split(text)
+    sentences: list[tuple[str, str]] = []
+    for idx in range(0, len(parts), 2):
+        core = parts[idx].strip()
+        terminator = parts[idx + 1] if idx + 1 < len(parts) else ""
+        if core or terminator:
+            sentences.append((core, terminator))
+    if len(sentences) < 2:
+        return text
+
+    threshold = float(WHISPER_NEAR_DUP_SENTENCE_THRESHOLD)
+    kept: list[tuple[str, str]] = []
+    for core, terminator in sentences:
+        if not core:
+            # Stray terminator (e.g. "..." on its own) — glue it to the
+            # previous sentence rather than treating it as a new one.
+            if kept:
+                prev_core, prev_terminator = kept[-1]
+                kept[-1] = (prev_core, prev_terminator + terminator)
+            continue
+        if kept:
+            prev_core, _ = kept[-1]
+            if prev_core and _sentence_similarity(prev_core, core) >= threshold:
+                continue
+        kept.append((core, terminator))
+
+    rebuilt = " ".join((core + terminator) for core, terminator in kept if core or terminator)
+    return rebuilt.strip()
+
+
 _HALLUCINATION_TAIL_RE = tuple(
     # Anchored at end-of-string with tolerated trailing punctuation/whitespace.
     # `(?iu)` keeps the patterns case- and locale-insensitive so YouTube-style
@@ -590,6 +699,10 @@ def _clean_transcription_text(text: str) -> str:
     # preposition pass so 'из из' first folds to 'из', then any larger phrase
     # repeats are handled here.
     cleaned = _collapse_repeated_phrases(cleaned)
+    # Near-duplicate sentence repeats (Whisper says the phrase a second time
+    # with a small inflection change, e.g. "плюшевую" → "плюшевого") survive
+    # the exact-match pass above because the copy is not byte-identical.
+    cleaned = _collapse_near_duplicate_sentences(cleaned)
     # Trailing YouTube-outro hallucinations ("продолжение следует" etc.)
     # remain even after de-duplication because they appear only once.
     cleaned = _strip_whisper_hallucinations(cleaned)

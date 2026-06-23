@@ -118,6 +118,19 @@ WHISPER_SCRIPT_OTHER_MAX_RATIO = 0.10
 # dictation always keeps the scripts in separate words ("cinematic кадр").
 WHISPER_SCRIPT_MIXED_WORD_THRESHOLD = 2
 
+# Near-duplicate sentence collapse. Whisper occasionally repeats an entire
+# short utterance a second time with only a minor inflection change
+# ("Замени плюшевую мишку…" / "Замени плюшевого мишку…"). The exact-match
+# loop collapser (_collapse_repeated_phrases) misses this because the second
+# copy is not byte-identical. We split the cleaned text into sentences and
+# drop a sentence that is a near-duplicate of the one before it. Short
+# morphological endings (Russian case/number inflection) count as a match,
+# while genuinely different words ("десять"/"двадцать") stay distinct, so the
+# threshold is intentionally high — only true repeats collapse. Disable via
+# the flag if you ever need raw Whisper output.
+WHISPER_NEAR_DUP_SENTENCE_ENABLED = True
+WHISPER_NEAR_DUP_SENTENCE_THRESHOLD = 0.85
+
 # Whisper context prompt for prompt-dictation. Keep it concise: Whisper uses it as
 # vocabulary/style context, not as an instruction-following system prompt.
 INITIAL_PROMPT_ENABLED = True
