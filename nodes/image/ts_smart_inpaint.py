@@ -28,7 +28,8 @@ CHAINED as a SECOND `reference_latents` entry (after the crop) — "fill the hol
 with THIS picture". Left unconnected (or fed a non-image), the second reference
 chain is simply not engaged and Replace behaves exactly as above.
 
-`color_correct` (boolean, default ON — local option, not from upstream): the
+Colour correction (always ON — module constant `_COLOR_CORRECT`; `max_linear` is
+likewise the constant `_MAX_LINEAR` — both hoisted out of the UI): the
 Flux VAE round-trip introduces a slight systematic colour shift (mild reddening)
 on the decoded patch. This estimates that shift from the PRESERVED ring around
 the mask — pixels inside the crop but outside the painted region, where the
@@ -111,6 +112,11 @@ _CC_ANALYSIS_MARGIN_PX = 32
 _FEATHER_FLOOR_PX = 2
 _FEATHER_CEIL_PX = 256
 _CONTEXT_CEIL_PX = 1024
+
+# Fixed processing knobs — formerly UI inputs, hoisted here for code-level tuning
+# (kept out of the node UI to keep it clean).
+_MAX_LINEAR = 3.0       # cap on the upscale factor for small crops (avoid 8-10x blow-up)
+_COLOR_CORRECT = True   # always neutralise Flux's colour shift (see _color_correct_patch)
 
 
 def _pct_to_px(pct: float, base_px: float, floor_px: float, ceil_px: float) -> float:
@@ -809,7 +815,6 @@ class TSSmartInpaint(IO.ComfyNode):
                 ),
                 IO.Float.Input("denoise", default=1.0, min=0.0, max=1.0, step=0.01),
                 IO.Float.Input("megapixels", default=1.5, min=0.1, max=8.0, step=0.1),
-                IO.Float.Input("max_linear", default=3.0, min=1.0, max=8.0, step=0.1),
                 IO.Float.Input(
                     "context_pct", default=8.0, min=0.0, max=50.0, step=0.5,
                     tooltip="Context band around the mask the model sees during "
@@ -842,22 +847,6 @@ class TSSmartInpaint(IO.ComfyNode):
                     "region is filled toward THIS picture's content. Leave unconnected "
                     "for plain Smart Inpaint.",
                 ),
-                # Colour-correct the generated patch to remove Flux's slight
-                # reddening. Added LAST so it doesn't disturb existing workflows.
-                IO.Boolean.Input(
-                    "color_correct",
-                    default=True,
-                    label_on="Color correct",
-                    label_off="Off",
-                    tooltip="Remove Flux's slight colour shift (mild reddening) from "
-                    "the generated area. ON (default): the shift is measured on the "
-                    "PRESERVED ring around the mask — where the patch and the "
-                    "original are the same content — and the inverse per-channel "
-                    "gain+offset is applied to the new content. Because it is "
-                    "measured on the unchanged surroundings, it never drifts even if "
-                    "the new content is large or very differently coloured, and it "
-                    "does NOT tint the new content toward the surround. OFF: skip it.",
-                ),
             ],
             outputs=[IO.Image.Output(display_name="image")],
         )
@@ -874,7 +863,6 @@ class TSSmartInpaint(IO.ComfyNode):
         replace,
         denoise,
         megapixels,
-        max_linear,
         context_pct,
         feather_pct,
         resize_method,
@@ -884,7 +872,6 @@ class TSSmartInpaint(IO.ComfyNode):
         sampler_name,
         scheduler,
         reference=None,
-        color_correct=True,
     ) -> IO.NodeOutput:
         # Replace = "Smart Inpaint" mode; unchecked = "Refine".
         inpainting_mode = "Smart Inpaint" if replace else "Refine"
@@ -982,14 +969,14 @@ class TSSmartInpaint(IO.ComfyNode):
         # Flux shift; grow the context band to at least the analysis margin so the
         # ring exists even at context_pct=0 (the extra context also aids generation).
         effective_context_pad = int(round(
-            max(context_px, float(_CC_ANALYSIS_MARGIN_PX)) if color_correct else context_px
+            max(context_px, float(_CC_ANALYSIS_MARGIN_PX)) if _COLOR_CORRECT else context_px
         ))
 
         logger.info(
             "%s mode=%s color_correct=%s denoise=%.2f mp=%.2f max_linear=%.1f "
             "context=%.1f%%->%dpx feather=%.1f%%->%dpx img=%dx%d lat=%dx%d",
-            LOG_PREFIX, inpainting_mode, bool(color_correct), effective_denoise,
-            float(megapixels), float(max_linear),
+            LOG_PREFIX, inpainting_mode, bool(_COLOR_CORRECT), effective_denoise,
+            float(megapixels), float(_MAX_LINEAR),
             float(context_pct), effective_context_pad, float(feather_pct), int(round(feather_px)),
             W_img, H_img, W_lat, H_lat,
         )
@@ -1003,7 +990,7 @@ class TSSmartInpaint(IO.ComfyNode):
             scale_x=scale_x,
             scale_y=scale_y,
             target_mp=float(megapixels),
-            max_linear=float(max_linear),
+            max_linear=_MAX_LINEAR,
             resize_method=resize_method,
             context_pad_pixel=effective_context_pad,
             inpainting_mode=inpainting_mode,
@@ -1018,7 +1005,7 @@ class TSSmartInpaint(IO.ComfyNode):
             callback=callback,
             disable_pbar=disable_pbar,
             extra_reference_latents=extra_reference_latents,
-            color_correct=bool(color_correct),
+            color_correct=_COLOR_CORRECT,
         )
 
         out = new_pixels if new_pixels is not None else _vae_decode(vae, new_latent)
