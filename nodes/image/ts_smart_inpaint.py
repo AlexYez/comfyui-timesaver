@@ -7,7 +7,7 @@ positive / negative, this node reproduces the algorithm BYTE-FOR-BYTE — the
 extracted verbatim BELOW (deliberately kept in this ONE file — it's small enough
 that a single file reads clearer than a split):
 
-  bbox(mask) + context_pad band -> crop pixels -> resize to the `megapixels`
+  bbox(mask) + context_pct band -> crop pixels -> resize to the `megapixels`
   budget (small crops upscale, capped at `max_linear`; oversized crops downscale,
   so the VAE/sampler workload is bounded at any mask size) -> VAE-encode ->
   [Smart Inpaint: reference_latents = the crop + zero the masked latent] ->
@@ -101,8 +101,26 @@ _FINE_UPSCALE_RESIZE_METHODS = ["nearest-exact", "bilinear", "area", "bicubic", 
 
 # Colour correction samples Flux's shift from a PRESERVED ring around the mask.
 # When color_correct is on, the crop's context band is grown to at least this
-# many image pixels so that ring always exists (even at context_pad=0).
+# many image pixels so that ring always exists (even at context_pct=0).
 _CC_ANALYSIS_MARGIN_PX = 32
+
+# feather_pct / context_pct are percentages of the mask's own size. Resolved px
+# values are clamped to these bounds so the extremes stay sane: a tiny mask still
+# gets a faint blend (feather floor), and a huge mask at a high percent can't
+# blow the band up without limit (ceilings).
+_FEATHER_FLOOR_PX = 2
+_FEATHER_CEIL_PX = 256
+_CONTEXT_CEIL_PX = 1024
+
+
+def _pct_to_px(pct: float, base_px: float, floor_px: float, ceil_px: float) -> float:
+    """Resolve a percentage-of-mask setting to absolute pixels, clamped to
+    [floor_px, ceil_px]. `base_px` is the mask's reference size (its short side),
+    so the same percent scales the feather / context band WITH the selection
+    instead of being a fixed pixel count that is huge on a small mask and tiny on
+    a big one. Because every crop is normalised to `megapixels`, "% of the mask"
+    is also "% of the processed crop"."""
+    return float(min(ceil_px, max(floor_px, pct / 100.0 * base_px)))
 
 
 def _guider_sample(
@@ -792,8 +810,22 @@ class TSSmartInpaint(IO.ComfyNode):
                 IO.Float.Input("denoise", default=1.0, min=0.0, max=1.0, step=0.01),
                 IO.Float.Input("megapixels", default=1.5, min=0.1, max=8.0, step=0.1),
                 IO.Float.Input("max_linear", default=3.0, min=1.0, max=8.0, step=0.1),
-                IO.Int.Input("context_pad", default=0, min=0, max=512, step=8),
-                IO.Int.Input("feather", default=15, min=0, max=200, step=1),
+                IO.Float.Input(
+                    "context_pct", default=8.0, min=0.0, max=50.0, step=0.5,
+                    tooltip="Context band around the mask the model sees during "
+                    "refine, as a PERCENT of the mask's own size (not fixed pixels) "
+                    "— so it scales with the selection. Also hosts the colour-"
+                    "correction ring. ~8% is a sensible default; raise for more "
+                    "surrounding context.",
+                ),
+                IO.Float.Input(
+                    "feather_pct", default=3.0, min=0.0, max=25.0, step=0.5,
+                    tooltip="Feather (edge blend) width as a PERCENT of the mask's "
+                    "own size rather than fixed pixels — a small mask gets a "
+                    "proportionally small feather (no over-soft ghosting on thin "
+                    "strokes), a big mask a wider blend. Clamped to a small px "
+                    "floor. ~3% is a sensible default; 0 = hard edge.",
+                ),
                 IO.Combo.Input("resize_method", options=_FINE_UPSCALE_RESIZE_METHODS, default="lanczos"),
                 IO.Int.Input("seed", default=0, min=0, max=0xFFFFFFFFFFFFFFFF),
                 IO.Int.Input("steps", default=4, min=1, max=100),
@@ -843,8 +875,8 @@ class TSSmartInpaint(IO.ComfyNode):
         denoise,
         megapixels,
         max_linear,
-        context_pad,
-        feather,
+        context_pct,
+        feather_pct,
         resize_method,
         seed,
         steps,
@@ -892,7 +924,7 @@ class TSSmartInpaint(IO.ComfyNode):
         scale_geom = math.sqrt(max(1e-9, scale_x * scale_y))
 
         # Painted MASK (image res, white = inpaint) -> latent res -> gaussian
-        # feather (sigma = feather * geometric-mean scale).
+        # feather (sigma = feather_px * geometric-mean scale; feather_px below).
         m = mask
         if m.dim() == 2:
             m = m.unsqueeze(0)  # [1, H, W]
@@ -901,7 +933,25 @@ class TSSmartInpaint(IO.ComfyNode):
         else:
             m = m[:1]  # [1, H, W] from [B, H, W]
         mask_lat = _resize_latent(m, H_lat, W_lat, "bilinear").clamp(0.0, 1.0)
-        sigma_latent = (float(feather) * scale_geom) if feather > 0 else 0.0
+
+        # feather_pct / context_pct are PERCENTAGES of the mask's own size, not
+        # absolute pixels — so the same setting blends/pads proportionally on any
+        # mask (a fixed px feather is ~20% of a small mask but ~1% of a big one,
+        # which over-softened small/thin selections). Base = the short side of the
+        # tight painted bbox in IMAGE px, taken from the UN-feathered mask.
+        tight = _mask_bbox_latent(mask_lat)
+        if tight is not None:
+            by0, by1, bx0, bx1 = tight
+            mask_min_side_img = min(
+                ((by1 - by0) / scale_y) if scale_y else 0.0,
+                ((bx1 - bx0) / scale_x) if scale_x else 0.0,
+            )
+        else:
+            mask_min_side_img = 0.0
+        feather_px = _pct_to_px(float(feather_pct), mask_min_side_img, _FEATHER_FLOOR_PX, _FEATHER_CEIL_PX)
+        context_px = _pct_to_px(float(context_pct), mask_min_side_img, 0.0, _CONTEXT_CEIL_PX)
+
+        sigma_latent = (feather_px * scale_geom) if feather_px > 0 else 0.0
         if sigma_latent > 0:
             mask_lat = _gaussian_blur_2d(mask_lat, max(0.5, sigma_latent)).clamp(0.0, 1.0)
 
@@ -930,15 +980,18 @@ class TSSmartInpaint(IO.ComfyNode):
 
         # Colour correction needs a preserved ring around the mask to measure the
         # Flux shift; grow the context band to at least the analysis margin so the
-        # ring exists even at context_pad=0 (the extra context also aids generation).
-        effective_context_pad = (
-            max(int(context_pad), _CC_ANALYSIS_MARGIN_PX) if color_correct else int(context_pad)
-        )
+        # ring exists even at context_pct=0 (the extra context also aids generation).
+        effective_context_pad = int(round(
+            max(context_px, float(_CC_ANALYSIS_MARGIN_PX)) if color_correct else context_px
+        ))
 
         logger.info(
-            "%s mode=%s color_correct=%s denoise=%.2f mp=%.2f max_linear=%.1f ctx_pad=%d feather=%d img=%dx%d lat=%dx%d",
+            "%s mode=%s color_correct=%s denoise=%.2f mp=%.2f max_linear=%.1f "
+            "context=%.1f%%->%dpx feather=%.1f%%->%dpx img=%dx%d lat=%dx%d",
             LOG_PREFIX, inpainting_mode, bool(color_correct), effective_denoise,
-            float(megapixels), float(max_linear), effective_context_pad, int(feather), W_img, H_img, W_lat, H_lat,
+            float(megapixels), float(max_linear),
+            float(context_pct), effective_context_pad, float(feather_pct), int(round(feather_px)),
+            W_img, H_img, W_lat, H_lat,
         )
 
         new_latent, new_pixels = _refine_with_fine_upscaling(
