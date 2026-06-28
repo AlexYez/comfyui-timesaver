@@ -12,8 +12,8 @@
       "background_en": "a bold dark gradient background with subtle diagonal speed lines and a soft glow behind the subject",
       "high_level_description_en": "A high-energy YouTube thumbnail with a bold expressive subject on the right and a huge punchy headline on the left.",
       "blocks": [
-        { "type": "obj", "role": "subject", "rect": { "x": 0.56, "y": 0.08, "w": 0.4, "h": 0.9 }, "desc_en": "a person with a bold surprised expressive face looking at the viewer, strong studio rim light, crisp" },
-        { "type": "text", "role": "headline", "rect": { "x": 0.04, "y": 0.12, "w": 0.5, "h": 0.34 }, "text_en": "HOW TO\nGO VIRAL", "text_ru": "КАК СТАТЬ\nВИРУСНЫМ", "font_preset_id": "grotesque_black", "weight": "Heavy", "case": "UPPERCASE", "prominence": "Hero", "color": "#FFFFFF" },
+        { "type": "obj", "role": "subject", "rect": { "x": 0.56, "y": 0.08, "w": 0.4, "h": 0.9 }, "desc_en": "a strikingly charismatic, attractive person with a bold, intensely emotional expression looking straight at the viewer, dramatic studio rim light, cinematic and ultra-crisp" },
+        { "type": "text", "role": "headline", "rect": { "x": 0.04, "y": 0.12, "w": 0.5, "h": 0.34 }, "text_en": "TOP 10\nBEST IDEAS", "text_ru": "ТОП-10\nЛУЧШИХ ИДЕЙ", "font_preset_id": "grotesque_black", "weight": "Heavy", "case": "UPPERCASE", "prominence": "Hero", "color": "#FFFFFF" },
         { "type": "text", "role": "accent", "rect": { "x": 0.05, "y": 0.5, "w": 0.42, "h": 0.14 }, "text_en": "in 7 days", "text_ru": "за 7 дней", "font_preset_id": "condensed_bold", "weight": "Bold", "case": "As-typed", "prominence": "Headline", "color": "#FFD400" }
       ]
     },
@@ -27,7 +27,7 @@
       "background_en": "a clean bold colored background with a subtle radial highlight behind the product",
       "high_level_description_en": "A punchy advertising poster with a strong headline, a centered product and a price/CTA accent.",
       "blocks": [
-        { "type": "text", "role": "headline", "rect": { "x": 0.08, "y": 0.06, "w": 0.84, "h": 0.18 }, "text_en": "BIG SALE", "text_ru": "БОЛЬШАЯ\nРАСПРОДАЖА", "font_preset_id": "display_poster_sans", "weight": "Heavy", "case": "UPPERCASE", "prominence": "Hero", "color": "#FFFFFF" },
+        { "type": "text", "role": "headline", "rect": { "x": 0.08, "y": 0.06, "w": 0.84, "h": 0.18 }, "text_en": "3 DAYS\nONLY", "text_ru": "ТОЛЬКО\n3 ДНЯ", "font_preset_id": "display_poster_sans", "weight": "Heavy", "case": "UPPERCASE", "prominence": "Hero", "color": "#FFFFFF" },
         { "type": "obj", "role": "product", "rect": { "x": 0.2, "y": 0.28, "w": 0.6, "h": 0.45 }, "desc_en": "the product centered, clean studio lighting, premium presentation, sharp focus" },
         { "type": "text", "role": "cta", "rect": { "x": 0.15, "y": 0.78, "w": 0.7, "h": 0.14 }, "text_en": "-50% TODAY", "text_ru": "−50% СЕГОДНЯ", "font_preset_id": "condensed_bold", "weight": "Bold", "case": "UPPERCASE", "prominence": "Headline", "color": "#FFE000" }
       ]
@@ -42,7 +42,7 @@
       "background_en": "a clean vibrant flat background with simple geometric accents",
       "high_level_description_en": "A clean square social post with a short bold headline, a simple central illustration and a small footer line.",
       "blocks": [
-        { "type": "text", "role": "headline", "rect": { "x": 0.1, "y": 0.1, "w": 0.8, "h": 0.2 }, "text_en": "5 TIPS", "text_ru": "5 СОВЕТОВ", "font_preset_id": "geometric_sans", "weight": "Bold", "case": "UPPERCASE", "prominence": "Headline", "color": "#0F172A" },
+        { "type": "text", "role": "headline", "rect": { "x": 0.1, "y": 0.1, "w": 0.8, "h": 0.2 }, "text_en": "TOP\nLIFEHACK", "text_ru": "ТОП\nЛАЙФХАК", "font_preset_id": "geometric_sans", "weight": "Bold", "case": "UPPERCASE", "prominence": "Headline", "color": "#0F172A" },
         { "type": "obj", "role": "illustration", "rect": { "x": 0.2, "y": 0.32, "w": 0.6, "h": 0.4 }, "desc_en": "a simple bold flat illustration related to the topic, friendly and clear" },
         { "type": "text", "role": "footer", "rect": { "x": 0.1, "y": 0.78, "w": 0.8, "h": 0.12 }, "text_en": "swipe to learn", "text_ru": "листай дальше", "font_preset_id": "rounded_friendly", "weight": "Regular", "case": "As-typed", "prominence": "Body", "color": "#2563EB" }
       ]
@@ -73,8 +73,8 @@
       "background_en": "an elegant textured cover background with a refined color field",
       "high_level_description_en": "An elegant book cover with a large title at the top, a striking central illustration and the author name at the bottom.",
       "blocks": [
-        { "type": "text", "role": "title", "rect": { "x": 0.1, "y": 0.1, "w": 0.8, "h": 0.22 }, "text_en": "THE GREAT\nIDEA", "text_ru": "ВЕЛИКАЯ\nИДЕЯ", "font_preset_id": "didone_luxury", "weight": "Bold", "case": "UPPERCASE", "prominence": "Hero", "color": "#0F172A" },
-        { "type": "obj", "role": "illustration", "rect": { "x": 0.15, "y": 0.36, "w": 0.7, "h": 0.4 }, "desc_en": "a striking central illustration capturing the book theme, elegant and memorable" },
+        { "type": "text", "role": "title", "rect": { "x": 0.1, "y": 0.1, "w": 0.8, "h": 0.22 }, "text_en": "THE BIG\nGAME", "text_ru": "БОЛЬШАЯ\nИГРА", "font_preset_id": "didone_luxury", "weight": "Bold", "case": "UPPERCASE", "prominence": "Hero", "color": "#0F172A" },
+        { "type": "obj", "role": "illustration", "rect": { "x": 0.15, "y": 0.36, "w": 0.7, "h": 0.4 }, "desc_en": "a striking, emotionally charged central illustration capturing the book's theme, a memorable figure or symbol, elegant and cinematic" },
         { "type": "text", "role": "author", "rect": { "x": 0.15, "y": 0.84, "w": 0.7, "h": 0.1 }, "text_en": "Author Name", "text_ru": "Имя Автора", "font_preset_id": "humanist_sans", "weight": "Regular", "case": "As-typed", "prominence": "Body", "color": "#475569" }
       ]
     },
@@ -103,7 +103,7 @@
       "background_en": "atmospheric album-art background matching the genre mood",
       "high_level_description_en": "A square album cover with atmospheric central art, the album title and the artist name at the bottom.",
       "blocks": [
-        { "type": "obj", "role": "art", "rect": { "x": 0.1, "y": 0.08, "w": 0.8, "h": 0.58 }, "desc_en": "abstract atmospheric album art matching the genre mood, striking and emotive" },
+        { "type": "obj", "role": "art", "rect": { "x": 0.1, "y": 0.08, "w": 0.8, "h": 0.58 }, "desc_en": "striking, emotionally evocative album art matching the genre mood, cinematic and atmospheric" },
         { "type": "text", "role": "title", "rect": { "x": 0.1, "y": 0.7, "w": 0.8, "h": 0.16 }, "text_en": "ALBUM TITLE", "text_ru": "НАЗВАНИЕ\nАЛЬБОМА", "font_preset_id": "display_poster_sans", "weight": "Bold", "case": "UPPERCASE", "prominence": "Headline", "color": "#FFFFFF" },
         { "type": "text", "role": "artist", "rect": { "x": 0.1, "y": 0.87, "w": 0.8, "h": 0.08 }, "text_en": "Artist Name", "text_ru": "Исполнитель", "font_preset_id": "condensed_bold", "weight": "Regular", "case": "UPPERCASE", "prominence": "Caption", "color": "#CBD5E1" }
       ]
@@ -150,7 +150,7 @@
       "high_level_description_en": "A bold merch / t-shirt print with a big slogan, a central graphic illustration and a small accent line.",
       "blocks": [
         { "type": "text", "role": "slogan", "rect": { "x": 0.08, "y": 0.14, "w": 0.84, "h": 0.3 }, "text_en": "STAY\nWILD", "text_ru": "БУДЬ\nСОБОЙ", "font_preset_id": "stencil_block", "weight": "Heavy", "case": "UPPERCASE", "prominence": "Hero", "color": "#111111" },
-        { "type": "obj", "role": "illustration", "rect": { "x": 0.25, "y": 0.46, "w": 0.5, "h": 0.34 }, "desc_en": "a bold high-contrast graphic illustration or mascot for a t-shirt print, centered" },
+        { "type": "obj", "role": "illustration", "rect": { "x": 0.25, "y": 0.46, "w": 0.5, "h": 0.34 }, "desc_en": "a bold, high-contrast central graphic for a t-shirt print, a striking character or mascot with attitude, centered" },
         { "type": "text", "role": "accent", "rect": { "x": 0.3, "y": 0.84, "w": 0.4, "h": 0.08 }, "text_en": "est. 2024", "text_ru": "с 2024", "font_preset_id": "condensed_bold", "weight": "Regular", "case": "UPPERCASE", "prominence": "Caption", "color": "#111111" }
       ]
     }

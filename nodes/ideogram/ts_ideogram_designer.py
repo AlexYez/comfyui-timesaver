@@ -7,8 +7,9 @@ editor (drag/resize text + object blocks on an aspect-correct artboard, pick
 font/style presets, place text over an optional reference image) lives in
 ``js/ideogram/``. The editor serializes its full state into the hidden
 ``design_json`` STRING input; ``execute`` turns that into a valid Ideogram 4
-caption (see ``_ideogram_helpers.build_caption``) and emits it as a STRING,
-plus the chosen aspect ratio as a second STRING.
+caption (see ``_ideogram_helpers.build_caption``) and emits it as ``json_prompt``
+(STRING), along with the resolved ``width`` and ``height`` (INT) derived from the
+design's aspect ratio + megapixels (see ``_ideogram_helpers.dims_from_design``).
 
 The optional ``image`` input is a reference-only underlay aid: when connected,
 ``execute`` caches its first frame into the input directory so the editor can

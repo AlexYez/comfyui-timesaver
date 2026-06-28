@@ -259,6 +259,7 @@ export function setupIdeogramNode(node) {
         ctx.lineWidth = 1;
         ctx.strokeRect(ax + 0.5, ay + 0.5, box.w - 1, box.h - 1);
 
+        const lang = state.design.language || DEFAULT_LANG;
         for (const block of state.design.blocks || []) {
             const r = block.rect;
             if (!r) continue;
@@ -284,8 +285,8 @@ export function setupIdeogramNode(node) {
             ctx.setLineDash([]);
             // Label
             const label = isText
-                ? (block.visual_only ? "↳ вручную" : (block.text || "").split("\n")[0] || "текст")
-                : (block.desc || "obj").slice(0, 24);
+                ? (block.visual_only ? "↳" : (block.text || "").split("\n")[0] || t("badge_text", lang))
+                : (block.desc || t("badge_obj", lang)).slice(0, 24);
             ctx.font = "10px 'Segoe UI', sans-serif";
             ctx.textBaseline = "top";
             ctx.fillStyle = "#0b0e13";

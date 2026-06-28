@@ -116,9 +116,20 @@ export function fracToBbox(x, y, w, h) {
 export function applyCase(text, mode) {
     if (mode === "UPPERCASE") return (text || "").toUpperCase();
     if (mode === "Title") {
+        // Mirror Python _apply_case/_title_case_word: per line, per space-split
+        // word, uppercase only the FIRST Unicode letter and leave the rest
+        // verbatim (do NOT lowercase the tail — keeps 'AI'→'AI', 'iPhone'→'IPhone',
+        // and works for Cyrillic). The old /\w\S*/ + toLowerCase diverged from the
+        // authoritative backend, so the WYSIWYG canvas preview now matches it.
+        const titleWord = (word) => {
+            const m = word.match(/\p{L}/u);
+            if (!m) return word;
+            const i = m.index;
+            return word.slice(0, i) + m[0].toUpperCase() + word.slice(i + m[0].length);
+        };
         return (text || "")
             .split("\n")
-            .map((line) => line.replace(/\w\S*/g, (t) => t.charAt(0).toUpperCase() + t.slice(1).toLowerCase()))
+            .map((line) => line.split(" ").map(titleWord).join(" "))
             .join("\n");
     }
     return text || "";
@@ -205,10 +216,13 @@ export function makeBlockId() {
 }
 
 export function aspectToRatio(aspect) {
+    // Mirror Python aspect_ratio_value: whole-token 16/9 fallback on a malformed
+    // token (e.g. "0x5"/"8x0"), not per-component defaults.
     const parts = String(aspect || DEFAULT_ASPECT_RATIO).split("x");
-    const w = Number(parts[0]) || 16;
-    const h = Number(parts[1]) || 9;
-    return w / h;
+    const w = Number(parts[0]);
+    const h = Number(parts[1]);
+    if (w > 0 && h > 0) return w / h;
+    return 16 / 9;
 }
 
 // Compute an artboard pixel box for a given aspect that fits inside (maxW,maxH).
@@ -248,7 +262,7 @@ export async function loadPresets() {
         _presetsCache = await response.json();
     } catch (error) {
         console.error("[TS Ideogram] Failed to load presets:", error);
-        _presetsCache = { styles: [], fonts: [], aspect_ratios: ASPECT_RATIOS, default_aspect_ratio: DEFAULT_ASPECT_RATIO };
+        _presetsCache = { layouts: [], styles: [], fonts: [], aspect_ratios: ASPECT_RATIOS, default_aspect_ratio: DEFAULT_ASPECT_RATIO };
     }
     return _presetsCache;
 }
@@ -288,62 +302,293 @@ export async function persistDesign(designJson) {
     }
 }
 
-export async function fetchGraphReference(nodeId) {
-    try {
-        const response = await fetch(api.apiURL(`${ROUTE_BASE}/graph_ref?node_id=${encodeURIComponent(nodeId)}`));
-        if (!response.ok) return null;
-        const data = await response.json();
-        return data?.filename || null;
-    } catch {
-        return null;
-    }
-}
-
 // Build a /view URL for an input-dir image (reference underlay).
 export function inputViewUrl(filename, subfolder = "", type = "input") {
     const params = new URLSearchParams({ filename: filename || "", type, subfolder: subfolder || "" });
     return api.apiURL(`/view?${params.toString()}`);
 }
 
-// Cyrillic guard analysis for a text block (soft warnings for the inspector).
-export function cyrillicWarnings(block, allBlocks, fontsByIdMap, lang = DEFAULT_LANG) {
-    const warnings = [];
-    const text = block?.text || "";
-    if (!hasCyrillic(text)) return warnings;
+// ── Curated style preset libraries ──────────────────────────────────────────── //
+// Each preset carries a localized label (ru/en) and `v` — the English prompt
+// fragment dropped verbatim into the matching style_description field. The
+// caption stays plain prose, so the Python builder is untouched: these dropdowns
+// only fill style.aesthetics / style.lighting / style.art_style|photo / background.
 
-    const words = text.trim().split(/\s+/).filter(Boolean);
-    if (words.length > 3 || text.replace(/\s/g, "").length > 20) warnings.push(t("cyr_long", lang));
-    if (block.case !== "UPPERCASE" && /[а-яё]/.test(text)) warnings.push(t("cyr_upper", lang));
-    const preset = fontsByIdMap?.[block.font_preset_id || ""];
-    if (preset && preset.good_for_cyrillic === false) warnings.push(t("cyr_font", lang));
-    const cyrBlocks = (allBlocks || []).filter((b) => b.type === "text" && !b.visual_only && hasCyrillic(b.text || ""));
-    if (cyrBlocks.length >= 2) warnings.push(t("cyr_multi", lang));
-    const latinBlocks = (allBlocks || []).filter(
-        (b) => b.type === "text" && !b.visual_only && !hasCyrillic(b.text || "") && /[A-Za-z]/.test(b.text || ""),
-    );
-    if (latinBlocks.length > 0) warnings.push(t("cyr_mix", lang));
-    return warnings;
-}
+// Art style ALSO sets the whole-image medium (the photo-XOR-art_style switch):
+// `medium === "photograph"` → `v` goes into style.photo, otherwise into art_style.
+export const ARTSTYLE_PRESETS = [
+    { id: "flat_vector", ru: "Плоский вектор", en: "Flat vector", medium: "illustration", v: "flat vector illustration, clean geometric shapes, bold flat colors, crisp edges" },
+    { id: "poster_graphic", ru: "Плакатная графика", en: "Poster graphics", medium: "graphic_design", v: "bold graphic poster design, high contrast, screen-print look, strong shapes" },
+    { id: "watercolor", ru: "Акварель", en: "Watercolor", medium: "painting", v: "loose watercolor painting, soft pigment bleeds, textured paper, hand-painted" },
+    { id: "oil_paint", ru: "Масляная живопись", en: "Oil painting", medium: "painting", v: "rich oil painting, visible brush strokes, painterly impasto, classical" },
+    { id: "render_3d", ru: "3D-рендер", en: "3D render", medium: "3d_render", v: "polished 3D render, soft global illumination, subsurface scattering, studio look" },
+    { id: "lowpoly_iso", ru: "Low-poly изометрия", en: "Low-poly iso", medium: "3d_render", v: "low-poly isometric 3D, faceted shapes, soft studio render, clean palette" },
+    { id: "clay_3d", ru: "Пластилин / clay", en: "Clay 3D", medium: "3d_render", v: "cute clay plasticine 3D render, soft matte material, rounded forms" },
+    { id: "anime", ru: "Аниме", en: "Anime", medium: "illustration", v: "anime style, clean cel shading, crisp linework, expressive" },
+    { id: "comic_pop", ru: "Комикс / поп-арт", en: "Comic pop-art", medium: "illustration", v: "comic book pop-art, halftone dots, bold ink outlines, punchy colors" },
+    { id: "engraving", ru: "Гравюра / линогравюра", en: "Engraving", medium: "illustration", v: "vintage engraving and linocut, fine hatching, monochrome ink, woodcut texture" },
+    { id: "risograph", ru: "Ризограф", en: "Risograph", medium: "graphic_design", v: "risograph print, grainy overprint, limited spot colors, slight misregistration" },
+    { id: "photoreal", ru: "Фотореализм", en: "Photoreal", medium: "photograph", v: "DSLR photograph, 50mm lens, natural depth of field, true-to-life detail" },
+    { id: "cinematic_photo", ru: "Кинокадр", en: "Cinematic photo", medium: "photograph", v: "cinematic film still, anamorphic, shallow depth of field, color graded" },
+];
+
+export const MOOD_PRESETS = [
+    { id: "bold", ru: "Дерзко и сочно", en: "Bold & punchy", v: "bold and punchy, vibrant, high energy" },
+    { id: "calm", ru: "Спокойно и минимально", en: "Calm & minimal", v: "calm, minimal, lots of negative space" },
+    { id: "luxe", ru: "Премиально / люкс", en: "Luxurious", v: "luxurious, premium, elegant and refined" },
+    { id: "retro", ru: "Ретро / винтаж", en: "Retro vintage", v: "retro vintage, nostalgic, aged texture" },
+    { id: "cozy", ru: "Тёплый и уютный", en: "Warm & cozy", v: "warm and cozy, inviting, soft and friendly" },
+    { id: "tech", ru: "Технологично / футуризм", en: "High-tech", v: "high-tech, futuristic, sleek and clean" },
+    { id: "playful", ru: "Игриво и весело", en: "Playful & fun", v: "playful, fun, whimsical and cheerful" },
+    { id: "cinematic", ru: "Драматично / кино", en: "Cinematic", v: "dramatic, cinematic, moody atmosphere" },
+    { id: "organic", ru: "Натурально / эко", en: "Natural & organic", v: "natural, organic, earthy and handmade" },
+    { id: "edgy", ru: "Гранж / андеграунд", en: "Grungy & edgy", v: "grungy, edgy, raw underground vibe" },
+    { id: "dreamy", ru: "Мечтательно / пастель", en: "Dreamy pastel", v: "dreamy, soft pastel, ethereal and airy" },
+    { id: "corporate", ru: "Деловой / чистый", en: "Clean corporate", v: "clean corporate, professional, trustworthy" },
+];
+
+export const LIGHTING_PRESETS = [
+    { id: "daylight", ru: "Яркий дневной", en: "Bright daylight", v: "bright natural daylight" },
+    { id: "studio", ru: "Мягкий студийный", en: "Soft studio", v: "soft even studio lighting" },
+    { id: "golden", ru: "Золотой час", en: "Golden hour", v: "warm golden hour backlight" },
+    { id: "dramatic", ru: "Драматичные тени", en: "Dramatic shadows", v: "dramatic chiaroscuro shadows, strong contrast" },
+    { id: "neon", ru: "Неоновое свечение", en: "Neon glow", v: "vivid neon glow, colorful rim light" },
+    { id: "backlit", ru: "Контровой свет", en: "Backlit rim", v: "strong backlight, glowing rim, silhouette" },
+    { id: "overcast", ru: "Рассеянный пасмурный", en: "Soft overcast", v: "soft diffuse overcast light" },
+    { id: "spotlight", ru: "Ночь / софит", en: "Night spotlight", v: "dark scene, focused spotlight" },
+    { id: "highkey", ru: "Высокий ключ", en: "High-key", v: "high-key, bright and airy, minimal shadows" },
+    { id: "lowkey", ru: "Низкий ключ", en: "Low-key", v: "low-key, deep shadows, moody" },
+    { id: "godrays", ru: "Объёмные лучи света", en: "Sun beams", v: "volumetric god rays, atmospheric haze" },
+    { id: "product", ru: "Предметный софтбокс", en: "Product softbox", v: "clean product softbox lighting, soft reflections" },
+];
+
+export const BACKGROUND_PRESETS = [
+    { id: "solid", ru: "Сплошной цвет", en: "Solid color", v: "clean solid color background" },
+    { id: "gradient", ru: "Плавный градиент", en: "Smooth gradient", v: "smooth two-tone gradient background" },
+    { id: "studio", ru: "Студийный фон", en: "Studio backdrop", v: "seamless studio backdrop with a soft vignette" },
+    { id: "bokeh", ru: "Размытие / боке", en: "Blurred bokeh", v: "blurred background with soft glowing bokeh" },
+    { id: "marble", ru: "Тёмный мрамор", en: "Dark marble", v: "dark marble surface with subtle veins" },
+    { id: "abstract", ru: "Абстрактные формы", en: "Abstract shapes", v: "abstract flowing shapes, layered composition" },
+    { id: "nature", ru: "Природа / небо", en: "Nature & sky", v: "natural outdoor scenery with a soft sky" },
+    { id: "pattern", ru: "Геометрия / паттерн", en: "Geometric pattern", v: "geometric pattern background, repeating motif" },
+    { id: "grunge", ru: "Гранж-текстура", en: "Grunge texture", v: "grungy distressed textured background" },
+    { id: "paper", ru: "Бумага / крафт", en: "Paper & craft", v: "textured paper and kraft background" },
+    { id: "glow", ru: "Свечение / меш", en: "Glow mesh", v: "soft glowing mesh gradient, dreamy" },
+    { id: "minimal", ru: "Минимальный / пусто", en: "Minimal / none", v: "minimal plain background" },
+];
+
+// Object presets — popular, vivid subjects for an `obj` block's `desc`. Mix of
+// emotional characters and hero objects. Character descs fix the gender/identity
+// (the obj desc dominates its bbox) while staying emotion-flexible so the
+// high_level_description can still drive the specific mood. Referenced by id from
+// LAYOUT_BRIEFS[*].subjectPreset to keep ideas and the rendered subject in sync.
+export const OBJECT_PRESETS = [
+    { id: "bold_girl", ru: "Дерзкая девушка", en: "Bold girl", v: "a strikingly beautiful young woman looking at the viewer with a bold confident vibe, expressive, dramatic rim light, cinematic, ultra-detailed" },
+    { id: "glamour_woman", ru: "Гламурная девушка", en: "Glamorous woman", v: "a glamorous stylish beautiful woman, elegant and confident, flawless skin, soft cinematic glamour lighting, ultra-detailed" },
+    { id: "brutal_man", ru: "Брутальный мужчина", en: "Brutal man", v: "a brutally handsome rugged man with a strong jaw and confident presence looking at the viewer, dramatic side light, cinematic, ultra-detailed" },
+    { id: "business_pro", ru: "Деловой профи", en: "Business pro", v: "a confident successful person in a sharp tailored suit with a self-assured look, clean premium corporate lighting" },
+    { id: "shocked_face", ru: "Шок / эмоция", en: "Shocked face", v: "a person with a hugely shocked wide-eyed open-mouth reaction looking straight at the viewer, very expressive, bright punchy rim light" },
+    { id: "happy_smile", ru: "Счастливая улыбка", en: "Happy smile", v: "an attractive person with a warm genuine bright smile, friendly inviting mood, soft flattering glow" },
+    { id: "athlete", ru: "Спортсмен", en: "Athlete in motion", v: "a dynamic athletic person mid-action full of energy and motion, dramatic sport lighting, sweat highlights, powerful" },
+    { id: "gamer", ru: "Геймер", en: "Gamer", v: "an intense focused young gamer wearing headphones lit by colorful RGB neon, immersive and cinematic" },
+    { id: "couple", ru: "Влюблённая пара", en: "Couple in love", v: "a beautiful couple in a tender emotional embrace, romantic warm golden-hour light, cinematic and heartfelt" },
+    { id: "mascot", ru: "Милый маскот", en: "Cute mascot", v: "a cute friendly cartoon mascot character with big expressive eyes, bold clean shapes, playful and memorable" },
+    { id: "hero_product", ru: "Продукт-герой", en: "Hero product", v: "a hero product centered with premium studio lighting, soft reflections, sharp focus, immaculate e-commerce quality" },
+    { id: "tasty_food", ru: "Аппетитная еда", en: "Tasty food", v: "a delicious appetizing dish with fresh ingredients, mouth-watering detail, vibrant professional food photography" },
+    { id: "gadget", ru: "Гаджет / девайс", en: "Gadget", v: "a sleek modern gadget device floating with a soft reflection, clean futuristic tech presentation" },
+    { id: "sneaker", ru: "Кроссовок", en: "Sneaker", v: "a stylish sneaker shot at a dynamic angle with crisp detail and vivid product lighting" },
+    { id: "supercar", ru: "Суперкар", en: "Supercar", v: "a sleek glossy supercar at a dramatic three-quarter angle, cinematic reflections, golden-hour glow" },
+    { id: "pet", ru: "Милый питомец", en: "Cute pet", v: "an adorable expressive pet animal looking at the viewer, soft warm light, charming and heart-melting" },
+];
+
+// Text presets — one-click "tasty" lettering looks for a text block. Each sets
+// font_preset_id + weight + case + prominence + color + legibility together.
+export const TEXT_PRESETS = [
+    { id: "bold_headline", ru: "Жирный заголовок", en: "Bold headline", font_preset_id: "grotesque_black", weight: "Heavy", case: "UPPERCASE", prominence: "Hero", color: "#FFFFFF", legibility: { outline: true, high_contrast: true, solid_block: false } },
+    { id: "clean_minimal", ru: "Чистый минимал", en: "Clean minimal", font_preset_id: "geometric_sans", weight: "Regular", case: "As-typed", prominence: "Headline", color: "#0F172A", legibility: { outline: false, high_contrast: false, solid_block: false } },
+    { id: "yellow_accent", ru: "Жёлтый акцент", en: "Yellow accent", font_preset_id: "condensed_bold", weight: "Bold", case: "UPPERCASE", prominence: "Headline", color: "#FFD400", legibility: { outline: true, high_contrast: true, solid_block: false } },
+    { id: "elegant_serif", ru: "Элегантный сериф", en: "Elegant serif", font_preset_id: "didone_luxury", weight: "Regular", case: "Title", prominence: "Hero", color: "#1A1A1A", legibility: { outline: false, high_contrast: false, solid_block: false } },
+    { id: "poster_impact", ru: "Постер-удар", en: "Poster impact", font_preset_id: "display_poster_sans", weight: "Heavy", case: "UPPERCASE", prominence: "Hero", color: "#FFFFFF", legibility: { outline: false, high_contrast: true, solid_block: false } },
+    { id: "sticker_block", ru: "Плашка-стикер", en: "Sticker block", font_preset_id: "grotesque_black", weight: "Bold", case: "UPPERCASE", prominence: "Headline", color: "#111111", legibility: { outline: false, high_contrast: true, solid_block: true } },
+    { id: "handwritten", ru: "Рукописный", en: "Handwritten", font_preset_id: "brush_marker", weight: "Bold", case: "As-typed", prominence: "Headline", color: "#FFFFFF", legibility: { outline: true, high_contrast: false, solid_block: false } },
+    { id: "retro_display", ru: "Ретро-дисплей", en: "Retro display", font_preset_id: "retro_70s_round", weight: "Bold", case: "UPPERCASE", prominence: "Hero", color: "#FF5A36", legibility: { outline: false, high_contrast: false, solid_block: false } },
+    { id: "techno_mono", ru: "Техно-моно", en: "Techno mono", font_preset_id: "mono_techno", weight: "Bold", case: "UPPERCASE", prominence: "Body", color: "#00E5A0", legibility: { outline: false, high_contrast: true, solid_block: false } },
+    { id: "graffiti", ru: "Граффити", en: "Graffiti", font_preset_id: "graffiti_urban", weight: "Heavy", case: "UPPERCASE", prominence: "Hero", color: "#FFFFFF", legibility: { outline: true, high_contrast: true, solid_block: false } },
+    { id: "stencil", ru: "Стенсил", en: "Stencil", font_preset_id: "stencil_block", weight: "Heavy", case: "UPPERCASE", prominence: "Hero", color: "#111111", legibility: { outline: false, high_contrast: true, solid_block: false } },
+];
+
+// "Main idea" (high_level_description) presets, 10 per layout, adapted to that
+// layout. `v` is the English one-sentence HLD fed to the model; ru/en are the
+// dropdown labels. Many feature vivid, emotional characters (a beautiful woman,
+// a brutally handsome man) so preset designs come out cinematic and expressive.
+// Keyed by the builtin layout id (see ideogram_layouts.json).
+export const LAYOUT_BRIEFS = {
+    youtube_thumbnail: [
+        { ru: "Шок на лице", en: "Shocked reaction", v: "A high-energy YouTube thumbnail: a brutally handsome man with a shocked wide-eyed reaction on the right, dramatic rim light, a huge punchy headline on the left." },
+        { ru: "Дерзкая девушка", en: "Bold confident girl", v: "A vibrant thumbnail with a strikingly beautiful young woman smirking with confidence, glowing neon rim light, a bold contrasty headline beside her." },
+        { ru: "Деньги и успех", en: "Money & success", v: "A flashy success thumbnail: a confident man in a sharp suit with cash flying behind him, gold accents, an explosive headline." },
+        { ru: "До и после", en: "Before & after", v: "A split before/after thumbnail with a transformed, glowing person, a bold arrow and a punchy comparison headline." },
+        { ru: "Гнев / спор", en: "Rage / drama", v: "A dramatic confrontation thumbnail: a furious brutal man pointing straight at the viewer, intense red glow, an aggressive headline." },
+        { ru: "Восторг / вау", en: "Amazed wow", v: "An exciting reveal thumbnail: a beautiful woman with a delighted, amazed expression, sparkles and glow, a bright energetic headline." },
+        { ru: "Геймер в наушниках", en: "Gamer", v: "A gaming thumbnail: an intense focused gamer in headphones lit by colorful RGB neon, explosive action behind, a bold headline." },
+        { ru: "Загадка / интрига", en: "Mystery hook", v: "A mysterious thumbnail: a hooded figure half in shadow under a single dramatic light, intriguing atmosphere and a teasing headline." },
+        { ru: "Роскошный образ жизни", en: "Luxury lifestyle", v: "A luxury lifestyle thumbnail: a stylish woman beside a supercar at golden hour, aspirational glamour and a bold headline." },
+        { ru: "Эксперт-объяснение", en: "Expert explainer", v: "An educational thumbnail: a charismatic presenter gesturing at glowing infographic elements, a clean confident look and a clear headline." },
+    ],
+    ad_poster: [
+        { ru: "Большая распродажа", en: "Big sale", v: "A punchy sale poster with an explosive discount headline, the hero product centered in a spotlight and a vivid color burst." },
+        { ru: "Модель с продуктом", en: "Model with product", v: "A glossy advertising poster: a beautiful confident model holding the product in glamorous studio light, a bold headline and price." },
+        { ru: "Брутальный герой бренда", en: "Brand hero (man)", v: "A bold poster with a brutal rugged man as the brand hero, dramatic side light, a strong product and a powerful tagline." },
+        { ru: "Премиальный запуск", en: "Premium launch", v: "An elegant product-launch poster: the new product floating in soft premium light, minimal luxury type and a refined palette." },
+        { ru: "Фестиваль / событие", en: "Event / festival", v: "A vibrant event poster bursting with energy and dynamic shapes, a big date headline and an exciting atmosphere." },
+        { ru: "Еда крупным планом", en: "Food hero", v: "An appetizing food poster: a delicious dish in mouth-watering detail with fresh ingredients and a bold tasty headline." },
+        { ru: "Фитнес / энергия", en: "Fitness energy", v: "A high-energy fitness poster: an athletic woman mid-motion with dynamic light and sweat, a motivational bold headline." },
+        { ru: "Скидка −50%", en: "50% off", v: "A loud discount poster with a giant -50% burst, the product in a beam of light and urgent contrasty colors." },
+        { ru: "Услуга / доверие", en: "Trusted service", v: "A clean trustworthy service poster: a friendly professional, a clear benefit headline and a calm confident palette." },
+        { ru: "Ретро-постер", en: "Retro poster", v: "A stylish retro advertising poster with vintage textures, bold mid-century type and warm nostalgic colors." },
+    ],
+    social_post: [
+        { ru: "Топ лайфхак", en: "Top lifehack", v: "A clean square social post with a short bold lifehack headline, a simple friendly illustration and a small swipe footer." },
+        { ru: "Цитата дня", en: "Quote of the day", v: "An inspiring quote post: elegant typography over a soft gradient, a small accent mark and a calm aesthetic." },
+        { ru: "Эмоция девушки", en: "Girl's mood", v: "A lifestyle social post: a beautiful woman laughing candidly in soft natural light, a warm authentic mood and a short caption." },
+        { ru: "Брутальный портрет", en: "Bold male portrait", v: "A striking square portrait of a brutal stylish man with an intense gaze, moody studio light and a short punchy caption." },
+        { ru: "Анонс / новинка", en: "Announcement", v: "A bold announcement post with a big NEW headline, a simple product hint and energetic accent shapes." },
+        { ru: "Большая цифра", en: "Big number fact", v: "A bold data post built around one huge number, a short caption and clean geometric accents." },
+        { ru: "До / после", en: "Before / after", v: "A clean before/after social post showing a transformation, a divider line and a short result caption." },
+        { ru: "Минимал-арт", en: "Minimal art", v: "A minimal aesthetic post: a single elegant object on lots of negative space, refined type and a calm palette." },
+        { ru: "Праздник", en: "Celebration", v: "A festive greeting post with a warm celebratory mood, soft confetti accents and a heartfelt short message." },
+        { ru: "Юмор / мем", en: "Fun / meme", v: "A playful humorous post with a punchy funny line, a bold expressive character and bright cheeky colors." },
+    ],
+    web_banner: [
+        { ru: "SaaS-герой", en: "SaaS hero", v: "A clean landing hero: a bold value headline and CTA on the left, a sleek product UI mockup on a device on the right, airy whitespace." },
+        { ru: "Команда / люди", en: "Team / people", v: "A warm landing hero with a friendly team smiling in soft daylight, a clear headline and a CTA button." },
+        { ru: "Девушка-амбассадор", en: "Brand ambassador", v: "A bright hero banner: a beautiful confident woman as the brand ambassador on the right, a bold benefit headline and CTA on the left." },
+        { ru: "Распродажа / промо", en: "Sale promo", v: "A high-contrast promo banner with a big discount headline, the product and an urgent CTA in an energetic palette." },
+        { ru: "Мобильное приложение", en: "App showcase", v: "A modern app-launch hero: a phone mockup with a slick UI, short benefit copy and a download CTA over a clean gradient." },
+        { ru: "Премиум-бренд", en: "Premium brand", v: "An elegant minimal hero: a premium product in soft light, a refined serif headline and generous negative space." },
+        { ru: "Курс / вебинар", en: "Course / webinar", v: "An education hero: a confident expert on the right, a clear course headline and a sign-up CTA on the left." },
+        { ru: "Тёмная тех-тема", en: "Dark tech", v: "A sleek dark-mode tech hero with glowing accents, a bold headline, a futuristic product render and a CTA." },
+        { ru: "Эко / природа", en: "Eco / nature", v: "A fresh natural hero with organic textures and greenery, a calm headline and a soft CTA in an earthy palette." },
+        { ru: "Чёрная пятница", en: "Black Friday", v: "A bold Black Friday hero: a dramatic dark background, a huge sale headline, a glowing product and an urgent CTA." },
+    ],
+    book_cover: [
+        { ru: "Деловой бестселлер", en: "Business bestseller", v: "An elegant business book cover: a bold title on top, a striking conceptual illustration and the author name at the bottom." },
+        { ru: "Героиня романа", en: "Novel heroine", v: "A dramatic novel cover featuring a beautiful woman with an emotional gaze, atmospheric lighting and elegant title typography." },
+        { ru: "Брутальный триллер", en: "Thriller hero", v: "A tense thriller cover: a brutal man's silhouette in moody shadow with dramatic rim light and a bold ominous title." },
+        { ru: "Фэнтези-мир", en: "Fantasy world", v: "An epic fantasy cover with a breathtaking magical landscape, a lone heroic figure and ornate title lettering." },
+        { ru: "Саморазвитие", en: "Self-help", v: "A bright uplifting self-help cover: a bold motivational title, a clean symbolic illustration and a warm optimistic palette." },
+        { ru: "Тёмный детектив", en: "Noir mystery", v: "A noir detective cover with a rain-soaked moody scene, a mysterious silhouette and classic dramatic typography." },
+        { ru: "Любовный роман", en: "Romance", v: "A tender romance cover: a beautiful couple in a soft emotional embrace at golden hour and an elegant flowing title." },
+        { ru: "Научпоп", en: "Science / non-fiction", v: "A clean science non-fiction cover with an elegant conceptual illustration, a confident modern title and a refined palette." },
+        { ru: "Детская книга", en: "Children's book", v: "A charming children's book cover with a cute friendly character, a playful colorful illustration and a rounded title." },
+        { ru: "Минимал-обложка", en: "Minimal cover", v: "A striking minimal book cover: one bold symbolic shape on a refined color field and elegant restrained typography." },
+    ],
+    logo: [
+        { ru: "Чистый текстовый логотип", en: "Clean wordmark", v: "A clean centered wordmark logo with a small minimal icon above and a tagline below, balanced and legible." },
+        { ru: "Геометрический знак", en: "Geometric mark", v: "A modern logo with a bold geometric icon mark, a confident sans-serif wordmark and generous whitespace." },
+        { ru: "Винтажный значок", en: "Vintage badge", v: "A vintage emblem logo: a circular badge with classic lettering, a small crest icon and a refined retro feel." },
+        { ru: "Премиум-монограмма", en: "Luxury monogram", v: "An elegant luxury monogram logo with a refined serif initial, a thin frame and a premium minimal palette." },
+        { ru: "Игривый бренд", en: "Playful brand", v: "A friendly playful logo with a rounded wordmark, a cute simple mascot icon and cheerful colors." },
+        { ru: "Тех-стартап", en: "Tech startup", v: "A sleek tech-startup logo with a clean geometric mark, a modern wordmark and a confident gradient accent." },
+        { ru: "Кофейня / крафт", en: "Coffee / craft", v: "A cozy craft logo with a hand-drawn icon, warm rustic lettering and an artisanal vibe." },
+        { ru: "Спортивный жирный", en: "Sport bold", v: "A bold athletic logo with a strong angular wordmark, a dynamic icon and high-energy contrast." },
+        { ru: "Бьюти / эстетика", en: "Beauty / elegant", v: "A delicate beauty logo with a thin elegant wordmark, a subtle floral mark and a soft refined palette." },
+        { ru: "Минимал-иконка", en: "Minimal icon", v: "A minimal logo: one clever simple icon mark with a quiet wordmark and lots of negative space." },
+    ],
+    music_cover: [
+        { ru: "Атмосферный абстракт", en: "Atmospheric abstract", v: "A square album cover with striking abstract atmospheric art matching the genre mood, with the title and artist at the bottom." },
+        { ru: "Портрет артистки", en: "Female artist portrait", v: "A moody album cover: an emotional close-up of a beautiful singer in dramatic light, with title and artist name below." },
+        { ru: "Брутальный рэп", en: "Hip-hop / bold man", v: "A bold hip-hop cover: a brutal confident man with an intense presence, gritty urban texture and heavy title type." },
+        { ru: "Неон-синтвейв", en: "Synthwave neon", v: "A retro synthwave cover with neon grids, a glowing sunset and chrome lettering in a nostalgic 80s mood." },
+        { ru: "Лоу-фай уют", en: "Lo-fi cozy", v: "A cozy lo-fi cover: a calm illustrated scene with warm lamplight and rain and a soft nostalgic title." },
+        { ru: "Тёмный метал", en: "Dark metal", v: "A dark metal cover with dramatic ominous art, harsh textures and bold aggressive lettering." },
+        { ru: "Инди-акварель", en: "Indie watercolor", v: "A dreamy indie cover with a delicate watercolor illustration, soft pastels and a hand-lettered title." },
+        { ru: "Танцевальный поп", en: "Dance pop", v: "A vibrant pop cover bursting with color and energy, a glamorous figure and a bold playful title." },
+        { ru: "Джаз-нуар", en: "Jazz noir", v: "A classy jazz cover with a smoky noir scene, a warm spotlight and elegant vintage typography." },
+        { ru: "Эмбиент-минимал", en: "Ambient minimal", v: "A minimal ambient cover: a single serene gradient field, a tiny title and a calm meditative mood." },
+    ],
+    product_card: [
+        { ru: "Чистая студия", en: "Clean studio", v: "An e-commerce product card: the product centered on a seamless studio background, sharp focus, with name and a bold price." },
+        { ru: "Косметика + модель", en: "Cosmetics + model", v: "A beauty product card: the cosmetic product with a beautiful model's glowing skin behind it in soft light, with name and price." },
+        { ru: "Гаджет / техно", en: "Gadget / tech", v: "A sleek tech product card: a gadget floating with a soft reflection on a dark gradient, with a clean name and price." },
+        { ru: "Еда / вкусно", en: "Tasty food", v: "A delicious food product card: the dish with fresh ingredients in appetizing light, with a bold name and price." },
+        { ru: "Мода / одежда", en: "Fashion item", v: "A stylish fashion product card: a clothing item on a clean backdrop with editorial flair, name and price." },
+        { ru: "Эко / натурально", en: "Eco / natural", v: "A natural product card: the product among organic textures and greenery in warm earthy light, with name and price." },
+        { ru: "Премиум-люкс", en: "Premium luxury", v: "A luxury product card: the premium item in refined dramatic light on a dark field, with an elegant name and price." },
+        { ru: "Скидка / акция", en: "On sale", v: "A promo product card: the product with a bold discount badge, an energetic accent and a striking sale price." },
+        { ru: "Напиток / свежесть", en: "Drink / fresh", v: "A refreshing drink product card: the beverage with splashes and condensation in vivid fresh colors, with name and price." },
+        { ru: "Хендмейд / крафт", en: "Handmade / craft", v: "A cozy handmade product card: the artisanal item on rustic textures in warm authentic light, with name and price." },
+    ],
+    packaging_label: [
+        { ru: "Премиум-этикетка", en: "Premium label", v: "A premium packaging label: the brand on top, a refined bottle or box mockup, the product name and a small detail line." },
+        { ru: "Крафт / эко", en: "Kraft / eco", v: "An eco packaging label with natural kraft textures, hand-drawn botanical accents and warm organic typography." },
+        { ru: "Косметика-люкс", en: "Luxury cosmetics", v: "A luxury cosmetics label: an elegant jar or bottle in soft light, a refined serif brand and a delicate palette." },
+        { ru: "Крафтовое пиво", en: "Craft beer", v: "A bold craft-beer label with a striking illustrated emblem, vintage lettering and a punchy color scheme." },
+        { ru: "Кофе / зерно", en: "Coffee pack", v: "A warm coffee packaging label with a rich illustrated mark, cozy earthy tones and confident brand type." },
+        { ru: "Снек / яркий", en: "Snack / bold", v: "A fun snack package label bursting with appetizing color, bold playful type and an energetic mascot." },
+        { ru: "Парфюм / минимал", en: "Perfume minimal", v: "A minimal perfume label: an elegant flacon on a soft field, thin refined typography and a luxurious calm." },
+        { ru: "Фарма / чистый", en: "Pharma / clean", v: "A clean clinical product label: a trustworthy bottle, precise legible typography and a fresh medical palette." },
+        { ru: "Винтаж / аптека", en: "Vintage apothecary", v: "A vintage apothecary label with ornate frames, classic serif lettering and an aged refined texture." },
+        { ru: "Спорт-питание", en: "Sports nutrition", v: "A bold sports-nutrition label: a powerful container with dynamic accents, strong type and high-energy contrast." },
+    ],
+    merch_print: [
+        { ru: "Дерзкий слоган", en: "Bold slogan", v: "A bold merch print with a big punchy slogan, a striking central graphic and a small accent line in high contrast." },
+        { ru: "Брутальный маскот", en: "Bold mascot", v: "A high-contrast t-shirt print with a fierce brutal mascot character, heavy lettering and an edgy streetwear vibe." },
+        { ru: "Девушка / поп-арт", en: "Pop-art girl", v: "A pop-art merch print with a striking stylish woman illustration, bold outlines, halftone dots and punchy colors." },
+        { ru: "Скейт / стрит", en: "Skate / street", v: "A gritty street-style print with a rebellious graphic, distressed textures and a bold slogan." },
+        { ru: "Природа / горы", en: "Outdoor / mountains", v: "An outdoor adventure print with a scenic mountain illustration, vintage badge lettering and an earthy palette." },
+        { ru: "Аниме-вайб", en: "Anime vibe", v: "An anime-style merch print with an expressive character, clean cel-shaded art and a bold catchphrase." },
+        { ru: "Готика / тёмный", en: "Dark gothic", v: "A dark gothic print with an intricate ominous illustration, sharp blackletter type and a moody palette." },
+        { ru: "Юмор / мем", en: "Funny meme", v: "A funny merch print with a quirky humorous character, a witty slogan and bright cheeky colors." },
+        { ru: "Ретро 80-е", en: "Retro 80s", v: "A retro 80s print with a neon sunset, bold chrome lettering and a nostalgic synthwave mood." },
+        { ru: "Минимал-лайн", en: "Minimal line art", v: "A minimal line-art merch print: a single elegant continuous-line illustration and a small refined slogan." },
+    ],
+};
+
+// Which OBJECT_PRESET a character brief should drop onto the subject object, so
+// the rendered figure matches the idea (e.g. "Bold girl" → a woman, not a man).
+// Keyed by the brief's `en` label (unique across LAYOUT_BRIEFS). Briefs not
+// listed here leave the layout's default object untouched.
+export const BRIEF_SUBJECT = {
+    "Shocked reaction": "brutal_man",
+    "Bold confident girl": "bold_girl",
+    "Money & success": "business_pro",
+    "Before & after": "happy_smile",
+    "Rage / drama": "brutal_man",
+    "Amazed wow": "glamour_woman",
+    "Gamer": "gamer",
+    "Luxury lifestyle": "glamour_woman",
+    "Model with product": "glamour_woman",
+    "Brand hero (man)": "brutal_man",
+    "Fitness energy": "athlete",
+    "Girl's mood": "bold_girl",
+    "Bold male portrait": "brutal_man",
+    "Brand ambassador": "glamour_woman",
+    "Novel heroine": "glamour_woman",
+    "Thriller hero": "brutal_man",
+    "Romance": "couple",
+    "Female artist portrait": "glamour_woman",
+    "Hip-hop / bold man": "brutal_man",
+    "Cosmetics + model": "glamour_woman",
+    "Pop-art girl": "bold_girl",
+    "Bold mascot": "mascot",
+};
 
 // ── Localization ───────────────────────────────────────────────────────────── //
 const I18N = {
     en: {
-        editor_subtitle: "visual caption designer", language: "Language", clear: "Clear all", mp_label: "MP",
-        add_text: "+ Text", add_obj: "+ Object", duplicate: "Duplicate", delete: "Delete block",
+        clear: "Clear all", mp_label: "MP",
+        add_text: "+ Text", add_obj: "+ Object",
         reference: "🖼 Reference", clear_ref: "✕ ref", cancel: "Cancel", save: "Save",
-        aspect: "Aspect ratio",
-        card_template: "Template (what to make)", layout_preset: "Layout template",
+        card_template: "Layout", layout_preset: "Layout template",
         layout_none: "— pick a template —",
-        card_style: "Style", style_preset: "Style preset", style_none: "— custom style —",
-        card_global: "General style",
-        card_overall: "1 · What you're making", card_look: "2 · How it should look", card_scene: "3 · What's in the scene",
-        hld: "One-line brief", medium: "Image type", aesthetics: "Mood & vibe",
-        lighting: "Lighting", art_style: "Art style", photo_label: "Camera & lens",
+        card_style: "Style",
+        hld: "Main idea", aesthetics: "Mood & vibe",
+        lighting: "Lighting", art_style: "Art style",
         image_palette: "Image colors (up to {n})", background: "Background", add_color: "Add color",
-        hld_hint: "Describe the whole image in one sentence, as if telling a person what to make. The model leans on this most. Example: a bold summer-sale poster for a sneaker brand.",
+        hld_hint: "One sentence describing the whole image — the model leans on this most. E.g. a bold summer-sale poster for a sneaker brand.",
         aesthetics_hint: "The overall feel in a few words. Example: bold and punchy, calm and minimal, retro, luxurious. Safe to leave blank.",
         lighting_hint: "How the scene is lit. Example: bright daylight, soft studio light, moody shadows, neon glow. Safe to leave blank.",
-        photo_hint: "Shown only for the Photo image type — the shot's optics: lens, film, framing. Example: 85mm portrait, shallow depth, 35mm film, wide aerial.",
         art_style_hint: "Shown for every image type except Photo — the drawing/rendering style. Example: flat vector, watercolor, low-poly 3D, bold poster graphics.",
         image_palette_hint: "Optional palette the whole image sticks to — add up to {n} colors. Leave empty to let Ideogram choose.",
         background_hint: "What sits behind everything — the backdrop behind your text and objects. Example: smooth orange-to-pink gradient, blurred city street, dark marble. Leave empty for a plain background.",
@@ -358,19 +603,11 @@ const I18N = {
         obj_desc: "Object description (desc)",
         select_block: "Select a block on the canvas, or add a new one (+ Text / + Object).",
         visual_only_preview: "(visual-only) this area becomes an empty placeholder — add the text by hand in Figma/Photoshop.",
-        cyr_banner: "Cyrillic in Ideogram 4 is less reliable than Latin. For print, generate the visual and add the Russian text by hand.",
-        cyr_long: "Long Russian text renders unreliably — shorten to 1–3 words or enable 'manual text'.",
-        cyr_upper: "Cyrillic comes out better in UPPERCASE — enable UPPERCASE.",
-        cyr_font: "This font preset is not recommended for Cyrillic — pick a Cyrillic-safe one.",
-        cyr_multi: "Multiple Cyrillic blocks reduce each one's accuracy — keep just one.",
-        cyr_mix: "Cyrillic and Latin in one image — better split into separate generations.",
-        cyr_badge: "Cyrillic hint added", cyr_warn_pill: "⚠ Cyrillic",
-        save_as_layout: "Save as template", save_as_style: "Save as style",
+        save_as_layout: "Save as template",
         export_btn: "⬇ Export", import_btn: "⬆ Import",
-        import_done: "Imported: {n}", import_empty: "No valid presets in the file", export_empty: "Nothing to export yet",
-        medium_hint: "Sets the look of the WHOLE image, not the text. 'Photograph' fills the camera field below; every other type fills the art-style field.",
+        import_done: "Imported: {n}", import_empty: "No valid presets in the file",
         preset_name_prompt: "Preset name:", custom_tag: "custom",
-        summary: "{t} text · {o} obj", empty_hint: "Click \"✎ Edit design\"", edit_btn: "✎ Edit design",
+        empty_hint: "Click \"✎ Edit design\"", edit_btn: "✎ Edit design",
         badge_text: "Text", badge_obj: "Object", bbox_label: "bbox [y,x,y,x]",
         tip_add_text: "Drops a new text block on the canvas — type the words you want printed on the image.",
         tip_add_obj: "Adds an object block — describe a thing to place in the scene, like a product or icon.",
@@ -388,10 +625,6 @@ const I18N = {
         tip_save_as_layout: "Save your current blocks, aspect ratio and background as a reusable template you can pick again later.",
         tip_export_layout: "Download this layout template as a JSON file to back it up or share it with someone else.",
         tip_import_layout: "Load layout template files from your computer so they show up in the template picker above.",
-        tip_style_preset: "Pick a saved style to instantly apply its colors, fonts and overall look to your design.",
-        tip_save_as_style: "Save these style fields, palette and font as a reusable preset you can apply to future designs.",
-        tip_export_style: "Download the current style as a JSON file to back it up or share it with others.",
-        tip_import_style: "Load style preset files from your computer to add them to the style picker.",
         tip_add_color: "Add a color: opens the color picker so you can pin one more shade to this palette.",
         tip_palette_swatch: "Click a color to remove it from the palette.",
         tip_obj_desc: "Describe what this graphic shows — e.g. a smiling sneaker, a coffee cup. Ideogram draws it here.",
@@ -412,24 +645,33 @@ const I18N = {
         tip_node_canvas: "A live preview of your design. Double-click anywhere here to open the editor.",
         tip_block_rect: "A block on the canvas — click to select, drag to move, double-click to edit its text, Alt+drag to clone it.",
         tip_resize_handle: "Drag a corner or edge to resize the selected block.",
+        opt_none: "(none)", opt_custom: "Custom…",
+        layers_title: "Layers", layers_empty: "No layers yet — add text or an object below.",
+        layer_untitled: "(untitled)", general_settings: "General settings",
+        json_prompt: "JSON prompt", copy: "Copy", copied: "Copied!",
+        tip_copy_json: "Copy the ready JSON prompt to the clipboard.",
+        object_preset: "Object preset", text_preset: "Text style preset",
+        tip_object_preset: "Pick a ready subject for this object — a character or a hero object. It replaces the description.",
+        tip_text_preset: "Pick a ready lettering look — font, weight, case and color in one click.",
+        clear_confirm: "Clear the whole design? Blocks, style, background and colors will all be reset.",
+        tip_layers: "Your blocks as a stack — the top of the list is the front of the image.",
+        tip_layer_row: "Click to select; drag up/down to change overlap. Higher = closer to the front.",
+        tip_layer_up: "Move one step toward the front.",
+        tip_layer_down: "Move one step toward the back.",
     },
     ru: {
-        editor_subtitle: "визуальный дизайнер капшена", language: "Язык", clear: "Очистить всё", mp_label: "МП",
-        add_text: "+ Текст", add_obj: "+ Объект", duplicate: "Дублировать", delete: "Удалить выбранный блок",
+        clear: "Очистить всё", mp_label: "МП",
+        add_text: "+ Текст", add_obj: "+ Объект",
         reference: "🖼 Референс", clear_ref: "✕ реф", cancel: "Отмена", save: "Сохранить",
-        aspect: "Соотношение сторон",
-        card_template: "Шаблон (что делаем)", layout_preset: "Шаблон-лейаут",
+        card_template: "Макет", layout_preset: "Шаблон-лейаут",
         layout_none: "— выберите шаблон —",
-        card_style: "Стиль", style_preset: "Пресет стиля", style_none: "— свой стиль —",
-        card_global: "Общий стиль",
-        card_overall: "1 · Что вы создаёте", card_look: "2 · Как это должно выглядеть", card_scene: "3 · Что в сцене",
-        hld: "Бриф одной строкой", medium: "Тип изображения", aesthetics: "Настроение и вайб",
-        lighting: "Освещение", art_style: "Художественный стиль", photo_label: "Камера и оптика",
+        card_style: "Стиль",
+        hld: "Главная идея", aesthetics: "Настроение и вайб",
+        lighting: "Освещение", art_style: "Художественный стиль",
         image_palette: "Цвета изображения (до {n})", background: "Фон", add_color: "Добавить цвет",
-        hld_hint: "Опишите всю картинку одним предложением, как будто объясняете человеку, что нарисовать. Модель опирается на него сильнее всего. Например: яркий постер летней распродажи кроссовок.",
+        hld_hint: "Одно предложение про всю картинку — модель опирается на него сильнее всего. Например: яркий постер летней распродажи кроссовок.",
         aesthetics_hint: "Общее ощущение в паре слов. Например: дерзко и сочно, спокойно и минимально, ретро, премиально. Можно оставить пустым.",
         lighting_hint: "Как освещена сцена. Например: яркий дневной свет, мягкий студийный, драматичные тени, неоновое свечение. Можно оставить пустым.",
-        photo_hint: "Показывается только для типа «Фото» — оптика кадра: объектив, плёнка, ракурс. Например: портрет 85мм, малая глубина, плёнка 35мм, широкий аэроснимок.",
         art_style_hint: "Показывается для всех типов, кроме «Фото» — стиль отрисовки. Например: плоский вектор, акварель, low-poly 3D, плакатная графика.",
         image_palette_hint: "Необязательная палитра, которой держится вся картинка — до {n} цветов. Оставьте пустым — Ideogram подберёт сам.",
         background_hint: "Что находится позади всего — задний фон под текстом и объектами. Например: плавный градиент из оранжевого в розовый, размытая улица, тёмный мрамор. Пусто — простой фон.",
@@ -444,19 +686,11 @@ const I18N = {
         obj_desc: "Описание объекта (desc)",
         select_block: "Выберите блок на холсте или добавьте новый (+ Текст / + Объект).",
         visual_only_preview: "(visual-only) область станет пустой плашкой без текста — добавьте надпись вручную в Figma/Photoshop.",
-        cyr_banner: "Кириллица в Ideogram 4 менее надёжна латиницы. Для печати — генерируйте визуал и добавляйте русский текст вручную.",
-        cyr_long: "Длинный русский текст рендерится ненадёжно — сократите до 1–3 слов или включите «текст вручную».",
-        cyr_upper: "Кириллица лучше выходит в ВЕРХНЕМ регистре — включите UPPERCASE.",
-        cyr_font: "Этот шрифт-пресет не рекомендуется для кириллицы — выберите Cyrillic-safe.",
-        cyr_multi: "Несколько кириллических блоков снижают точность каждого — оставьте один.",
-        cyr_mix: "Кириллица и латиница в одном изображении — лучше разнести на отдельные генерации.",
-        cyr_badge: "кириллица: hint добавлен", cyr_warn_pill: "⚠ кириллица",
-        save_as_layout: "Сохранить как шаблон", save_as_style: "Сохранить как стиль",
+        save_as_layout: "Сохранить как шаблон",
         export_btn: "⬇ Экспорт", import_btn: "⬆ Импорт",
-        import_done: "Импортировано: {n}", import_empty: "В файле нет валидных пресетов", export_empty: "Пока нечего экспортировать",
-        medium_hint: "Задаёт вид ВСЕЙ картинки, а не текста. «Фото» заполняет поле камеры ниже; остальные типы — поле художественного стиля.",
+        import_done: "Импортировано: {n}", import_empty: "В файле нет валидных пресетов",
         preset_name_prompt: "Имя пресета:", custom_tag: "свой",
-        summary: "{t} текст · {o} obj", empty_hint: "Нажмите «✎ Редактировать»", edit_btn: "✎ Редактировать",
+        empty_hint: "Нажмите «✎ Редактировать»", edit_btn: "✎ Редактировать",
         badge_text: "Текст", badge_obj: "Объект", bbox_label: "рамка [y,x,y,x]",
         tip_add_text: "Добавляет на холст новый текстовый блок — впишите слова, которые должны быть на картинке.",
         tip_add_obj: "Добавляет блок-объект — опишите предмет для сцены, например товар или иконку.",
@@ -474,10 +708,6 @@ const I18N = {
         tip_save_as_layout: "Сохраните текущие блоки, формат и фон как свой шаблон, чтобы быстро применять его снова.",
         tip_export_layout: "Скачайте этот лейаут-шаблон в виде JSON-файла, чтобы сохранить про запас или передать коллеге.",
         tip_import_layout: "Загрузите файлы лейаут-шаблонов с компьютера — они появятся в списке шаблонов выше.",
-        tip_style_preset: "Выберите сохранённый стиль — он сразу применит свои цвета, шрифты и общий вид к вашему дизайну.",
-        tip_save_as_style: "Сохраните эти настройки стиля, палитру и шрифт как пресет, чтобы применять их к будущим дизайнам.",
-        tip_export_style: "Скачайте текущий стиль в виде JSON-файла, чтобы сохранить на будущее или поделиться с другими.",
-        tip_import_style: "Загрузите файлы стилей с компьютера, чтобы добавить их в список выбора стилей.",
         tip_add_color: "Добавить цвет: откроет палитру выбора, чтобы закрепить ещё один оттенок в наборе.",
         tip_palette_swatch: "Нажмите на цвет, чтобы убрать его из палитры.",
         tip_obj_desc: "Опишите, что здесь нарисовать — например, улыбающийся кроссовок или чашка кофе. Ideogram это и нарисует.",
@@ -498,6 +728,19 @@ const I18N = {
         tip_node_canvas: "Живой предпросмотр дизайна. Дважды кликните здесь, чтобы открыть редактор.",
         tip_block_rect: "Блок на холсте — кликните, чтобы выбрать, тяните для перемещения, двойной клик — редактировать текст, Alt+перетаскивание — скопировать.",
         tip_resize_handle: "Тяните за угол или край, чтобы изменить размер выбранного блока.",
+        opt_none: "(не задано)", opt_custom: "Своё…",
+        layers_title: "Слои", layers_empty: "Пока нет слоёв — добавьте текст или объект ниже.",
+        layer_untitled: "(без названия)", general_settings: "Общие настройки",
+        json_prompt: "JSON-промпт", copy: "Копировать", copied: "Скопировано!",
+        tip_copy_json: "Скопировать готовый JSON-промпт в буфер обмена.",
+        object_preset: "Пресет объекта", text_preset: "Пресет стиля текста",
+        tip_object_preset: "Выберите готовый объект — персонажа или герой-предмет. Заменяет описание.",
+        tip_text_preset: "Выберите готовый вид надписи — шрифт, вес, регистр и цвет в один клик.",
+        clear_confirm: "Очистить весь дизайн? Блоки, стиль, фон и цвета будут сброшены.",
+        tip_layers: "Ваши блоки стопкой — верх списка это передний план картинки.",
+        tip_layer_row: "Клик — выбрать; тяните вверх/вниз, чтобы менять перекрытие. Выше = ближе к переднему плану.",
+        tip_layer_up: "На шаг к переднему плану.",
+        tip_layer_down: "На шаг к заднему плану.",
     },
 };
 
@@ -521,20 +764,6 @@ export function segLabel(group, value, lang = DEFAULT_LANG) {
     return SEG_LABELS[group]?.[lang]?.[value] ?? SEG_LABELS[group]?.en?.[value] ?? value;
 }
 
-// Localized display labels for the image-type (medium) <select>. The option
-// VALUES stay the raw tokens (used by the caption); only the visible text changes.
-const MEDIA_LABELS = {
-    graphic_design: { en: "Graphic design", ru: "Графический дизайн" },
-    photograph: { en: "Photograph", ru: "Фотография" },
-    illustration: { en: "Illustration", ru: "Иллюстрация" },
-    "3d_render": { en: "3D render", ru: "3D-рендер" },
-    painting: { en: "Painting", ru: "Живопись" },
-    digital_painting: { en: "Digital painting", ru: "Цифровая живопись" },
-};
-export function mediumLabel(token, lang = DEFAULT_LANG) {
-    return MEDIA_LABELS[token]?.[lang] ?? MEDIA_LABELS[token]?.en ?? token;
-}
-
 export function localizedName(item, lang = DEFAULT_LANG) {
     return (item && (item[`name_${lang}`] || item.name_en || item.name_ru || item.id)) || "";
 }
@@ -543,9 +772,8 @@ export function localizedDesc(item, lang = DEFAULT_LANG) {
     return (item && (item[`desc_${lang}`] || item.desc_en || item.desc_ru || "")) || "";
 }
 
-// ── Two-level presets ──────────────────────────────────────────────────────── //
+// ── Layout templates ──────────────────────────────────────────────────────── //
 export function layoutsList(presets) { return presets?.layouts || []; }
-export function stylesList(presets) { return presets?.styles || []; }
 
 // Instantiate a layout template's placeholder blocks for the given language.
 export function instantiateLayout(layout, lang = DEFAULT_LANG) {
@@ -575,19 +803,6 @@ export function instantiateLayout(layout, lang = DEFAULT_LANG) {
     };
 }
 
-// Resolve a style preset into the work.style object.
-export function applyStyle(style) {
-    return {
-        preset_id: style?.id || "",
-        aesthetics: style?.aesthetics || "",
-        lighting: style?.lighting || "",
-        medium: style?.medium || "graphic_design",
-        photo: style?.photo || "",
-        art_style: style?.art_style || "",
-        color_palette: cleanPalette(style?.color_palette || [], IMAGE_PALETTE_CAP),
-        font_preset_id: style?.font_preset_id || "",
-    };
-}
 
 // CSS font-family approximation per font preset id — for the canvas style preview only.
 const FONT_FAMILY = {

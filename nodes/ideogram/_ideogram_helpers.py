@@ -513,6 +513,11 @@ def build_caption(design_json: str) -> tuple[str, str]:
     if not elements and not background and not str(design.get("high_level_description") or "").strip():
         return "", aspect
 
+    # Editor-state fields intentionally NOT in the caption: version/language/
+    # layout_id (editor metadata), megapixels (consumed by dims_from_design, not
+    # here), ref (preview underlay), style.preset_id & style.font_preset_id and
+    # block.role (JS canvas-preview / new-block defaults only). Per-block
+    # font_preset_id IS consumed, via compose_text_desc.
     caption: dict = {"high_level_description": str(design.get("high_level_description") or "").strip()}
     style_description = _build_style_description(design.get("style"))
     if style_description:

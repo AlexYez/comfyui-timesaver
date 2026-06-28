@@ -21,12 +21,20 @@ import {
     ROUTE_BASE,
     WEIGHTS,
     applyCase,
-    applyStyle,
+    ARTSTYLE_PRESETS,
+    BACKGROUND_PRESETS,
+    LAYOUT_BRIEFS,
+    LIGHTING_PRESETS,
+    MOOD_PRESETS,
+    OBJECT_PRESETS,
+    TEXT_PRESETS,
+    BRIEF_SUBJECT,
     aspectFitBox,
     ASPECT_RATIOS,
     clamp,
     cleanPalette,
     composeTextDesc,
+    fetchCaptionPreview,
     DEFAULT_MEGAPIXELS,
     dimsFromAspectMp,
     MAX_MEGAPIXELS,
@@ -41,16 +49,13 @@ import {
     localizedDesc,
     localizedName,
     makeBlockId,
-    mediumLabel,
     normHex,
     paletteGradientCss,
     segLabel,
-    stylesList,
     t,
 } from "./_ideogram_shared.js";
 
 const STYLE_ID = "ts-ideogram-editor-styles";
-const MEDIA_OPTIONS = ["graphic_design", "photograph", "illustration", "3d_render", "painting", "digital_painting"];
 
 function ensureStyles() {
     if (document.getElementById(STYLE_ID)) return;
@@ -72,7 +77,7 @@ function ensureStyles() {
 .ts-ideoe-block{position:absolute;box-sizing:border-box;border:1.5px solid #7aa2ff;background:rgba(122,162,255,.14);cursor:move;overflow:hidden;border-radius:2px}
 .ts-ideoe-block.is-obj{border-color:#82d6a8;background:rgba(130,214,168,.16)}
 .ts-ideoe-block.is-visual{border-style:dashed;border-color:#9aa6b8;background:rgba(154,166,184,.12)}
-.ts-ideoe-block.is-selected{box-shadow:0 0 0 2px #ffd500, 0 0 0 4px rgba(255,213,0,.25);z-index:5}
+.ts-ideoe-block.is-selected{box-shadow:0 0 0 2px #ffd500, 0 0 0 4px rgba(255,213,0,.25)}
 .ts-ideoe-block__label{position:absolute;left:0;top:0;max-width:100%;padding:1px 5px;font-size:11px;font-weight:600;color:#0b0e13;background:rgba(255,255,255,.82);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none;border-bottom-right-radius:4px}
 .ts-ideoe-block__text{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:6px;font-weight:800;line-height:1.05;text-shadow:0 1px 2px rgba(0,0,0,.7);white-space:pre-wrap;overflow:hidden;pointer-events:none}
 .ts-ideoe-block__obj{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:8px;font-size:12px;font-weight:600;color:rgba(255,255,255,.85);overflow:hidden;pointer-events:none}
@@ -81,8 +86,10 @@ function ensureStyles() {
 .ts-ideoe-handle.sw{left:-6px;bottom:-6px;cursor:nesw-resize}.ts-ideoe-handle.se{right:-6px;bottom:-6px;cursor:nwse-resize}
 .ts-ideoe-handle.n{left:50%;top:-6px;transform:translateX(-50%);cursor:ns-resize}.ts-ideoe-handle.s{left:50%;bottom:-6px;transform:translateX(-50%);cursor:ns-resize}
 .ts-ideoe-handle.w{left:-6px;top:50%;transform:translateY(-50%);cursor:ew-resize}.ts-ideoe-handle.e{right:-6px;top:50%;transform:translateY(-50%);cursor:ew-resize}
-.ts-ideoe textarea.ts-ideoe-inline{position:absolute;z-index:20;width:auto;box-sizing:border-box;border:2px solid #ffd500;border-radius:3px;background:#0c1016;color:#fff;caret-color:#ffd500;font:700 14px/1.2 "Segoe UI",sans-serif;padding:6px 8px;resize:none;outline:none;text-align:center;box-shadow:0 4px 18px rgba(0,0,0,.6)}
-.ts-ideoe-inspector{flex:0 0 340px;display:flex;flex-direction:column;border-left:1px solid #1c2430;background:#0c1118;min-height:0}
+.ts-ideoe textarea.ts-ideoe-inline{position:absolute;z-index:500;width:auto;box-sizing:border-box;border:2px solid #ffd500;border-radius:3px;background:#0c1016;color:#fff;caret-color:#ffd500;font:700 14px/1.2 "Segoe UI",sans-serif;padding:6px 8px;resize:none;outline:none;text-align:center;box-shadow:0 4px 18px rgba(0,0,0,.6)}
+.ts-ideoe-inspector{flex:0 0 340px;display:flex;flex-direction:column;background:#0c1118;min-height:0;min-width:0}
+.ts-ideoe-inspector__head{display:flex;align-items:center;padding:9px 12px;border-bottom:1px solid #1c2430;background:#10151d;flex:0 0 auto}
+.ts-ideoe-inspector__title{font-weight:700;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#cdd6e6}
 .ts-ideoe-inspector__scroll{flex:1 1 auto;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:12px}
 .ts-ideoe-card{border:1px solid #1f2937;border-radius:10px;background:#0f151d;padding:10px;display:flex;flex-direction:column;gap:8px}
 .ts-ideoe-card h3{margin:0;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#8a93a3}
@@ -133,6 +140,39 @@ function ensureStyles() {
 .ts-ideoe-hint{font-size:11px;color:#8a93a3;line-height:1.4;margin:2px 0 0}
 .ts-ideoe-tip{position:fixed;z-index:12000;max-width:300px;background:#0b1119;color:#e9eef6;border:1px solid #2a3950;border-radius:8px;padding:7px 10px;font-size:12px;line-height:1.45;box-shadow:0 8px 26px rgba(0,0,0,.6);pointer-events:none;opacity:0;transition:opacity .12s ease;white-space:normal}
 .ts-ideoe-empty{color:#6b7688;font-size:12px;text-align:center;padding:24px 8px}
+.ts-ideoe-layers{flex:0 0 252px;display:flex;flex-direction:column;background:#0c1118;min-height:0;min-width:0}
+.ts-ideoe-blockpanel{flex:1 1 auto;min-height:0;overflow-y:auto;padding:10px;display:flex;flex-direction:column;gap:10px}
+.ts-ideoe-resizer{flex:0 0 6px;cursor:col-resize;background:transparent;position:relative;z-index:6;align-self:stretch}
+.ts-ideoe-resizer::after{content:"";position:absolute;left:2px;top:0;bottom:0;width:2px;background:#1c2430;transition:background .1s}
+.ts-ideoe-resizer:hover::after,.ts-ideoe-resizer.is-drag::after{background:#4da3ff}
+.ts-ideoe-vresizer{flex:0 0 7px;cursor:row-resize;background:transparent;position:relative}
+.ts-ideoe-vresizer::after{content:"";position:absolute;top:2px;left:6px;right:6px;height:3px;border-radius:2px;background:#2b3850;transition:background .1s}
+.ts-ideoe-vresizer:hover::after,.ts-ideoe-vresizer.is-drag::after{background:#4da3ff}
+.ts-ideoe-jsonhead{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.ts-ideoe-json{margin:0;max-height:300px;overflow:auto;background:#080c12;border:1px solid #1c2733;border-radius:6px;padding:8px 10px;font-family:Consolas,'SF Mono','Courier New',monospace;font-size:11px;line-height:1.45;color:#bfe3c2;white-space:pre;tab-size:2}
+.ts-ideoe-copybtn{padding:4px 10px;font-size:11px}
+.ts-ideoe-copybtn.ok{background:#1f7a4d;border-color:#1f7a4d;color:#eafff3}
+.ts-ideoe-layers__head{display:flex;align-items:center;gap:7px;padding:9px 11px;border-bottom:1px solid #1c2430;background:#10151d;flex:0 0 auto}
+.ts-ideoe-layers__title{font-weight:700;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#cdd6e6}
+.ts-ideoe-layers__count{font-size:10px;color:#7d899b;background:rgba(255,255,255,.06);border-radius:8px;padding:1px 7px;font-variant-numeric:tabular-nums}
+.ts-ideoe-layers__list{flex:0 0 auto;min-height:56px;overflow-y:auto;padding:6px;display:flex;flex-direction:column;gap:4px}
+.ts-ideoe-layers__foot{flex:0 0 auto;display:grid;grid-template-columns:1fr 1fr;gap:5px;padding:8px;border-top:1px solid #1c2430;background:#0c1016}
+.ts-ideoe-layers__foot .ts-ideoe-btn{justify-content:center;padding:6px 4px}
+.ts-ideoe-lrow{display:flex;align-items:center;gap:7px;padding:5px 6px;border:1px solid #1d2532;border-radius:8px;background:#0f151d;cursor:grab;position:relative;touch-action:none}
+.ts-ideoe-lrow:hover{border-color:#2b3850;background:#121a24}
+.ts-ideoe-lrow.is-selected{border-color:#ffd500;background:#171a16;box-shadow:0 0 0 1px rgba(255,213,0,.35)}
+.ts-ideoe-lrow.is-placeholder{opacity:.45;background:#0a0e14;border-style:dashed;border-color:#4da3ff}
+.ts-ideoe-lrow.is-placeholder>*{visibility:hidden}
+.ts-ideoe-ldrag{position:fixed;z-index:13000;pointer-events:none;margin:0;border-color:#4da3ff;background:#17304d;box-shadow:0 12px 30px rgba(0,0,0,.6);transform:scale(1.04);opacity:.97;cursor:grabbing}
+.ts-ideoe-lchip{flex:0 0 auto;width:24px;height:24px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;color:#0b0e13;box-shadow:inset 0 0 0 1px rgba(0,0,0,.2)}
+.ts-ideoe-lbody{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:1px;pointer-events:none}
+.ts-ideoe-lname{font-size:12px;color:#e9eef6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600;line-height:1.25}
+.ts-ideoe-lmeta{font-size:10px;color:#7d899b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.2}
+.ts-ideoe-lacts{position:absolute;right:3px;top:50%;transform:translateY(-50%);display:flex;gap:1px;opacity:0;transition:opacity .1s ease;background:rgba(10,14,20,.92);border:1px solid #232d3b;border-radius:6px;padding:2px;pointer-events:none}
+.ts-ideoe-lrow:hover .ts-ideoe-lacts,.ts-ideoe-lrow.is-selected .ts-ideoe-lacts{opacity:1;pointer-events:auto}
+.ts-ideoe-lact{width:19px;height:19px;display:flex;align-items:center;justify-content:center;border:0;background:transparent;color:#9aa6b8;border-radius:4px;cursor:pointer;font-size:10px;line-height:1;padding:0}
+.ts-ideoe-lact:hover{background:#26303f;color:#fff}
+.ts-ideoe-lact.danger:hover{background:#5a2626;color:#ffb4b1}
 `;
     document.head.appendChild(style);
 }
@@ -249,13 +289,19 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
     if (!LANGS.includes(work.language)) work.language = DEFAULT_LANG;
 
     const layouts = layoutsList(presets);
-    const styles = stylesList(presets);
     const fontList = presets?.fonts || [];
     const fontMap = buildFontsById(presets);
     const tr = (key, vars) => t(key, work.language, vars);
 
     let selectedId = work.blocks[0]?.id || null;
     let lastClickInfo = { id: null, t: 0 };
+    // Block ids whose object the user set explicitly via the object-preset
+    // dropdown — a later brief change must NOT clobber these (hierarchy:
+    // explicit object preset > brief subject > layout default).
+    const userSetSubjects = new Set();
+    // Teardown for an in-progress pointer drag (layer reorder / panel resize), so
+    // closing the editor mid-drag can't leak window listeners or a floating clone.
+    let activeDragCleanup = null;
 
     const overlay = el("div", "ts-ideoe-overlay ts-ideoe");
     const shell = el("div", "ts-ideoe-shell");
@@ -266,8 +312,10 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
 
     const addText = el("button", "ts-ideoe-btn");
     const addObj = el("button", "ts-ideoe-btn");
-    const dupBtn = el("button", "ts-ideoe-btn");
-    const delBtn = el("button", "ts-ideoe-btn danger");
+    // Duplicate/Delete are icon buttons in the narrow layers footer (text labels
+    // would force the panel wider); their meaning lives in the hover tooltips.
+    const dupBtn = el("button", "ts-ideoe-btn", "⧉");
+    const delBtn = el("button", "ts-ideoe-btn danger", "✕");
     const clearBtn = el("button", "ts-ideoe-btn danger");
 
     const langSeg = el("div", "ts-ideoe-langseg");
@@ -301,8 +349,10 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
     const cancelBtn = el("button", "ts-ideoe-btn");
     const saveBtn = el("button", "ts-ideoe-btn primary");
 
-    header.append(title, addText, addObj, dupBtn, delBtn, clearBtn, el("div", "ts-ideoe-spacer"),
-        langSeg, aspectSel, mpWrap, refBtn, refClear, cancelBtn, saveBtn);
+    // Block CRUD (+Text/+Object/Duplicate/Delete) lives in the layers panel
+    // footer now; the header keeps only document-level controls.
+    header.append(title, el("div", "ts-ideoe-spacer"),
+        langSeg, aspectSel, mpWrap, refBtn, refClear, clearBtn, cancelBtn, saveBtn);
 
     // Hover tooltips for every toolbar control (localized at show time).
     tip(addText, "tip_add_text"); tip(addObj, "tip_add_obj"); tip(dupBtn, "tip_duplicate");
@@ -314,8 +364,8 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
     function relabelHeader() {
         addText.textContent = tr("add_text");
         addObj.textContent = tr("add_obj");
-        dupBtn.textContent = tr("duplicate");
-        delBtn.textContent = tr("delete");
+        layersTitle.textContent = tr("layers_title");
+        inspectorTitle.textContent = tr("general_settings");
         refBtn.textContent = tr("reference");
         refClear.textContent = tr("clear_ref");
         cancelBtn.textContent = tr("cancel");
@@ -347,13 +397,159 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
     stage.appendChild(artboard);
     stageWrap.appendChild(stage);
 
+    // Layers panel (left): the block stack, frontmost at the top — mirrors a
+    // Photoshop layers list. Selection + drag-reorder drive the canvas z-order
+    // (which is simply the work.blocks array order).
+    const layersPanel = el("div", "ts-ideoe-layers");
+    const layersHead = el("div", "ts-ideoe-layers__head");
+    const layersTitle = el("div", "ts-ideoe-layers__title", "Layers");
+    const layersCount = el("div", "ts-ideoe-layers__count", "0");
+    tip(layersHead, "tip_layers");
+    layersHead.append(layersTitle, layersCount);
+    const layersList = el("div", "ts-ideoe-layers__list");
+    const layersFoot = el("div", "ts-ideoe-layers__foot");
+    layersFoot.append(addText, addObj, dupBtn, delBtn);
+    // Selected-block settings live UNDER the layers list (same left column) so
+    // switching blocks never means scrolling the right inspector.
+    const blockPanel = el("div", "ts-ideoe-blockpanel");
+    layersPanel.append(layersHead, layersList, layersFoot, blockPanel);
+
     const inspector = el("div", "ts-ideoe-inspector");
+    const inspectorHead = el("div", "ts-ideoe-inspector__head");
+    const inspectorTitle = el("div", "ts-ideoe-inspector__title", "General settings");
+    inspectorHead.append(inspectorTitle);
     const banner = el("div", "ts-ideoe-banner");
     banner.style.display = "none";
     const inspectorScroll = el("div", "ts-ideoe-inspector__scroll");
-    inspector.append(banner, inspectorScroll);
+    inspector.append(inspectorHead, banner, inspectorScroll);
 
-    body.append(stageWrap, inspector);
+    // Live JSON-prompt panel (bottom of the general-settings column): polls the
+    // server-authoritative caption builder (/ts_ideogram/preview, no JS/Python
+    // drift) and shows it pretty-printed with a copy button. Built once and
+    // re-appended on every renderInspector so its <pre> ref stays stable.
+    const jsonCardEl = el("div", "ts-ideoe-card");
+    const jsonHead = el("div", "ts-ideoe-jsonhead");
+    const jsonTitle = el("h3", null, "JSON");
+    const copyBtn = el("button", "ts-ideoe-btn ghost small ts-ideoe-copybtn");
+    tip(copyBtn, "tip_copy_json");
+    jsonHead.append(jsonTitle, copyBtn);
+    const jsonPre = el("pre", "ts-ideoe-json", "—");
+    jsonCardEl.append(jsonHead, jsonPre);
+    function relabelJson() {
+        jsonTitle.textContent = tr("json_prompt");
+        copyBtn.classList.remove("ok");
+        copyBtn.textContent = tr("copy");
+    }
+    function prettyJson(s) { try { return JSON.stringify(JSON.parse(s), null, 2); } catch { return s; } }
+    let lastJsonSig = null;
+    let jsonReqId = 0;
+    async function refreshJson(force) {
+        const dj = JSON.stringify(work);
+        if (!force && dj === lastJsonSig) return;  // only re-fetch when the design changed
+        const myReq = ++jsonReqId;
+        const res = await fetchCaptionPreview(dj);
+        if (myReq !== jsonReqId) return;  // a newer request superseded this one — drop the stale answer
+        if (!res) return;  // transient failure: keep the last good panel + signature so the next tick retries
+        lastJsonSig = dj;
+        const text = res.json_prompt ? prettyJson(res.json_prompt) : "";
+        jsonPre.textContent = text || "—";
+    }
+    copyBtn.addEventListener("click", async () => {
+        const text = jsonPre.textContent || "";
+        let ok = false;
+        try { await navigator.clipboard.writeText(text); ok = true; }
+        catch {
+            try {
+                const ta = el("textarea"); ta.value = text;
+                ta.style.position = "fixed"; ta.style.opacity = "0";
+                document.body.appendChild(ta); ta.select();
+                ok = document.execCommand("copy"); ta.remove();
+            } catch { ok = false; }
+        }
+        if (ok) { copyBtn.classList.add("ok"); copyBtn.textContent = tr("copied"); setTimeout(relabelJson, 1200); }
+    });
+    const jsonTimer = setInterval(() => refreshJson(false), 500);
+
+    // Resizable, fluid panels: drag the dividers to set the layers/inspector
+    // widths (and the vertical divider for the layers-list height); the stage
+    // flexes to fill the rest. All sizes persist per-user via readPanelSize.
+    // The left column now holds the layers list AND the selected block's
+    // settings, so it needs more room than the layers-only version (new key
+    // invalidates the old narrow saved width).
+    const LAYERS_W = { def: 252, min: 200, max: 400, key: "ts.ideoe.leftW" };
+    const INSPECTOR_W = { def: 340, min: 268, max: 520, key: "ts.ideoe.inspectorW" };
+    function readPanelSize(cfg) {
+        try { const v = parseInt(localStorage.getItem(cfg.key), 10); if (Number.isFinite(v)) return clamp(v, cfg.min, cfg.max); } catch { /* ignore */ }
+        return cfg.def;
+    }
+    function savePanelSize(cfg, w) { try { localStorage.setItem(cfg.key, String(Math.round(w))); } catch { /* ignore */ } }
+    layersPanel.style.flex = `0 0 ${readPanelSize(LAYERS_W)}px`;
+    inspector.style.flex = `0 0 ${readPanelSize(INSPECTOR_W)}px`;
+    function makeResizer(panel, cfg, grow) {
+        // grow = +1 when dragging right enlarges the panel (a LEFT-side panel),
+        // -1 when dragging right shrinks it (a RIGHT-side panel).
+        const divEl = el("div", "ts-ideoe-resizer");
+        divEl.addEventListener("pointerdown", (ev) => {
+            ev.preventDefault();
+            const startX = ev.clientX;
+            const startW = panel.getBoundingClientRect().width;
+            divEl.classList.add("is-drag");
+            function onMove(e) {
+                const w = clamp(startW + grow * (e.clientX - startX), cfg.min, cfg.max);
+                panel.style.flex = `0 0 ${w}px`;
+                layoutArtboard();
+                renderBlocks();
+            }
+            function onUp() {
+                activeDragCleanup = null;
+                window.removeEventListener("pointermove", onMove);
+                window.removeEventListener("pointerup", onUp);
+                window.removeEventListener("pointercancel", onUp);
+                divEl.classList.remove("is-drag");
+                savePanelSize(cfg, panel.getBoundingClientRect().width);
+            }
+            window.addEventListener("pointermove", onMove);
+            window.addEventListener("pointerup", onUp);
+            window.addEventListener("pointercancel", onUp);
+            activeDragCleanup = onUp;
+        });
+        return divEl;
+    }
+    // Vertical divider between the layers list and the block settings (same
+    // column): drag to resize the layers area; the height persists.
+    const LAYERS_LIST_H = { def: 200, min: 80, max: 640, key: "ts.ideoe.listH" };
+    layersList.style.height = `${readPanelSize(LAYERS_LIST_H)}px`;
+    function makeVResizer(targetEl, cfg) {
+        const divEl = el("div", "ts-ideoe-vresizer");
+        divEl.addEventListener("pointerdown", (ev) => {
+            ev.preventDefault();
+            const startY = ev.clientY;
+            const startH = targetEl.getBoundingClientRect().height;
+            divEl.classList.add("is-drag");
+            function onMove(e) {
+                targetEl.style.height = `${clamp(startH + (e.clientY - startY), cfg.min, cfg.max)}px`;
+            }
+            function onUp() {
+                activeDragCleanup = null;
+                window.removeEventListener("pointermove", onMove);
+                window.removeEventListener("pointerup", onUp);
+                window.removeEventListener("pointercancel", onUp);
+                divEl.classList.remove("is-drag");
+                savePanelSize(cfg, targetEl.getBoundingClientRect().height);
+            }
+            window.addEventListener("pointermove", onMove);
+            window.addEventListener("pointerup", onUp);
+            window.addEventListener("pointercancel", onUp);
+            activeDragCleanup = onUp;
+        });
+        return divEl;
+    }
+    layersPanel.insertBefore(makeVResizer(layersList, LAYERS_LIST_H), blockPanel);
+
+    // Columns: general settings on the LEFT, layers + block settings on the
+    // RIGHT (the stage flexes between). The grow sign flips with the side.
+    body.append(inspector, makeResizer(inspector, INSPECTOR_W, +1), stageWrap,
+        makeResizer(layersPanel, LAYERS_W, -1), layersPanel);
     shell.append(header, body);
     overlay.appendChild(shell);
     document.body.appendChild(overlay);
@@ -467,10 +663,14 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
     function renderBlocks() {
         applyStylePreview();
         blocksLayer.innerHTML = "";
-        work.blocks.forEach((block) => {
+        work.blocks.forEach((block, i) => {
             const r = block.rect || { x: 0.1, y: 0.1, w: 0.3, h: 0.2 };
             const div = el("div", "ts-ideoe-block");
             div.dataset.id = block.id;
+            // Stack by array order so the layers panel reorder is visible on the
+            // canvas (last in the array = frontmost). Selection no longer forces
+            // a block on top — z-order must reflect the real layer order.
+            div.style.zIndex = String(i + 1);
             tip(div, "tip_block_rect");
             div.classList.toggle("is-obj", block.type === "obj");
             div.classList.toggle("is-visual", block.type === "text" && !!block.visual_only);
@@ -551,6 +751,149 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
         });
     }
 
+    // ── Layers panel (left) ─────────────────────────────────────────────── //
+    function layerName(block) {
+        if (block.type === "obj") return (block.desc || "").trim() || tr("layer_untitled");
+        const text = (block.text || "").split("\n")[0].trim();
+        return text || tr("layer_untitled");
+    }
+    function layerMeta(block) {
+        if (block.type === "obj") return tr("badge_obj");
+        if (block.visual_only) return `${tr("badge_text")} · ↳`;
+        const prom = block.prominence ? ` · ${segLabel("prominence", block.prominence, work.language)}` : "";
+        return `${tr("badge_text")}${prom}`;
+    }
+    function layerChip(block) {
+        const chip = el("div", "ts-ideoe-lchip");
+        if (block.type === "obj") { chip.textContent = "▦"; chip.style.background = "#82d6a8"; }
+        else if (block.visual_only) { chip.textContent = "↳"; chip.style.background = "#9aa6b8"; }
+        else { chip.textContent = "T"; chip.style.background = "#7aa2ff"; }
+        return chip;
+    }
+
+    function renderLayers() {
+        layersCount.textContent = String(work.blocks.length);
+        layersList.innerHTML = "";
+        if (!work.blocks.length) {
+            layersList.appendChild(el("div", "ts-ideoe-empty", tr("layers_empty")));
+            return;
+        }
+        // Visual top→bottom = front→back, i.e. the reverse of the array (last = front).
+        for (let i = work.blocks.length - 1; i >= 0; i -= 1) {
+            const block = work.blocks[i];
+            const rowEl = el("div", "ts-ideoe-lrow");
+            rowEl.dataset.id = block.id;
+            rowEl.classList.toggle("is-selected", block.id === selectedId);
+            tip(rowEl, "tip_layer_row");
+            const bodyEl = el("div", "ts-ideoe-lbody");
+            bodyEl.append(
+                el("div", "ts-ideoe-lname", layerName(block)),
+                el("div", "ts-ideoe-lmeta", layerMeta(block)),
+            );
+            const acts = el("div", "ts-ideoe-lacts");
+            const up = tip(el("button", "ts-ideoe-lact", "▲"), "tip_layer_up");
+            up.addEventListener("click", (e) => { e.stopPropagation(); moveBlock(block.id, +1); });
+            const down = tip(el("button", "ts-ideoe-lact", "▼"), "tip_layer_down");
+            down.addEventListener("click", (e) => { e.stopPropagation(); moveBlock(block.id, -1); });
+            const del = tip(el("button", "ts-ideoe-lact danger", "✕"), "tip_delete");
+            del.addEventListener("click", (e) => { e.stopPropagation(); selectedId = block.id; deleteSelected(); });
+            acts.append(up, down, del);
+            rowEl.append(layerChip(block), bodyEl, acts);
+            rowEl.addEventListener("pointerdown", (e) => startLayerDrag(e, block, rowEl));
+            layersList.appendChild(rowEl);
+        }
+    }
+
+    // Reorder by one step. dir +1 = toward the front (end of array), -1 = back.
+    function moveBlock(id, dir) {
+        const i = work.blocks.findIndex((b) => b.id === id);
+        const j = i + dir;
+        if (i < 0 || j < 0 || j >= work.blocks.length) return;
+        const arr = work.blocks;
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+        renderBlocks();
+        renderLayers();
+    }
+    function moveToFront(id) {
+        const i = work.blocks.findIndex((b) => b.id === id);
+        if (i < 0) return;
+        work.blocks.push(work.blocks.splice(i, 1)[0]);
+        renderBlocks();
+        renderLayers();
+    }
+    function moveToBack(id) {
+        const i = work.blocks.findIndex((b) => b.id === id);
+        if (i < 0) return;
+        work.blocks.unshift(work.blocks.splice(i, 1)[0]);
+        renderBlocks();
+        renderLayers();
+    }
+
+    // Pointer-based drag reorder: live-move the row in the DOM, then read the
+    // resulting order back on release (top→bottom = front→back → reverse to array).
+    // A sub-threshold press is treated as a plain click → select.
+    function startLayerDrag(ev, block, rowEl) {
+        if (ev.target.closest(".ts-ideoe-lact")) return;  // action buttons handle themselves
+        const startY = ev.clientY;
+        const startRect = rowEl.getBoundingClientRect();
+        const grabDX = ev.clientX - startRect.left;
+        const grabDY = ev.clientY - startRect.top;
+        let moved = false;
+        let clone = null;  // the "picked up" row that follows the cursor
+        function rowAfter(clientY) {
+            const rows = [...layersList.querySelectorAll(".ts-ideoe-lrow")].filter((r) => r !== rowEl);
+            for (const r of rows) {
+                const rect = r.getBoundingClientRect();
+                if (clientY < rect.top + rect.height / 2) return r;
+            }
+            return null;
+        }
+        function onMove(e) {
+            if (!moved && Math.abs(e.clientY - startY) < 4) return;
+            if (!moved) {
+                moved = true;
+                // Lift a floating clone that tracks the cursor; the original row
+                // becomes a dashed placeholder marking the live drop slot.
+                clone = rowEl.cloneNode(true);
+                clone.classList.add("ts-ideoe-ldrag");
+                clone.classList.remove("is-selected");
+                clone.style.width = `${startRect.width}px`;
+                document.body.appendChild(clone);
+                rowEl.classList.add("is-placeholder");
+            }
+            e.preventDefault();
+            clone.style.left = `${e.clientX - grabDX}px`;
+            clone.style.top = `${e.clientY - grabDY}px`;
+            const after = rowAfter(e.clientY);
+            if (after === null) layersList.appendChild(rowEl);
+            else if (after !== rowEl) layersList.insertBefore(rowEl, after);
+        }
+        let done = false;
+        function endDrag(commit) {
+            if (done) return;
+            done = true;
+            activeDragCleanup = null;
+            window.removeEventListener("pointermove", onMove);
+            window.removeEventListener("pointerup", onUp);
+            window.removeEventListener("pointercancel", onCancel);
+            if (clone) { clone.remove(); clone = null; }
+            rowEl.classList.remove("is-placeholder");
+            if (!moved) { if (commit) selectBlock(block.id); return; }
+            if (!commit) { renderLayers(); return; }  // cancelled mid-drag → restore order from data
+            const ids = [...layersList.querySelectorAll(".ts-ideoe-lrow")].map((r) => r.dataset.id);
+            const byId = new Map(work.blocks.map((b) => [b.id, b]));
+            work.blocks = ids.map((id) => byId.get(id)).filter(Boolean).reverse();
+            renderBlocks();
+            renderLayers();
+        }
+        function onUp() { endDrag(true); }
+        function onCancel() { endDrag(false); }
+        window.addEventListener("pointermove", onMove);
+        window.addEventListener("pointerup", onUp);
+        window.addEventListener("pointercancel", onCancel);
+        activeDragCleanup = () => endDrag(false);
+    }
+
     // ── Inline (double-click) editing on the canvas ─────────────────────── //
     let inlineEl = null;
     function startInlineEdit(block) {
@@ -563,7 +906,10 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
         // Match the on-canvas rendered font size EXACTLY so the text never changes
         // size when entering/leaving edit mode — identical for every block type.
         const innerSel = block.type === "obj" ? ".ts-ideoe-block__obj" : ".ts-ideoe-block__text";
-        const renderedEl = blocksLayer.querySelector(`[data-id="${block.id}"] ${innerSel}`);
+        // block.id may come from a loaded/imported workflow (untrusted) — escape it
+        // so a metacharacter id can't throw a SyntaxError inside this handler.
+        let renderedEl = null;
+        try { renderedEl = blocksLayer.querySelector(`[data-id="${CSS.escape(String(block.id))}"] ${innerSel}`); } catch { renderedEl = null; }
         const rendered = renderedEl ? parseFloat(getComputedStyle(renderedEl).fontSize) || 0 : 0;
         const fs = Math.round(rendered || Math.max(18, Math.min(r.h * ab.h * 0.5, 64)));
         ta.style.fontSize = `${fs}px`;
@@ -595,7 +941,8 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
             if (block.type === "obj") block.desc = v; else block.text = v;
             ta.remove();
             renderBlocks();
-            renderInspector();
+            renderLayers();
+            renderBlockPanel();
         };
         const cancel = () => {
             if (!inlineEl) return;
@@ -653,12 +1000,16 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
             updateBboxReadout();
         }
         function onUp() {
+            activeDragCleanup = null;
             window.removeEventListener("pointermove", onMove);
             window.removeEventListener("pointerup", onUp);
+            window.removeEventListener("pointercancel", onUp);
             renderBlocks();
         }
         window.addEventListener("pointermove", onMove);
         window.addEventListener("pointerup", onUp);
+        window.addEventListener("pointercancel", onUp);
+        activeDragCleanup = onUp;
     }
 
     // ── Block CRUD ──────────────────────────────────────────────────────── //
@@ -714,13 +1065,15 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
         work.blocks.splice(i, 1);
         selectedId = work.blocks[Math.max(0, i - 1)]?.id || null;
         renderBlocks();
-        renderInspector();
+        renderLayers();
+        renderBlockPanel();
     }
 
     function selectBlock(id) {
         selectedId = id;
         renderBlocks();
-        renderInspector();
+        renderLayers();
+        renderBlockPanel();
     }
 
     // ── Inspector ───────────────────────────────────────────────────────── //
@@ -756,12 +1109,20 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
             const inst = instantiateLayout(L, work.language);
             work.layout_id = L.id;
             work.blocks = inst.blocks;
+            userSetSubjects.clear();  // fresh layout → fresh objects; drop stale ownership
             work.aspect_ratio = inst.aspect_ratio;
             if (inst.background) work.background = inst.background;
-            if (inst.high_level_description) work.high_level_description = inst.high_level_description;
+            // Default the Main idea to this layout's first curated brief (so the
+            // dropdown opens on a strong, on-theme idea); fall back to the
+            // layout's own high_level_description for layouts without briefs.
+            const briefs = LAYOUT_BRIEFS[L.id];
+            if (briefs?.length) { work.high_level_description = briefs[0].v; applyBriefSubject(briefs[0]); }
+            else if (inst.high_level_description) work.high_level_description = inst.high_level_description;
             selectedId = work.blocks[0]?.id || null;
             layoutArtboard();
             renderBlocks();
+            renderLayers();
+            renderBlockPanel();
             renderInspector();
             relabelHeader();
         });
@@ -772,11 +1133,11 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
         const cur = layouts.find((x) => x.id === work.layout_id);
         if (cur) card.appendChild(el("div", "ts-ideoe-hint", localizedDesc(cur, work.language)));
         const saveBtnL = tip(el("button", "ts-ideoe-btn ghost small", tr("save_as_layout")), "tip_save_as_layout");
-        saveBtnL.addEventListener("click", () => saveCustomPreset("layout"));
+        saveBtnL.addEventListener("click", () => saveCustomPreset());
         const expBtnL = tip(el("button", "ts-ideoe-btn ghost small", tr("export_btn")), "tip_export_layout");
-        expBtnL.addEventListener("click", () => exportPreset("layout"));
+        expBtnL.addEventListener("click", () => exportPreset());
         const impBtnL = tip(el("button", "ts-ideoe-btn ghost small", tr("import_btn")), "tip_import_layout");
-        impBtnL.addEventListener("click", () => importPresets("layout"));
+        impBtnL.addEventListener("click", () => importPresets());
         const footL = el("div", "ts-ideoe-btnrow");
         footL.append(saveBtnL, expBtnL, impBtnL);
         card.appendChild(footL);
@@ -793,101 +1154,167 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
         if (hintKey) card.appendChild(el("div", "ts-ideoe-hint", tr(hintKey, hintVars)));
     }
 
-    // Card 1 — "What you're making": the two whole-image decisions.
-    function overallCard() {
-        const card = el("div", "ts-ideoe-card");
-        card.appendChild(el("h3", null, tr("card_overall")));
-
-        // Image type (the renamed Medium) — governs the whole image + the
-        // photo-vs-art_style switch, so it leads the inspector.
-        const med = el("select");
-        MEDIA_OPTIONS.forEach((m) => {
-            const o = el("option", null, mediumLabel(m, work.language)); o.value = m;
-            if (m === work.style.medium) o.selected = true;
-            med.appendChild(o);
+    // A "none / presets… / custom" dropdown that writes a single style field.
+    // The curated presets supply model-ready prose; "Custom…" reveals a text box
+    // so any value (including one loaded from an older design) is still editable.
+    function presetSelectRow(card, labelKey, tipKey, presets, getVal, setVal) {
+        const r = row(labelKey);
+        const sel = el("select");
+        tip(sel, tipKey);
+        const optNone = el("option", null, tr("opt_none")); optNone.value = "__none__"; sel.appendChild(optNone);
+        presets.forEach((p) => {
+            const o = el("option", null, p[work.language] || p.en); o.value = p.id; sel.appendChild(o);
         });
-        med.addEventListener("change", () => { work.style.medium = med.value; renderInspector(); });
-        fieldRow(card, "medium", "medium_hint", med);
-
-        // One-line brief (high_level_description).
-        const hld = el("textarea");
-        hld.value = work.high_level_description || "";
-        hld.addEventListener("input", () => { work.high_level_description = hld.value; });
-        fieldRow(card, "hld", "hld_hint", hld);
-        return card;
+        const optCustom = el("option", null, tr("opt_custom")); optCustom.value = "__custom__"; sel.appendChild(optCustom);
+        const custom = el("input"); custom.type = "text"; custom.placeholder = tr("opt_custom");
+        custom.style.marginTop = "5px";
+        const cur = getVal();
+        const match = presets.find((p) => p.v === cur);
+        sel.value = !cur ? "__none__" : match ? match.id : "__custom__";
+        custom.value = cur || "";
+        custom.style.display = sel.value === "__custom__" ? "" : "none";
+        sel.addEventListener("change", () => {
+            if (sel.value === "__none__") { setVal(""); custom.style.display = "none"; }
+            else if (sel.value === "__custom__") { custom.style.display = ""; setVal(custom.value || ""); custom.focus(); }
+            else { const p = presets.find((x) => x.id === sel.value); setVal(p ? p.v : ""); custom.style.display = "none"; }
+        });
+        custom.addEventListener("input", () => setVal(custom.value));
+        r.append(sel, custom);
+        card.appendChild(r);
     }
 
-    // Card 2 — "How it should look": style preset + the style_description fields.
-    function lookCard() {
-        const card = el("div", "ts-ideoe-card");
-        card.appendChild(el("h3", null, tr("card_look")));
-
-        const styleRow = el("div", "ts-ideoe-row");
+    // Art-style dropdown — the single "how it's drawn" control. Each preset also
+    // sets the whole-image medium, honoring Ideogram's photo-XOR-art_style switch
+    // (medium photograph → style.photo, otherwise → style.art_style).
+    function artStyleRow(card) {
+        const r = row("art_style");
         const sel = el("select");
-        const none = el("option", null, tr("style_none")); none.value = ""; sel.appendChild(none);
-        styles.forEach((s) => {
-            const o = el("option", null, localizedName(s, work.language) + (s.custom ? ` (${tr("custom_tag")})` : ""));
-            o.value = s.id;
-            if (s.id === work.style.preset_id) o.selected = true;
-            sel.appendChild(o);
+        tip(sel, "art_style_hint");
+        const optNone = el("option", null, tr("opt_none")); optNone.value = "__none__"; sel.appendChild(optNone);
+        ARTSTYLE_PRESETS.forEach((p) => {
+            const o = el("option", null, p[work.language] || p.en); o.value = p.id; sel.appendChild(o);
         });
+        const optCustom = el("option", null, tr("opt_custom")); optCustom.value = "__custom__"; sel.appendChild(optCustom);
+        const custom = el("input"); custom.type = "text"; custom.placeholder = tr("opt_custom");
+        custom.style.marginTop = "5px";
+        const isPhoto = () => work.style.medium === PHOTO_MEDIUM;
+        const curText = () => (isPhoto() ? work.style.photo : work.style.art_style) || "";
+        const setText = (v) => { if (isPhoto()) { work.style.photo = v; } else { work.style.art_style = v; } };
+        const match = ARTSTYLE_PRESETS.find((p) => p.v === curText() && p.medium === work.style.medium);
+        sel.value = !curText() ? "__none__" : match ? match.id : "__custom__";
+        custom.value = curText();
+        custom.style.display = sel.value === "__custom__" ? "" : "none";
         sel.addEventListener("change", () => {
-            const s = styles.find((x) => x.id === sel.value);
-            work.style = s ? applyStyle(s) : { ...work.style, preset_id: "" };
-            renderInspector();
-            renderBlocks();
+            if (sel.value === "__none__") {
+                work.style.art_style = ""; work.style.photo = ""; work.style.medium = "graphic_design";
+                custom.style.display = "none";
+            } else if (sel.value === "__custom__") {
+                custom.style.display = ""; setText(custom.value || ""); custom.focus();
+            } else {
+                const p = ARTSTYLE_PRESETS.find((x) => x.id === sel.value);
+                if (p) {
+                    work.style.medium = p.medium;
+                    if (p.medium === PHOTO_MEDIUM) { work.style.photo = p.v; work.style.art_style = ""; }
+                    else { work.style.art_style = p.v; work.style.photo = ""; }
+                }
+                custom.style.display = "none";
+            }
         });
-        tip(sel, "tip_style_preset");
-        styleRow.append(el("label", null, tr("style_preset")), sel);
-        card.appendChild(styleRow);
-        const curS = styles.find((x) => x.id === work.style.preset_id);
-        if (curS) card.appendChild(el("div", "ts-ideoe-hint", localizedDesc(curS, work.language)));
+        custom.addEventListener("input", () => setText(custom.value));
+        r.append(sel, custom);
+        card.appendChild(r);
+    }
 
-        const aes = el("textarea");
-        aes.value = work.style.aesthetics || "";
-        aes.addEventListener("input", () => { work.style.aesthetics = aes.value; });
-        fieldRow(card, "aesthetics", "aesthetics_hint", aes);
+    // The object that represents the scene's main subject — the one a character
+    // idea should drive. Prefer a block tagged role:"subject" (stable across
+    // reorder / multi-object layouts), else the first object.
+    function subjectObj() {
+        return work.blocks.find((b) => b.type === "obj" && b.role === "subject")
+            || work.blocks.find((b) => b.type === "obj");
+    }
 
-        const lig = el("textarea");
-        lig.value = work.style.lighting || "";
-        lig.addEventListener("input", () => { work.style.lighting = lig.value; });
-        fieldRow(card, "lighting", "lighting_hint", lig);
+    // Apply a brief's subject preset to the subject object, so a character idea
+    // actually renders that character — the obj desc dominates its bbox, which is
+    // why a "bold girl" idea used to come out as a man. Returns true if it
+    // changed the object.
+    function applyBriefSubject(brief) {
+        const id = brief && BRIEF_SUBJECT[brief.en];
+        if (!id) return false;
+        const preset = OBJECT_PRESETS.find((p) => p.id === id);
+        const obj = subjectObj();
+        if (!preset || !obj) return false;
+        obj.desc = preset.v;
+        return true;
+    }
 
-        // photo XOR art_style, decided by the image type.
-        const isPhoto = work.style.medium === PHOTO_MEDIUM;
-        const xorKey = isPhoto ? "photo" : "art_style";
-        const xorLabel = isPhoto ? "photo_label" : "art_style";
-        const xorHint = isPhoto ? "photo_hint" : "art_style_hint";
-        const xor = el("textarea");
-        xor.value = work.style[xorKey] || "";
-        xor.addEventListener("input", () => { work.style[xorKey] = xor.value; });
-        fieldRow(card, xorLabel, xorHint, xor);
+    // Main idea (high_level_description). A per-layout dropdown of curated briefs
+    // when the active layout has them; choosing a character brief also syncs the
+    // subject object (so the preview AND the final image match the idea). Falls
+    // back to a free single-line input when the layout has no briefs.
+    function briefRow(card) {
+        const briefs = LAYOUT_BRIEFS[work.layout_id] || [];
+        if (!briefs.length) {
+            const hld = el("input");
+            hld.type = "text";
+            hld.value = work.high_level_description || "";
+            hld.addEventListener("input", () => { work.high_level_description = hld.value; });
+            fieldRow(card, "hld", "hld_hint", hld);
+            return;
+        }
+        const r = row("hld");
+        const sel = el("select");
+        tip(sel, "hld_hint");
+        const optNone = el("option", null, tr("opt_none")); optNone.value = "__none__"; sel.appendChild(optNone);
+        briefs.forEach((b, i) => { const o = el("option", null, b[work.language] || b.en); o.value = String(i); sel.appendChild(o); });
+        const optCustom = el("option", null, tr("opt_custom")); optCustom.value = "__custom__"; sel.appendChild(optCustom);
+        const custom = el("input"); custom.type = "text"; custom.placeholder = tr("opt_custom"); custom.style.marginTop = "5px";
+        const cur = work.high_level_description || "";
+        const idx = briefs.findIndex((b) => b.v === cur);
+        sel.value = !cur ? "__none__" : idx >= 0 ? String(idx) : "__custom__";
+        custom.value = cur;
+        custom.style.display = sel.value === "__custom__" ? "" : "none";
+        sel.addEventListener("change", () => {
+            if (sel.value === "__none__") { work.high_level_description = ""; custom.style.display = "none"; }
+            else if (sel.value === "__custom__") { custom.style.display = ""; work.high_level_description = custom.value || ""; custom.focus(); }
+            else {
+                const b = briefs[Number(sel.value)];
+                work.high_level_description = b.v;
+                // Sync the subject character — but never clobber an object the
+                // user set explicitly via the object-preset dropdown.
+                const obj = subjectObj();
+                if (obj && !userSetSubjects.has(obj.id)) applyBriefSubject(b);
+                custom.style.display = "none";
+            }
+            renderBlocks();
+            renderLayers();
+            renderBlockPanel();
+        });
+        custom.addEventListener("input", () => { work.high_level_description = custom.value; });
+        r.append(sel, custom);
+        card.appendChild(r);
+    }
+
+    // Merged "Style" card — everything about how the image LOOKS: the main idea,
+    // then curated preset dropdowns (art style, mood, lighting, background) and
+    // the image palette. Placement lives in the Layout card above; together they
+    // are the design's two components.
+    function styleCard() {
+        const card = el("div", "ts-ideoe-card");
+        card.appendChild(el("h3", null, tr("card_style")));
+
+        briefRow(card);
+
+        artStyleRow(card);
+        presetSelectRow(card, "aesthetics", "aesthetics_hint", MOOD_PRESETS,
+            () => work.style.aesthetics, (v) => { work.style.aesthetics = v; });
+        presetSelectRow(card, "lighting", "lighting_hint", LIGHTING_PRESETS,
+            () => work.style.lighting, (v) => { work.style.lighting = v; });
+        presetSelectRow(card, "background", "background_hint", BACKGROUND_PRESETS,
+            () => work.background, (v) => { work.background = v; });
 
         const palRow = row2("image_palette", { n: IMAGE_PALETTE_CAP });
         palRow.appendChild(buildPalette(() => work.style.color_palette, (n) => { work.style.color_palette = n; renderBlocks(); }, IMAGE_PALETTE_CAP, work.language));
         card.appendChild(palRow);
-        card.appendChild(el("div", "ts-ideoe-hint", tr("image_palette_hint", { n: IMAGE_PALETTE_CAP })));
-
-        const saveBtnS = tip(el("button", "ts-ideoe-btn ghost small", tr("save_as_style")), "tip_save_as_style");
-        saveBtnS.addEventListener("click", () => saveCustomPreset("style"));
-        const expBtnS = tip(el("button", "ts-ideoe-btn ghost small", tr("export_btn")), "tip_export_style");
-        expBtnS.addEventListener("click", () => exportPreset("style"));
-        const impBtnS = tip(el("button", "ts-ideoe-btn ghost small", tr("import_btn")), "tip_import_style");
-        impBtnS.addEventListener("click", () => importPresets("style"));
-        const footS = el("div", "ts-ideoe-btnrow");
-        footS.append(saveBtnS, expBtnS, impBtnS);
-        card.appendChild(footS);
-        return card;
-    }
-
-    // Card 3 — "What's in the scene": the background (compositional_deconstruction).
-    function sceneCard() {
-        const card = el("div", "ts-ideoe-card");
-        card.appendChild(el("h3", null, tr("card_scene")));
-        const bg = el("textarea");
-        bg.value = work.background || "";
-        bg.addEventListener("input", () => { work.background = bg.value; });
-        fieldRow(card, "background", "background_hint", bg);
         return card;
     }
 
@@ -895,6 +1322,56 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
         const r = el("div", "ts-ideoe-row");
         r.appendChild(el("label", null, tr(labelKey, vars)));
         return r;
+    }
+
+    // Object preset dropdown — one-click popular subjects (characters + hero
+    // objects). Replaces the obj desc and updates the canvas + layers live.
+    function objectPresetRow(card, sel, descEl) {
+        const r = row("object_preset");
+        const dd = el("select");
+        tip(dd, "tip_object_preset");
+        const optNone = el("option", null, tr("opt_none")); optNone.value = "__none__"; dd.appendChild(optNone);
+        OBJECT_PRESETS.forEach((p) => { const o = el("option", null, p[work.language] || p.en); o.value = p.id; dd.appendChild(o); });
+        const match = OBJECT_PRESETS.find((p) => p.v === (sel.desc || ""));
+        dd.value = match ? match.id : "__none__";
+        dd.addEventListener("change", () => {
+            const p = OBJECT_PRESETS.find((x) => x.id === dd.value);
+            if (!p) return;
+            sel.desc = p.v;
+            descEl.value = p.v;
+            userSetSubjects.add(sel.id);  // user owns this object now — briefs won't overwrite it
+            renderBlocks();
+            renderLayers();
+        });
+        r.appendChild(dd);
+        card.appendChild(r);
+    }
+
+    // Text style preset dropdown — applies font + weight + case + prominence +
+    // color + legibility in one click, then rebuilds the card so its controls
+    // reflect the new look (and the canvas text restyles live).
+    function textPresetRow(card, sel) {
+        const r = row("text_preset");
+        const dd = el("select");
+        tip(dd, "tip_text_preset");
+        const optNone = el("option", null, tr("opt_none")); optNone.value = "__none__"; dd.appendChild(optNone);
+        TEXT_PRESETS.forEach((p) => { const o = el("option", null, p[work.language] || p.en); o.value = p.id; dd.appendChild(o); });
+        dd.value = "__none__";
+        dd.addEventListener("change", () => {
+            const p = TEXT_PRESETS.find((x) => x.id === dd.value);
+            if (!p) return;
+            sel.font_preset_id = p.font_preset_id;
+            sel.weight = p.weight;
+            sel.case = p.case;
+            sel.prominence = p.prominence;
+            sel.color = p.color;
+            sel.legibility = { ...(p.legibility || {}) };
+            renderBlocks();
+            renderLayers();
+            renderBlockPanel();
+        });
+        r.appendChild(dd);
+        card.appendChild(r);
     }
 
     function blockCard() {
@@ -913,8 +1390,9 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
             const ta = el("textarea");
             tip(ta, "tip_obj_desc");
             ta.value = sel.desc || "";
-            ta.addEventListener("input", () => { sel.desc = ta.value; renderBlocks(); });
+            ta.addEventListener("input", () => { sel.desc = ta.value; renderBlocks(); renderLayers(); });
             dRow.appendChild(ta);
+            objectPresetRow(card, sel, ta);  // preset dropdown above the description
             card.appendChild(dRow);
             const palRow = row2("block_palette", { n: ELEMENT_PALETTE_CAP });
             palRow.appendChild(buildPalette(() => sel.color_palette, (n) => { sel.color_palette = n; renderBlocks(); }, ELEMENT_PALETTE_CAP, work.language));
@@ -922,11 +1400,12 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
             return card;
         }
 
+        textPresetRow(card, sel);  // one-click lettering style, above the literal text
         const textRow = row("text_literal");
         const ta = el("textarea");
         tip(ta, "tip_text_literal");
         ta.value = sel.text || "";
-        ta.addEventListener("input", () => { sel.text = ta.value; renderBlocks(); renderWarnings(); });
+        ta.addEventListener("input", () => { sel.text = ta.value; renderBlocks(); renderLayers(); renderWarnings(); });
         textRow.appendChild(ta);
         card.appendChild(textRow);
 
@@ -982,7 +1461,7 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
         const voRow = el("label", "ts-ideoe-check");
         tip(voRow, "tip_visual_only");
         const vo = el("input"); vo.type = "checkbox"; vo.checked = !!sel.visual_only;
-        vo.addEventListener("change", () => { sel.visual_only = vo.checked; renderBlocks(); renderDescPreview(); renderWarnings(); });
+        vo.addEventListener("change", () => { sel.visual_only = vo.checked; renderBlocks(); renderLayers(); renderDescPreview(); renderWarnings(); });
         voRow.append(vo, document.createTextNode(tr("visual_only")));
         card.appendChild(voRow);
 
@@ -1028,12 +1507,19 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
     function renderInspector() {
         inspectorScroll.innerHTML = "";
         inspectorScroll.appendChild(templateCard());
-        inspectorScroll.appendChild(overallCard());
-        inspectorScroll.appendChild(lookCard());
-        inspectorScroll.appendChild(sceneCard());
-        currentBlockCard = blockCard();
-        inspectorScroll.appendChild(currentBlockCard);
+        inspectorScroll.appendChild(styleCard());
+        relabelJson();
+        inspectorScroll.appendChild(jsonCardEl);  // live JSON prompt at the bottom
+        refreshJson(true);
         updateBanner();
+    }
+
+    // The selected block's settings render in the LEFT column, under the layers
+    // list — so switching blocks never scrolls the general-settings inspector.
+    function renderBlockPanel() {
+        blockPanel.innerHTML = "";
+        currentBlockCard = blockCard();
+        blockPanel.appendChild(currentBlockCard);
     }
 
     // ── Language ────────────────────────────────────────────────────────── //
@@ -1042,6 +1528,8 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
         work.language = lang;
         relabelHeader();
         renderInspector();
+        renderLayers();
+        renderBlockPanel();
         renderBlocks();
     }
 
@@ -1057,32 +1545,23 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
                 : { type: "text", rect: b.rect, text_en: b.text || "", text_ru: b.text || "", font_preset_id: b.font_preset_id, weight: b.weight, case: b.case, prominence: b.prominence, color: b.color, role: b.role || "" }),
         };
     }
-    function buildStylePreset(name, id) {
-        return {
-            id, name_en: name, name_ru: name, desc_en: "", desc_ru: "", custom: true,
-            medium: work.style.medium, aesthetics: work.style.aesthetics || "", lighting: work.style.lighting || "",
-            art_style: work.style.art_style || "", photo: work.style.photo || "",
-            color_palette: work.style.color_palette || [], font_preset_id: work.style.font_preset_id || "",
-        };
-    }
-
-    async function saveCustomPreset(kind) {
+    async function saveCustomPreset() {
         const name = window.prompt(tr("preset_name_prompt"));
         if (!name || !name.trim()) return;
-        const id = `user_${kind}_${Date.now().toString(36)}`;
-        let preset;
-        if (kind === "layout") { preset = buildLayoutPreset(name.trim(), id); layouts.push(preset); work.layout_id = id; }
-        else { preset = buildStylePreset(name.trim(), id); styles.push(preset); work.style.preset_id = id; }
+        const id = `user_layout_${Date.now().toString(36)}`;
+        const preset = buildLayoutPreset(name.trim(), id);
+        layouts.push(preset);
+        work.layout_id = id;
         try {
             await fetch(api.apiURL(`${ROUTE_BASE}/save_preset`), {
                 method: "POST", headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ kind, preset }),
+                body: JSON.stringify({ kind: "layout", preset }),
             });
         } catch (e) { console.warn("[TS Ideogram] save_preset failed", e); }
         renderInspector();
     }
 
-    // Export the current layout/style as a JSON file (browser save dialog).
+    // Export the current layout as a JSON file (browser save dialog).
     function downloadJson(filename, obj) {
         const blob = new Blob([JSON.stringify(obj, null, 2)], { type: "application/json" });
         const url = URL.createObjectURL(blob);
@@ -1090,42 +1569,35 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
         document.body.appendChild(a); a.click(); a.remove();
         setTimeout(() => URL.revokeObjectURL(url), 1500);
     }
-    function exportPreset(kind) {
-        const cur = kind === "layout"
-            ? layouts.find((x) => x.id === work.layout_id)
-            : styles.find((x) => x.id === work.style.preset_id);
-        const name = (cur ? localizedName(cur, work.language) : "") || (kind === "layout" ? "layout" : "style");
-        const id = `user_${kind}_${Date.now().toString(36)}`;
-        const preset = kind === "layout" ? buildLayoutPreset(name, id) : buildStylePreset(name, id);
-        const safe = (name || kind).replace(/[^\w\-]+/g, "_").slice(0, 40) || kind;
-        downloadJson(`ts_ideogram_${kind}_${safe}.json`, preset);
+    function exportPreset() {
+        const cur = layouts.find((x) => x.id === work.layout_id);
+        const name = (cur ? localizedName(cur, work.language) : "") || "layout";
+        const id = `user_layout_${Date.now().toString(36)}`;
+        const preset = buildLayoutPreset(name, id);
+        const safe = (name || "layout").replace(/[^\w\-]+/g, "_").slice(0, 40) || "layout";
+        downloadJson(`ts_ideogram_layout_${safe}.json`, preset);
     }
 
-    // Import layouts/styles: pick JSON file(s), server copies them into the
-    // node's user_presets/ folder, then they show up in the pickers.
-    let importKind = "style";
-    function importPresets(kind) { importKind = kind; importInput.value = ""; importInput.click(); }
+    // Import layout templates: pick JSON file(s); the server copies them into the
+    // node's user_presets/ folder and they appear in the layout picker.
+    function importPresets() { importInput.value = ""; importInput.click(); }
     async function handleImportFiles(files) {
         let added = 0;
         for (const file of files) {
             let data;
             try { data = JSON.parse(await file.text()); } catch { continue; }
-            const arr = Array.isArray(data) ? data
-                : (importKind === "layout" && Array.isArray(data?.layouts)) ? data.layouts
-                : (importKind === "style" && Array.isArray(data?.styles)) ? data.styles
-                : [data];
+            const arr = Array.isArray(data) ? data : Array.isArray(data?.layouts) ? data.layouts : [data];
             for (const raw of arr) {
                 if (!raw || typeof raw !== "object") continue;
                 try {
                     const resp = await fetch(api.apiURL(`${ROUTE_BASE}/import_preset`), {
                         method: "POST", headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ kind: importKind, preset: raw }),
+                        body: JSON.stringify({ kind: "layout", preset: raw }),
                     });
                     const out = await resp.json();
                     if (out?.ok && out.preset) {
-                        const list = importKind === "layout" ? layouts : styles;
-                        const idx = list.findIndex((x) => x.id === out.preset.id);
-                        if (idx >= 0) list[idx] = out.preset; else list.push(out.preset);
+                        const idx = layouts.findIndex((x) => x.id === out.preset.id);
+                        if (idx >= 0) layouts[idx] = out.preset; else layouts.push(out.preset);
                         added += 1;
                     }
                 } catch (e) { console.warn("[TS Ideogram] import failed", e); }
@@ -1151,11 +1623,28 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
         updateDimsReadout();
     });
     clearBtn.addEventListener("click", () => {
-        if (work.blocks.length && !window.confirm(tr("clear") + "?")) return;
+        const st = work.style || {};
+        const hasContent = work.blocks.length || work.ref
+            || (st.color_palette || []).length || work.background || work.high_level_description
+            || st.aesthetics || st.lighting || st.photo || st.art_style || st.preset_id;
+        if (hasContent && !window.confirm(tr("clear_confirm"))) return;
+        // Wipe everything that is "content" — blocks, style, palette, background,
+        // brief and the reference underlay. Keep the document settings the user
+        // deliberately set: aspect ratio, megapixels and language.
         work.blocks = [];
         work.layout_id = "";
+        work.background = "";
+        work.high_level_description = "";
+        work.ref = null;
+        work.style = {
+            preset_id: "", aesthetics: "", lighting: "", medium: "graphic_design",
+            photo: "", art_style: "", color_palette: [], font_preset_id: "",
+        };
         selectedId = null;
+        renderReference();   // drops the underlay + repaints the (now empty) style preview
         renderBlocks();
+        renderLayers();
+        renderBlockPanel();
         renderInspector();
     });
     refBtn.addEventListener("click", () => fileInput.click());
@@ -1181,9 +1670,11 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
     });
 
     function close() {
+        if (activeDragCleanup) { try { activeDragCleanup(); } catch { /* ignore */ } activeDragCleanup = null; }
         document.removeEventListener("paste", onPaste);
         document.removeEventListener("keydown", onKey);
         resizeObserver.disconnect();
+        clearInterval(jsonTimer);
         overlay.remove();
     }
     function commit() {
@@ -1210,6 +1701,9 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
         if (e.code === "KeyC") { if (getSelected()) { copySelected(); e.preventDefault(); } }
         else if (e.code === "KeyV") { if (clipboardBlock) { pasteBlock(); e.preventDefault(); } }
         else if (e.code === "KeyD") { if (getSelected()) { duplicateSelected(); e.preventDefault(); } }
+        // Photoshop-style z-order: Ctrl+]/[ one step, Ctrl+Shift+]/[ to front/back.
+        else if (e.code === "BracketRight") { const s = getSelected(); if (s) { e.preventDefault(); e.shiftKey ? moveToFront(s.id) : moveBlock(s.id, +1); } }
+        else if (e.code === "BracketLeft") { const s = getSelected(); if (s) { e.preventDefault(); e.shiftKey ? moveToBack(s.id) : moveBlock(s.id, -1); } }
     }
     document.addEventListener("keydown", onKey);
 
@@ -1220,6 +1714,8 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
     function fullRender() { layoutArtboard(); renderReference(); renderBlocks(); }
     relabelHeader();
     renderInspector();
+    renderLayers();
+    renderBlockPanel();
     fullRender();
     requestAnimationFrame(fullRender);
     let layoutAttempts = 0;
