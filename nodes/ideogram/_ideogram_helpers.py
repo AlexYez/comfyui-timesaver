@@ -575,15 +575,19 @@ def _build_style_description(style: dict) -> dict | None:
         out["aesthetics"] = aesthetics
     if lighting:
         out["lighting"] = lighting
-    # photo XOR art_style, decided by medium.
+    # photo XOR art_style, decided by medium. Per the Ideogram 4 spec the key
+    # order differs by type: photo -> (photo, medium); non-photo -> (medium,
+    # art_style). See docs/prompting.md "Key order is strict".
     if medium == PHOTO_MEDIUM:
         if photo:
             out["photo"] = photo
+        if medium:
+            out["medium"] = medium
     else:
+        if medium:
+            out["medium"] = medium
         if art_style:
             out["art_style"] = art_style
-    if medium:
-        out["medium"] = medium
     if palette:
         out["color_palette"] = palette  # last key
     return out or None
@@ -628,7 +632,10 @@ def build_caption(design_json: str) -> tuple[str, str]:
     # here), ref (preview underlay), style.preset_id & style.font_preset_id and
     # block.role (JS canvas-preview / new-block defaults only). Per-block
     # font_preset_id IS consumed, via compose_text_desc.
-    caption: dict = {"high_level_description": str(design.get("high_level_description") or "").strip()}
+    caption: dict = {}
+    hld = str(design.get("high_level_description") or "").strip()
+    if hld:  # optional per the spec — omit rather than emit an empty string
+        caption["high_level_description"] = hld
     style_description = _build_style_description(design.get("style"))
     if style_description:
         caption["style_description"] = style_description
@@ -968,6 +975,17 @@ def _self_test() -> None:
     check("photo dropped for non-photograph medium", "photo" not in sd and "art_style" in sd)
     check("image palette uppercased + filtered", sd["color_palette"] == ["#0B1020", "#FFD500"])
     check("color_palette is last key in style_description", list(sd.keys())[-1] == "color_palette")
+    # Ideogram 4 spec: non-photo key order is aesthetics, lighting, MEDIUM, art_style, palette.
+    check("non-photo style key order (medium before art_style)",
+          list(sd.keys()) == ["aesthetics", "lighting", "medium", "art_style", "color_palette"])
+    # ...and the photo path swaps to aesthetics, lighting, PHOTO, medium, palette.
+    photo_sd = json.loads(build_caption(json.dumps({
+        "background": "studio", "blocks": [],
+        "style": {"medium": "photograph", "aesthetics": "a", "lighting": "l",
+                  "photo": "85mm f/1.4", "color_palette": ["#000000"]},
+    }))[0])["style_description"]
+    check("photo style key order (photo before medium)",
+          list(photo_sd.keys()) == ["aesthetics", "lighting", "photo", "medium", "color_palette"])
     els = caption["compositional_deconstruction"]["elements"]
     check("three elements built", len(els) == 3)
     t0 = els[0]
