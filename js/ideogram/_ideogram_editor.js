@@ -17,7 +17,6 @@ import {
     IMAGE_PALETTE_CAP,
     LANGS,
     PHOTO_MEDIUM,
-    PROMINENCE,
     ROUTE_BASE,
     WEIGHTS,
     applyCase,
@@ -27,7 +26,6 @@ import {
     LIGHTING_PRESETS,
     MOOD_PRESETS,
     OBJECT_PRESETS,
-    TEXT_PRESETS,
     BRIEF_SUBJECT,
     aspectFitBox,
     ASPECT_RATIOS,
@@ -35,6 +33,12 @@ import {
     cleanPalette,
     composeTextDesc,
     fetchCaptionPreview,
+    designsList,
+    saveDesignPreset,
+    fetchDesignPreset,
+    importDesignPreset,
+    deleteDesignPreset,
+    loadPresets,
     DEFAULT_MEGAPIXELS,
     dimsFromAspectMp,
     MAX_MEGAPIXELS,
@@ -149,7 +153,12 @@ function ensureStyles() {
 .ts-ideoe-vresizer::after{content:"";position:absolute;top:2px;left:6px;right:6px;height:3px;border-radius:2px;background:#2b3850;transition:background .1s}
 .ts-ideoe-vresizer:hover::after,.ts-ideoe-vresizer.is-drag::after{background:#4da3ff}
 .ts-ideoe-jsonhead{display:flex;align-items:center;justify-content:space-between;gap:8px}
-.ts-ideoe-json{margin:0;max-height:300px;overflow:auto;background:#080c12;border:1px solid #1c2733;border-radius:6px;padding:8px 10px;font-family:Consolas,'SF Mono','Courier New',monospace;font-size:11px;line-height:1.45;color:#bfe3c2;white-space:pre;tab-size:2}
+.ts-ideoe-json{margin:0;max-height:300px;overflow:auto;background:#080c12;border:1px solid #1c2733;border-radius:6px;padding:8px 10px;font-family:Consolas,'SF Mono','Courier New',monospace;font-size:11px;line-height:1.5;color:#8893a7;white-space:pre;tab-size:2}
+.ts-ideoe-json .tsj-key{color:#7dd3fc}
+.ts-ideoe-json .tsj-str{color:#a6e3a1}
+.ts-ideoe-json .tsj-num{color:#fab387}
+.ts-ideoe-json .tsj-bool{color:#cba6f7}
+.ts-ideoe-json .tsj-null{color:#6b7688}
 .ts-ideoe-copybtn{padding:4px 10px;font-size:11px}
 .ts-ideoe-copybtn.ok{background:#1f7a4d;border-color:#1f7a4d;color:#eafff3}
 .ts-ideoe-layers__head{display:flex;align-items:center;gap:7px;padding:9px 11px;border-bottom:1px solid #1c2430;background:#10151d;flex:0 0 auto}
@@ -289,6 +298,7 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
     if (!LANGS.includes(work.language)) work.language = DEFAULT_LANG;
 
     const layouts = layoutsList(presets);
+    let designs = designsList(presets);
     const fontList = presets?.fonts || [];
     const fontMap = buildFontsById(presets);
     const tr = (key, vars) => t(key, work.language, vars);
@@ -441,6 +451,21 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
         copyBtn.textContent = tr("copy");
     }
     function prettyJson(s) { try { return JSON.stringify(JSON.parse(s), null, 2); } catch { return s; } }
+    // Color-highlight a JSON string into SAFE html: keys / strings / numbers /
+    // booleans / null each get a token class; punctuation keeps the base color.
+    function escapeHtml(s) { return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+    function highlightJson(s) {
+        return escapeHtml(s).replace(
+            /("(?:\\.|[^"\\])*")(\s*:)?|(\b-?\d+(?:\.\d+)?(?:[eE][+\-]?\d+)?\b)|(\btrue\b|\bfalse\b)|(\bnull\b)/g,
+            (m, str, colon, num, bool, nul) => {
+                if (str != null) return `<span class="tsj-${colon ? "key" : "str"}">${str}</span>${colon || ""}`;
+                if (num != null) return `<span class="tsj-num">${num}</span>`;
+                if (bool != null) return `<span class="tsj-bool">${bool}</span>`;
+                if (nul != null) return `<span class="tsj-null">${nul}</span>`;
+                return m;
+            },
+        );
+    }
     let lastJsonSig = null;
     let jsonReqId = 0;
     async function refreshJson(force) {
@@ -452,7 +477,7 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
         if (!res) return;  // transient failure: keep the last good panel + signature so the next tick retries
         lastJsonSig = dj;
         const text = res.json_prompt ? prettyJson(res.json_prompt) : "";
-        jsonPre.textContent = text || "—";
+        if (text) jsonPre.innerHTML = highlightJson(text); else jsonPre.textContent = "—";
     }
     copyBtn.addEventListener("click", async () => {
         const text = jsonPre.textContent || "";
@@ -566,7 +591,7 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
     importInput.multiple = true;
     importInput.style.display = "none";
     overlay.appendChild(importInput);
-    importInput.addEventListener("change", () => { handleImportFiles(Array.from(importInput.files || [])); });
+    importInput.addEventListener("change", () => { handleDesignImport(Array.from(importInput.files || [])); });
 
     // ── Tooltips: one floating bubble, shown on hover over any [data-tip] ───── //
     // The element stores the i18n KEY; the text is resolved in the current
@@ -686,14 +711,19 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
             let textEl = null;
             let fitEl = null;  // the content element auto-fitted to the block (text OR obj)
             if (block.type === "text" && !block.visual_only) {
+                const leg = block.legibility || {};
+                // Plate (solid_block) — a solid color block behind the text;
+                // overrides the type tint so it shows live in the editor.
+                if (leg.solid_block) div.style.background = normHex(block.plate_color) || "#1A1A1A";
                 textEl = el("div", "ts-ideoe-block__text");
                 textEl.textContent = applyCase(block.text || "", block.case);
                 textEl.style.color = normHex(block.color) || "#ffffff";
                 textEl.style.fontFamily = fontFamilyForPreset(block.font_preset_id);
                 textEl.style.fontWeight = weightToCss(block.weight);
-                if (block.legibility && block.legibility.outline) {
-                    textEl.style.webkitTextStroke = "1px rgba(0,0,0,.85)";
-                    textEl.style.textShadow = "0 2px 5px rgba(0,0,0,.85)";
+                if (leg.outline) {
+                    const oc = normHex(block.outline_color) || "#000000";
+                    textEl.style.webkitTextStroke = `1px ${oc}`;
+                    textEl.style.textShadow = `0 1px 3px ${oc}`;
                 } else {
                     textEl.style.webkitTextStroke = "0";
                     textEl.style.textShadow = "0 1px 2px rgba(0,0,0,.7)";
@@ -760,8 +790,7 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
     function layerMeta(block) {
         if (block.type === "obj") return tr("badge_obj");
         if (block.visual_only) return `${tr("badge_text")} · ↳`;
-        const prom = block.prominence ? ` · ${segLabel("prominence", block.prominence, work.language)}` : "";
-        return `${tr("badge_text")}${prom}`;
+        return tr("badge_text");
     }
     function layerChip(block) {
         const chip = el("div", "ts-ideoe-lchip");
@@ -1019,9 +1048,9 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
             ? {
                 id: makeBlockId(), type: "text", rect: { x: 0.1, y: 0.1, w: 0.5, h: 0.18 },
                 text: work.language === "en" ? "TEXT" : "ТЕКСТ", font_preset_id: styleFont,
-                weight: "Bold", case: "UPPERCASE", prominence: "Headline",
-                legibility: { outline: true, high_contrast: true, solid_block: false },
-                visual_only: false, color: "#FFFFFF", desc_override: "", color_palette: [],
+                weight: "Bold", case: "UPPERCASE",
+                legibility: { outline: true, solid_block: false },
+                visual_only: false, color: "#FFFFFF", outline_color: "#000000", plate_color: "#1A1A1A", desc_override: "",
             }
             : {
                 id: makeBlockId(), type: "obj", rect: { x: 0.55, y: 0.2, w: 0.4, h: 0.7 },
@@ -1092,6 +1121,38 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
         return r;
     }
 
+    // Top-level "Design preset" card: save / load / export / import the WHOLE
+    // design (work / design_json) — the one unified import/export.
+    function designCard() {
+        const card = el("div", "ts-ideoe-card");
+        card.appendChild(tip(el("h3", null, tr("card_design")), "tip_design_card"));
+        const r = el("div", "ts-ideoe-row");
+        const sel = el("select");
+        tip(sel, "tip_design_load");
+        const none = el("option", null, tr("design_load")); none.value = ""; sel.appendChild(none);
+        designs.forEach((d) => { const o = el("option", null, d.name || d.id); o.value = d.id; sel.appendChild(o); });
+        r.append(el("label", null, tr("design_saved")), sel);
+        card.appendChild(r);
+        const applyBtn = tip(el("button", "ts-ideoe-btn ghost small", tr("design_apply")), "tip_design_apply");
+        applyBtn.addEventListener("click", async () => {
+            if (!sel.value) return;
+            const res = await fetchDesignPreset(sel.value);
+            if (res && res.design) loadDesignIntoEditor(res.design);
+        });
+        const saveBtn = tip(el("button", "ts-ideoe-btn ghost small", tr("design_save")), "tip_design_save");
+        saveBtn.addEventListener("click", () => saveCurrentDesign());
+        const expBtn = tip(el("button", "ts-ideoe-btn ghost small", tr("export_btn")), "tip_design_export");
+        expBtn.addEventListener("click", () => exportCurrentDesign());
+        const impBtn = tip(el("button", "ts-ideoe-btn ghost small", tr("import_btn")), "tip_design_import");
+        impBtn.addEventListener("click", () => importDesignFiles());
+        const delBtn = tip(el("button", "ts-ideoe-btn danger small", "🗑"), "tip_design_delete");
+        delBtn.addEventListener("click", () => { if (sel.value && window.confirm(tr("design_delete_confirm"))) deleteDesign(sel.value); });
+        const foot = el("div", "ts-ideoe-btnrow");
+        foot.append(applyBtn, saveBtn, expBtn, impBtn, delBtn);
+        card.appendChild(foot);
+        return card;
+    }
+
     function templateCard() {
         const card = el("div", "ts-ideoe-card");
         card.appendChild(el("h3", null, tr("card_template")));
@@ -1132,15 +1193,6 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
         card.appendChild(r);
         const cur = layouts.find((x) => x.id === work.layout_id);
         if (cur) card.appendChild(el("div", "ts-ideoe-hint", localizedDesc(cur, work.language)));
-        const saveBtnL = tip(el("button", "ts-ideoe-btn ghost small", tr("save_as_layout")), "tip_save_as_layout");
-        saveBtnL.addEventListener("click", () => saveCustomPreset());
-        const expBtnL = tip(el("button", "ts-ideoe-btn ghost small", tr("export_btn")), "tip_export_layout");
-        expBtnL.addEventListener("click", () => exportPreset());
-        const impBtnL = tip(el("button", "ts-ideoe-btn ghost small", tr("import_btn")), "tip_import_layout");
-        impBtnL.addEventListener("click", () => importPresets());
-        const footL = el("div", "ts-ideoe-btnrow");
-        footL.append(saveBtnL, expBtnL, impBtnL);
-        card.appendChild(footL);
         return card;
     }
 
@@ -1309,13 +1361,26 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
             () => work.style.aesthetics, (v) => { work.style.aesthetics = v; });
         presetSelectRow(card, "lighting", "lighting_hint", LIGHTING_PRESETS,
             () => work.style.lighting, (v) => { work.style.lighting = v; });
+        paletteRow(card, "lighting_colors", "lighting_colors_hint", ELEMENT_PALETTE_CAP,
+            () => work.style.lighting_palette, (n) => { work.style.lighting_palette = n; });
         presetSelectRow(card, "background", "background_hint", BACKGROUND_PRESETS,
             () => work.background, (v) => { work.background = v; });
+        paletteRow(card, "background_colors", "background_colors_hint", ELEMENT_PALETTE_CAP,
+            () => work.background_palette, (n) => { work.background_palette = n; });
 
-        const palRow = row2("image_palette", { n: IMAGE_PALETTE_CAP });
-        palRow.appendChild(buildPalette(() => work.style.color_palette, (n) => { work.style.color_palette = n; renderBlocks(); }, IMAGE_PALETTE_CAP, work.language));
-        card.appendChild(palRow);
+        // Colors for the WHOLE image (also tints the artboard preview).
+        paletteRow(card, "image_palette", "image_palette_hint", IMAGE_PALETTE_CAP,
+            () => work.style.color_palette, (n) => { work.style.color_palette = n; renderBlocks(); });
         return card;
+    }
+
+    // A label + palette swatches + optional hint line, for an image / background /
+    // lighting color set.
+    function paletteRow(card, labelKey, hintKey, cap, getArr, setArr) {
+        const r = row2(labelKey, { n: cap });
+        r.appendChild(buildPalette(getArr, setArr, cap, work.language));
+        card.appendChild(r);
+        if (hintKey) card.appendChild(el("div", "ts-ideoe-hint", tr(hintKey, { n: cap })));
     }
 
     function row2(labelKey, vars) {
@@ -1347,32 +1412,6 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
         card.appendChild(r);
     }
 
-    // Text style preset dropdown — applies font + weight + case + prominence +
-    // color + legibility in one click, then rebuilds the card so its controls
-    // reflect the new look (and the canvas text restyles live).
-    function textPresetRow(card, sel) {
-        const r = row("text_preset");
-        const dd = el("select");
-        tip(dd, "tip_text_preset");
-        const optNone = el("option", null, tr("opt_none")); optNone.value = "__none__"; dd.appendChild(optNone);
-        TEXT_PRESETS.forEach((p) => { const o = el("option", null, p[work.language] || p.en); o.value = p.id; dd.appendChild(o); });
-        dd.value = "__none__";
-        dd.addEventListener("change", () => {
-            const p = TEXT_PRESETS.find((x) => x.id === dd.value);
-            if (!p) return;
-            sel.font_preset_id = p.font_preset_id;
-            sel.weight = p.weight;
-            sel.case = p.case;
-            sel.prominence = p.prominence;
-            sel.color = p.color;
-            sel.legibility = { ...(p.legibility || {}) };
-            renderBlocks();
-            renderLayers();
-            renderBlockPanel();
-        });
-        r.appendChild(dd);
-        card.appendChild(r);
-    }
 
     function blockCard() {
         const sel = getSelected();
@@ -1400,7 +1439,23 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
             return card;
         }
 
-        textPresetRow(card, sel);  // one-click lettering style, above the literal text
+        // "Стиль текста" — the ONE styling dropdown. Each option is a complete
+        // typographic style (font_preset_id → desc_snippet, the only lever
+        // Ideogram reads); it always reflects the current selection. Weight /
+        // case / size / color / legibility below are separate, orthogonal knobs.
+        const fontRow = row("font_preset");
+        const fontSel = el("select");
+        fontList.forEach((f) => {
+            const o = el("option", null, localizedName(f, work.language));
+            o.value = f.id;
+            if (f.id === sel.font_preset_id) o.selected = true;
+            fontSel.appendChild(o);
+        });
+        fontSel.addEventListener("change", () => { sel.font_preset_id = fontSel.value; renderBlocks(); renderDescPreview(); });
+        tip(fontSel, "tip_font_preset");
+        fontRow.appendChild(fontSel);
+        card.appendChild(fontRow);
+
         const textRow = row("text_literal");
         const ta = el("textarea");
         tip(ta, "tip_text_literal");
@@ -1409,22 +1464,6 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
         textRow.appendChild(ta);
         card.appendChild(textRow);
 
-        const fontRow = row("font_preset");
-        const fontSel = el("select");
-        const isCyr = /[Ѐ-ӿ]/.test(sel.text || "");
-        const ordered = fontList.slice().sort((a, b) =>
-            isCyr && a.good_for_cyrillic !== b.good_for_cyrillic ? (a.good_for_cyrillic ? -1 : 1) : 0);
-        ordered.forEach((f) => {
-            const o = el("option", null, (localizedName(f, work.language)) + (f.good_for_cyrillic ? "" : " ⚠"));
-            o.value = f.id;
-            if (f.id === sel.font_preset_id) o.selected = true;
-            fontSel.appendChild(o);
-        });
-        fontSel.addEventListener("change", () => { sel.font_preset_id = fontSel.value; renderBlocks(); renderDescPreview(); renderWarnings(); });
-        tip(fontSel, "tip_font_preset");
-        fontRow.appendChild(fontSel);
-        card.appendChild(fontRow);
-
         const segRow = row("weight");
         segRow.appendChild(tip(buildSegmented(WEIGHTS, () => sel.weight, (v) => { sel.weight = v; renderBlocks(); renderDescPreview(); }, (o) => segLabel("weight", o, work.language)), "tip_weight"));
         card.appendChild(segRow);
@@ -1432,10 +1471,6 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
         const caseRow = row("case");
         caseRow.appendChild(tip(buildSegmented(CASES, () => sel.case, (v) => { sel.case = v; renderBlocks(); renderDescPreview(); renderWarnings(); }, (o) => segLabel("case", o, work.language)), "tip_case"));
         card.appendChild(caseRow);
-
-        const promRow = row("size_words");
-        promRow.appendChild(tip(buildSegmented(PROMINENCE, () => sel.prominence, (v) => { sel.prominence = v; renderBlocks(); renderDescPreview(); }, (o) => segLabel("prominence", o, work.language)), "tip_size_words"));
-        card.appendChild(promRow);
 
         const colorRow = row("text_color");
         const color = el("input"); color.type = "color"; color.value = normHex(sel.color) || "#FFFFFF";
@@ -1447,16 +1482,36 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
         const legRow = row("legibility");
         const checks = el("div", "ts-ideoe-checks");
         sel.legibility = sel.legibility || {};
-        [["outline", "leg_outline", "tip_leg_outline"], ["high_contrast", "leg_contrast", "tip_leg_contrast"], ["solid_block", "leg_block", "tip_leg_block"]].forEach(([key, lblKey, tipKey]) => {
+        [["outline", "leg_outline", "tip_leg_outline"], ["solid_block", "leg_block", "tip_leg_block"]].forEach(([key, lblKey, tipKey]) => {
             const c = el("label", "ts-ideoe-check");
             tip(c, tipKey);
             const cb = el("input"); cb.type = "checkbox"; cb.checked = !!sel.legibility[key];
-            cb.addEventListener("change", () => { sel.legibility[key] = cb.checked; renderBlocks(); renderDescPreview(); });
+            // Rebuild the card so the matching color picker shows/hides, and the
+            // outline/plate now render live on the canvas.
+            cb.addEventListener("change", () => { sel.legibility[key] = cb.checked; renderBlocks(); renderLayers(); renderBlockPanel(); });
             c.append(cb, document.createTextNode(tr(lblKey)));
             checks.appendChild(c);
         });
         legRow.appendChild(checks);
         card.appendChild(legRow);
+
+        // Per-effect colors — only shown when the effect is enabled.
+        if (sel.legibility.outline) {
+            const r = row("outline_color");
+            const ci = el("input"); ci.type = "color"; ci.value = normHex(sel.outline_color) || "#000000";
+            tip(ci, "tip_outline_color");
+            ci.addEventListener("input", () => { sel.outline_color = ci.value.toUpperCase(); renderBlocks(); renderDescPreview(); });
+            r.appendChild(ci);
+            card.appendChild(r);
+        }
+        if (sel.legibility.solid_block) {
+            const r = row("plate_color");
+            const ci = el("input"); ci.type = "color"; ci.value = normHex(sel.plate_color) || "#1A1A1A";
+            tip(ci, "tip_plate_color");
+            ci.addEventListener("input", () => { sel.plate_color = ci.value.toUpperCase(); renderBlocks(); renderDescPreview(); });
+            r.appendChild(ci);
+            card.appendChild(r);
+        }
 
         const voRow = el("label", "ts-ideoe-check");
         tip(voRow, "tip_visual_only");
@@ -1471,10 +1526,6 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
         ov.addEventListener("input", () => { sel.desc_override = ov.value; renderDescPreview(); });
         ovRow.appendChild(ov);
         card.appendChild(ovRow);
-
-        const palRow = row2("block_palette", { n: ELEMENT_PALETTE_CAP });
-        palRow.appendChild(buildPalette(() => sel.color_palette, (n) => { sel.color_palette = n; renderBlocks(); }, ELEMENT_PALETTE_CAP, work.language));
-        card.appendChild(palRow);
 
         const prevRow = row("desc_preview");
         const prev = el("div", "ts-ideoe-descprev");
@@ -1506,6 +1557,7 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
 
     function renderInspector() {
         inspectorScroll.innerHTML = "";
+        inspectorScroll.appendChild(designCard());
         inspectorScroll.appendChild(templateCard());
         inspectorScroll.appendChild(styleCard());
         relabelJson();
@@ -1533,35 +1585,7 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
         renderBlocks();
     }
 
-    // ── Custom presets: save / export / import ──────────────────────────── //
-    function buildLayoutPreset(name, id) {
-        return {
-            id, name_en: name, name_ru: name, desc_en: "", desc_ru: "", custom: true,
-            aspect_ratio: work.aspect_ratio,
-            background_en: work.background || "",
-            high_level_description_en: work.high_level_description || "",
-            blocks: work.blocks.map((b) => b.type === "obj"
-                ? { type: "obj", rect: b.rect, desc_en: b.desc || "", role: b.role || "" }
-                : { type: "text", rect: b.rect, text_en: b.text || "", text_ru: b.text || "", font_preset_id: b.font_preset_id, weight: b.weight, case: b.case, prominence: b.prominence, color: b.color, role: b.role || "" }),
-        };
-    }
-    async function saveCustomPreset() {
-        const name = window.prompt(tr("preset_name_prompt"));
-        if (!name || !name.trim()) return;
-        const id = `user_layout_${Date.now().toString(36)}`;
-        const preset = buildLayoutPreset(name.trim(), id);
-        layouts.push(preset);
-        work.layout_id = id;
-        try {
-            await fetch(api.apiURL(`${ROUTE_BASE}/save_preset`), {
-                method: "POST", headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ kind: "layout", preset }),
-            });
-        } catch (e) { console.warn("[TS Ideogram] save_preset failed", e); }
-        renderInspector();
-    }
-
-    // Export the current layout as a JSON file (browser save dialog).
+    // ── Full-design presets (top level): save / load / export / import ────── //
     function downloadJson(filename, obj) {
         const blob = new Blob([JSON.stringify(obj, null, 2)], { type: "application/json" });
         const url = URL.createObjectURL(blob);
@@ -1569,43 +1593,67 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
         document.body.appendChild(a); a.click(); a.remove();
         setTimeout(() => URL.revokeObjectURL(url), 1500);
     }
-    function exportPreset() {
-        const cur = layouts.find((x) => x.id === work.layout_id);
-        const name = (cur ? localizedName(cur, work.language) : "") || "layout";
-        const id = `user_layout_${Date.now().toString(36)}`;
-        const preset = buildLayoutPreset(name, id);
-        const safe = (name || "layout").replace(/[^\w\-]+/g, "_").slice(0, 40) || "layout";
-        downloadJson(`ts_ideogram_layout_${safe}.json`, preset);
+
+    // Replace the whole editor state with a loaded design (mutate `work` in place
+    // so every closure keeps its reference), then repaint everything.
+    function loadDesignIntoEditor(d) {
+        if (!d || typeof d !== "object") return;
+        const fresh = JSON.parse(JSON.stringify(d));
+        Object.keys(work).forEach((k) => delete work[k]);
+        Object.assign(work, fresh);
+        work.blocks = Array.isArray(work.blocks) ? work.blocks : [];
+        work.style = work.style || {};
+        if (!LANGS.includes(work.language)) work.language = DEFAULT_LANG;
+        userSetSubjects.clear();
+        selectedId = work.blocks[0]?.id || null;
+        relabelHeader();
+        layoutArtboard();
+        renderReference();
+        renderBlocks();
+        renderLayers();
+        renderBlockPanel();
+        renderInspector();
     }
 
-    // Import layout templates: pick JSON file(s); the server copies them into the
-    // node's user_presets/ folder and they appear in the layout picker.
-    function importPresets() { importInput.value = ""; importInput.click(); }
-    async function handleImportFiles(files) {
+    async function refreshDesigns() {
+        invalidatePresetsCache();
+        const p = await loadPresets();
+        designs = designsList(p);
+        renderInspector();
+    }
+
+    async function saveCurrentDesign() {
+        const name = window.prompt(tr("design_name_prompt"));
+        if (!name || !name.trim()) return;
+        const res = await saveDesignPreset(name.trim(), JSON.parse(JSON.stringify(work)));
+        if (res && res.ok) await refreshDesigns();
+    }
+
+    function exportCurrentDesign() {
+        downloadJson(`ts_ideogram_design_${Date.now().toString(36)}.json`,
+            { name: "design", version: 1, design: JSON.parse(JSON.stringify(work)) });
+    }
+
+    function importDesignFiles() { importInput.value = ""; importInput.click(); }
+    async function handleDesignImport(files) {
         let added = 0;
         for (const file of files) {
             let data;
             try { data = JSON.parse(await file.text()); } catch { continue; }
-            const arr = Array.isArray(data) ? data : Array.isArray(data?.layouts) ? data.layouts : [data];
+            const arr = Array.isArray(data) ? data : [data];
             for (const raw of arr) {
-                if (!raw || typeof raw !== "object") continue;
-                try {
-                    const resp = await fetch(api.apiURL(`${ROUTE_BASE}/import_preset`), {
-                        method: "POST", headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ kind: "layout", preset: raw }),
-                    });
-                    const out = await resp.json();
-                    if (out?.ok && out.preset) {
-                        const idx = layouts.findIndex((x) => x.id === out.preset.id);
-                        if (idx >= 0) layouts[idx] = out.preset; else layouts.push(out.preset);
-                        added += 1;
-                    }
-                } catch (e) { console.warn("[TS Ideogram] import failed", e); }
+                const out = await importDesignPreset(raw);
+                if (out && out.ok) added += 1;
             }
         }
-        invalidatePresetsCache();
-        renderInspector();
+        await refreshDesigns();
         window.alert(added ? tr("import_done", { n: added }) : tr("import_empty"));
+    }
+
+    async function deleteDesign(id) {
+        if (!id) return;
+        const res = await deleteDesignPreset(id);
+        if (res && res.ok) await refreshDesigns();
     }
 
     // ── Wiring ──────────────────────────────────────────────────────────── //

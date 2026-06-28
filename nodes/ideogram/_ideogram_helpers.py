@@ -26,17 +26,17 @@ design_json contract (written by the JS editor, read here)
       # text-only:
       "text": "ЛИТЕРАЛ\nстрока2",
       "font_preset_id": "grotesque_black",
-      "weight": "Thin|Regular|Bold|Heavy",
-      "case": "As-typed|UPPERCASE|Title",
-      "prominence": "Caption|Body|Headline|Hero",
-      "legibility": {"outline":true,"high_contrast":true,"solid_block":false},
+      "weight": "Thin|Regular|Bold",
+      "case": "As-typed|UPPERCASE|Title",            # size is derived from rect.h, not a field
+      "legibility": {"outline":true,"solid_block":false},
       "visual_only": false,
-      "color": "#FFE000",
+      "color": "#FFE000",                            # text color
+      "outline_color": "#000000",                    # used when legibility.outline
+      "plate_color": "#1A1A1A",                       # used when legibility.solid_block
       "desc_override": "",
       # obj-only:
       "desc": "...",
-      # both:
-      "color_palette": ["#RRGGBB", ...]    # element-level, <=5
+      "color_palette": ["#RRGGBB", ...]              # obj element-level palette, <=5
     }
   ]
 }
@@ -237,6 +237,91 @@ def save_imported_preset(kind: str, preset: dict) -> dict | None:
         return None
 
 
+# --------------------------------------------------------------------------- #
+# Full-design presets (top level): the complete editor state (design_json),
+# stored one-per-file under user_presets/designs/<id>.json so a whole design —
+# layout + style + objects + literal text + per-block prompt mods — can be
+# saved, loaded, exported and imported as a single reusable preset.
+# --------------------------------------------------------------------------- #
+DESIGNS_DIRNAME = "designs"
+
+
+def load_design_presets() -> list[dict]:
+    """Every saved full-design preset: [{id, name, design, ...}, ...]."""
+    return [
+        item for item in _load_preset_dir(DESIGNS_DIRNAME)
+        if isinstance(item.get("design"), dict) and item.get("id")
+    ]
+
+
+def design_presets_index() -> list[dict]:
+    """Lightweight [{id, name}] list for the /presets payload (omits full designs)."""
+    return [{"id": str(d["id"]), "name": str(d.get("name") or d["id"])} for d in load_design_presets()]
+
+
+def save_design_preset(name, design, design_id=None) -> dict | None:
+    """Write the full design under user_presets/designs/<id>.json. Returns {id, name}."""
+    if not isinstance(design, dict):
+        return None
+    import uuid  # noqa: PLC0415 - lazy
+
+    name = str(name or "").strip() or "design"
+    did = str(design_id or "").strip() or f"design_{uuid.uuid4().hex[:10]}"
+    item = {"id": did, "name": name, "version": 1, "custom": True, "design": design}
+    directory = _preset_dir(DESIGNS_DIRNAME)
+    try:
+        os.makedirs(directory, exist_ok=True)
+        with open(os.path.join(directory, f"{_slug(did) or 'design'}.json"), "w", encoding="utf-8") as handle:
+            json.dump(item, handle, ensure_ascii=False, indent=2)
+        return {"id": did, "name": name}
+    except Exception as exc:  # noqa: BLE001
+        ts_logger.warning("%s Failed to save design preset: %s", LOG_PREFIX, exc)
+        return None
+
+
+def get_design_preset(design_id) -> dict | None:
+    """Resolve a saved design preset by id -> {id, name, design}."""
+    target = str(design_id or "")
+    for d in load_design_presets():
+        if str(d.get("id")) == target:
+            return {"id": str(d["id"]), "name": str(d.get("name") or d["id"]), "design": d["design"]}
+    return None
+
+
+def import_design_preset(payload: dict) -> dict | None:
+    """Accept an exported design file ({name, design} or a raw design/work object)
+    and save it under a FRESH id, so imports never clobber an existing preset."""
+    if not isinstance(payload, dict):
+        return None
+    design = payload.get("design")
+    name = payload.get("name")
+    if not isinstance(design, dict):
+        # The file may BE the raw design (an editor work object).
+        if isinstance(payload.get("blocks"), list) or isinstance(payload.get("style"), dict):
+            design = payload
+        else:
+            return None
+    return save_design_preset(name or "imported design", design)
+
+
+def delete_design_preset(design_id) -> bool:
+    directory = _preset_dir(DESIGNS_DIRNAME)
+    if not os.path.isdir(directory):
+        return False
+    target = str(design_id or "")
+    try:
+        for fname in os.listdir(directory):
+            if not fname.lower().endswith(".json"):
+                continue
+            data = _load_json_file(os.path.join(directory, fname))
+            if isinstance(data, dict) and str(data.get("id")) == target:
+                os.remove(os.path.join(directory, fname))
+                return True
+    except OSError as exc:
+        ts_logger.warning("%s Failed to delete design preset: %s", LOG_PREFIX, exc)
+    return False
+
+
 def _fonts_by_id() -> dict[str, dict]:
     return {str(f.get("id")): f for f in load_fonts() if f.get("id")}
 
@@ -343,20 +428,28 @@ def _apply_case(text: str, case: str) -> str:
 # --------------------------------------------------------------------------- #
 _WEIGHT_PHRASE = {"Thin": "thin light weight", "Bold": "bold weight", "Heavy": "heavy black weight"}
 _CASE_PHRASE = {"UPPERCASE": "all uppercase", "Title": "title case"}
-_PROMINENCE_PHRASE = {
-    "Caption": "small caption text",
-    "Body": "medium body text",
-    "Headline": "large prominent headline",
-    "Hero": "huge dominant hero headline",
-}
+def _size_phrase_from_rect(rect) -> str:
+    """Size derived from the DRAWN block height (mirrors JS sizePhraseFromRect)."""
+    try:
+        h = float(rect.get("h")) if isinstance(rect, dict) else 0.0
+    except (TypeError, ValueError):
+        h = 0.0
+    if h >= 0.25:
+        return "huge dominant hero headline"
+    if h >= 0.12:
+        return "large prominent headline"
+    if h >= 0.06:
+        return "medium body text"
+    return "small caption text"
 
 
 def compose_text_desc(block: dict, fonts_by_id: dict[str, dict] | None = None) -> str:
     """Build a text element's ``desc`` from ordered, non-empty slots.
 
     Mirror of the JS ``composeTextDesc`` in _ideogram_shared.js — keep in sync.
-    Order: preset snippet (load-bearing, first) -> weight -> case -> prominence
-    -> color -> legibility -> Cyrillic hint -> user override (verbatim, last).
+    Order: preset snippet (load-bearing, first) -> weight -> case -> size (from the
+    drawn block) -> color -> legibility (outline/plate colors) -> Cyrillic hint ->
+    user override (verbatim, last).
     """
     fonts_by_id = fonts_by_id if fonts_by_id is not None else _fonts_by_id()
     slots: list[str] = []
@@ -373,9 +466,7 @@ def compose_text_desc(block: dict, fonts_by_id: dict[str, dict] | None = None) -
     if case_phrase:
         slots.append(case_phrase)
 
-    prominence = _PROMINENCE_PHRASE.get(str(block.get("prominence") or ""))
-    if prominence:
-        slots.append(prominence)
+    slots.append(_size_phrase_from_rect(block.get("rect")))
 
     color = norm_hex(block.get("color"))
     if color:
@@ -384,11 +475,14 @@ def compose_text_desc(block: dict, fonts_by_id: dict[str, dict] | None = None) -
     legibility = block.get("legibility")
     if isinstance(legibility, dict):
         if legibility.get("outline"):
-            slots.append("with a thin dark outline")
-        if legibility.get("high_contrast"):
-            slots.append("high contrast")
+            oc = norm_hex(block.get("outline_color"))
+            slots.append(f"with a {oc} outline" if oc else "with a thin dark outline")
         if legibility.get("solid_block"):
-            slots.append("on a solid color block behind the text")
+            pc = norm_hex(block.get("plate_color"))
+            slots.append(
+                f"on a solid {pc} color block behind the text" if pc
+                else "on a solid color block behind the text"
+            )
     slots.append("crisp clean edges, readable at small thumbnail size")
 
     if has_cyrillic(str(block.get("text") or "")):
@@ -425,18 +519,22 @@ def _build_element(block: dict, fonts_by_id: dict[str, dict]) -> dict | None:
         text = _apply_case(text, str(block.get("case") or ""))
         if not text.strip():
             return None
-        # A text block's primary color reinforces the element palette.
-        color = norm_hex(block.get("color"))
-        if color and color not in palette and len(palette) < ELEMENT_PALETTE_CAP:
-            palette = [color] + palette
-            palette = palette[:ELEMENT_PALETTE_CAP]
+        # Text element colors = text + outline + plate colors (the per-block
+        # palette UI was replaced by these explicit color pickers).
+        leg = block.get("legibility") if isinstance(block.get("legibility"), dict) else {}
+        colors = [norm_hex(block.get("color"))]
+        if leg.get("outline"):
+            colors.append(norm_hex(block.get("outline_color")))
+        if leg.get("solid_block"):
+            colors.append(norm_hex(block.get("plate_color")))
+        text_palette = clean_palette([c for c in colors if c], ELEMENT_PALETTE_CAP)
         element: dict = {"type": "text"}
         if bbox is not None:
             element["bbox"] = bbox
         element["text"] = text
         element["desc"] = compose_text_desc(block, fonts_by_id)
-        if palette:
-            element["color_palette"] = palette
+        if text_palette:
+            element["color_palette"] = text_palette
         return element
 
     # obj element (also the emit path for visual_only text blocks)
@@ -465,6 +563,13 @@ def _build_style_description(style: dict) -> dict | None:
     photo = str(style.get("photo") or "").strip()
     art_style = str(style.get("art_style") or "").strip()
     palette = clean_palette(style.get("color_palette"), IMAGE_PALETTE_CAP)
+
+    # Fold the user's lighting colors into the lighting prose (Ideogram has no
+    # separate lighting-color field).
+    light_pal = clean_palette(style.get("lighting_palette"), ELEMENT_PALETTE_CAP)
+    if light_pal:
+        hint = ", ".join(light_pal) + " colored light"
+        lighting = f"{lighting}, {hint}" if lighting else hint
 
     if aesthetics:
         out["aesthetics"] = aesthetics
@@ -508,6 +613,11 @@ def build_caption(design_json: str) -> tuple[str, str]:
             elements.append(element)
 
     background = str(design.get("background") or "").strip()
+    # Fold the user's background colors into the background prose.
+    bg_pal = clean_palette(design.get("background_palette"), ELEMENT_PALETTE_CAP)
+    if bg_pal:
+        hint = "dominant colors " + ", ".join(bg_pal)
+        background = f"{background}, {hint}" if background else hint
 
     # Nothing meaningful designed yet -> emit empty string (downstream no-op).
     if not elements and not background and not str(design.get("high_level_description") or "").strip():
@@ -686,9 +796,45 @@ def register_routes() -> None:
             "layouts": load_layouts() + user.get("layouts", []),
             "styles": load_styles() + user.get("styles", []),
             "fonts": load_fonts(),
+            "designs": design_presets_index(),
             "aspect_ratios": ASPECT_RATIOS,
             "default_aspect_ratio": DEFAULT_ASPECT_RATIO,
         })
+
+    # ── Full-design presets (top level) ──────────────────────────────────── #
+    @routes.get("/ts_ideogram/design")
+    async def _get_design(request):
+        item = get_design_preset(request.query.get("id", ""))
+        return web.json_response(item if item else {})
+
+    @routes.post("/ts_ideogram/save_design")
+    async def _save_design(request):
+        try:
+            payload = await request.json()
+        except Exception:  # noqa: BLE001
+            return web.Response(status=400)
+        if not isinstance(payload, dict):
+            return web.json_response({"ok": False})
+        saved = save_design_preset(payload.get("name"), payload.get("design"), payload.get("id"))
+        return web.json_response({"ok": bool(saved), **(saved or {})})
+
+    @routes.post("/ts_ideogram/import_design")
+    async def _import_design(request):
+        try:
+            payload = await request.json()
+        except Exception:  # noqa: BLE001
+            return web.Response(status=400)
+        saved = import_design_preset(payload if isinstance(payload, dict) else {})
+        return web.json_response({"ok": bool(saved), **(saved or {})})
+
+    @routes.post("/ts_ideogram/delete_design")
+    async def _delete_design(request):
+        try:
+            payload = await request.json()
+        except Exception:  # noqa: BLE001
+            return web.Response(status=400)
+        ok = delete_design_preset(payload.get("id")) if isinstance(payload, dict) else False
+        return web.json_response({"ok": bool(ok)})
 
     @routes.post("/ts_ideogram/save_preset")
     async def _save_preset(request):
@@ -795,9 +941,9 @@ def _self_test() -> None:
             {
                 "type": "text", "rect": {"x": 0.04, "y": 0.12, "w": 0.5, "h": 0.3},
                 "text": "срочно", "font_preset_id": "grotesque_black",
-                "weight": "Heavy", "case": "UPPERCASE", "prominence": "Hero",
-                "legibility": {"outline": True, "high_contrast": True},
-                "color": "#ffe000", "color_palette": ["#ffe000"],
+                "weight": "Bold", "case": "UPPERCASE",
+                "legibility": {"outline": True, "solid_block": True},
+                "color": "#ffe000", "outline_color": "#000000", "plate_color": "#101010",
             },
             {
                 "type": "obj", "rect": {"x": 0.6, "y": 0.1, "w": 0.35, "h": 0.85},
@@ -830,6 +976,10 @@ def _self_test() -> None:
     check("bbox y-first in element", t0["bbox"] == frac_to_bbox(0.04, 0.12, 0.5, 0.3))
     check("cyrillic hint in desc", "Cyrillic script" in t0["desc"])
     check("desc snippet is first slot", t0["desc"].startswith("bold grotesque sans-serif"))
+    check("size derived from drawn rect (h=0.3 -> hero)", "huge dominant hero headline" in t0["desc"])
+    check("outline color folded into desc", "with a #000000 outline" in t0["desc"])
+    check("plate color folded into desc", "on a solid #101010 color block behind the text" in t0["desc"])
+    check("text palette = text + outline + plate", t0["color_palette"] == ["#FFE000", "#000000", "#101010"])
     check("visual_only text became obj placeholder", els[2]["type"] == "obj" and "text" not in els[2])
     check("ensure_ascii=False keeps Cyrillic literal", "СРОЧНО" in caption_str)
 

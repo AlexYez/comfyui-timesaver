@@ -18,9 +18,8 @@ export const ASPECT_RATIOS = [
 export const DEFAULT_ASPECT_RATIO = "16x9";
 export const DEFAULT_LANG = "ru";
 export const LANGS = ["ru", "en"];
-export const WEIGHTS = ["Thin", "Regular", "Bold", "Heavy"];
+export const WEIGHTS = ["Thin", "Regular", "Bold"];
 export const CASES = ["As-typed", "UPPERCASE", "Title"];
-export const PROMINENCE = ["Caption", "Body", "Headline", "Hero"];
 export const PHOTO_MEDIUM = "photograph";
 export const IMAGE_PALETTE_CAP = 16;
 export const ELEMENT_PALETTE_CAP = 5;
@@ -137,12 +136,15 @@ export function applyCase(text, mode) {
 
 const WEIGHT_PHRASE = { Thin: "thin light weight", Bold: "bold weight", Heavy: "heavy black weight" };
 const CASE_PHRASE = { UPPERCASE: "all uppercase", Title: "title case" };
-const PROMINENCE_PHRASE = {
-    Caption: "small caption text",
-    Body: "medium body text",
-    Headline: "large prominent headline",
-    Hero: "huge dominant hero headline",
-};
+// Size is derived from the DRAWN block height (not a manual picker), reinforcing
+// the bbox the model already gets — so the rendered size IS the requested size.
+export function sizePhraseFromRect(rect) {
+    const h = (rect && Number(rect.h)) || 0;
+    if (h >= 0.25) return "huge dominant hero headline";
+    if (h >= 0.12) return "large prominent headline";
+    if (h >= 0.06) return "medium body text";
+    return "small caption text";
+}
 
 // Mirror of compose_text_desc(): ordered, non-empty slots joined with ", ".
 export function composeTextDesc(block, fontsById) {
@@ -154,16 +156,20 @@ export function composeTextDesc(block, fontsById) {
     if (weight) slots.push(weight);
     const casePhrase = CASE_PHRASE[block.case];
     if (casePhrase) slots.push(casePhrase);
-    const prominence = PROMINENCE_PHRASE[block.prominence];
-    if (prominence) slots.push(prominence);
+    slots.push(sizePhraseFromRect(block.rect));
 
     const color = normHex(block.color);
     if (color) slots.push(`${color} colored letters`);
 
     const leg = block.legibility || {};
-    if (leg.outline) slots.push("with a thin dark outline");
-    if (leg.high_contrast) slots.push("high contrast");
-    if (leg.solid_block) slots.push("on a solid color block behind the text");
+    if (leg.outline) {
+        const oc = normHex(block.outline_color);
+        slots.push(oc ? `with a ${oc} outline` : "with a thin dark outline");
+    }
+    if (leg.solid_block) {
+        const pc = normHex(block.plate_color);
+        slots.push(pc ? `on a solid ${pc} color block behind the text` : "on a solid color block behind the text");
+    }
     slots.push("crisp clean edges, readable at small thumbnail size");
 
     if (hasCyrillic(block.text || "")) slots.push("Cyrillic script, Russian text");
@@ -184,10 +190,12 @@ export function makeDefaultDesign() {
         megapixels: DEFAULT_MEGAPIXELS,
         high_level_description: "",
         background: "",
+        background_palette: [],
         style: {
             preset_id: "",
             aesthetics: "",
             lighting: "",
+            lighting_palette: [],
             medium: "graphic_design",
             photo: "",
             art_style: "",
@@ -288,6 +296,51 @@ export async function fetchCaptionPreview(designJson) {
         console.warn("[TS Ideogram] Caption preview failed:", error);
         return null;
     }
+}
+
+// ── Full-design presets (top level) ───────────────────────────────────────── //
+// A design preset = the complete editor state (work / design_json), saved by
+// name in the node's user_presets/designs/ folder. One import/export covers the
+// whole design (layout + style + objects + literal text + per-block prompt mods).
+export function designsList(presets) { return presets?.designs || []; }
+
+export async function saveDesignPreset(name, design) {
+    try {
+        const r = await fetch(api.apiURL(`${ROUTE_BASE}/save_design`), {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name, design }),
+        });
+        return await r.json();
+    } catch (e) { console.warn("[TS Ideogram] save_design failed:", e); return null; }
+}
+
+export async function fetchDesignPreset(id) {
+    try {
+        const r = await fetch(api.apiURL(`${ROUTE_BASE}/design?id=${encodeURIComponent(id)}`));
+        if (!r.ok) return null;
+        const d = await r.json();
+        return d && d.design ? d : null;
+    } catch (e) { console.warn("[TS Ideogram] fetch design failed:", e); return null; }
+}
+
+export async function importDesignPreset(payload) {
+    try {
+        const r = await fetch(api.apiURL(`${ROUTE_BASE}/import_design`), {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+        });
+        return await r.json();
+    } catch (e) { console.warn("[TS Ideogram] import_design failed:", e); return null; }
+}
+
+export async function deleteDesignPreset(id) {
+    try {
+        const r = await fetch(api.apiURL(`${ROUTE_BASE}/delete_design`), {
+            method: "POST", headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id }),
+        });
+        return await r.json();
+    } catch (e) { console.warn("[TS Ideogram] delete_design failed:", e); return null; }
 }
 
 export async function persistDesign(designJson) {
@@ -399,22 +452,6 @@ export const OBJECT_PRESETS = [
     { id: "sneaker", ru: "Кроссовок", en: "Sneaker", v: "a stylish sneaker shot at a dynamic angle with crisp detail and vivid product lighting" },
     { id: "supercar", ru: "Суперкар", en: "Supercar", v: "a sleek glossy supercar at a dramatic three-quarter angle, cinematic reflections, golden-hour glow" },
     { id: "pet", ru: "Милый питомец", en: "Cute pet", v: "an adorable expressive pet animal looking at the viewer, soft warm light, charming and heart-melting" },
-];
-
-// Text presets — one-click "tasty" lettering looks for a text block. Each sets
-// font_preset_id + weight + case + prominence + color + legibility together.
-export const TEXT_PRESETS = [
-    { id: "bold_headline", ru: "Жирный заголовок", en: "Bold headline", font_preset_id: "grotesque_black", weight: "Heavy", case: "UPPERCASE", prominence: "Hero", color: "#FFFFFF", legibility: { outline: true, high_contrast: true, solid_block: false } },
-    { id: "clean_minimal", ru: "Чистый минимал", en: "Clean minimal", font_preset_id: "geometric_sans", weight: "Regular", case: "As-typed", prominence: "Headline", color: "#0F172A", legibility: { outline: false, high_contrast: false, solid_block: false } },
-    { id: "yellow_accent", ru: "Жёлтый акцент", en: "Yellow accent", font_preset_id: "condensed_bold", weight: "Bold", case: "UPPERCASE", prominence: "Headline", color: "#FFD400", legibility: { outline: true, high_contrast: true, solid_block: false } },
-    { id: "elegant_serif", ru: "Элегантный сериф", en: "Elegant serif", font_preset_id: "didone_luxury", weight: "Regular", case: "Title", prominence: "Hero", color: "#1A1A1A", legibility: { outline: false, high_contrast: false, solid_block: false } },
-    { id: "poster_impact", ru: "Постер-удар", en: "Poster impact", font_preset_id: "display_poster_sans", weight: "Heavy", case: "UPPERCASE", prominence: "Hero", color: "#FFFFFF", legibility: { outline: false, high_contrast: true, solid_block: false } },
-    { id: "sticker_block", ru: "Плашка-стикер", en: "Sticker block", font_preset_id: "grotesque_black", weight: "Bold", case: "UPPERCASE", prominence: "Headline", color: "#111111", legibility: { outline: false, high_contrast: true, solid_block: true } },
-    { id: "handwritten", ru: "Рукописный", en: "Handwritten", font_preset_id: "brush_marker", weight: "Bold", case: "As-typed", prominence: "Headline", color: "#FFFFFF", legibility: { outline: true, high_contrast: false, solid_block: false } },
-    { id: "retro_display", ru: "Ретро-дисплей", en: "Retro display", font_preset_id: "retro_70s_round", weight: "Bold", case: "UPPERCASE", prominence: "Hero", color: "#FF5A36", legibility: { outline: false, high_contrast: false, solid_block: false } },
-    { id: "techno_mono", ru: "Техно-моно", en: "Techno mono", font_preset_id: "mono_techno", weight: "Bold", case: "UPPERCASE", prominence: "Body", color: "#00E5A0", legibility: { outline: false, high_contrast: true, solid_block: false } },
-    { id: "graffiti", ru: "Граффити", en: "Graffiti", font_preset_id: "graffiti_urban", weight: "Heavy", case: "UPPERCASE", prominence: "Hero", color: "#FFFFFF", legibility: { outline: true, high_contrast: true, solid_block: false } },
-    { id: "stencil", ru: "Стенсил", en: "Stencil", font_preset_id: "stencil_block", weight: "Heavy", case: "UPPERCASE", prominence: "Hero", color: "#111111", legibility: { outline: false, high_contrast: true, solid_block: false } },
 ];
 
 // "Main idea" (high_level_description) presets, 10 per layout, adapted to that
@@ -586,27 +623,29 @@ const I18N = {
         hld: "Main idea", aesthetics: "Mood & vibe",
         lighting: "Lighting", art_style: "Art style",
         image_palette: "Image colors (up to {n})", background: "Background", add_color: "Add color",
+        lighting_colors: "Lighting colors (up to {n})", background_colors: "Background colors (up to {n})",
         hld_hint: "One sentence describing the whole image — the model leans on this most. E.g. a bold summer-sale poster for a sneaker brand.",
         aesthetics_hint: "The overall feel in a few words. Example: bold and punchy, calm and minimal, retro, luxurious. Safe to leave blank.",
         lighting_hint: "How the scene is lit. Example: bright daylight, soft studio light, moody shadows, neon glow. Safe to leave blank.",
         art_style_hint: "Shown for every image type except Photo — the drawing/rendering style. Example: flat vector, watercolor, low-poly 3D, bold poster graphics.",
         image_palette_hint: "Optional palette the whole image sticks to — add up to {n} colors. Leave empty to let Ideogram choose.",
+        lighting_colors_hint: "Up to {n} colors that tint the light (folded into the lighting description). Empty = neutral light.",
+        background_colors_hint: "Up to {n} colors the background sticks to (folded into the background description). Empty = Ideogram chooses.",
         background_hint: "What sits behind everything — the backdrop behind your text and objects. Example: smooth orange-to-pink gradient, blurred city street, dark marble. Leave empty for a plain background.",
         block_text_title: "Text block", block_obj_title: "Object (obj)",
         text_literal: "Text (rendered literally)",
-        font_preset: "Font preset (the description is the only real lever)",
-        weight: "Weight", case: "Case", size_words: "Size (in words)", text_color: "Text color",
-        legibility: "Legibility", leg_outline: "Outline", leg_contrast: "Contrast", leg_block: "Block",
+        font_preset: "Text style",
+        weight: "Weight", case: "Case", text_color: "Text color", outline_color: "Outline color", plate_color: "Plate color",
+        legibility: "Legibility", leg_outline: "Outline", leg_block: "Plate",
         visual_only: "Manual text (visual-only — empty placeholder for a hand overlay)",
         override: "Extra description (override, appended last)",
         block_palette: "Block palette (up to {n})", desc_preview: "Final description (desc) for the model:",
         obj_desc: "Object description (desc)",
         select_block: "Select a block on the canvas, or add a new one (+ Text / + Object).",
         visual_only_preview: "(visual-only) this area becomes an empty placeholder — add the text by hand in Figma/Photoshop.",
-        save_as_layout: "Save as template",
         export_btn: "⬇ Export", import_btn: "⬆ Import",
         import_done: "Imported: {n}", import_empty: "No valid presets in the file",
-        preset_name_prompt: "Preset name:", custom_tag: "custom",
+        custom_tag: "custom",
         empty_hint: "Click \"✎ Edit design\"", edit_btn: "✎ Edit design",
         badge_text: "Text", badge_obj: "Object", bbox_label: "bbox [y,x,y,x]",
         tip_add_text: "Drops a new text block on the canvas — type the words you want printed on the image.",
@@ -622,21 +661,18 @@ const I18N = {
         tip_cancel: "Closes the editor and throws away any changes you made here.",
         tip_save: "Saves your design back to the node and closes the editor — your work is kept.",
         tip_layout_preset: "Pick a ready-made layout to drop in text and object blocks with a matching aspect ratio and background.",
-        tip_save_as_layout: "Save your current blocks, aspect ratio and background as a reusable template you can pick again later.",
-        tip_export_layout: "Download this layout template as a JSON file to back it up or share it with someone else.",
-        tip_import_layout: "Load layout template files from your computer so they show up in the template picker above.",
         tip_add_color: "Add a color: opens the color picker so you can pin one more shade to this palette.",
         tip_palette_swatch: "Click a color to remove it from the palette.",
         tip_obj_desc: "Describe what this graphic shows — e.g. a smiling sneaker, a coffee cup. Ideogram draws it here.",
         tip_text_literal: "Type the exact words you want to appear — these letters are drawn on the image as-is.",
-        tip_font_preset: "Pick the lettering style for this text. A ⚠ means that font is shaky with Russian letters.",
+        tip_font_preset: "The text style — the lettering's typographic character. Ideogram can't use a typeface by name, so this sets a type DESCRIPTION (the real lever). Set weight, case and color below.",
         tip_weight: "How thick the letters look — from delicate Thin up to chunky Heavy.",
         tip_case: "How the letters are cased: as you typed, ALL CAPS, or Title Style.",
-        tip_size_words: "How big and loud this text should feel — a tiny caption or a giant hero headline.",
         tip_text_color: "Pick the color of these letters — tap the swatch to choose any shade.",
-        tip_leg_outline: "Adds a thin dark edge around the letters so they stand out on busy backgrounds.",
-        tip_leg_contrast: "Asks Ideogram to make the text really pop against whatever is behind it.",
-        tip_leg_block: "Puts the text on a solid color bar behind it, like a sticker — great for readability.",
+        tip_outline_color: "The color of the outline around the letters.",
+        tip_plate_color: "The color of the solid plate behind the text.",
+        tip_leg_outline: "Adds an outline around the letters so they stand out on busy backgrounds. Pick its color below.",
+        tip_leg_block: "Puts the text on a solid color plate behind it, like a sticker. Pick its color below.",
         tip_visual_only: "Leaves this spot blank so you can drop the text in by hand later in Figma or Photoshop.",
         tip_override: "Add any extra wording for this block — it's tacked on at the very end of the description.",
         tip_block_palette: "Set the colors just for this block — add a few swatches with the ＋ button.",
@@ -650,9 +686,18 @@ const I18N = {
         layer_untitled: "(untitled)", general_settings: "General settings",
         json_prompt: "JSON prompt", copy: "Copy", copied: "Copied!",
         tip_copy_json: "Copy the ready JSON prompt to the clipboard.",
-        object_preset: "Object preset", text_preset: "Text style preset",
+        object_preset: "Object preset",
         tip_object_preset: "Pick a ready subject for this object — a character or a hero object. It replaces the description.",
-        tip_text_preset: "Pick a ready lettering look — font, weight, case and color in one click.",
+        card_design: "Design preset", design_saved: "Saved designs", design_load: "— load a design —",
+        design_apply: "↻ Load", design_save: "💾 Save", design_name_prompt: "Design name:",
+        tip_design_card: "Save, load, export and import the WHOLE design — layout, style, objects, text and prompt tweaks — as one reusable preset stored in the node folder.",
+        tip_design_load: "Pick one of your saved designs, then press Load to drop it onto the canvas.",
+        tip_design_apply: "Load the selected saved design — replaces everything currently on the canvas.",
+        tip_design_save: "Save the current design as a named preset in the node folder.",
+        tip_design_export: "Download the current design as a JSON file to back it up or share it.",
+        tip_design_import: "Load design JSON file(s) from your computer into your saved designs.",
+        tip_design_delete: "Delete the selected saved design from the node folder.",
+        design_delete_confirm: "Delete this saved design?",
         clear_confirm: "Clear the whole design? Blocks, style, background and colors will all be reset.",
         tip_layers: "Your blocks as a stack — the top of the list is the front of the image.",
         tip_layer_row: "Click to select; drag up/down to change overlap. Higher = closer to the front.",
@@ -669,27 +714,29 @@ const I18N = {
         hld: "Главная идея", aesthetics: "Настроение и вайб",
         lighting: "Освещение", art_style: "Художественный стиль",
         image_palette: "Цвета изображения (до {n})", background: "Фон", add_color: "Добавить цвет",
+        lighting_colors: "Цвета освещения (до {n})", background_colors: "Цвета фона (до {n})",
         hld_hint: "Одно предложение про всю картинку — модель опирается на него сильнее всего. Например: яркий постер летней распродажи кроссовок.",
         aesthetics_hint: "Общее ощущение в паре слов. Например: дерзко и сочно, спокойно и минимально, ретро, премиально. Можно оставить пустым.",
         lighting_hint: "Как освещена сцена. Например: яркий дневной свет, мягкий студийный, драматичные тени, неоновое свечение. Можно оставить пустым.",
         art_style_hint: "Показывается для всех типов, кроме «Фото» — стиль отрисовки. Например: плоский вектор, акварель, low-poly 3D, плакатная графика.",
         image_palette_hint: "Необязательная палитра, которой держится вся картинка — до {n} цветов. Оставьте пустым — Ideogram подберёт сам.",
+        lighting_colors_hint: "До {n} цветов, которыми подкрашен свет (вшиваются в описание освещения). Пусто — нейтральный свет.",
+        background_colors_hint: "До {n} цветов, которых держится фон (вшиваются в описание фона). Пусто — Ideogram подберёт сам.",
         background_hint: "Что находится позади всего — задний фон под текстом и объектами. Например: плавный градиент из оранжевого в розовый, размытая улица, тёмный мрамор. Пусто — простой фон.",
         block_text_title: "Текстовый блок", block_obj_title: "Объект (obj)",
         text_literal: "Текст (рендерится буква-в-букву)",
-        font_preset: "Шрифт-пресет (описание — единственный реальный рычаг)",
-        weight: "Вес", case: "Регистр", size_words: "Размер (словами)", text_color: "Цвет текста",
-        legibility: "Читаемость", leg_outline: "Обводка", leg_contrast: "Контраст", leg_block: "Плашка",
+        font_preset: "Стиль текста",
+        weight: "Вес", case: "Регистр", text_color: "Цвет текста", outline_color: "Цвет обводки", plate_color: "Цвет плашки",
+        legibility: "Читаемость", leg_outline: "Обводка", leg_block: "Плашка",
         visual_only: "Текст вручную (пустая плашка под ручной оверлей)",
         override: "Доп. описание (добавляется в конец)",
         block_palette: "Палитра блока (до {n})", desc_preview: "Итоговое описание для модели:",
         obj_desc: "Описание объекта (desc)",
         select_block: "Выберите блок на холсте или добавьте новый (+ Текст / + Объект).",
         visual_only_preview: "(visual-only) область станет пустой плашкой без текста — добавьте надпись вручную в Figma/Photoshop.",
-        save_as_layout: "Сохранить как шаблон",
         export_btn: "⬇ Экспорт", import_btn: "⬆ Импорт",
         import_done: "Импортировано: {n}", import_empty: "В файле нет валидных пресетов",
-        preset_name_prompt: "Имя пресета:", custom_tag: "свой",
+        custom_tag: "свой",
         empty_hint: "Нажмите «✎ Редактировать»", edit_btn: "✎ Редактировать",
         badge_text: "Текст", badge_obj: "Объект", bbox_label: "рамка [y,x,y,x]",
         tip_add_text: "Добавляет на холст новый текстовый блок — впишите слова, которые должны быть на картинке.",
@@ -705,21 +752,18 @@ const I18N = {
         tip_cancel: "Закрывает редактор и отменяет все изменения, что вы тут сделали.",
         tip_save: "Сохраняет дизайн в ноду и закрывает редактор — ваша работа остаётся.",
         tip_layout_preset: "Выберите готовый лейаут — он расставит блоки текста и объектов с подходящим форматом и фоном.",
-        tip_save_as_layout: "Сохраните текущие блоки, формат и фон как свой шаблон, чтобы быстро применять его снова.",
-        tip_export_layout: "Скачайте этот лейаут-шаблон в виде JSON-файла, чтобы сохранить про запас или передать коллеге.",
-        tip_import_layout: "Загрузите файлы лейаут-шаблонов с компьютера — они появятся в списке шаблонов выше.",
         tip_add_color: "Добавить цвет: откроет палитру выбора, чтобы закрепить ещё один оттенок в наборе.",
         tip_palette_swatch: "Нажмите на цвет, чтобы убрать его из палитры.",
         tip_obj_desc: "Опишите, что здесь нарисовать — например, улыбающийся кроссовок или чашка кофе. Ideogram это и нарисует.",
         tip_text_literal: "Впишите точные слова, которые должны появиться — эти буквы рисуются на картинке буква-в-букву.",
-        tip_font_preset: "Выберите стиль букв для этого текста. Значок ⚠ — шрифт плохо дружит с кириллицей.",
+        tip_font_preset: "Стиль текста — типографический характер букв. Ideogram не умеет шрифт по имени, поэтому это задаёт ОПИСАНИЕ типа (реальный рычаг). Вес, регистр и цвет — ниже.",
         tip_weight: "Насколько толстые буквы — от тонких до жирных и совсем мощных.",
         tip_case: "Как оформить буквы: как набрали, ВСЕ ЗАГЛАВНЫЕ или С Заглавных.",
-        tip_size_words: "Насколько крупным и заметным будет текст — от мелкой подписи до огромного заголовка.",
         tip_text_color: "Выберите цвет этих букв — нажмите на квадратик и подберите любой оттенок.",
-        tip_leg_outline: "Добавит тонкую тёмную обводку вокруг букв, чтобы они читались на пёстром фоне.",
-        tip_leg_contrast: "Попросит Ideogram сделать текст хорошо заметным на фоне за ним.",
-        tip_leg_block: "Положит текст на плотную цветную плашку, как на наклейке — отлично для читаемости.",
+        tip_outline_color: "Цвет обводки вокруг букв.",
+        tip_plate_color: "Цвет сплошной плашки под текстом.",
+        tip_leg_outline: "Добавит обводку вокруг букв, чтобы они читались на пёстром фоне. Цвет — ниже.",
+        tip_leg_block: "Положит текст на сплошную цветную плашку, как на наклейке. Цвет — ниже.",
         tip_visual_only: "Оставит здесь пустое место, чтобы вы потом сами вписали текст в Figma или Photoshop.",
         tip_override: "Допишите что угодно про этот блок — это добавится в самый конец его описания.",
         tip_block_palette: "Задайте цвета только для этого блока — добавьте пару образцов кнопкой ＋.",
@@ -733,9 +777,18 @@ const I18N = {
         layer_untitled: "(без названия)", general_settings: "Общие настройки",
         json_prompt: "JSON-промпт", copy: "Копировать", copied: "Скопировано!",
         tip_copy_json: "Скопировать готовый JSON-промпт в буфер обмена.",
-        object_preset: "Пресет объекта", text_preset: "Пресет стиля текста",
+        object_preset: "Пресет объекта",
         tip_object_preset: "Выберите готовый объект — персонажа или герой-предмет. Заменяет описание.",
-        tip_text_preset: "Выберите готовый вид надписи — шрифт, вес, регистр и цвет в один клик.",
+        card_design: "Пресет дизайна", design_saved: "Сохранённые дизайны", design_load: "— загрузить дизайн —",
+        design_apply: "↻ Загрузить", design_save: "💾 Сохранить", design_name_prompt: "Имя дизайна:",
+        tip_design_card: "Сохраняйте, загружайте, экспортируйте и импортируйте ВЕСЬ дизайн — макет, стиль, объекты, тексты и правки промтов — одним пресетом в папке ноды.",
+        tip_design_load: "Выберите сохранённый дизайн и нажмите «Загрузить», чтобы выложить его на холст.",
+        tip_design_apply: "Загрузить выбранный сохранённый дизайн — заменит всё, что сейчас на холсте.",
+        tip_design_save: "Сохранить текущий дизайн именованным пресетом в папке ноды.",
+        tip_design_export: "Скачать текущий дизайн в JSON-файл — для бэкапа или чтобы поделиться.",
+        tip_design_import: "Загрузить JSON-файлы дизайнов с компьютера в ваши сохранённые дизайны.",
+        tip_design_delete: "Удалить выбранный сохранённый дизайн из папки ноды.",
+        design_delete_confirm: "Удалить этот сохранённый дизайн?",
         clear_confirm: "Очистить весь дизайн? Блоки, стиль, фон и цвета будут сброшены.",
         tip_layers: "Ваши блоки стопкой — верх списка это передний план картинки.",
         tip_layer_row: "Клик — выбрать; тяните вверх/вниз, чтобы менять перекрытие. Выше = ближе к переднему плану.",
@@ -745,12 +798,10 @@ const I18N = {
 };
 
 const SEG_LABELS = {
-    weight: { en: { Thin: "Thin", Regular: "Regular", Bold: "Bold", Heavy: "Heavy" },
-              ru: { Thin: "Тонкий", Regular: "Обычный", Bold: "Жирный", Heavy: "Чёрный" } },
+    weight: { en: { Thin: "Thin", Regular: "Regular", Bold: "Bold" },
+              ru: { Thin: "Тонкий", Regular: "Обычный", Bold: "Жирный" } },
     case: { en: { "As-typed": "As-typed", UPPERCASE: "UPPERCASE", Title: "Title" },
             ru: { "As-typed": "Как есть", UPPERCASE: "ВЕРХНИЙ", Title: "Заголовок" } },
-    prominence: { en: { Caption: "Caption", Body: "Body", Headline: "Headline", Hero: "Hero" },
-                  ru: { Caption: "Подпись", Body: "Текст", Headline: "Заголовок", Hero: "Гигант" } },
 };
 
 export function t(key, lang = DEFAULT_LANG, vars) {
@@ -789,10 +840,12 @@ export function instantiateLayout(layout, lang = DEFAULT_LANG) {
         return {
             id: makeBlockId(), type: "text", rect, text,
             font_preset_id: b.font_preset_id || "grotesque_black",
-            weight: b.weight || "Bold", case: b.case || "As-typed", prominence: b.prominence || "Headline",
+            weight: b.weight || "Bold", case: b.case || "As-typed",
             color: normHex(b.color) || "#FFFFFF",
-            legibility: { outline: true, high_contrast: true, solid_block: false },
-            visual_only: false, desc_override: "", role: b.role || "", color_palette: [],
+            outline_color: normHex(b.outline_color) || "#000000",
+            plate_color: normHex(b.plate_color) || "#1A1A1A",
+            legibility: { outline: true, solid_block: false },
+            visual_only: false, desc_override: "", role: b.role || "",
         };
     });
     return {

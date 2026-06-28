@@ -12,9 +12,11 @@ import {
     DESIGN_INPUT,
     MESH_POSITIONS,
     NODE_NAME,
+    applyCase,
     aspectFitBox,
     cleanPalette,
     dimsFromAspectMp,
+    fontFamilyForPreset,
     fontsById,
     getWidgetValue,
     hexToRgba,
@@ -23,6 +25,7 @@ import {
     loadPresets,
     localizedName,
     makeDefaultDesign,
+    normHex,
     parseDesign,
     persistDesign,
     setWidgetValue,
@@ -104,6 +107,66 @@ function paintPaletteRect(ctx, colors, x, y, w, h, { alpha = 1, mesh = true } = 
     }
     ctx.restore();
     return true;
+}
+
+const WEIGHT_CSS = { Thin: 300, Regular: 400, Bold: 700, Heavy: 900 };
+
+// Word-wrap a single line to fit maxW (keeps an over-long word on its own line).
+function wrapLine(ctx, line, maxW) {
+    const words = line.split(" ");
+    const out = [];
+    let cur = "";
+    for (const word of words) {
+        const test = cur ? `${cur} ${word}` : word;
+        if (!cur || ctx.measureText(test).width <= maxW) cur = test;
+        else { out.push(cur); cur = word; }
+    }
+    if (cur) out.push(cur);
+    return out;
+}
+
+// Canvas mirror of the editor's styled+auto-fitted block text: binary-search the
+// font size so the word-wrapped lines fit the box on both axes, then draw
+// centered with an outline or soft shadow — so the node preview matches the
+// full editor WYSIWYG (editor uses white-space:pre-wrap + fitText).
+function drawFittedText(ctx, text, x, y, w, h, { fontFamily, weight, color, outline, outlineColor, maxSize }) {
+    if (!text || w < 3 || h < 3) return;
+    const rawLines = String(text).split("\n");
+    let lo = 4, hi = Math.max(4, Math.min(maxSize || h, h)), best = 4, bestLines = rawLines;
+    for (let i = 0; i < 12 && lo <= hi; i += 1) {
+        const mid = (lo + hi) >> 1;
+        ctx.font = `${weight} ${mid}px ${fontFamily}`;
+        let wrapped = [];
+        for (const rl of rawLines) wrapped = wrapped.concat(wrapLine(ctx, rl, w));
+        const totalH = wrapped.length * mid * 1.12;
+        const fits = totalH <= h && wrapped.every((l) => ctx.measureText(l).width <= w);
+        if (fits) { best = mid; bestLines = wrapped; lo = mid + 1; } else { hi = mid - 1; }
+    }
+    ctx.font = `${weight} ${best}px ${fontFamily}`;
+    const lineH = best * 1.12;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    let ty = y + h / 2 - (bestLines.length * lineH) / 2 + lineH / 2;
+    for (const line of bestLines) {
+        if (outline) {
+            ctx.lineWidth = Math.max(1, best * 0.1);
+            ctx.lineJoin = "round";
+            ctx.strokeStyle = outlineColor || "rgba(0,0,0,.85)";
+            ctx.strokeText(line, x + w / 2, ty);
+        } else {
+            ctx.shadowColor = "rgba(0,0,0,.7)";
+            ctx.shadowBlur = best * 0.08;
+            ctx.shadowOffsetY = best * 0.04;
+        }
+        ctx.fillStyle = color;
+        ctx.fillText(line, x + w / 2, ty);
+        ctx.shadowColor = "transparent";
+        ctx.shadowBlur = 0;
+        ctx.shadowOffsetY = 0;
+        ty += lineH;
+    }
+    ctx.textAlign = "start";
+    ctx.textBaseline = "alphabetic";
 }
 
 export function setupIdeogramNode(node) {
@@ -271,9 +334,9 @@ export function setupIdeogramNode(node) {
             const visualOnly = isText && block.visual_only;
             const accent = visualOnly ? "#9aa6b8" : isText ? "#7aa2ff" : "#82d6a8";
             ctx.save();
-            // A block's own palette tints its rectangle; else the type accent.
-            if (!paintPaletteRect(ctx, block.color_palette, bx, by, bw, bh, { alpha: 0.55, mesh: false })) {
-                ctx.globalAlpha = 0.18;
+            // A block's own palette tints its rectangle; else a faint type accent.
+            if (!paintPaletteRect(ctx, block.color_palette, bx, by, bw, bh, { alpha: 0.5, mesh: false })) {
+                ctx.globalAlpha = 0.12;
                 ctx.fillStyle = accent;
                 ctx.fillRect(bx, by, bw, bh);
             }
@@ -283,23 +346,41 @@ export function setupIdeogramNode(node) {
             if (visualOnly) ctx.setLineDash([4, 3]);
             ctx.strokeRect(bx + 0.5, by + 0.5, bw - 1, bh - 1);
             ctx.setLineDash([]);
-            // Label
-            const label = isText
-                ? (block.visual_only ? "↳" : (block.text || "").split("\n")[0] || t("badge_text", lang))
-                : (block.desc || t("badge_obj", lang)).slice(0, 24);
-            ctx.font = "10px 'Segoe UI', sans-serif";
-            ctx.textBaseline = "top";
-            ctx.fillStyle = "#0b0e13";
-            ctx.globalAlpha = 0.55;
-            ctx.fillRect(bx, by, Math.min(bw, ctx.measureText(label).width + 10), 14);
-            ctx.globalAlpha = 1;
-            ctx.fillStyle = "#e9eef6";
-            ctx.save();
+            // WYSIWYG content — mirrors the editor's renderBlocks typography so the
+            // node preview is a faithful small copy of the full editor.
             ctx.beginPath();
             ctx.rect(bx, by, bw, bh);
             ctx.clip();
-            ctx.fillText(label, bx + 4, by + 2);
-            ctx.restore();
+            const pad = Math.max(2, Math.min(bw, bh) * 0.07);
+            if (isText && !visualOnly) {
+                const leg = block.legibility || {};
+                if (leg.solid_block) {  // plate behind the text
+                    ctx.fillStyle = normHex(block.plate_color) || "#1A1A1A";
+                    ctx.fillRect(bx, by, bw, bh);
+                }
+                drawFittedText(ctx, applyCase(block.text || "", block.case),
+                    bx + pad, by + pad, bw - pad * 2, bh - pad * 2, {
+                        fontFamily: fontFamilyForPreset(block.font_preset_id),
+                        weight: WEIGHT_CSS[block.weight] || 700,
+                        color: normHex(block.color) || "#FFFFFF",
+                        outline: !!leg.outline,
+                        outlineColor: normHex(block.outline_color) || "#000000",
+                    });
+            } else if (block.type === "obj") {
+                drawFittedText(ctx, block.desc || t("badge_obj", lang),
+                    bx + pad, by + pad, bw - pad * 2, bh - pad * 2, {
+                        fontFamily: "'Segoe UI',Tahoma,sans-serif", weight: 600,
+                        color: "rgba(233,238,246,.88)", outline: false,
+                    });
+            } else if (visualOnly) {
+                ctx.fillStyle = "rgba(154,166,184,.75)";
+                ctx.font = `${Math.max(8, Math.min(bw, bh) * 0.4)}px 'Segoe UI',sans-serif`;
+                ctx.textAlign = "center";
+                ctx.textBaseline = "middle";
+                ctx.fillText("↳", bx + bw / 2, by + bh / 2);
+                ctx.textAlign = "start";
+                ctx.textBaseline = "alphabetic";
+            }
             ctx.restore();
         }
 
