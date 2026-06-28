@@ -131,23 +131,24 @@ WHISPER_SCRIPT_MIXED_WORD_THRESHOLD = 2
 WHISPER_NEAR_DUP_SENTENCE_ENABLED = True
 WHISPER_NEAR_DUP_SENTENCE_THRESHOLD = 0.85
 
-# Whisper context prompt for prompt-dictation. Keep it concise: Whisper uses it as
-# vocabulary/style context, not as an instruction-following system prompt.
+# Whisper context prompt for prompt-dictation. MUST stay short and Russian-led.
+#
+# Whisper uses initial_prompt ONLY as a vocabulary/style/spelling hint — it does
+# NOT follow instructions written here. It also keeps just the LAST
+# ``n_text_ctx // 2 - 1`` (= 223) tokens of the prompt. The previous version was
+# ~230-280 tokens and almost entirely English camera/style jargon, so the cap
+# dropped the leading Russian sentences and primed the decoder on pure English
+# right before a Russian utterance — biasing the decode, mis-hearing words, and
+# triggering early end-of-transcript (observed: "посади девушку…" -> "Посадим,
+# ясмарк, я"). Keep this to a compact, natural Russian sample with a handful of
+# the most common mixed RU/EN terms (~40 tokens). Do NOT grow it back into an
+# exhaustive vocabulary list or add instruction sentences.
 INITIAL_PROMPT_ENABLED = True
-INITIAL_PROMPT = """
-Это диктовка промпта для генерации изображений, видео или музыки в ComfyUI.
-Сохраняй смешанный русский и английский текст, не переводя названия стилей и технические термины.
-Частые слова и фразы: prompt, negative prompt, cinematic, photorealistic, ultra detailed,
-high detail, sharp focus, soft focus, depth of field, bokeh, volumetric lighting,
-rim light, backlight, golden hour, moody lighting, color grading, composition,
-close-up, medium shot, wide shot, establishing shot, macro shot, low angle,
-high angle, top view, eye level, portrait, landscape, 35mm, 50mm, 85mm,
-wide angle lens, telephoto lens, anamorphic lens, fisheye, dolly zoom,
-pan, tilt, tracking shot, handheld camera, slow motion, time lapse,
-Unreal Engine, Octane render, Redshift, Blender, 3D render, anime style,
-watercolor, oil painting, concept art, storyboard, music prompt, ambient,
-synthwave, orchestral, cinematic trailer, vocals, drums, bass, guitar, piano.
-""".strip()
+INITIAL_PROMPT = (
+    "Промпт для генерации в ComfyUI: cinematic кадр, photorealistic, "
+    "depth of field, golden hour, close-up портрет, 85mm, "
+    "Unreal Engine, color grading, ambient, orchestral."
+)
 INITIAL_PROMPT_EXTRA = ""
 
 # Trailing-tail Whisper hallucinations. Whisper trained on YouTube subtitles
