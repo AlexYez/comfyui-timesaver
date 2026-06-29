@@ -454,9 +454,13 @@ def compose_text_desc(block: dict, fonts_by_id: dict[str, dict] | None = None) -
     fonts_by_id = fonts_by_id if fonts_by_id is not None else _fonts_by_id()
     slots: list[str] = []
 
+    # Slot 1 (lettering style): a per-block ``font_desc`` override wins over the
+    # chosen font's snippet (mirror of JS) — lets the inspector show/edit this prose
+    # and flip the font selector to "Custom" without fighting the snippet.
+    font_desc = str(block.get("font_desc") or "").strip()
     preset = fonts_by_id.get(str(block.get("font_preset_id") or ""))
     snippet = (preset or {}).get("desc_snippet") if preset else None
-    slots.append(str(snippet).strip() if snippet else "bold clean sans-serif")
+    slots.append(font_desc or (str(snippet).strip() if snippet else "bold clean sans-serif"))
 
     weight = _WEIGHT_PHRASE.get(str(block.get("weight") or ""))
     if weight:
@@ -625,8 +629,12 @@ def build_caption(design_json: str) -> tuple[str, str]:
         hint = "dominant colors " + ", ".join(bg_pal)
         background = f"{background}, {hint}" if background else hint
 
+    hld = str(design.get("high_level_description") or "").strip()
+    style_description = _build_style_description(design.get("style"))
+
     # Nothing meaningful designed yet -> emit empty string (downstream no-op).
-    if not elements and not background and not str(design.get("high_level_description") or "").strip():
+    # Includes style so a style-only design isn't silently dropped.
+    if not elements and not background and not hld and not style_description:
         return "", aspect
 
     # Editor-state fields intentionally NOT in the caption: version/language/
@@ -635,16 +643,19 @@ def build_caption(design_json: str) -> tuple[str, str]:
     # block.role (JS canvas-preview / new-block defaults only). Per-block
     # font_preset_id IS consumed, via compose_text_desc.
     caption: dict = {}
-    hld = str(design.get("high_level_description") or "").strip()
     if hld:  # optional per the spec — omit rather than emit an empty string
         caption["high_level_description"] = hld
-    style_description = _build_style_description(design.get("style"))
     if style_description:
         caption["style_description"] = style_description
-    caption["compositional_deconstruction"] = {
-        "background": background,
-        "elements": elements,
-    }
+    # Omit empty background / elements (and the whole block when both are empty)
+    # rather than leaking "background":"" / "elements":[] into the prompt.
+    comp: dict = {}
+    if background:
+        comp["background"] = background
+    if elements:
+        comp["elements"] = elements
+    if comp:
+        caption["compositional_deconstruction"] = comp
 
     serialized = json.dumps(caption, separators=(",", ":"), ensure_ascii=False)
     return serialized, aspect

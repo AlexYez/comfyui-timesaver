@@ -16,7 +16,6 @@ import {
     ELEMENT_PALETTE_CAP,
     IMAGE_PALETTE_CAP,
     LANGS,
-    PHOTO_MEDIUM,
     ROUTE_BASE,
     WEIGHTS,
     applyCase,
@@ -121,6 +120,8 @@ function ensureStyles() {
 .ts-ideoe-paladd:hover{border-color:#7aa2ff;color:#cfe0ff}
 .ts-ideoe-palinput{position:absolute;inset:0;width:100%;height:100%;margin:0;padding:0;border:0;opacity:0;cursor:pointer}
 .ts-ideoe-descprev{font-size:11px;color:#9fe3c2;background:#08120d;border:1px solid #1c3a2c;border-radius:6px;padding:6px 8px;white-space:pre-wrap;word-break:break-word}
+.ts-ideoe-prompt{width:100%;box-sizing:border-box;margin-top:5px;font:inherit;font-size:11px;line-height:1.4;color:#cfe9dc;background:#0c1612;border:1px solid #244638;border-radius:6px;padding:5px 7px;resize:vertical;min-height:38px}
+.ts-ideoe-prompt:focus{outline:none;border-color:#46d39a}
 .ts-ideoe-bbox{font-size:10px;color:#7d899b;font-variant-numeric:tabular-nums}
 .ts-ideoe-btn{display:inline-flex;align-items:center;gap:5px;border:1px solid #28323f;background:#161d27;color:#e9eef6;border-radius:8px;padding:6px 11px;font-size:12px;cursor:pointer;font-weight:600;white-space:nowrap}
 .ts-ideoe-btn:hover{background:#1f2937}
@@ -1013,7 +1014,15 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
         ev.stopPropagation();
         const ab = artboardSize();
         const start = { mx: ev.clientX, my: ev.clientY, ...block.rect };
+        // A plain click — or a double-click with a tiny jiggle — must NOT move the
+        // block: only activate a MOVE once the pointer travels past a threshold.
+        // Resize handles are a deliberate grab, so they activate immediately.
+        let active = mode !== "move";
         function onMove(e) {
+            if (!active) {
+                if (Math.abs(e.clientX - start.mx) < 4 && Math.abs(e.clientY - start.my) < 4) return;
+                active = true;
+            }
             const dx = (e.clientX - start.mx) / ab.w;
             const dy = (e.clientY - start.my) / ab.h;
             let { x, y, w, h } = start;
@@ -1027,7 +1036,7 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
                 if (mode.includes("n")) { const ny = clamp(start.y + dy, 0, start.y + start.h - 0.02); h = start.h + (start.y - ny); y = ny; }
             }
             block.rect = { x, y, w, h };
-            const div = blocksLayer.children[work.blocks.indexOf(block)];
+            const div = blocksLayer.querySelector(`[data-id="${block.id}"]`);
             if (div) {
                 div.style.left = `${x * 100}%`;
                 div.style.top = `${y * 100}%`;
@@ -1045,7 +1054,7 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
             window.removeEventListener("pointermove", onMove);
             window.removeEventListener("pointerup", onUp);
             window.removeEventListener("pointercancel", onUp);
-            renderBlocks();
+            if (active) renderBlocks();  // only re-render after a real drag/resize, not a plain click
         }
         window.addEventListener("pointermove", onMove);
         window.addEventListener("pointerup", onUp);
@@ -1222,6 +1231,11 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
     // A "none / presets… / custom" dropdown that writes a single style field.
     // The curated presets supply model-ready prose; "Custom…" reveals a text box
     // so any value (including one loaded from an older design) is still editable.
+    // A preset selector with an ALWAYS-visible editable prompt field below it: the
+    // field shows the exact prose this preset feeds the model; the moment the user
+    // edits it the selector flips to "Custom". Picking a preset fills the field;
+    // "None" clears it. Shared by mood / lighting / background (and mirrored by the
+    // style + font rows) — one consistent "see & tweak the prompt" pattern.
     function presetSelectRow(card, labelKey, tipKey, presets, getVal, setVal, onPreset) {
         const r = row(labelKey);
         const sel = el("select");
@@ -1231,21 +1245,25 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
             const o = el("option", null, p[work.language] || p.en); o.value = p.id; sel.appendChild(o);
         });
         const optCustom = el("option", null, tr("opt_custom")); optCustom.value = "__custom__"; sel.appendChild(optCustom);
-        const custom = el("input"); custom.type = "text"; custom.placeholder = tr("opt_custom");
-        custom.style.marginTop = "5px";
-        const cur = getVal();
-        const match = presets.find((p) => p.v === cur);
-        sel.value = !cur ? "__none__" : match ? match.id : "__custom__";
-        custom.value = cur || "";
-        custom.style.display = sel.value === "__custom__" ? "" : "none";
+        const prompt = el("textarea", "ts-ideoe-prompt"); prompt.rows = 2;
+        tip(prompt, "tip_preset_prompt");
+        const syncSelect = () => {
+            const cur = getVal();
+            const match = presets.find((p) => p.v === cur);
+            sel.value = !cur ? "__none__" : match ? match.id : "__custom__";
+        };
+        prompt.value = getVal() || "";
+        syncSelect();
         sel.addEventListener("change", () => {
-            if (sel.value === "__none__") { setVal(""); custom.style.display = "none"; onPreset?.(null); }
-            else if (sel.value === "__custom__") { custom.style.display = ""; setVal(custom.value || ""); custom.focus(); onPreset?.(null); }
-            else { const p = presets.find((x) => x.id === sel.value); setVal(p ? p.v : ""); custom.style.display = "none"; onPreset?.(p || null); }
+            if (sel.value === "__none__") { setVal(""); prompt.value = ""; onPreset?.(null); }
+            else if (sel.value === "__custom__") { setVal(prompt.value || ""); prompt.focus(); }
+            else { const p = presets.find((x) => x.id === sel.value); setVal(p ? p.v : ""); prompt.value = p ? p.v : ""; onPreset?.(p || null); }
             onStyleChange();
         });
-        custom.addEventListener("input", () => { setVal(custom.value); onPreset?.(null); onStyleChange(); });
-        r.append(sel, custom);
+        // Editing the prose = a manual override → flip the selector to "Custom"
+        // (without touching the palette: only an explicit preset/None pick does that).
+        prompt.addEventListener("input", () => { setVal(prompt.value); sel.value = "__custom__"; onStyleChange(); });
+        r.append(sel, prompt);
         card.appendChild(r);
     }
 
@@ -1256,8 +1274,11 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
         if (!s) return false;
         work.style.preset_id = s.id;
         work.style.medium = s.medium || "graphic_design";
-        // aesthetics + lighting are owned by their own named sub-presets (set by
-        // the idea or their dropdowns) — the visual style drives only the rendering.
+        // A visual style is a COMPLETE look: also seed mood + lighting from the preset
+        // (so a direct style pick fills those rows too). In the idea flow applyBrief
+        // overrides them right after with the idea's named mood/lighting sub-presets.
+        if (s.aesthetics) work.style.aesthetics = s.aesthetics;
+        if (s.lighting) work.style.lighting = s.lighting;
         work.style.photo = s.photo || "";
         work.style.art_style = s.art_style || "";
         work.style.color_palette = Array.isArray(s.color_palette) ? s.color_palette.slice() : [];
@@ -1290,14 +1311,20 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
         const objByRole = {};
         (brief.objects || []).forEach((o) => { if (o && o.role) objByRole[o.role] = o.desc || ""; });
         const txtByRole = {};
-        (brief.texts || []).forEach((t) => { if (t && t.role) txtByRole[t.role] = t; });
+        (brief.texts || []).forEach((tx) => { if (tx && tx.role) txtByRole[tx.role] = tx; });
         work.blocks.forEach((b) => {
             if (userSetSubjects.has(b.id)) return;
             if (b.type === "obj" && Object.prototype.hasOwnProperty.call(objByRole, b.role)) {
                 b.desc = objByRole[b.role];
             } else if (b.type === "text" && Object.prototype.hasOwnProperty.call(txtByRole, b.role)) {
-                const t = txtByRole[b.role];
-                b.text = (work.language === "en" ? (t.en ?? t.ru) : (t.ru ?? t.en)) || b.text;
+                const tx = txtByRole[b.role];
+                b.text = (work.language === "en" ? (tx.en ?? tx.ru) : (tx.ru ?? tx.en)) || b.text;
+                // The idea also carries this slot's lettering treatment (the material
+                // font + its colour), so e.g. a "Fluffy Fur" idea actually renders fur
+                // — not the layout's default material.
+                if (tx.font_preset_id) b.font_preset_id = tx.font_preset_id;
+                if (tx.color) b.color = tx.color;
+                if (tx.desc_override !== undefined) b.desc_override = tx.desc_override;
             }
         });
     }
@@ -1389,13 +1416,23 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
             if (s.id === work.style.preset_id) o.selected = true;
             sel.appendChild(o);
         });
+        // The style's descriptive look — the prose the model reads: art_style for
+        // graphics, photo for photography. Always visible + editable; editing it
+        // makes a custom look and clears the preset link (selector → "None").
+        const isPhoto = () => String(work.style.medium || "") === "photograph";
+        const getProse = () => (isPhoto() ? work.style.photo : work.style.art_style) || "";
+        const setProse = (v) => { if (isPhoto()) work.style.photo = v; else work.style.art_style = v; };
+        const prompt = el("textarea", "ts-ideoe-prompt"); prompt.rows = 2;
+        tip(prompt, "tip_style_prompt");
+        prompt.value = getProse();
         sel.addEventListener("change", () => {
             if (!sel.value) { work.style.preset_id = ""; onStyleChange(); return; }
             applyStylePresetById(sel.value);
             renderBlocks();      // re-tint the artboard from the style's palette
-            renderInspector();   // reflect the applied look in the sub-controls + live prompt
+            renderInspector();   // reflect the applied look in the sub-controls + this prompt
         });
-        r.appendChild(sel);
+        prompt.addEventListener("input", () => { setProse(prompt.value); work.style.preset_id = ""; sel.value = ""; onStyleChange(); });
+        r.append(sel, prompt);
         card.appendChild(r);
         card.appendChild(el("div", "ts-ideoe-hint", tr("visual_style_hint")));
     }
@@ -1474,12 +1511,25 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
         fontList.forEach((f) => {
             const o = el("option", null, localizedName(f, work.language));
             o.value = f.id;
-            if (f.id === sel.font_preset_id) o.selected = true;
             fontSel.appendChild(o);
         });
-        fontSel.addEventListener("change", () => { sel.font_preset_id = fontSel.value; renderBlocks(); renderDescPreview(); });
+        const fontCustomOpt = el("option", null, tr("opt_custom")); fontCustomOpt.value = "__custom__"; fontSel.appendChild(fontCustomOpt);
         tip(fontSel, "tip_font_preset");
-        fontRow.appendChild(fontSel);
+        // Editable lettering prose: a per-block font_desc override (slot 1) wins over
+        // the font's snippet. Always visible; editing it flips the font to "Custom".
+        const resolveSnippet = () => (fontMap[sel.font_preset_id]?.desc_snippet || "").trim();
+        const fontPrompt = el("textarea", "ts-ideoe-prompt"); fontPrompt.rows = 2;
+        tip(fontPrompt, "tip_font_prompt");
+        const hasOverride = () => !!String(sel.font_desc || "").trim();
+        fontSel.value = hasOverride() ? "__custom__" : (sel.font_preset_id || fontList[0]?.id || "");
+        fontPrompt.value = hasOverride() ? sel.font_desc : resolveSnippet();
+        fontSel.addEventListener("change", () => {
+            if (fontSel.value === "__custom__") { sel.font_desc = String(sel.font_desc || "").trim() || resolveSnippet(); fontPrompt.value = sel.font_desc; fontPrompt.focus(); }
+            else { sel.font_preset_id = fontSel.value; sel.font_desc = ""; fontPrompt.value = resolveSnippet(); }
+            renderBlocks(); renderDescPreview();
+        });
+        fontPrompt.addEventListener("input", () => { sel.font_desc = fontPrompt.value; fontSel.value = "__custom__"; renderBlocks(); renderDescPreview(); });
+        fontRow.append(fontSel, fontPrompt);
         card.appendChild(fontRow);
 
         const textRow = row("text_literal");
@@ -1656,8 +1706,11 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
     }
 
     function exportCurrentDesign() {
+        // A meaningful name (from the main idea / layout) so imported designs are
+        // distinguishable in the list instead of all reading "design".
+        const name = (work.high_level_description || work.layout_id || "design").trim().slice(0, 60) || "design";
         downloadJson(`ts_ideogram_design_${Date.now().toString(36)}.json`,
-            { name: "design", version: 1, design: JSON.parse(JSON.stringify(work)) });
+            { name, version: 1, design: JSON.parse(JSON.stringify(work)) });
     }
 
     function importDesignFiles() { importInput.value = ""; importInput.click(); }
@@ -1699,20 +1752,22 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
     clearBtn.addEventListener("click", () => {
         const st = work.style || {};
         const hasContent = work.blocks.length || work.ref
-            || (st.color_palette || []).length || work.background || work.high_level_description
+            || (st.color_palette || []).length || (work.background_palette || []).length || (st.lighting_palette || []).length
+            || work.background || work.high_level_description
             || st.aesthetics || st.lighting || st.photo || st.art_style || st.preset_id;
         if (hasContent && !window.confirm(tr("clear_confirm"))) return;
-        // Wipe everything that is "content" — blocks, style, palette, background,
-        // brief and the reference underlay. Keep the document settings the user
-        // deliberately set: aspect ratio, megapixels and language.
+        // Wipe everything that is "content" — blocks, style, ALL colour palettes
+        // (image + background + lighting), background, brief and the reference
+        // underlay. Keep document settings the user set: aspect / MP / language.
         work.blocks = [];
         work.layout_id = "";
         work.background = "";
+        work.background_palette = [];
         work.high_level_description = "";
         work.ref = null;
         work.style = {
             preset_id: "", aesthetics: "", lighting: "", medium: "graphic_design",
-            photo: "", art_style: "", color_palette: [], font_preset_id: "",
+            photo: "", art_style: "", color_palette: [], lighting_palette: [], font_preset_id: "",
         };
         selectedId = null;
         renderReference();   // drops the underlay + repaints the (now empty) style preview

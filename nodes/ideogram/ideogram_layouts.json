@@ -183,7 +183,7 @@
             "outline": false,
             "solid_block": false
           },
-          "desc_override": "Towering hero letters carved from translucent pale-blue glacial ice, each face glassy and semi-transparent with milky frozen cores, sharp crystalline edges and faceted chamfers catching cold studio light; a delicate dusting of white frost clings to the surfaces, tiny condensation droplets bead along the bottoms and thin wisps of chilled vapor drift off the letterforms."
+          "desc_override": ""
         },
         {
           "type": "text",
@@ -204,7 +204,7 @@
             "outline": false,
             "solid_block": false
           },
-          "desc_override": "A small refined caption line of slim molten-gold lettering, smooth polished metal with warm specular highlights and gentle reflections, generous letter spacing, centered and understated so it supports the icy hero word without competing."
+          "desc_override": ""
         }
       ]
     },
@@ -237,7 +237,7 @@
             "outline": false,
             "solid_block": false
           },
-          "desc_override": "flowing cursive script formed from glowing neon-tube lettering, hot-pink and magenta glass tubes radiating a soft warm halo, faint bloom and color spill onto the brick behind, tiny bright reflections along the curved glass, gentle electric hum vibe"
+          "desc_override": ""
         },
         {
           "type": "text",
@@ -258,7 +258,7 @@
             "outline": false,
             "solid_block": false
           },
-          "desc_override": "small clean neon-tube lettering in cool cyan glass, slim even tube width with a steady gentle glow, a soft halo bleeding faintly into the dark brick, delicate cyan reflection trembling on the mortar below"
+          "desc_override": ""
         },
         {
           "type": "obj",
@@ -305,7 +305,7 @@
             "outline": false,
             "solid_block": false
           },
-          "desc_override": "Bold uppercase letters sculpted entirely from fresh ripe fruit — glossy strawberries, juicy orange segments, ruby raspberries and a glistening slice of lime, every surface wet and dewy with tiny beaded water droplets, vivid saturated reds and bright citrus tones, soft studio highlights catching the juicy curves and casting gentle reflected glow."
+          "desc_override": ""
         },
         {
           "type": "obj",
@@ -371,7 +371,7 @@
             "outline": false,
             "solid_block": false
           },
-          "desc_override": "Bold heavy slab-serif letters following a gentle upward curved arc along the top of the circle, deep espresso-brown ink, evenly spaced with generous tracking, crisp clean edges, classic heritage badge typography."
+          "desc_override": ""
         },
         {
           "type": "obj",
@@ -403,7 +403,7 @@
             "outline": false,
             "solid_block": false
           },
-          "desc_override": "Small clean geometric sans-serif letters following a downward curved arc along the bottom of the circle, muted warm taupe-brown, wide letter spacing, subtle and refined, balancing the bold brand text above."
+          "desc_override": ""
         }
       ]
     },
@@ -447,7 +447,7 @@
             "outline": false,
             "solid_block": false
           },
-          "desc_override": "A bold heavy grotesque wordmark in deep teal-navy (#1F3B4D), thick confident strokes with tight letter spacing, crisp clean edges and softly rounded playful terminals, set perfectly centered directly beneath the mascot as the brand name."
+          "desc_override": ""
         },
         {
           "type": "text",
@@ -468,7 +468,7 @@
             "outline": false,
             "solid_block": false
           },
-          "desc_override": "A small soft rounded sans-serif tagline in muted slate-gray (#6B7A82), light and friendly with generous even letter spacing, centered as a quiet supporting line under the wordmark."
+          "desc_override": ""
         }
       ]
     },
