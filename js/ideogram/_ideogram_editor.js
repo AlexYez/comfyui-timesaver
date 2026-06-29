@@ -20,13 +20,11 @@ import {
     ROUTE_BASE,
     WEIGHTS,
     applyCase,
-    ARTSTYLE_PRESETS,
     BACKGROUND_PRESETS,
     LAYOUT_BRIEFS,
     LIGHTING_PRESETS,
     MOOD_PRESETS,
     OBJECT_PRESETS,
-    BRIEF_SUBJECT,
     aspectFitBox,
     ASPECT_RATIOS,
     clamp,
@@ -298,6 +296,10 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
     if (!LANGS.includes(work.language)) work.language = DEFAULT_LANG;
 
     const layouts = layoutsList(presets);
+    const stylePresets = presets?.styles || [];
+    const MOOD_BY_ID = Object.fromEntries(MOOD_PRESETS.map((m) => [m.id, m]));
+    const LIGHT_BY_ID = Object.fromEntries(LIGHTING_PRESETS.map((m) => [m.id, m]));
+    const BG_BY_ID = Object.fromEntries(BACKGROUND_PRESETS.map((m) => [m.id, m]));
     let designs = designsList(presets);
     const fontList = presets?.fonts || [];
     const fontMap = buildFontsById(presets);
@@ -649,8 +651,18 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
     }
     function applyStylePreview() {
         if (work.ref) return;  // a reference underlay takes over the artboard background
-        const css = paletteGradientCss(work.style?.color_palette || [], { alpha: 1, mesh: true });
+        // The artboard tint reflects the whole-image palette AND the background
+        // palette, so switching either set of colours is visible on the canvas.
+        const pal = [...(work.style?.color_palette || []), ...(work.background_palette || [])];
+        const css = paletteGradientCss(pal, { alpha: 1, mesh: true });
         artboard.style.background = css || "#0a0d12";
+    }
+
+    // Any style/look/colour change re-tints the canvas and refreshes the live
+    // JSON prompt immediately, so every preset switch is visibly reflected.
+    function onStyleChange() {
+        renderBlocks();
+        refreshJson(true);
     }
 
     function renderReference() {
@@ -1177,7 +1189,7 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
             // dropdown opens on a strong, on-theme idea); fall back to the
             // layout's own high_level_description for layouts without briefs.
             const briefs = LAYOUT_BRIEFS[L.id];
-            if (briefs?.length) { work.high_level_description = briefs[0].v; applyBriefSubject(briefs[0]); }
+            if (briefs?.length) applyBrief(briefs[0]);  // full default scene: look + objects + texts
             else if (inst.high_level_description) work.high_level_description = inst.high_level_description;
             selectedId = work.blocks[0]?.id || null;
             layoutArtboard();
@@ -1193,6 +1205,7 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
         card.appendChild(r);
         const cur = layouts.find((x) => x.id === work.layout_id);
         if (cur) card.appendChild(el("div", "ts-ideoe-hint", localizedDesc(cur, work.language)));
+        briefRow(card);  // Main idea — sits right after the layout it belongs to
         return card;
     }
 
@@ -1209,7 +1222,7 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
     // A "none / presets… / custom" dropdown that writes a single style field.
     // The curated presets supply model-ready prose; "Custom…" reveals a text box
     // so any value (including one loaded from an older design) is still editable.
-    function presetSelectRow(card, labelKey, tipKey, presets, getVal, setVal) {
+    function presetSelectRow(card, labelKey, tipKey, presets, getVal, setVal, onPreset) {
         const r = row(labelKey);
         const sel = el("select");
         tip(sel, tipKey);
@@ -1226,77 +1239,67 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
         custom.value = cur || "";
         custom.style.display = sel.value === "__custom__" ? "" : "none";
         sel.addEventListener("change", () => {
-            if (sel.value === "__none__") { setVal(""); custom.style.display = "none"; }
-            else if (sel.value === "__custom__") { custom.style.display = ""; setVal(custom.value || ""); custom.focus(); }
-            else { const p = presets.find((x) => x.id === sel.value); setVal(p ? p.v : ""); custom.style.display = "none"; }
+            if (sel.value === "__none__") { setVal(""); custom.style.display = "none"; onPreset?.(null); }
+            else if (sel.value === "__custom__") { custom.style.display = ""; setVal(custom.value || ""); custom.focus(); onPreset?.(null); }
+            else { const p = presets.find((x) => x.id === sel.value); setVal(p ? p.v : ""); custom.style.display = "none"; onPreset?.(p || null); }
+            onStyleChange();
         });
-        custom.addEventListener("input", () => setVal(custom.value));
+        custom.addEventListener("input", () => { setVal(custom.value); onPreset?.(null); onStyleChange(); });
         r.append(sel, custom);
         card.appendChild(r);
     }
 
-    // Art-style dropdown — the single "how it's drawn" control. Each preset also
-    // sets the whole-image medium, honoring Ideogram's photo-XOR-art_style switch
-    // (medium photograph → style.photo, otherwise → style.art_style).
-    function artStyleRow(card) {
-        const r = row("art_style");
-        const sel = el("select");
-        tip(sel, "art_style_hint");
-        const optNone = el("option", null, tr("opt_none")); optNone.value = "__none__"; sel.appendChild(optNone);
-        ARTSTYLE_PRESETS.forEach((p) => {
-            const o = el("option", null, p[work.language] || p.en); o.value = p.id; sel.appendChild(o);
-        });
-        const optCustom = el("option", null, tr("opt_custom")); optCustom.value = "__custom__"; sel.appendChild(optCustom);
-        const custom = el("input"); custom.type = "text"; custom.placeholder = tr("opt_custom");
-        custom.style.marginTop = "5px";
-        const isPhoto = () => work.style.medium === PHOTO_MEDIUM;
-        const curText = () => (isPhoto() ? work.style.photo : work.style.art_style) || "";
-        const setText = (v) => { if (isPhoto()) { work.style.photo = v; } else { work.style.art_style = v; } };
-        const match = ARTSTYLE_PRESETS.find((p) => p.v === curText() && p.medium === work.style.medium);
-        sel.value = !curText() ? "__none__" : match ? match.id : "__custom__";
-        custom.value = curText();
-        custom.style.display = sel.value === "__custom__" ? "" : "none";
-        sel.addEventListener("change", () => {
-            if (sel.value === "__none__") {
-                work.style.art_style = ""; work.style.photo = ""; work.style.medium = "graphic_design";
-                custom.style.display = "none";
-            } else if (sel.value === "__custom__") {
-                custom.style.display = ""; setText(custom.value || ""); custom.focus();
-            } else {
-                const p = ARTSTYLE_PRESETS.find((x) => x.id === sel.value);
-                if (p) {
-                    work.style.medium = p.medium;
-                    if (p.medium === PHOTO_MEDIUM) { work.style.photo = p.v; work.style.art_style = ""; }
-                    else { work.style.art_style = p.v; work.style.photo = ""; }
-                }
-                custom.style.display = "none";
+    // Apply one of the curated style presets to work.style (the LOOK only).
+    // Shared by the style dropdown and by ideas (which reference a style by id).
+    function applyStylePresetById(id) {
+        const s = stylePresets.find((x) => x.id === id);
+        if (!s) return false;
+        work.style.preset_id = s.id;
+        work.style.medium = s.medium || "graphic_design";
+        // aesthetics + lighting are owned by their own named sub-presets (set by
+        // the idea or their dropdowns) — the visual style drives only the rendering.
+        work.style.photo = s.photo || "";
+        work.style.art_style = s.art_style || "";
+        work.style.color_palette = Array.isArray(s.color_palette) ? s.color_palette.slice() : [];
+        if (s.font_preset_id) work.style.font_preset_id = s.font_preset_id;
+        return true;
+    }
+
+    // Apply a full "main idea": its look (style preset reference) + environment +
+    // the per-role object descriptions and headline texts — so the WHOLE scene
+    // (objects, background, text, style, lighting, mood) appears on the canvas.
+    // Blocks the user has manually overridden are left untouched.
+    function applyBrief(brief) {
+        if (!brief) return;
+        if (brief.v) work.high_level_description = brief.v;
+        if (brief.style_preset_id) applyStylePresetById(brief.style_preset_id);
+        // Named sub-presets — set each field to the preset's own text/colours so the
+        // dropdowns below show a REAL selection (not "Custom"), and the background
+        // carries its baked-in palette (which tints the canvas).
+        const mood = MOOD_BY_ID[brief.aesthetics_id];
+        if (mood) work.style.aesthetics = mood.v;
+        const light = LIGHT_BY_ID[brief.lighting_id];
+        if (light) work.style.lighting = light.v;
+        const bg = BG_BY_ID[brief.background_id];
+        if (bg) {
+            work.background = bg.v;
+            work.background_palette = Array.isArray(bg.colors) ? bg.colors.slice() : [];
+        } else if (brief.background) {
+            work.background = brief.background;  // fallback for an un-mapped idea
+        }
+        const objByRole = {};
+        (brief.objects || []).forEach((o) => { if (o && o.role) objByRole[o.role] = o.desc || ""; });
+        const txtByRole = {};
+        (brief.texts || []).forEach((t) => { if (t && t.role) txtByRole[t.role] = t; });
+        work.blocks.forEach((b) => {
+            if (userSetSubjects.has(b.id)) return;
+            if (b.type === "obj" && Object.prototype.hasOwnProperty.call(objByRole, b.role)) {
+                b.desc = objByRole[b.role];
+            } else if (b.type === "text" && Object.prototype.hasOwnProperty.call(txtByRole, b.role)) {
+                const t = txtByRole[b.role];
+                b.text = (work.language === "en" ? (t.en ?? t.ru) : (t.ru ?? t.en)) || b.text;
             }
         });
-        custom.addEventListener("input", () => setText(custom.value));
-        r.append(sel, custom);
-        card.appendChild(r);
-    }
-
-    // The object that represents the scene's main subject — the one a character
-    // idea should drive. Prefer a block tagged role:"subject" (stable across
-    // reorder / multi-object layouts), else the first object.
-    function subjectObj() {
-        return work.blocks.find((b) => b.type === "obj" && b.role === "subject")
-            || work.blocks.find((b) => b.type === "obj");
-    }
-
-    // Apply a brief's subject preset to the subject object, so a character idea
-    // actually renders that character — the obj desc dominates its bbox, which is
-    // why a "bold girl" idea used to come out as a man. Returns true if it
-    // changed the object.
-    function applyBriefSubject(brief) {
-        const id = brief && BRIEF_SUBJECT[brief.en];
-        if (!id) return false;
-        const preset = OBJECT_PRESETS.find((p) => p.id === id);
-        const obj = subjectObj();
-        if (!preset || !obj) return false;
-        obj.desc = preset.v;
-        return true;
     }
 
     // Main idea (high_level_description). A per-layout dropdown of curated briefs
@@ -1329,17 +1332,15 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
             if (sel.value === "__none__") { work.high_level_description = ""; custom.style.display = "none"; }
             else if (sel.value === "__custom__") { custom.style.display = ""; work.high_level_description = custom.value || ""; custom.focus(); }
             else {
-                const b = briefs[Number(sel.value)];
-                work.high_level_description = b.v;
-                // Sync the subject character — but never clobber an object the
-                // user set explicitly via the object-preset dropdown.
-                const obj = subjectObj();
-                if (obj && !userSetSubjects.has(obj.id)) applyBriefSubject(b);
+                // A full scene: look (style preset) + background + per-role
+                // objects & texts all populate the canvas.
+                applyBrief(briefs[Number(sel.value)]);
                 custom.style.display = "none";
             }
             renderBlocks();
             renderLayers();
             renderBlockPanel();
+            renderInspector();   // reflect the idea's applied style/background + live prompt
         });
         custom.addEventListener("input", () => { work.high_level_description = custom.value; });
         r.append(sel, custom);
@@ -1354,24 +1355,49 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
         const card = el("div", "ts-ideoe-card");
         card.appendChild(el("h3", null, tr("card_style")));
 
-        briefRow(card);
-
-        artStyleRow(card);
+        stylePresetRow(card);  // "Visual style" — the 18 curated looks (merged with art-style)
         presetSelectRow(card, "aesthetics", "aesthetics_hint", MOOD_PRESETS,
             () => work.style.aesthetics, (v) => { work.style.aesthetics = v; });
         presetSelectRow(card, "lighting", "lighting_hint", LIGHTING_PRESETS,
             () => work.style.lighting, (v) => { work.style.lighting = v; });
         paletteRow(card, "lighting_colors", "lighting_colors_hint", ELEMENT_PALETTE_CAP,
-            () => work.style.lighting_palette, (n) => { work.style.lighting_palette = n; });
+            () => work.style.lighting_palette, (n) => { work.style.lighting_palette = n; onStyleChange(); });
         presetSelectRow(card, "background", "background_hint", BACKGROUND_PRESETS,
-            () => work.background, (v) => { work.background = v; });
+            () => work.background, (v) => { work.background = v; },
+            (p) => { work.background_palette = p && Array.isArray(p.colors) ? p.colors.slice() : []; });
         paletteRow(card, "background_colors", "background_colors_hint", ELEMENT_PALETTE_CAP,
-            () => work.background_palette, (n) => { work.background_palette = n; });
+            () => work.background_palette, (n) => { work.background_palette = n; onStyleChange(); });
 
         // Colors for the WHOLE image (also tints the artboard preview).
         paletteRow(card, "image_palette", "image_palette_hint", IMAGE_PALETTE_CAP,
-            () => work.style.color_palette, (n) => { work.style.color_palette = n; renderBlocks(); });
+            () => work.style.color_palette, (n) => { work.style.color_palette = n; onStyleChange(); });
         return card;
+    }
+
+    // Ready-made STYLE presets (the curated look: medium + aesthetics + lighting +
+    // photo/art_style + palette + font vibe). Picking one applies the whole look
+    // and re-tints the canvas immediately; the sub-controls below stay editable.
+    function stylePresetRow(card) {
+        if (!stylePresets.length) return;
+        const r = row("visual_style");
+        const sel = el("select");
+        tip(sel, "tip_visual_style");
+        const none = el("option", null, tr("opt_none")); none.value = ""; sel.appendChild(none);
+        stylePresets.forEach((s) => {
+            const o = el("option", null, localizedName(s, work.language));
+            o.value = s.id;
+            if (s.id === work.style.preset_id) o.selected = true;
+            sel.appendChild(o);
+        });
+        sel.addEventListener("change", () => {
+            if (!sel.value) { work.style.preset_id = ""; onStyleChange(); return; }
+            applyStylePresetById(sel.value);
+            renderBlocks();      // re-tint the artboard from the style's palette
+            renderInspector();   // reflect the applied look in the sub-controls + live prompt
+        });
+        r.appendChild(sel);
+        card.appendChild(r);
+        card.appendChild(el("div", "ts-ideoe-hint", tr("visual_style_hint")));
     }
 
     // A label + palette swatches + optional hint line, for an image / background /

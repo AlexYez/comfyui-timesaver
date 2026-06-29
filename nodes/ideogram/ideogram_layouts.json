@@ -156,8 +156,8 @@
     },
     {
       "id": "material_typography",
-      "name_en": "Hero Material Typography",
-      "name_ru": "Геройская материальная типографика",
+      "name_en": "Material Typography",
+      "name_ru": "Материальная типографика",
       "desc_en": "A single giant short word fills the frame as material-crafted lettering — ice, fruit, glass or gold — with one small caption near the bottom.",
       "desc_ru": "Одно огромное короткое слово заполняет кадр буквами из материала — лёд, фрукты, стекло или золото — и маленькая подпись внизу.",
       "aspect_ratio": "1x1",
@@ -409,8 +409,8 @@
     },
     {
       "id": "logo_mascot",
-      "name_en": "Mascot Logo Lockup",
-      "name_ru": "Логотип с маскотом",
+      "name_en": "Character Logo",
+      "name_ru": "Логотип с персонажем",
       "desc_en": "A friendly character mascot crowns a clean bold wordmark with a small tagline beneath, built as a centered, brandable logo lockup.",
       "desc_ru": "Дружелюбный персонаж-маскот венчает чистый жирный логотип с короткой подписью внизу — собранный по центру, запоминающийся фирменный знак.",
       "aspect_ratio": "1x1",
@@ -474,8 +474,8 @@
     },
     {
       "id": "art_hero",
-      "name_en": "Hero Art (No Text)",
-      "name_ru": "Героический арт (без текста)",
+      "name_en": "Character Art",
+      "name_ru": "Арт персонаж",
       "desc_en": "A single breathtaking subject fills nearly the entire frame as a pure artistic image with no text at all.",
       "desc_ru": "Один захватывающий объект заполняет почти весь кадр — чистое художественное изображение без единой надписи.",
       "aspect_ratio": "1x1",
@@ -497,8 +497,8 @@
     },
     {
       "id": "art_composition",
-      "name_en": "Rule-of-Thirds Solitude",
-      "name_ru": "Одиночество по правилу третей",
+      "name_en": "Object Composition",
+      "name_ru": "Композиция объектов",
       "desc_en": "A text-free cinematic composition where a lone foreground figure rests on one third while a distant counterpoint anchors the opposite side of the frame.",
       "desc_ru": "Композиция без текста: одинокая фигура переднего плана стоит по правилу третей, а далёкий объект уравновешивает противоположную сторону кадра.",
       "aspect_ratio": "16x9",
