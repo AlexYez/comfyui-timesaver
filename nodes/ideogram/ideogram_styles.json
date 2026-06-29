@@ -141,6 +141,174 @@
       "art_style": "",
       "color_palette": ["#111111", "#F5F5F5", "#C9A227", "#8A8F98"],
       "font_preset_id": "geometric_sans"
+    },
+    {
+      "id": "studio_3d_render",
+      "name_en": "Studio 3D Render",
+      "name_ru": "Студийный 3D-рендер",
+      "desc_en": "A dark studio 3D scene with glossy ray-traced surfaces, mirror-chrome reflections and a dramatic neon-accented rim light, staging a single hero object against velvety black falloff for a premium cinematic product look.",
+      "desc_ru": "Тёмная студийная 3D-сцена с глянцевыми поверхностями, просчитанными трассировкой лучей, хром-зеркальными отражениями и драматичным неоновым контровым светом, выставляющая один главный объект на фоне бархатно-чёрного затемнения для премиального кинематографичного продуктового кадра. Подходит для: рекламы продуктов, 3D-логотипов, тизеров техно-брендов, обложек.",
+      "medium": "3d_render",
+      "aesthetics": "premium, sleek, glossy, high-contrast, futuristic, product hero",
+      "lighting": "dark studio with a soft key, a bright neon rim light, sharp ray-traced reflections and deep falloff shadows",
+      "photo": "",
+      "art_style": "photorealistic 3D product render, ray-traced reflections and subsurface highlights, clean octane-style studio shading with crisp specular roll-off",
+      "color_palette": [
+        "#0A0A12",
+        "#1B1B2F",
+        "#3A3F5C",
+        "#C0C6D6",
+        "#00E5FF",
+        "#FF2E97"
+      ],
+      "font_preset_id": "liquid_chrome"
+    },
+    {
+      "id": "neon_signage",
+      "name_en": "Neon Signage",
+      "name_ru": "Неоновая вывеска",
+      "desc_en": "A glowing neon sign mounted on a dark textured brick wall at night, with hand-bent glass tubes, exposed wiring and a moody atmospheric haze that catches the colored light.",
+      "desc_ru": "Светящаяся неоновая вывеска на тёмной фактурной кирпичной стене ночью, с вручную выгнутыми стеклянными трубками, открытой проводкой и атмосферной дымкой, в которой ловится цветной свет. Подходит для: вывесок баров и кафе, городских постеров, ночных рекламных кадров, музыкальных обложек.",
+      "medium": "photograph",
+      "aesthetics": "moody, atmospheric, urban night, retro signage, glowing, gritty texture",
+      "lighting": "neon glow as the primary light source, soft halo bloom on the tubes, deep shadows on the surrounding wall and faint reflected color spill",
+      "photo": "shot on 50mm f/1.8, shallow depth of field, slight grain, long-exposure ambient glow, eye-level framing",
+      "art_style": "",
+      "color_palette": [
+        "#0B0B0F",
+        "#1A1A22",
+        "#FF1F6B",
+        "#22D3FF",
+        "#B026FF",
+        "#FFE08A"
+      ],
+      "font_preset_id": "neon_tube"
+    },
+    {
+      "id": "synthwave_retro",
+      "name_en": "Synthwave Retro",
+      "name_ru": "Синтвейв-ретро",
+      "desc_en": "A 1980s synthwave scene with a glowing neon perspective grid receding into a banded sunset gradient, chrome accents and a retro-futuristic horizon dissolving into magenta haze.",
+      "desc_ru": "Сцена в духе синтвейва 80-х со светящейся неоновой сеткой, уходящей в полосатый закатный градиент, хромовыми акцентами и ретрофутуристичным горизонтом, растворяющимся в пурпурной дымке. Подходит для: музыкальных обложек, ретро-постеров, заставок стримов, рекламы в стиле 80-х.",
+      "medium": "digital_painting",
+      "aesthetics": "retro-futuristic, 1980s, vaporwave, neon, nostalgic, vibrant gradient",
+      "lighting": "glowing horizon sun, neon grid emission, soft magenta-cyan ambient haze and bright chrome highlights",
+      "photo": "",
+      "art_style": "synthwave digital painting, glowing perspective grid, smooth banded sunset gradients, airbrushed chrome and crisp neon outlines",
+      "color_palette": [
+        "#2B0A4A",
+        "#7A1E8C",
+        "#FF2A6D",
+        "#FF8C42",
+        "#FFD93D",
+        "#05D9E8"
+      ],
+      "font_preset_id": "liquid_chrome"
+    },
+    {
+      "id": "botanical_watercolor",
+      "name_en": "Botanical Watercolor",
+      "name_ru": "Ботаническая акварель",
+      "desc_en": "A delicate watercolor botanical illustration on soft off-white paper, with airy wildflowers and trailing eucalyptus rendered in elegant translucent washes and fine ink line accents.",
+      "desc_ru": "Нежная акварельная ботаническая иллюстрация на мягкой кремовой бумаге, с воздушными полевыми цветами и веточками эвкалипта в изящных полупрозрачных размывках и тонких чернильных линиях. Подходит для: свадебных приглашений, упаковки косметики, нежных открыток, оформления меню.",
+      "medium": "painting",
+      "aesthetics": "delicate, airy, elegant, organic, soft and feminine, fine-art botanical",
+      "lighting": "soft diffused daylight, gentle even illumination, subtle paper warmth, no harsh shadows",
+      "photo": "",
+      "art_style": "loose watercolor botanical illustration, translucent layered washes, soft bleeding edges and fine ink line accents on textured paper",
+      "color_palette": [
+        "#FBF7F0",
+        "#E8DCC8",
+        "#A7B89B",
+        "#6E8B6E",
+        "#D89AA8",
+        "#C2A878"
+      ],
+      "font_preset_id": "formal_script"
+    },
+    {
+      "id": "streetwear_vector",
+      "name_en": "Streetwear Vector",
+      "name_ru": "Стритвир-вектор",
+      "desc_en": "A bold streetwear graphic in crisp monochrome with a single punchy accent color, built from sharp clean vector shapes and thick confident outlines isolated on a solid background.",
+      "desc_ru": "Дерзкая стритвир-графика в чётком монохроме с единственным ярким акцентным цветом, собранная из острых чистых векторных форм и толстых уверенных контуров на сплошном фоне. Подходит для: принтов на одежде, мерча, постеров для соцсетей, логотипов уличных брендов.",
+      "medium": "graphic_design",
+      "aesthetics": "bold, punchy, urban, high-contrast, minimal, attitude-driven",
+      "lighting": "flat even graphic lighting, no gradients, hard-edged contrast",
+      "photo": "",
+      "art_style": "sharp clean vector illustration, bold monochrome shapes with one accent color, flat fills, thick confident outlines, isolated on a solid background",
+      "color_palette": [
+        "#F5F5F5",
+        "#111111",
+        "#2B2B2B",
+        "#FF3B1D",
+        "#8C8C8C",
+        "#000000"
+      ],
+      "font_preset_id": "graffiti_urban"
+    },
+    {
+      "id": "gourmet_food",
+      "name_en": "Gourmet Food",
+      "name_ru": "Гурман-фуд",
+      "desc_en": "Appetizing gourmet food photography with fresh vibrant ingredients, dynamic splashes and glistening droplets frozen mid-air in mouth-watering macro detail.",
+      "desc_ru": "Аппетитная гурман-фотосъёмка еды со свежими сочными ингредиентами, динамичными брызгами и поблёскивающими каплями, застывшими в воздухе, снятая крупным аппетитным макро-планом. Подходит для: рекламы ресторанов, упаковки продуктов, меню, кулинарных блогов.",
+      "medium": "photograph",
+      "aesthetics": "fresh, vibrant, appetizing, juicy, dynamic, mouth-watering",
+      "lighting": "bright soft key light with crisp specular highlights on the droplets, gentle backlight glow and clean shadows for a sense of freshness",
+      "photo": "shot on 100mm macro f/2.8, razor-thin depth of field, high-speed flash freezing the splashes, crisp specular detail",
+      "art_style": "",
+      "color_palette": [
+        "#FFF8EE",
+        "#E63946",
+        "#F4A300",
+        "#6BBF59",
+        "#2E7D32",
+        "#7B3F00"
+      ],
+      "font_preset_id": "fresh_fruit"
+    },
+    {
+      "id": "fine_art_painting",
+      "name_en": "Fine Art Painting",
+      "name_ru": "Изящная живопись",
+      "desc_en": "A museum-grade fine-art painting with rich expressive brushwork, classical balanced composition and the layered glazed depth of an oil-on-canvas gallery piece.",
+      "desc_ru": "Изящная живопись музейного уровня с богатыми выразительными мазками, классической уравновешенной композицией и многослойной лессировочной глубиной галерейного холста маслом. Подходит для: галерейных постеров, книжных обложек, премиальных открыток, арт-репродукций.",
+      "medium": "painting",
+      "aesthetics": "classical, refined, expressive, timeless, rich and painterly, gallery quality",
+      "lighting": "warm chiaroscuro, a soft directional key from one side, glowing highlights and deep velvety shadows",
+      "photo": "",
+      "art_style": "oil-on-canvas fine-art painting, visible expressive brushwork, layered glazes, classical composition and museum-grade craftsmanship",
+      "color_palette": [
+        "#1C140D",
+        "#5B3A22",
+        "#9C6B3C",
+        "#C9A36A",
+        "#D8C7A8",
+        "#7A2E22"
+      ],
+      "font_preset_id": "vintage_serif"
+    },
+    {
+      "id": "surreal_concept",
+      "name_en": "Surreal Concept Art",
+      "name_ru": "Сюрреалистичный концепт-арт",
+      "desc_en": "A surreal dreamlike concept artwork depicting an impossible imaginative scene with cinematic atmosphere, vast architectural scale and otherworldly volumetric light.",
+      "desc_ru": "Сюрреалистичный концепт-арт, изображающий невозможную фантазийную сцену с кинематографичной атмосферой, колоссальным архитектурным масштабом и потусторонним объёмным светом. Подходит для: постеров фильмов, обложек альбомов, концепт-артов игр, фантастических иллюстраций.",
+      "medium": "digital_painting",
+      "aesthetics": "surreal, dreamlike, imaginative, epic scale, cinematic, otherworldly",
+      "lighting": "dramatic god rays, atmospheric volumetric haze, a glowing focal source and cinematic contrast between light and deep shadow",
+      "photo": "",
+      "art_style": "cinematic surreal concept-art digital painting, painterly atmospheric depth, impossible architecture and scale, soft volumetric rendering",
+      "color_palette": [
+        "#0E1A2B",
+        "#1F3A5F",
+        "#4A6FA5",
+        "#C98A4B",
+        "#F0C987",
+        "#E8E4DA"
+      ],
+      "font_preset_id": "display_poster_sans"
     }
   ]
 }

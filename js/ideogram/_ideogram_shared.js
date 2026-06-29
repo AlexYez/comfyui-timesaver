@@ -170,7 +170,9 @@ export function composeTextDesc(block, fontsById) {
         const pc = normHex(block.plate_color);
         slots.push(pc ? `on a solid ${pc} color block behind the text` : "on a solid color block behind the text");
     }
-    slots.push("crisp clean edges, readable at small thumbnail size");
+    // Rendering style (crisp / soft / blurry / glowing) is intentionally NOT
+    // hardcoded — it comes from the font descriptor + the user's desc_override,
+    // so a "soft blurry letters" override is never fought by a forced "crisp" hint.
 
     if (hasCyrillic(block.text || "")) slots.push("Cyrillic script, Russian text");
 
@@ -452,6 +454,20 @@ export const OBJECT_PRESETS = [
     { id: "sneaker", ru: "Кроссовок", en: "Sneaker", v: "a stylish sneaker shot at a dynamic angle with crisp detail and vivid product lighting" },
     { id: "supercar", ru: "Суперкар", en: "Supercar", v: "a sleek glossy supercar at a dramatic three-quarter angle, cinematic reflections, golden-hour glow" },
     { id: "pet", ru: "Милый питомец", en: "Cute pet", v: "an adorable expressive pet animal looking at the viewer, soft warm light, charming and heart-melting" },
+    { id: "fruit_splash", ru: "Фруктовый всплеск", en: "Fruit Splash", v: "A vibrant midair burst of strawberries, citrus wedges and glistening berries exploding through a crown of splashing juice, every glossy droplet frozen razor-sharp in crisp high-key commercial light." },
+    { id: "gourmet_dish", ru: "Изысканное блюдо", en: "Gourmet Dish", v: "An exquisitely plated fine-dining course with delicate sauce swirls, jewel-like micro-herb garnish and faint wisps of rising steam, shot close in soft moody restaurant light against deep shadow." },
+    { id: "majestic_lion", ru: "Величественный лев", en: "Majestic Lion", v: "A majestic male lion with a thick wind-tousled mane and an intense regal amber gaze, bathed in dramatic golden side light that rims every individual hair in razor-sharp detail." },
+    { id: "exotic_plant", ru: "Тропическое растение", en: "Exotic Plant", v: "Lush exotic monstera and tropical foliage with glossy deep-green fenestrated leaves layered through the frame, traced by dappled shafts of soft diffused jungle light." },
+    { id: "crystal_gem", ru: "Сияющий самоцвет", en: "Crystal Gem", v: "A glowing faceted crystal gemstone refracting prismatic rainbows through its sharp cleaved edges, suspended in a luminous magical aura that fades into soft velvety darkness." },
+    { id: "vintage_car", ru: "Винтажный автомобиль", en: "Vintage Car", v: "A glossy classic vintage car posed at a dramatic three-quarter angle, its gleaming chrome trim and sculpted curved bodywork catching warm liquid golden-hour reflections." },
+    { id: "astronaut", ru: "Космонавт", en: "Astronaut", v: "An astronaut drifting weightless in the silent void, a swirling nebula and scattered stars mirrored in luminous detail across the curved reflective visor, cinematic and awe-inspiring." },
+    { id: "friendly_robot", ru: "Дружелюбный робот", en: "Friendly Robot", v: "A charming friendly robot character with big expressive glowing eyes and a smooth glossy injection-molded 3D body, lit by soft wraparound studio light against a clean seamless backdrop." },
+    { id: "dragon", ru: "Дракон", en: "Dragon", v: "A powerful majestic dragon with intricately overlapping scales and vast spread wings, rearing through drifting embers and curling mist in an epic, breathtaking fantasy atmosphere." },
+    { id: "mountain_vista", ru: "Горная панорама", en: "Mountain Vista", v: "A breathtaking mountain range at sunrise, jagged snow-dusted peaks glowing rose-pink while rivers of drifting mist pool through the valleys in a vast cinematic vista." },
+    { id: "ocean_wave", ru: "Океанская волна", en: "Ocean Wave", v: "A powerful cresting ocean wave curling into a translucent turquoise barrel, backlit sunlit spray flung in golden arcs from its feathering crest, dynamic and majestic." },
+    { id: "koi_fish", ru: "Карп кои", en: "Koi Fish", v: "Elegant orange-and-white koi gliding through dark glassy water, gentle silver ripples spreading around floating lily pads in a serene, graceful overhead scene." },
+    { id: "butterfly", ru: "Бабочка", en: "Butterfly", v: "A vivid butterfly with iridescent blue-and-amber wings perched on a dew-kissed blossom, captured in delicate macro detail with luminous creamy bokeh dissolving behind it." },
+    { id: "cosmic_nebula", ru: "Космическая туманность", en: "Cosmic Nebula", v: "A vast cosmic nebula of swirling magenta and teal stardust threaded with glowing newborn stars, drifting in luminous silence through the boundless depths of deep space." },
 ];
 
 // "Main idea" (high_level_description) presets, 10 per layout, adapted to that
@@ -579,6 +595,102 @@ export const LAYOUT_BRIEFS = {
         { ru: "Юмор / мем", en: "Funny meme", v: "A funny merch print with a quirky humorous character, a witty slogan and bright cheeky colors." },
         { ru: "Ретро 80-е", en: "Retro 80s", v: "A retro 80s print with a neon sunset, bold chrome lettering and a nostalgic synthwave mood." },
         { ru: "Минимал-лайн", en: "Minimal line art", v: "A minimal line-art merch print: a single elegant continuous-line illustration and a small refined slogan." },
+    ],
+    material_typography: [
+        { ru: "Ледяные буквы", en: "Frozen Ice", v: "A single giant short word fills the entire frame, its letters carved from translucent blue glacial ice with frost-feathered surfaces, sharp crystalline edges and tiny trapped air bubbles, faint cold mist curling at the bases, set against a clean dark teal void lit with a soft cold rim light." },
+        { ru: "Сочные фрукты", en: "Ripe Fruit", v: "One bold short headline towers across the frame with each letter sculpted from fresh ripe fruit — glossy juicy strawberries, citrus segments and dewy berries pressed into the strokes — droplets of juice beading on the surfaces against a clean creamy backdrop lit like a bright food commercial." },
+        { ru: "Расплавленное золото", en: "Molten Gold", v: "A massive short word dominates the frame rendered in flowing molten gold, mirror-bright liquid metal dripping and pooling along the letterforms with rich warm highlights and deep amber shadows, floating in a minimal jet-black studio space." },
+        { ru: "Неоновое стекло", en: "Neon Glass", v: "One short punchy word fills the frame as glowing neon glass tubes bent into the letters, electric magenta and cyan light blooming with soft halos and gentle reflections on a dark wet floor against an otherwise empty midnight backdrop." },
+        { ru: "Прозрачное стекло", en: "Clear Glass", v: "A giant short headline spans the frame built from thick transparent glass, the letters refracting and bending the light behind them with caustic glints and crisp bevelled edges, resting on a pale seamless gradient with delicate soft shadows." },
+        { ru: "Цветущие буквы", en: "Blooming Flowers", v: "One large short word fills the frame formed entirely from blooming flowers and lush green foliage, dense rose and peony petals packed into each letter with tiny leaves spilling at the edges, photographed against a soft pastel sky." },
+        { ru: "Пылающий огонь", en: "Blazing Fire", v: "A bold short word commands the frame sculpted from blazing fire and glowing embers, flames licking up the letterforms with bright orange cores fading to smoky edges and sparks drifting into a deep black night." },
+        { ru: "Хром и жидкий металл", en: "Liquid Chrome", v: "One giant short headline fills the frame as flawless mirror chrome, the liquid-metal letters reflecting a soft studio gradient with smooth rounded curves and razor-sharp specular highlights, isolated on a minimal pearl-grey backdrop." },
+        { ru: "Брызги воды", en: "Water Splash", v: "A massive short word spans the frame shaped from a splash of crystal-clear water, the letters frozen mid-motion with translucent flowing strokes, scattering droplets and glassy highlights against a fresh aqua-blue void." },
+        { ru: "Мягкий пушистый мех", en: "Fluffy Fur", v: "One short cuddly headline fills the frame rendered in soft fluffy fur, each letter a plush mound of fine warm-toned hairs catching gentle light with a cozy depth-of-field blur, set on a clean muted beige background." },
+    ],
+    neon_sign: [
+        { ru: "Открыто — розовый неон", en: "OPEN — pink neon", v: "A glowing pink neon-tube sign spelling the word OPEN in flowing cursive script, buzzing softly against a dark weathered red-brick wall at night, its rosy light bleeding warm halos across the mortar and casting a faint reflection in a wet sidewalk below." },
+        { ru: "Бар — синяя вывеска", en: "BAR — electric blue", v: "An electric-blue neon sign reading BAR in bold blocky tubes, humming above a shadowed brick alley wall, cold cobalt light spilling across the rough masonry while a thin coil of cigarette smoke drifts through the glow." },
+        { ru: "Открыто 24 часа", en: "OPEN 24 HOURS", v: "A vintage diner neon sign reading OPEN 24 HOURS, the words stacked in warm amber and ruby tubes with a small glowing arrow beneath, mounted on a grimy dark-brick facade slick with light drizzle that scatters the colored light into soft streaks." },
+        { ru: "Розовое сердце", en: "Glowing heart", v: "A single oversized neon heart outlined in hot magenta tubes pulsing on a moody charcoal-brick wall, its pink radiance pooling into a soft circular bloom on the bricks while one tube flickers as if on the edge of burning out." },
+        { ru: "Коктейли — мятный неон", en: "COCKTAILS — mint", v: "A retro neon sign spelling COCKTAILS in elegant minty-green script tubes beside a tilted glowing martini-glass icon, glowing on a dim textured brick wall, its cool emerald light catching every crack and chip in the old painted bricks." },
+        { ru: "Закрыто — красный", en: "CLOSED — red", v: "A tired red neon sign reading CLOSED in slumping handwritten tubes, half its glow dimmed and one letter dark, fixed to a cold rain-darkened brick wall at night with a lonely crimson reflection trembling in a puddle below." },
+        { ru: "Стрелка налево", en: "Neon arrow", v: "A bright yellow-orange neon arrow pointing left, its chasing tube segments suggesting motion, mounted on a dark soot-stained brick wall in a narrow night alley where the warm light rakes sharply across the rough brick texture." },
+        { ru: "Мечтай — фиолетовый", en: "DREAM — purple", v: "A dreamy violet-and-pink neon sign spelling DREAM in soft rounded cursive tubes, glowing gently against a deep indigo-shadowed brick wall, the dual-tone light blending into a hazy lavender halo that softens the gritty masonry behind it." },
+        { ru: "Кофе — оранжевый", en: "COFFEE — amber", v: "A cozy amber neon sign reading COFFEE in warm hand-script tubes above a tiny glowing steaming-cup icon, mounted on a dark espresso-brown brick wall at night, its honeyed light wrapping the bricks in an inviting golden warmth." },
+        { ru: "Сломанный отель", en: "Flickering HOTEL", v: "A weathered turquoise neon sign reading HOTEL in tall narrow tubes, one letter buzzing and stuttering with a dying flicker, bolted to a grimy noir brick wall at night where the unsteady teal glow flares and fades across the damp stone." },
+    ],
+    food_typography_ad: [
+        { ru: "Арбузный заголовок", en: "Watermelon Headline", v: "A bold summer headline spelling 'JUICY' built from glistening watermelon flesh studded with glossy black seeds and dripping pink juice, beside a tall sweating glass of watermelon cooler and a crisp price tag, on a sun-warmed coral backdrop scattered with chunks of green rind." },
+        { ru: "Цитрусовый взрыв", en: "Citrus Splash", v: "A zesty headline reading 'FRESH' formed from vivid orange and lemon segments bursting with a fine citrus mist, surrounded by a chilled bottle of cold-pressed juice and a clean price callout, against a bright tangerine background flecked with droplets and glossy green leaves." },
+        { ru: "Ягодный десерт", en: "Berry Indulgence", v: "A tempting headline spelling 'SWEET' sculpted from plump strawberries, blueberries and raspberries glazed with a sheen of cream, next to a layered berry parfait in a tall glass and a clean buy-now button, on a soft blush-pink studio surface dusted with fine sugar." },
+        { ru: "Тропический микс", en: "Tropical Mix", v: "An exotic headline reading 'PARADISE' built from sliced mango, kiwi, dragonfruit and pineapple wedges glistening under bright sun, paired with a frosty smoothie bowl and a bold price banner, on a turquoise backdrop framed by monstera leaves and clinging water beads." },
+        { ru: "Хрустящее зелёное яблоко", en: "Crisp Green Apple", v: "A snappy headline spelling 'CRISP' carved from crunchy green apple slices with bright dewy skin and a tart spritz of mist, beside a whole mirror-shiny apple and a chalkboard-style price, on a cool mint backdrop with crystalline droplets catching the light." },
+        { ru: "Виноградная роскошь", en: "Grape Luxe", v: "An elegant headline reading 'PURE' formed from dewy clusters of deep-purple and emerald grapes wearing a frosted bloom, alongside a premium bottle of grape nectar and a refined price plate, on a moody plum backdrop bathed in soft vineyard light." },
+        { ru: "Гранатовая энергия", en: "Pomegranate Power", v: "A vibrant headline spelling 'BOOST' built from glossy ruby pomegranate arils glistening like cut jewels with a few crimson splashes, next to a cracked-open pomegranate half and an energetic price burst, on a deep garnet backdrop streaked with running juice." },
+        { ru: "Утренний завтрак", en: "Breakfast Fresh", v: "A cheerful headline reading 'MORNING' assembled from banana coins, peach slices and bright berries swirled into creamy yogurt, beside a wholesome granola bowl and a friendly price sticker, on a warm cream tabletop bathed in soft sunrise light." },
+        { ru: "Манговое лето", en: "Mango Season", v: "A juicy headline spelling 'RIPE' sculpted from golden mango cubes oozing nectar with velvety skin highlights, paired with a creamy mango lassi and a summery price tag, on a saffron-yellow backdrop scattered with mint leaves and sticky droplets." },
+        { ru: "Вишнёвый соблазн", en: "Cherry Temptation", v: "A playful headline reading 'YUM' formed from glossy red cherries on slender stems with mirror-bright skins and tiny clinging drips, beside a swirl of cherry sorbet in a cone and a bold sale price, on a candy-red backdrop sparkling with sugar specks." },
+    ],
+    logo_emblem: [
+        { ru: "Кофейня — горный обжарщик", en: "Mountain Coffee Roastery", v: "A vintage circular coffee-roastery badge on a warm cream background, curved top text \"MOUNTAIN ROAST\" and bottom text \"EST. 1974\", a central engraved emblem of a steaming coffee cup framed by twin mountain peaks, double pinstripe rings and tiny star separators, rendered in deep espresso brown and burnt amber #3B2417 and #C8843A with subtle aged-ink texture." },
+        { ru: "Крафтовая пивоварня", en: "Craft Brewery Seal", v: "A bold craft-brewery emblem on a deep navy background, arched top text \"IRON HOPS\" and lower banner \"BREWING CO.\", a centred icon of crossed wheat sheaves over a foaming beer barrel, surrounded by a beaded ring and hop-leaf flourishes, painted in antique gold and oxblood red #D4A017 and #7A1F1F with a hand-stamped letterpress feel." },
+        { ru: "Барбершоп для джентльменов", en: "Barbershop Emblem", v: "A classic barbershop badge on a charcoal background, curved top text \"SHARP & CO.\" and bottom text \"GROOMING\", a central icon of crossed straight razor and comb beneath a striped barber pole, encircled by a fine rope border, rendered in ivory and brushed steel blue #EDE6D6 and #5C7A99 with a crisp engraved line style." },
+        { ru: "Серфинг и океан", en: "Surf Coast Badge", v: "A sun-faded surf-club badge on a sandy teal background, arched top text \"WILD COAST\" and bottom text \"SURF CLUB\", a central emblem of a breaking wave cradling a vintage longboard with a rising sun behind, framed by a dotted ring and small palm motifs, in washed turquoise and coral #2E8B8B and #E8704A with a soft retro screen-print grain." },
+        { ru: "Горный поход — заповедник", en: "Wilderness Outdoors Crest", v: "A rugged outdoor-adventure crest on a forest-green background, curved top text \"GREAT NORTH\" and lower text \"TRAIL CO.\", a central icon of a pine tree before a snow-capped mountain under a compass star, bordered by a notched ring and tiny arrowheads, rendered in cream and burnt orange #F2EAD3 and #C25B2C with a worn enamel-pin look." },
+        { ru: "Ремесленная пекарня", en: "Artisan Bakery Mark", v: "A warm artisan-bakery badge on a soft wheat-cream background, arched top text \"GOLDEN CRUST\" and bottom text \"BAKED DAILY\", a central emblem of a crusty round loaf with a wheat stalk and rolling pin crossed beneath it, ringed by a delicate scalloped border, in toasted brown and honey gold #6B4226 and #E0A53B with a gentle vintage paper texture." },
+        { ru: "Мотоклуб и гараж", en: "Motorcycle Garage Patch", v: "A tough motorcycle-garage emblem on a matte black background, curved top text \"ROUTE 66\" and bottom banner \"MOTOR WORKS\", a central icon of a winged engine piston with crossed wrenches and a single flame, encircled by a heavy chain-link ring, rendered in chrome silver and racing red #C0C0C0 and #B22222 with a distressed sticker finish." },
+        { ru: "Винодельня и виноград", en: "Vineyard Estate Seal", v: "An elegant vineyard-estate seal on a deep burgundy background, arched top text \"VALLE D'ORO\" and bottom text \"WINE ESTATE\", a central emblem of a grape cluster draped over a curling vine with a sunlit hilltop villa, framed by a fine laurel wreath, in aged gold and dusty plum #C9A24B and #4E2A3E with a refined embossed-foil texture." },
+        { ru: "Морской — компас и якорь", en: "Nautical Compass Badge", v: "A maritime navigation badge on a stormy slate-blue background, curved top text \"NORTH STAR\" and bottom text \"SAIL & SEA\", a central icon of a brass compass rose over a crossed anchor and oar, ringed by a twisted rope border with tiny ship wheels, rendered in pale sea-foam and weathered brass #DCE6E4 and #B08D4C with a nautical-chart engraving style." },
+        { ru: "Острый соус — огненный перец", en: "Hot Sauce Firebrand", v: "A fiery hot-sauce brand badge on a deep crimson background, arched top text \"DRAGON HEAT\" and bottom text \"SMALL BATCH\", a central emblem of a flaming chili pepper wreathed in licking flames above a stylised skull, encircled by a jagged sunburst ring, in molten orange and charred black #F25C1E and #1A0E0A with a bold woodcut-poster grain." },
+    ],
+    logo_mascot: [
+        { ru: "Лисёнок-обжарщик кофе", en: "Coffee-roaster fox", v: "A friendly round-cheeked fox mascot clutching a steaming espresso cup, centered above a clean bold wordmark whose letters are formed from rich glossy roasted coffee beans with deep oily highlights, plus a small tagline beneath, on a warm cream lockup with a palette of #2E1A0F, #C9702E and #F2E2C4." },
+        { ru: "Робот-доставщик пиццы", en: "Pizza delivery robot", v: "A cheerful boxy delivery robot mascot balancing a fresh pizza slice, set above a confident chunky wordmark whose letters are built from melted stretchy mozzarella with golden toasted crust edges and oozing strings, plus a tiny tagline, on a punchy palette of #E2412B, #F4B12A and #FFF6E8." },
+        { ru: "Сова-наставник для онлайн-школы", en: "Wise owl tutor", v: "A scholarly wide-eyed owl mascot perched with tiny round glasses, set above a crisp bold wordmark whose letters are carved from warm polished wood grain with soft golden highlights, plus a small tagline, on a trustworthy palette of #1B3A4B, #3F8E7A and #F1E7D0." },
+        { ru: "Кит-космонавт для стартапа", en: "Astronaut whale startup", v: "A dreamy floating whale mascot in a glass space helmet with tiny stars drifting around it, hovering above a sleek bold wordmark whose letters are sculpted from glowing neon glass tubes ringed by a soft halo, plus a small tagline, on a cosmic palette of #0B1026, #6C5CE7 and #2BD4D9." },
+        { ru: "Медведь-пекарь", en: "Baker bear", v: "A plump apron-wearing bear mascot proudly holding a fresh loaf, standing above a friendly rounded wordmark whose letters are shaped from golden braided bread dough dusted with fine flour, plus a small tagline, on a cozy bakery palette of #5A3420, #D99A4E and #FBF1DC." },
+        { ru: "Ленивец для йога-студии", en: "Zen sloth yoga", v: "A serene smiling sloth mascot hanging in a calm meditation pose, placed above a soft bold wordmark whose letters bloom from delicate flowers and lush green foliage with dewy petals, plus a small tagline, on a tranquil palette of #2F4F3E, #88B49A and #F4F0E4." },
+        { ru: "Дракончик-геймер", en: "Gamer dragon", v: "A spunky baby dragon mascot gripping a glowing game controller with sparks in its eyes, set above an edgy bold wordmark whose letters blaze with bright fire and drifting orange embers, plus a small tagline, on a high-energy palette of #14091F, #FF4D2E and #FFC93C." },
+        { ru: "Пингвин-сёрфер", en: "Surfer penguin", v: "A cool sunglasses-wearing penguin mascot riding a tiny surfboard, positioned above a breezy bold wordmark whose letters are formed from a splash of clear curling water crowned with foamy white crests, plus a small tagline, on a fresh coastal palette of #073B4C, #06B6D4 and #FDFCDC." },
+        { ru: "Лев-чемпион для фитнес-бренда", en: "Champion lion fitness", v: "A powerful flexing lion mascot with a proud golden mane, towering above a heavy bold wordmark whose letters are forged from polished mirror chrome with razor-sharp metallic highlights, plus a small tagline, on a strong gym palette of #14171C, #E63946 and #C0C5CE." },
+        { ru: "Котик-садовод", en: "Gardener cat", v: "A gentle whiskered cat mascot in a straw hat cradling a little potted sprout, set above a wholesome bold wordmark whose letters are made of fresh green leaves and trailing vines beaded with dewdrops, plus a small tagline, on an earthy palette of #2D4A2B, #7FB069 and #FAF3DD." },
+    ],
+    art_hero: [
+        { ru: "Воин с трещинами расплавленного золота", en: "Cracked-Gold Warrior Portrait", v: "A solemn close-up of an ancient warrior whose weathered skin is fractured by veins of molten gold, ember-bright eyes burning beneath a battered bronze helmet as dramatic chiaroscuro carves every scar against a deep void-black background." },
+        { ru: "Кит из звёздной пыли", en: "Cosmic Whale of Stardust", v: "A colossal humpback whale drifting through deep space, its translucent body woven from swirling nebulae, glittering stardust and scattered constellations, fins trailing luminous galactic mist across an endless indigo cosmos." },
+        { ru: "Балерина из жидкого стекла", en: "Liquid-Glass Ballerina", v: "A lone ballerina frozen mid-pirouette, her flowing gown sculpted entirely from clear shattering glass and arcing ribbons of splashing water, soft studio light refracting through every translucent fold against a misty pale-grey backdrop." },
+        { ru: "Лис в пылающей осенней листве", en: "Autumn-Ember Fox", v: "A majestic red fox standing alert in a glowing autumn forest, its fur rendered in fiery amber and crimson, golden afternoon light streaming through falling maple leaves and drifting motes of dust around its sharp, watchful gaze." },
+        { ru: "Парящий самурайский шлем", en: "Floating Samurai Helmet", v: "An ornate antique samurai helmet floating dead-centre against pure darkness, its lacquered black iron and gold inlay catching a single dramatic rim light while intricate dragon engravings and a deep-red horsehair crest glow with museum-grade detail." },
+        { ru: "Богиня из цветущих лиан", en: "Goddess of Blooming Vines", v: "A serene forest goddess emerging from the gloom, her face and shoulders formed from blooming flowers, soft moss and curling green vines, dewdrops glistening on the petals as dappled sunlight filters through a deep verdant jungle canopy." },
+        { ru: "Хрустальный колибри", en: "Crystal Hummingbird", v: "A single hummingbird hovering in mid-air, its body and outstretched wings carved from faceted prismatic crystal that scatters tiny rainbows, suspended before a soft teal-and-rose gradient flecked with delicate bokeh sparkles." },
+        { ru: "Космонавт в океанской бездне", en: "Astronaut in the Deep", v: "A lone astronaut suspended in the silent dark of a bioluminescent ocean, glowing jellyfish and drifting plankton lighting the scratched helmet visor as cold blue light gleams off the worn white suit in haunting cinematic detail." },
+        { ru: "Лев из расплавленной лавы", en: "Molten-Lava Lion", v: "A powerful lion's head emerging from darkness, its mane formed of cracking molten lava and rising embers, glowing orange fissures threading through obsidian-black skin as sparks drift upward into the smoke-filled void." },
+        { ru: "Журавль-оригами в тумане", en: "Origami Crane in Mist", v: "A single elegant paper origami crane perched on a moss-covered stone, its crisp folded planes catching gentle morning light amid soft rolling mist and the faint blur of a distant pale-pink cherry-blossom branch." },
+    ],
+    art_composition: [
+        { ru: "Маяк и одинокая чайка", en: "Lighthouse and lone gull", v: "A weathered white lighthouse stands on the lower-left third atop dark wet basalt rocks beneath a vast bruised twilight sky, while a single gull glides off toward the upper-right, the wide negative space filled with rolling sea mist and a thin cold horizon line." },
+        { ru: "Чаепитие у дождливого окна", en: "Tea by the rainy window", v: "A steaming ceramic cup rests on a worn wooden sill in the lower-right third, its curl of vapour catching warm lamplight, while the upper-left two-thirds dissolve into a rain-streaked pane and the blurred amber glow of a city dusk beyond." },
+        { ru: "Путник на горном гребне", en: "Wanderer on the ridge", v: "A tiny silhouetted hiker pauses on the lower-left third of a knife-edge ridge, dwarfed by a towering snow-dusted peak rising into the upper-right, layered blue valley haze receding behind in cool cinematic depth." },
+        { ru: "Лодка на рассветном озере", en: "Boat on the dawn lake", v: "A small wooden rowboat drifts in the lower-right third of a glass-still alpine lake, its faint wake catching peach dawn light, while pine-dark mountains and a low ribbon of fog occupy the upper-left, mirrored softly in the mirror-calm water." },
+        { ru: "Красный зонт в снегопаде", en: "Red umbrella in snowfall", v: "A single figure under a vivid red umbrella walks the lower-left third of an empty snow-blanketed boulevard, bare black trees and a faint grey lamppost anchoring the upper-right, fat snowflakes drifting through the muted hushed air." },
+        { ru: "Кит под лучом света", en: "Whale beneath the light shaft", v: "A colossal humpback whale glides through the lower-left third of deep teal ocean, a single diver suspended small in the upper-right, golden shafts of sunlight piercing down through the silty water thick with drifting plankton." },
+        { ru: "Скамья под цветущей сакурой", en: "Bench under the cherry tree", v: "An empty weathered park bench sits in the lower-right third of a quiet garden, a gnarled cherry tree heavy with pink blossom leaning in from the upper-left, scattered petals frozen mid-drift across the soft overcast light." },
+        { ru: "Космонавт на алой пустоши", en: "Astronaut on red plains", v: "A lone astronaut stands small on the lower-left third of a rust-red rocky plain, casting a long shadow, while an immense pale crescent planet hangs in the upper-right of a deep starless violet sky, dust hazing the distant horizon." },
+        { ru: "Лиса в зимнем лесу", en: "Fox in the winter wood", v: "A russet fox stands alert in the lower-right third of a snow-laden birch forest, its breath misting in the cold, slanting pale morning sun streaming through the bare trunks in the upper-left and dappling the untouched snow." },
+        { ru: "Виолончелистка в пустом зале", en: "Cellist in the empty hall", v: "A solitary cellist sits bathed in a single warm spotlight in the lower-left third of a vast dim concert hall, rows of empty crimson velvet seats receding into shadow in the upper-right, dust motes suspended in the lone beam of light." },
+    ],
+    surreal_scene: [
+        { ru: "Кит плывёт в облачном небе", en: "Whale in cloud sky", v: "A colossal humpback whale drifts weightlessly through a pastel dawn sky, trailing a long ribbon of golden migrating birds from its flukes while a tiny rowboat with a single lantern floats in its shadow far below, cinematic soft volumetric light, dreamlike fine-art surrealism." },
+        { ru: "Дверь посреди пустыни", en: "Doorway in the desert", v: "A solitary antique wooden door stands open in the middle of an endless rippling sand desert, spilling a torrent of clear blue ocean water and darting silver fish through its frame onto the dry dunes, long evening shadows, surreal poetic contrast of two worlds, hyperreal painterly detail." },
+        { ru: "Чаепитие на спине черепахи", en: "Tea party on a turtle", v: "An ancient mossy giant tortoise carries an entire miniature porcelain tea set with steaming cups and a tilted brass chandelier on its domed shell, wading slowly across a mirror-still lake at twilight as fireflies drift around it, whimsical surreal storybook atmosphere with rich warm light." },
+        { ru: "Лестница в перевёрнутый океан", en: "Stairs to an upside-down ocean", v: "A spiral marble staircase rises out of a misty meadow and dissolves into an inverted ocean hanging overhead, where jellyfish float like glowing lanterns and a lone deer climbs toward the water-sky, surreal gravity-defying composition, ethereal blue and rose light, fine-art dreamscape." },
+        { ru: "Город в стеклянном пузыре", en: "City in a glass bubble", v: "A delicate floating soap bubble cradles a tiny glowing miniature city of crooked towers inside it, balanced on the fingertip of a giant stone hand emerging from a sea of clouds, refractions and rainbow sheen sliding across the glass surface, surreal intimate scale play, luminous cinematic mood." },
+        { ru: "Дерево с планетами вместо плодов", en: "Tree bearing planets", v: "A gnarled ancient tree grows on a small floating island and bears ripe glowing planets instead of fruit, one cracked open to reveal a swirling galaxy inside, while a child reaches up from a ladder built of stacked old books, surreal cosmic still life, deep indigo night and warm amber glow." },
+        { ru: "Кит-аэростат над затопленным городом", en: "Airship-whale over a flooded city", v: "A translucent glass whale rigged like a floating airship drifts low over a half-submerged city of drowned rooftops, suspending a single illuminated greenhouse garden from its belly, soft reflections shimmering on the still flood water, melancholic surreal beauty, muted teal and gold palette." },
+        { ru: "Человек-облако на скамейке", en: "Cloud-headed figure on a bench", v: "A lone figure in a vintage suit sits on a wrought-iron park bench with a swirling thunderstorm cloud where the head should be, gentle rain falling only over the bench while the rest of the autumn park stays sunlit, surreal melancholy portrait, soft cinematic chiaroscuro light." },
+        { ru: "Кит из оригами и лунный свет", en: "Origami whale and moonlight", v: "An enormous paper origami whale folded from old maps floats above a calm midnight sea, its translucent body lit from within by a captured full moon while paper birds peel away from its fins and scatter into the stars, surreal monochrome blue dream, delicate luminous craft aesthetic." },
+        { ru: "Музыкант с виолончелью из воды", en: "Cellist of liquid water", v: "A seated cellist plays an instrument made entirely of flowing transparent water that arcs and splashes mid-note into leaping silver fish, sheet music dissolving into a flock of moths drifting upward in a candlelit empty hall, surreal poetic synesthesia, rich warm chiaroscuro and glistening detail." },
     ],
 };
 
@@ -833,10 +945,17 @@ export function instantiateLayout(layout, lang = DEFAULT_LANG) {
         if (b.type === "obj") {
             return {
                 id: makeBlockId(), type: "obj", rect,
-                desc: b.desc_en || "", role: b.role || "", color_palette: [],
+                desc: b.desc_en || "", role: b.role || "",
+                color_palette: Array.isArray(b.color_palette) ? b.color_palette : [],
             };
         }
         const text = lang === "en" ? (b.text_en ?? b.text_ru ?? "") : (b.text_ru ?? b.text_en ?? "");
+        // A layout may carry its own legibility (e.g. material lettering wants the
+        // outline OFF) and a per-block desc_override (the material/effect hint);
+        // fall back to the historical default when absent.
+        const leg = (b.legibility && typeof b.legibility === "object")
+            ? { outline: !!b.legibility.outline, solid_block: !!b.legibility.solid_block }
+            : { outline: true, solid_block: false };
         return {
             id: makeBlockId(), type: "text", rect, text,
             font_preset_id: b.font_preset_id || "grotesque_black",
@@ -844,8 +963,8 @@ export function instantiateLayout(layout, lang = DEFAULT_LANG) {
             color: normHex(b.color) || "#FFFFFF",
             outline_color: normHex(b.outline_color) || "#000000",
             plate_color: normHex(b.plate_color) || "#1A1A1A",
-            legibility: { outline: true, solid_block: false },
-            visual_only: false, desc_override: "", role: b.role || "",
+            legibility: leg,
+            visual_only: false, desc_override: String(b.desc_override || ""), role: b.role || "",
         };
     });
     return {
@@ -875,6 +994,22 @@ const FONT_FAMILY = {
     didone_luxury: "Didot,'Bodoni MT','Playfair Display',Georgia,serif",
     formal_script: "'Segoe Script','Brush Script MT',cursive",
     brush_marker: "'Segoe Script','Bradley Hand',cursive",
+    // Material / effect lettering treatments — preview families approximate the
+    // letterform shape; the actual material is rendered by Ideogram from desc_snippet.
+    ice_crystal: "Impact,'Arial Black',sans-serif",
+    neon_tube: "'Segoe Script','Brush Script MT',cursive",
+    fresh_fruit: "'Cooper Black','Arial Rounded MT Bold',sans-serif",
+    soft_fur: "'Varela Round','Comic Sans MS',sans-serif",
+    water_splash: "'Brush Script MT','Segoe Script',cursive",
+    carved_stone: "Rockwell,'Roboto Slab',Georgia,serif",
+    clear_glass: "'Century Gothic',Futura,'Trebuchet MS',sans-serif",
+    liquid_chrome: "Impact,'Arial Black',sans-serif",
+    molten_gold: "Didot,'Bodoni MT','Playfair Display',Georgia,serif",
+    flames_fire: "Impact,'Arial Black',sans-serif",
+    balloon_3d: "'Cooper Black','Arial Rounded MT Bold',sans-serif",
+    lush_floral: "'Segoe Script','Brush Script MT',cursive",
+    carved_wood: "Rockwell,'Roboto Slab',Georgia,serif",
+    dripping_paint: "Impact,sans-serif",
 };
 export function fontFamilyForPreset(id) { return FONT_FAMILY[id] || "'Segoe UI',sans-serif"; }
 

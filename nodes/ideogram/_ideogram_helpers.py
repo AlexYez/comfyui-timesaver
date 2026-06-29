@@ -483,7 +483,9 @@ def compose_text_desc(block: dict, fonts_by_id: dict[str, dict] | None = None) -
                 f"on a solid {pc} color block behind the text" if pc
                 else "on a solid color block behind the text"
             )
-    slots.append("crisp clean edges, readable at small thumbnail size")
+    # Rendering style (crisp / soft / blurry / glowing) is intentionally NOT
+    # hardcoded — it comes from the font descriptor + the user's desc_override,
+    # so a "soft blurry letters" override is never fought by a forced "crisp" hint.
 
     if has_cyrillic(str(block.get("text") or "")):
         slots.append("Cyrillic script, Russian text")

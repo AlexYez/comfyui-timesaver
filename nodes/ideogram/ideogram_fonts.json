@@ -128,6 +128,118 @@
       "desc_snippet": "textured brush marker lettering, rough organic strokes, irregular letterforms, varying stroke width, handmade charm",
       "good_for_cyrillic": false,
       "legible_small": false
+    },
+    {
+      "id": "ice_crystal",
+      "name_en": "Ice Crystal",
+      "name_ru": "Ледяные буквы",
+      "desc_snippet": "letterforms carved from translucent blue glacial ice, frosted crystalline facets, razor-sharp glassy edges with clinging white frost and tiny hanging icicles",
+      "good_for_cyrillic": true,
+      "legible_small": false
+    },
+    {
+      "id": "neon_tube",
+      "name_en": "Neon Tube",
+      "name_ru": "Неоновые трубки",
+      "desc_snippet": "letters bent from glowing neon glass tubes, saturated electric tube light, visible curved glass and faint wiring, soft radiant halo bleeding into the dark",
+      "good_for_cyrillic": true,
+      "legible_small": false
+    },
+    {
+      "id": "fresh_fruit",
+      "name_en": "Fresh Fruit",
+      "name_ru": "Сочные фрукты",
+      "desc_snippet": "letters sculpted entirely from fresh ripe fruit and produce, glossy juicy surfaces, crisp green leaves and beaded condensation droplets",
+      "good_for_cyrillic": true,
+      "legible_small": false
+    },
+    {
+      "id": "soft_fur",
+      "name_en": "Soft Fur",
+      "name_ru": "Пушистый мех",
+      "desc_snippet": "letters made of soft fluffy fur, plush textured strands catching warm light, cozy tactile pile with gently rounded, feathered edges",
+      "good_for_cyrillic": true,
+      "legible_small": false
+    },
+    {
+      "id": "water_splash",
+      "name_en": "Water Splash",
+      "name_ru": "Брызги воды",
+      "desc_snippet": "letters formed from a dynamic splash of crystal-clear water, swirling fluid ribbons and flung droplets, glossy liquid surface with bright sunlit highlights",
+      "good_for_cyrillic": true,
+      "legible_small": false
+    },
+    {
+      "id": "carved_stone",
+      "name_en": "Carved Stone",
+      "name_ru": "Резной камень",
+      "desc_snippet": "letters chiselled from rough natural granite, deep carved relief, weathered grey texture with hard fractured edges and scattered grit",
+      "good_for_cyrillic": true,
+      "legible_small": false
+    },
+    {
+      "id": "clear_glass",
+      "name_en": "Clear Glass",
+      "name_ru": "Прозрачное стекло",
+      "desc_snippet": "letters of thick transparent glass, refractive caustics and light bending through the forms, polished bevelled edges and subtle mirror reflections",
+      "good_for_cyrillic": true,
+      "legible_small": false
+    },
+    {
+      "id": "liquid_chrome",
+      "name_en": "Liquid Chrome",
+      "name_ru": "Жидкий хром",
+      "desc_snippet": "mirror-polished liquid chrome letters, sharp specular highlights and warped distorted reflections, sleek flowing molten-silver surface",
+      "good_for_cyrillic": true,
+      "legible_small": false
+    },
+    {
+      "id": "molten_gold",
+      "name_en": "Molten Gold",
+      "name_ru": "Расплавленное золото",
+      "desc_snippet": "letters of gleaming molten gold, luxurious reflective metal with warm specular shine, rich glowing highlights and deep amber lustre",
+      "good_for_cyrillic": true,
+      "legible_small": false
+    },
+    {
+      "id": "flames_fire",
+      "name_en": "Blazing Fire",
+      "name_ru": "Огненные буквы",
+      "desc_snippet": "letters made of blazing fire and glowing embers, dancing orange flames licking upward, drifting smoke wisps and shimmering heat haze",
+      "good_for_cyrillic": true,
+      "legible_small": false
+    },
+    {
+      "id": "balloon_3d",
+      "name_en": "Balloon 3D",
+      "name_ru": "Воздушные шарики",
+      "desc_snippet": "glossy inflated balloon letters, rounded puffy 3D shapes, soft latex sheen with bright highlights and gently bulging pinched seams",
+      "good_for_cyrillic": true,
+      "legible_small": false
+    },
+    {
+      "id": "lush_floral",
+      "name_en": "Lush Floral",
+      "name_ru": "Цветочные буквы",
+      "desc_snippet": "letters formed from lush blooming flowers and foliage, layered botanical petals and verdant green leaves with delicate dewy detail",
+      "good_for_cyrillic": true,
+      "legible_small": false
+    },
+    {
+      "id": "carved_wood",
+      "name_en": "Carved Wood",
+      "name_ru": "Резное дерево",
+      "desc_snippet": "letters carved from natural wood, visible flowing grain, hand-chiselled relief, warm organic texture with soft sanded edges",
+      "good_for_cyrillic": true,
+      "legible_small": false
+    },
+    {
+      "id": "dripping_paint",
+      "name_en": "Dripping Paint",
+      "name_ru": "Стекающая краска",
+      "desc_snippet": "bold letters of thick dripping wet paint, glossy runs and trailing drips, raw street-art energy with vivid saturated pigment",
+      "good_for_cyrillic": true,
+      "legible_small": false
     }
   ]
 }

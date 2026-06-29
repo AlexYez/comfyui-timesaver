@@ -153,6 +153,437 @@
         { "type": "obj", "role": "illustration", "rect": { "x": 0.25, "y": 0.46, "w": 0.5, "h": 0.34 }, "desc_en": "a bold, high-contrast central graphic for a t-shirt print, a striking character or mascot with attitude, centered" },
         { "type": "text", "role": "accent", "rect": { "x": 0.3, "y": 0.84, "w": 0.4, "h": 0.08 }, "text_en": "est. 2024", "text_ru": "с 2024", "font_preset_id": "condensed_bold", "weight": "Regular", "case": "UPPERCASE", "prominence": "Caption", "color": "#111111" }
       ]
+    },
+    {
+      "id": "material_typography",
+      "name_en": "Hero Material Typography",
+      "name_ru": "Геройская материальная типографика",
+      "desc_en": "A single giant short word fills the frame as material-crafted lettering — ice, fruit, glass or gold — with one small caption near the bottom.",
+      "desc_ru": "Одно огромное короткое слово заполняет кадр буквами из материала — лёд, фрукты, стекло или золото — и маленькая подпись внизу.",
+      "aspect_ratio": "1x1",
+      "background_en": "A clean seamless studio backdrop in a deep cool gradient, softly graded from charcoal at the edges to a faint glow behind the lettering, with gentle vignetting; no props, no clutter, only smooth negative space and soft directional studio light so the material letters read as the sole hero of the frame.",
+      "high_level_description_en": "A square hero shot of one enormous short word built from translucent blue ice with frost and sharp crystalline edges, centered and filling most of the frame against a deep cool studio gradient, with a small gold caption line near the bottom.",
+      "blocks": [
+        {
+          "type": "text",
+          "role": "hero",
+          "rect": {
+            "x": 0.13,
+            "y": 0.16,
+            "w": 0.74,
+            "h": 0.5
+          },
+          "text_en": "FROST",
+          "text_ru": "ЛЁД",
+          "font_preset_id": "ice_crystal",
+          "weight": "Bold",
+          "case": "UPPERCASE",
+          "color": "#BFE6FF",
+          "legibility": {
+            "outline": false,
+            "solid_block": false
+          },
+          "desc_override": "Towering hero letters carved from translucent pale-blue glacial ice, each face glassy and semi-transparent with milky frozen cores, sharp crystalline edges and faceted chamfers catching cold studio light; a delicate dusting of white frost clings to the surfaces, tiny condensation droplets bead along the bottoms and thin wisps of chilled vapor drift off the letterforms."
+        },
+        {
+          "type": "text",
+          "role": "caption",
+          "rect": {
+            "x": 0.22,
+            "y": 0.83,
+            "w": 0.56,
+            "h": 0.07
+          },
+          "text_en": "FROZEN IN A MOMENT",
+          "text_ru": "ЗАСТЫВШЕЕ МГНОВЕНИЕ",
+          "font_preset_id": "molten_gold",
+          "weight": "Regular",
+          "case": "UPPERCASE",
+          "color": "#E8C46A",
+          "legibility": {
+            "outline": false,
+            "solid_block": false
+          },
+          "desc_override": "A small refined caption line of slim molten-gold lettering, smooth polished metal with warm specular highlights and gentle reflections, generous letter spacing, centered and understated so it supports the icy hero word without competing."
+        }
+      ]
+    },
+    {
+      "id": "neon_sign",
+      "name_en": "Neon Sign on Brick",
+      "name_ru": "Неоновая вывеска на кирпиче",
+      "desc_en": "A glowing neon-tube sign mounted on a dark textured brick wall at night, moody and atmospheric, with cursive hero lettering and a small neon subtitle below.",
+      "desc_ru": "Светящаяся неоновая вывеска на тёмной фактурной кирпичной стене ночью — атмосферно и сумрачно, с курсивной главной надписью и небольшим неоновым подзаголовком снизу.",
+      "aspect_ratio": "4x5",
+      "background_en": "A dark, textured red-brick wall at night, weathered mortar lines and subtle grime catching the colored glow; the wall recedes into deep shadow at the edges, faint cyan and magenta light spills across the bricks, soft bokeh of distant streetlights in the murky background, moody cinematic atmosphere with gentle haze.",
+      "high_level_description_en": "A cursive neon-tube sign glows warmly against a dark, moody brick wall at night, its soft halo and reflected color washing over the textured masonry, with a small neon subtitle humming below the hero word and a tiny glowing neon glyph anchoring the composition.",
+      "blocks": [
+        {
+          "type": "text",
+          "role": "hero",
+          "rect": {
+            "x": 0.12,
+            "y": 0.22,
+            "w": 0.76,
+            "h": 0.3
+          },
+          "text_en": "Dream On",
+          "text_ru": "Мечтай",
+          "font_preset_id": "neon_tube",
+          "weight": "Bold",
+          "case": "Title",
+          "color": "#FF3CAC",
+          "legibility": {
+            "outline": false,
+            "solid_block": false
+          },
+          "desc_override": "flowing cursive script formed from glowing neon-tube lettering, hot-pink and magenta glass tubes radiating a soft warm halo, faint bloom and color spill onto the brick behind, tiny bright reflections along the curved glass, gentle electric hum vibe"
+        },
+        {
+          "type": "text",
+          "role": "subtitle",
+          "rect": {
+            "x": 0.26,
+            "y": 0.58,
+            "w": 0.48,
+            "h": 0.12
+          },
+          "text_en": "open all night",
+          "text_ru": "открыто всю ночь",
+          "font_preset_id": "neon_tube",
+          "weight": "Regular",
+          "case": "As-typed",
+          "color": "#3CE0FF",
+          "legibility": {
+            "outline": false,
+            "solid_block": false
+          },
+          "desc_override": "small clean neon-tube lettering in cool cyan glass, slim even tube width with a steady gentle glow, a soft halo bleeding faintly into the dark brick, delicate cyan reflection trembling on the mortar below"
+        },
+        {
+          "type": "obj",
+          "role": "icon",
+          "rect": {
+            "x": 0.4,
+            "y": 0.74,
+            "w": 0.2,
+            "h": 0.16
+          },
+          "desc_en": "a small glowing neon glyph — a tiny five-pointed star traced in warm amber glass tubes, humming with a soft golden halo that pools onto the rough brick, faint bright highlights running along the curved tubing, a single hairline reflection shimmering in the damp mortar beneath it",
+          "color_palette": [
+            "#FFB347"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "food_typography_ad",
+      "name_en": "Juicy Fruit Headline Ad",
+      "name_ru": "Сочная фруктовая реклама",
+      "desc_en": "An appetizing 4:5 advertisement where the headline is sculpted from fresh ripe fruit above a glistening product, finished with a small price tag.",
+      "desc_ru": "Аппетитная реклама 4:5, где заголовок вылеплен из свежих спелых фруктов над блестящим продуктом и завершается небольшим ценником.",
+      "aspect_ratio": "4x5",
+      "background_en": "A bright, sun-drenched commercial food studio backdrop with a smooth gradient from warm cream to soft peach, fine water droplets misting through the air, a faint scatter of crushed mint leaves, and a soft natural daylight wash that makes every surface look fresh and dewy, with shallow depth of field and creamy bokeh highlights.",
+      "high_level_description_en": "A vibrant vertical fruit advertisement where a glossy headline built from fresh juicy produce sits at the top, a glistening real product fills the center, and a crisp price tag anchors the bottom against a sunlit, dewy studio backdrop.",
+      "blocks": [
+        {
+          "type": "text",
+          "role": "headline",
+          "rect": {
+            "x": 0.08,
+            "y": 0.05,
+            "w": 0.84,
+            "h": 0.26
+          },
+          "text_en": "FRESH JUICE",
+          "text_ru": "СВЕЖИЙ СОК",
+          "font_preset_id": "fresh_fruit",
+          "weight": "Bold",
+          "case": "UPPERCASE",
+          "color": "#E63946",
+          "legibility": {
+            "outline": false,
+            "solid_block": false
+          },
+          "desc_override": "Bold uppercase letters sculpted entirely from fresh ripe fruit — glossy strawberries, juicy orange segments, ruby raspberries and a glistening slice of lime, every surface wet and dewy with tiny beaded water droplets, vivid saturated reds and bright citrus tones, soft studio highlights catching the juicy curves and casting gentle reflected glow."
+        },
+        {
+          "type": "obj",
+          "role": "product",
+          "rect": {
+            "x": 0.18,
+            "y": 0.34,
+            "w": 0.64,
+            "h": 0.42
+          },
+          "desc_en": "A tall frosted glass of freshly pressed fruit juice, cold condensation beading and trickling down the chilled glass, a vivid orange-and-berry blend glowing from within, garnished with a fresh strawberry on the rim and a crisp sprig of mint, surrounded by tumbling whole fruits — oranges, strawberries and raspberries — caught mid-splash with droplets flying, brightly lit and irresistibly fresh."
+        },
+        {
+          "type": "text",
+          "role": "price",
+          "rect": {
+            "x": 0.34,
+            "y": 0.81,
+            "w": 0.32,
+            "h": 0.11
+          },
+          "text_en": "ONLY $4.99",
+          "text_ru": "ВСЕГО 299 ₽",
+          "font_preset_id": "geometric_sans",
+          "weight": "Bold",
+          "case": "UPPERCASE",
+          "color": "#FFFFFF",
+          "legibility": {
+            "outline": true,
+            "solid_block": true
+          },
+          "outline_color": "#1B5E20",
+          "plate_color": "#E63946"
+        }
+      ]
+    },
+    {
+      "id": "logo_emblem",
+      "name_en": "Vintage Circular Badge Logo",
+      "name_ru": "Винтажный круглый логотип-эмблема",
+      "desc_en": "A clean, symmetrical circular badge with curved top brand text, a central minimal icon, and a bottom tagline on a solid background.",
+      "desc_ru": "Аккуратная симметричная круглая эмблема с изогнутым названием бренда сверху, минималистичной иконкой в центре и слоганом снизу на однотонном фоне.",
+      "aspect_ratio": "1x1",
+      "background_en": "A flat, solid deep cream background (#F2E8D5) with a faint paper-grain texture, perfectly even lighting, a thin concentric double ring framing the composition, no gradients or distractions — a timeless heritage brand-mark backdrop.",
+      "high_level_description_en": "A centered vintage-style circular emblem logo on a solid cream field: bold curved brand text arcs across the top, a single clean minimalist mountain-and-sun icon sits at the center, and a small uppercase established tagline anchors the bottom, all framed by a thin double ring.",
+      "blocks": [
+        {
+          "type": "text",
+          "role": "title",
+          "rect": {
+            "x": 0.15,
+            "y": 0.13,
+            "w": 0.7,
+            "h": 0.16
+          },
+          "text_en": "SUMMIT CO.",
+          "text_ru": "САММИТ",
+          "font_preset_id": "slab_serif_heavy",
+          "weight": "Bold",
+          "case": "UPPERCASE",
+          "color": "#2B2419",
+          "legibility": {
+            "outline": false,
+            "solid_block": false
+          },
+          "desc_override": "Bold heavy slab-serif letters following a gentle upward curved arc along the top of the circle, deep espresso-brown ink, evenly spaced with generous tracking, crisp clean edges, classic heritage badge typography."
+        },
+        {
+          "type": "obj",
+          "role": "icon",
+          "rect": {
+            "x": 0.34,
+            "y": 0.34,
+            "w": 0.32,
+            "h": 0.32
+          },
+          "desc_en": "A single minimal line-art emblem icon centered in the badge: a simple geometric mountain peak with a rising sun arc behind it, rendered in clean solid espresso-brown strokes of uniform weight, flat and symmetrical, no shading or gradient, vintage outdoor brand mark."
+        },
+        {
+          "type": "text",
+          "role": "tagline",
+          "rect": {
+            "x": 0.22,
+            "y": 0.74,
+            "w": 0.56,
+            "h": 0.1
+          },
+          "text_en": "EST. 1974",
+          "text_ru": "ОСН. 1974",
+          "font_preset_id": "geometric_sans",
+          "weight": "Regular",
+          "case": "UPPERCASE",
+          "color": "#6B5D45",
+          "legibility": {
+            "outline": false,
+            "solid_block": false
+          },
+          "desc_override": "Small clean geometric sans-serif letters following a downward curved arc along the bottom of the circle, muted warm taupe-brown, wide letter spacing, subtle and refined, balancing the bold brand text above."
+        }
+      ]
+    },
+    {
+      "id": "logo_mascot",
+      "name_en": "Mascot Logo Lockup",
+      "name_ru": "Логотип с маскотом",
+      "desc_en": "A friendly character mascot crowns a clean bold wordmark with a small tagline beneath, built as a centered, brandable logo lockup.",
+      "desc_ru": "Дружелюбный персонаж-маскот венчает чистый жирный логотип с короткой подписью внизу — собранный по центру, запоминающийся фирменный знак.",
+      "aspect_ratio": "1x1",
+      "background_en": "A clean, softly lit studio backdrop in a warm off-white cream tone (#F6F1E8), with a gentle subtle vignette and a faint circular highlight behind the mascot to focus attention; uncluttered, flat, brand-ready negative space with no props or texture noise, evenly diffused lighting and a soft contact shadow grounding the lockup.",
+      "high_level_description_en": "A centered mascot-logo lockup on a clean cream studio background: a cheerful rounded character at the top, a bold confident wordmark directly below, and a small understated tagline anchoring the composition.",
+      "blocks": [
+        {
+          "type": "obj",
+          "role": "mascot",
+          "rect": {
+            "x": 0.22,
+            "y": 0.06,
+            "w": 0.56,
+            "h": 0.5
+          },
+          "desc_en": "A friendly cartoon mascot character with a plump rounded body and big glossy expressive eyes, a warm welcoming smile, soft pastel teal-and-cream coloring with subtle rosy cheeks; chunky simple limbs and a tiny confident wave, clean vector-style shading with smooth gradients and a soft rim light, perfectly centered facing forward, designed as an instantly memorable and brandable character mascot."
+        },
+        {
+          "type": "text",
+          "role": "wordmark",
+          "rect": {
+            "x": 0.12,
+            "y": 0.59,
+            "w": 0.76,
+            "h": 0.18
+          },
+          "text_en": "PUDDLES",
+          "text_ru": "ЛУЖИЦЫ",
+          "font_preset_id": "grotesque_black",
+          "weight": "Bold",
+          "case": "UPPERCASE",
+          "color": "#1F3B4D",
+          "legibility": {
+            "outline": false,
+            "solid_block": false
+          },
+          "desc_override": "A bold heavy grotesque wordmark in deep teal-navy (#1F3B4D), thick confident strokes with tight letter spacing, crisp clean edges and softly rounded playful terminals, set perfectly centered directly beneath the mascot as the brand name."
+        },
+        {
+          "type": "text",
+          "role": "tagline",
+          "rect": {
+            "x": 0.2,
+            "y": 0.81,
+            "w": 0.6,
+            "h": 0.07
+          },
+          "text_en": "your friendly companion",
+          "text_ru": "твой добрый помощник",
+          "font_preset_id": "rounded_friendly",
+          "weight": "Regular",
+          "case": "Title",
+          "color": "#6B7A82",
+          "legibility": {
+            "outline": false,
+            "solid_block": false
+          },
+          "desc_override": "A small soft rounded sans-serif tagline in muted slate-gray (#6B7A82), light and friendly with generous even letter spacing, centered as a quiet supporting line under the wordmark."
+        }
+      ]
+    },
+    {
+      "id": "art_hero",
+      "name_en": "Hero Art (No Text)",
+      "name_ru": "Героический арт (без текста)",
+      "desc_en": "A single breathtaking subject fills nearly the entire frame as a pure artistic image with no text at all.",
+      "desc_ru": "Один захватывающий объект заполняет почти весь кадр — чистое художественное изображение без единой надписи.",
+      "aspect_ratio": "1x1",
+      "background_en": "A softly graded studio void of deep charcoal fading into dusky plum, lit by a single cinematic key light from the upper left that wraps the subject in a warm rim glow while the corners sink into velvet shadow; faint volumetric haze and a shallow depth of field keep every ounce of attention locked onto the central figure.",
+      "high_level_description_en": "A dramatic edge-to-edge hero close-up of a majestic creature rendered in painterly cinematic light, filling the square frame with rich texture and absolutely no text whatsoever.",
+      "blocks": [
+        {
+          "type": "obj",
+          "role": "hero_subject",
+          "rect": {
+            "x": 0.05,
+            "y": 0.04,
+            "w": 0.9,
+            "h": 0.92
+          },
+          "desc_en": "A regal Bengal tiger captured in a tight three-quarter close-up, its amber eyes catching the warm key light with piercing, almost human intensity; fur rendered in fine painterly strokes of burnt orange, cream and deep ink-black stripes, every whisker and individual hair haloed by the rim light, beads of cold mist clinging to the muzzle and a faint plume of visible breath in the chill air; the powerful head and shoulders dominate the frame with cinematic shallow depth of field, the body dissolving softly into shadow at the edges, radiating quiet predatory power and noble, watchful stillness."
+        }
+      ]
+    },
+    {
+      "id": "art_composition",
+      "name_en": "Rule-of-Thirds Solitude",
+      "name_ru": "Одиночество по правилу третей",
+      "desc_en": "A text-free cinematic composition where a lone foreground figure rests on one third while a distant counterpoint anchors the opposite side of the frame.",
+      "desc_ru": "Композиция без текста: одинокая фигура переднего плана стоит по правилу третей, а далёкий объект уравновешивает противоположную сторону кадра.",
+      "aspect_ratio": "16x9",
+      "background_en": "A vast windswept high-desert plateau at golden hour, dry cracked ochre earth stretching to a low horizon, layered violet-blue mountain ridges fading into atmospheric haze, a wide pale sky brushed with thin streaks of cirrus catching warm amber and rose light, soft volumetric sun rays raking low across the ground and casting long cinematic shadows.",
+      "high_level_description_en": "A solitary cloaked traveler stands off-center on the left third of a golden-hour desert plateau, gazing across the frame toward a small distant lighthouse-like tower glowing on the far right against hazy violet mountains, a lone dead acacia bridging the gulf between them.",
+      "blocks": [
+        {
+          "type": "obj",
+          "role": "foreground_subject",
+          "rect": {
+            "x": 0.24,
+            "y": 0.3,
+            "w": 0.16,
+            "h": 0.55
+          },
+          "desc_en": "A solitary traveler seen from behind, wrapped in a heavy weathered ochre-and-rust cloak that ripples and snaps in the wind, hood raised, standing on cracked desert ground; rim-lit by the low golden sun so the figure's silhouette glows along its edges while the front falls into cool blue shadow, casting a long dramatic shadow stretching toward the foreground, the head turned slightly toward the distant horizon."
+        },
+        {
+          "type": "obj",
+          "role": "background_counterpoint",
+          "rect": {
+            "x": 0.7,
+            "y": 0.42,
+            "w": 0.09,
+            "h": 0.26
+          },
+          "desc_en": "A small distant stone tower like a weathered lighthouse perched on a far ridge, its tiny warm beacon glowing amber against the hazy violet-blue mountains, scaled small to read as far away, half-dissolved in atmospheric perspective so it sits as a quiet luminous counterpoint balancing the lone figure across the frame."
+        },
+        {
+          "type": "obj",
+          "role": "midground_accent",
+          "rect": {
+            "x": 0.46,
+            "y": 0.66,
+            "w": 0.14,
+            "h": 0.12
+          },
+          "desc_en": "A lone twisted dead acacia tree, dark and skeletal, rooted in the cracked earth between the traveler and the tower, its bare branches catching faint golden rim light and throwing a thin slanting shadow that draws the eye across the composition."
+        }
+      ]
+    },
+    {
+      "id": "surreal_scene",
+      "name_en": "Surreal Scene",
+      "name_ru": "Сюрреальная сцена",
+      "desc_en": "A dreamlike, text-free fine-art composition where two or three imaginative objects meet in an impossible, poetic relationship.",
+      "desc_ru": "Похожая на сон бестекстовая художественная композиция, где два-три воображаемых объекта встречаются в невозможной, поэтичной связи.",
+      "aspect_ratio": "4x5",
+      "background_en": "An endless pale dawn sky washed in soft peach, lilac and powder-blue gradients, dotted with slow drifting clouds; a glassy mirror-still sea stretches to a low horizon, the water reflecting the sky like polished metal, with a faint surreal mist hovering above the surface and gentle volumetric light raking across the empty, serene expanse.",
+      "high_level_description_en": "A surreal dawn seascape in which a colossal floating door opens onto open sky above the glassy water, a stone hand rises from the sea cupping a tiny glowing moon, and a flock of paper birds streams out through the doorway.",
+      "blocks": [
+        {
+          "type": "obj",
+          "role": "primary",
+          "rect": {
+            "x": 0.3,
+            "y": 0.1,
+            "w": 0.4,
+            "h": 0.62
+          },
+          "desc_en": "A colossal antique wooden door standing upright and freely floating above the mirror-still sea, weathered oak panels with ornate tarnished brass hinges and a worn handle, the door swung ajar to reveal not a room but more of the same luminous dawn sky beyond it, soft warm rim light tracing its edges, a single thin shadow falling straight down onto the glassy water below."
+        },
+        {
+          "type": "obj",
+          "role": "secondary",
+          "rect": {
+            "x": 0.04,
+            "y": 0.55,
+            "w": 0.34,
+            "h": 0.4
+          },
+          "desc_en": "A giant weathered stone hand rising gracefully from the calm sea, fingers gently cupped upward, pale grey granite veined with moss and trickling seawater, cradling a small softly glowing crescent moon that radiates warm pearlescent light and sheds tiny floating sparks across its palm."
+        },
+        {
+          "type": "obj",
+          "role": "accent",
+          "rect": {
+            "x": 0.5,
+            "y": 0.16,
+            "w": 0.4,
+            "h": 0.34
+          },
+          "desc_en": "A graceful flock of folded white paper birds streaming out through the open doorway and curving across the sky, each origami bird crisp and delicate with sharp visible creases, scattered along a sweeping diagonal trail, their folded wings catching the warm dawn light."
+        }
+      ]
     }
   ]
 }
