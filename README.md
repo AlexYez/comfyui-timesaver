@@ -464,9 +464,9 @@ Apply LTX-Video keyframe conditioning for the first and (optionally) last frame 
 ---
 
 <a id="audio"></a>
-### 🎵 Audio (5 nodes)
+### 🎵 Audio (6 nodes)
 
-Speech-to-text, text-to-speech, music separation, plus a friendly audio loader and preview.
+Speech-to-text, text-to-speech, music separation, a waveform visualizer, plus a friendly audio loader and preview.
 
 #### TS Audio Loader
 <img src="doc/screenshots/ts_audio_loader.png" alt="TS Audio Loader" width="450" />
@@ -510,6 +510,15 @@ Russian text-to-speech via Silero TTS v5_3. Five speakers (aidar, baya, kseniya,
 Demucs-powered music source separation. Splits any audio into four AUDIO outputs: `vocal`, `bass`, `drums`, `others`. Three model options (`htdemucs`, `htdemucs_ft`, `hdemucs_mmi`), TTA shifts and overlap for higher quality.
 
 **Use when:** isolating vocals for remixing, extracting karaoke instrumentals, or feeding cleaner stems into another model.
+
+---
+
+#### TS Audio Visualizer
+<img src="doc/screenshots/ts_audio_visualizer.png" alt="TS Audio Visualizer" width="450" />
+
+Turns any `AUDIO` clip into a stylized SoundCloud-style waveform image at the resolution you choose. Blue→violet gradient bars (default `Violet`; `Indigo`, `Neon`, `Spectrum`, `Fire` and more) are drawn as antialiased rounded capsules with a soft neon glow, sitting over an **audio-reactive abstract background** driven by the same loudness envelope: `nebula` (layered mountains + waveform aura), `glow`, `mountains`, `plasma`, or `none`. Rendered entirely on torch — no extra dependencies. Outputs both the `IMAGE` and a `MASK` (bar fill + glow alpha) so you can composite the bars over video or footage. Mirror or bottom bars, horizontal / vertical / amplitude-driven gradient, plus glow, background intensity, sensitivity, smoothing and bar geometry controls.
+
+**Use when:** building music-video overlays, audiogram clips for social, or a quick visual for a voiceover / track.
 
 ---
 
