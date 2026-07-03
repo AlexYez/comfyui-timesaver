@@ -304,6 +304,11 @@ class VideoDepthAnything(nn.Module):
         method exists so external callers and stand-alone scripts that still
         pass a ``(N, H, W, 3) uint8`` ndarray keep working.
         """
+        # Callers (and the historical default) pass the device as a plain
+        # string; the autocast/forward calls below need a torch.device
+        # (``device.type`` on a str raised AttributeError).
+        if isinstance(device, str):
+            device = torch.device(device)
         frame_height, frame_width = frames[0].shape[:2]
         input_size = _adapt_input_size_for_aspect(input_size, frame_height, frame_width)
 

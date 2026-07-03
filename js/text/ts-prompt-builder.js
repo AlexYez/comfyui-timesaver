@@ -232,9 +232,15 @@ function tsSetupPromptBuilder(tsNode) {
     tsContainer.style.minHeight = `${TS_PROMPT_BUILDER_WIDGET_HEIGHT}px`;
     tsContainer.style.maxHeight = `${TS_PROMPT_BUILDER_WIDGET_HEIGHT}px`;
 
-    tsDomWidget.computeSize = function () {
-        return [TS_PROMPT_BUILDER_NODE_WIDTH, TS_PROMPT_BUILDER_WIDGET_HEIGHT];
-    };
+    // V1 (LiteGraph) only: fixed-size legacy layout. In V2 the Vue renderer
+    // sizes DOM widgets through getMinHeight/getMaxHeight (set above) — an
+    // assigned computeSize would push the widget into the legacy fixed branch
+    // of computeLayoutSize() (see CLAUDE.md §12.5.1).
+    if (!tsIsV2) {
+        tsDomWidget.computeSize = function () {
+            return [TS_PROMPT_BUILDER_NODE_WIDTH, TS_PROMPT_BUILDER_WIDGET_HEIGHT];
+        };
+    }
 
     const tsConfigWidget = tsNode.widgets?.find((tsItem) => tsItem.name === TS_PROMPT_BUILDER_CONFIG_INPUT);
     const tsState = {

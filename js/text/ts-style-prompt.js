@@ -332,10 +332,15 @@ function setupStyleSelector(node) {
         });
     };
 
-    domWidget.computeSize = function (width) {
-        const safeWidth = clamp(Number(width) || node.size?.[0] || DEFAULT_NODE_WIDTH, MIN_NODE_WIDTH, MAX_NODE_WIDTH);
-        return [safeWidth, getWidgetHeight(node)];
-    };
+    // V1 (LiteGraph) only — V2 sizes DOM widgets via getMinHeight/getMaxHeight
+    // (set in widgetOptions); assigning computeSize there would force the
+    // legacy fixed branch of computeLayoutSize() (CLAUDE.md §12.5.1).
+    if (!isV2) {
+        domWidget.computeSize = function (width) {
+            const safeWidth = clamp(Number(width) || node.size?.[0] || DEFAULT_NODE_WIDTH, MIN_NODE_WIDTH, MAX_NODE_WIDTH);
+            return [safeWidth, getWidgetHeight(node)];
+        };
+    }
 
     const styleValue = (style) => (style.name || style.id || "").trim();
 

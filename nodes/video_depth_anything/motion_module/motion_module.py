@@ -3,6 +3,8 @@
 #
 # This file may have been modified by ByteDance Ltd. and/or its affiliates on [date of modification]
 # Original file was released under [ Apache-2.0 license], with the full license text available at [https://github.com/guoyww/AnimateDiff?tab=Apache-2.0-1-ov-file#readme].
+import logging
+
 import torch
 import torch.nn.functional as F
 from torch import nn
@@ -18,7 +20,8 @@ try:
 
     XFORMERS_AVAILABLE = True
 except ImportError:
-    print("xFormers not available")
+    # xFormers is optional (SDPA is the default path) — debug, not console spam.
+    logging.getLogger("comfyui_timesaver.video_depth_anything").debug("xFormers not available")
     XFORMERS_AVAILABLE = False
 
 

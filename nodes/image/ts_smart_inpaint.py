@@ -648,11 +648,12 @@ def _refine_with_fine_upscaling(
     target_h_p = max(vae_snap, math.ceil(bbox_h_p * scale / vae_snap) * vae_snap)
     target_w_p = max(vae_snap, math.ceil(bbox_w_p * scale / vae_snap) * vae_snap)
 
-    print(f"[Angelo fine-upscale] bbox_lat=(h={bbox_h_lat}, w={bbox_w_lat}) "
-          f"bbox_px=(h={bbox_h_p}, w={bbox_w_p}) scale={scale:.2f} "
-          f"target_px=(h={target_h_p}, w={target_w_p}) "
-          f"resize={resize_method} max_linear={max_linear} "
-          f"vae_ratio=(x={px_per_lat_x}, y={px_per_lat_y})")
+    logger.debug(
+        "%s fine-upscale: bbox_lat=(h=%s, w=%s) bbox_px=(h=%s, w=%s) scale=%.2f "
+        "target_px=(h=%s, w=%s) resize=%s max_linear=%s vae_ratio=(x=%s, y=%s)",
+        LOG_PREFIX, bbox_h_lat, bbox_w_lat, bbox_h_p, bbox_w_p, scale,
+        target_h_p, target_w_p, resize_method, max_linear, px_per_lat_x, px_per_lat_y,
+    )
 
     # ----- Crop pixel image + upscale in pixel space -----
     pixel_crop = cached_pixels[:, y0_p:y1_p, x0_p:x1_p, :]  # (B, h, w, C)

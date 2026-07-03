@@ -223,9 +223,14 @@ function setupResolutionSelector(node) {
         domWidgetEl.style.overflow = "hidden";
     }
 
-    domWidget.computeSize = function (width) {
-        return [width, widgetHeight];
-    };
+    // V1 (LiteGraph) only — V2 sizes DOM widgets via getMinHeight/getMaxHeight
+    // (set in widgetOptions above); assigning computeSize there would force the
+    // legacy fixed branch of computeLayoutSize() (CLAUDE.md §12.5.1).
+    if (!isV2) {
+        domWidget.computeSize = function (width) {
+            return [width, widgetHeight];
+        };
+    }
 
     const state = {
         selected: "",

@@ -13,6 +13,8 @@
 # limitations under the License.
 from typing import Optional, Tuple
 
+import logging
+
 import torch
 import torch.nn.functional as F
 from torch import nn
@@ -23,7 +25,8 @@ try:
 
     XFORMERS_AVAILABLE = True
 except ImportError:
-    print("xFormers not available")
+    # xFormers is optional (SDPA is the default path) — debug, not console spam.
+    logging.getLogger("comfyui_timesaver.video_depth_anything").debug("xFormers not available")
     XFORMERS_AVAILABLE = False
 
 

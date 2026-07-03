@@ -1,3 +1,4 @@
+import functools
 import importlib
 import inspect
 import logging
@@ -25,6 +26,10 @@ class TSDependencyManager:
             cls._IMPORT_CACHE[module_name] = module
             return module
         except Exception:
+            # Deliberately caches the failure for the process lifetime:
+            # installing a package into a running ComfyUI requires a restart
+            # anyway, and retry-per-call would re-pay the import machinery on
+            # every execute() of every node that probes an absent dependency.
             cls._IMPORT_CACHE[module_name] = None
             return None
 
@@ -69,6 +74,7 @@ class TSDependencyManager:
         if getattr(original, "_ts_runtime_guard_wrapped", False):
             return
 
+        @functools.wraps(original)
         def wrapped(inner_cls, *args, **kwargs):
             try:
                 return original(inner_cls, *args, **kwargs)

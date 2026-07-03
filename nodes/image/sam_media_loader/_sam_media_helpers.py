@@ -699,6 +699,15 @@ class _patched_prompt_server:
     attributes; when we drive SAM3 from a custom aiohttp route they are unset
     and the call raises ``AttributeError``. We give them a recognisable
     placeholder for the duration of the inference call.
+
+    Known, accepted race: these attributes are process-global. If a real
+    prompt starts executing WHILE a preview inference is in flight, its
+    progress attribution can be briefly masked (``client_id=None`` mutes
+    ``send_sync``) and ``__exit__`` restores the pre-preview snapshot over
+    whatever the executor set meanwhile. The effect is limited to progress
+    REPORTING for a moment (never results/caching), and the executor rewrites
+    these fields on the next node it runs, so we deliberately keep the simple
+    snapshot/restore instead of serialising previews against the prompt queue.
     """
 
     PROMPT_ID = "ts_sam_media_loader_preview"
