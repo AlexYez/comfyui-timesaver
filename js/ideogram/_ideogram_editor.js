@@ -131,6 +131,7 @@ function ensureStyles() {
 .ts-ideoe-btn.danger{background:#3a1d1d;border-color:#6b2f2f;color:#ffb4b1}
 .ts-ideoe-btn.ghost{background:transparent}
 .ts-ideoe-btn.small{padding:5px 9px;font-size:11px}
+.ts-ideoe-btn:disabled{opacity:.35;cursor:default;pointer-events:none}
 .ts-ideoe-select{background:#0a0e14;border:1px solid #28323f;border-radius:6px;color:#e9eef6;padding:6px 8px;font-size:12px}
 .ts-ideoe-mp{display:inline-flex;align-items:center;gap:6px;border:1px solid #28323f;border-radius:8px;padding:3px 8px;background:#0a0e14}
 .ts-ideoe-mplabel{font-size:11px;color:#9aa6b8}
@@ -335,6 +336,10 @@ export function openIdeogramEditor(node, { design, presets, onSave, graphRef }) 
     // would force the panel wider); their meaning lives in the hover tooltips.
     const dupBtn = el("button", "ts-ideoe-btn", "⧉");
     const delBtn = el("button", "ts-ideoe-btn danger", "✕");
+    const undoBtn = el("button", "ts-ideoe-btn", "↶");
+    const redoBtn = el("button", "ts-ideoe-btn", "↷");
+    undoBtn.disabled = true;
+    redoBtn.disabled = true;
     const clearBtn = el("button", "ts-ideoe-btn danger");
 
     const langSeg = el("div", "ts-ideoe-langseg");
@@ -371,10 +376,11 @@ export function openIdeogramEditor(node, { design, presets, onSave, graphRef }) 
     // Block CRUD (+Text/+Object/Duplicate/Delete) lives in the layers panel
     // footer now; the header keeps only document-level controls.
     header.append(title, el("div", "ts-ideoe-spacer"),
-        langSeg, aspectSel, mpWrap, refBtn, refClear, clearBtn, cancelBtn, saveBtn);
+        undoBtn, redoBtn, langSeg, aspectSel, mpWrap, refBtn, refClear, clearBtn, cancelBtn, saveBtn);
 
     // Hover tooltips for every toolbar control (localized at show time).
     tip(addText, "tip_add_text"); tip(addObj, "tip_add_obj"); tip(dupBtn, "tip_duplicate");
+    tip(undoBtn, "tip_undo"); tip(redoBtn, "tip_redo");
     tip(delBtn, "tip_delete"); tip(clearBtn, "tip_clear"); tip(aspectSel, "tip_aspect");
     tip(mpInput, "tip_megapixels"); tip(refBtn, "tip_reference"); tip(refClear, "tip_clear_ref");
     tip(cancelBtn, "tip_cancel"); tip(saveBtn, "tip_save");
@@ -501,7 +507,76 @@ export function openIdeogramEditor(node, { design, presets, onSave, graphRef }) 
         }
         if (ok) { copyBtn.classList.add("ok"); copyBtn.textContent = tr("copied"); setTimeout(relabelJson, 1200); }
     });
-    const jsonTimer = setInterval(() => refreshJson(false), 500);
+    // ── Undo / redo: snapshot history of the whole editor state ──────────── //
+    // Snapshots are cut by the same 500ms poll tick that refreshes the JSON
+    // panel, so bursts of granular edits (typing, colour-picker drags) collapse
+    // into ~one step per half second — no per-callsite bookkeeping in the 25+
+    // places that mutate `work`. Undo/redo force-flush first, so nothing that
+    // happened between ticks is ever lost. Mid-gesture states (block drag in
+    // progress, open inline text editor) are skipped as noise.
+    const HISTORY_MAX = 100;
+    const history = { stack: [], sel: [], index: -1 };
+
+    function updateHistoryButtons() {
+        undoBtn.disabled = history.index <= 0;
+        redoBtn.disabled = history.index >= history.stack.length - 1;
+    }
+
+    function pushHistory() {
+        if (closed || activeDragCleanup || inlineEl) return;
+        const snap = JSON.stringify(work);
+        if (snap === history.stack[history.index]) return;
+        history.stack.length = history.index + 1;  // editing after undo kills the redo tail
+        history.sel.length = history.index + 1;
+        history.stack.push(snap);
+        history.sel.push(selectedId);
+        if (history.stack.length > HISTORY_MAX) { history.stack.shift(); history.sel.shift(); }
+        history.index = history.stack.length - 1;
+        updateHistoryButtons();
+    }
+
+    function applyHistorySnapshot() {
+        const snap = history.stack[history.index];
+        if (!snap) return;
+        // Mutate `work` in place (same contract as loadDesignIntoEditor) so
+        // every closure keeps its reference; block ids persist through the
+        // JSON round-trip, so the selection can be restored exactly.
+        const fresh = JSON.parse(snap);
+        Object.keys(work).forEach((k) => delete work[k]);
+        Object.assign(work, fresh);
+        work.blocks = sanitizeBlocks(work.blocks);
+        work.style = work.style || {};
+        selectedId = history.sel[history.index] ?? null;
+        if (selectedId && !work.blocks.some((b) => b.id === selectedId)) {
+            selectedId = work.blocks[0]?.id || null;
+        }
+        relabelHeader();
+        layoutArtboard();
+        renderReference();
+        renderBlocks();
+        renderLayers();
+        renderBlockPanel();
+        renderInspector();  // includes refreshJson(true)
+        updateHistoryButtons();
+    }
+
+    function performUndo() {
+        if (activeDragCleanup || inlineEl) return;
+        pushHistory();  // flush edits made since the last tick, so they undo first
+        if (history.index <= 0) return;
+        history.index -= 1;
+        applyHistorySnapshot();
+    }
+
+    function performRedo() {
+        if (activeDragCleanup || inlineEl) return;
+        pushHistory();
+        if (history.index >= history.stack.length - 1) return;
+        history.index += 1;
+        applyHistorySnapshot();
+    }
+
+    const jsonTimer = setInterval(() => { pushHistory(); refreshJson(false); }, 500);
 
     // Resizable, fluid panels: drag the dividers to set the layers/inspector
     // widths (and the vertical divider for the layers-list height); the stage
@@ -1743,6 +1818,8 @@ export function openIdeogramEditor(node, { design, presets, onSave, graphRef }) 
     addObj.addEventListener("click", () => addBlock("obj"));
     dupBtn.addEventListener("click", duplicateSelected);
     delBtn.addEventListener("click", deleteSelected);
+    undoBtn.addEventListener("click", performUndo);
+    redoBtn.addEventListener("click", performRedo);
     aspectSel.addEventListener("change", () => { work.aspect_ratio = aspectSel.value; layoutArtboard(); renderBlocks(); updateDimsReadout(); });
     mpInput.addEventListener("input", () => {
         let mp = parseFloat(mpInput.value);
@@ -1840,6 +1917,8 @@ export function openIdeogramEditor(node, { design, presets, onSave, graphRef }) 
         if (e.code === "KeyC") { if (getSelected() && !window.getSelection()?.toString()) { copySelected(); e.preventDefault(); } }
         else if (e.code === "KeyV") { if (clipboardBlock) { pasteBlock(); e.preventDefault(); } }
         else if (e.code === "KeyD") { if (getSelected()) { duplicateSelected(); e.preventDefault(); } }
+        else if (e.code === "KeyZ") { e.preventDefault(); if (e.shiftKey) performRedo(); else performUndo(); }
+        else if (e.code === "KeyY") { e.preventDefault(); performRedo(); }
         // Photoshop-style z-order: Ctrl+]/[ one step, Ctrl+Shift+]/[ to front/back.
         else if (e.code === "BracketRight") { const s = getSelected(); if (s) { e.preventDefault(); e.shiftKey ? moveToFront(s.id) : moveBlock(s.id, +1); } }
         else if (e.code === "BracketLeft") { const s = getSelected(); if (s) { e.preventDefault(); e.shiftKey ? moveToBack(s.id) : moveBlock(s.id, -1); } }
@@ -1854,6 +1933,7 @@ export function openIdeogramEditor(node, { design, presets, onSave, graphRef }) 
 
     // ── Initial paint (synchronous + retry; robust to layout timing) ────── //
     function fullRender() { layoutArtboard(); renderReference(); renderBlocks(); }
+    pushHistory();  // seed: the state the editor opened with is undo step 0
     relabelHeader();
     renderInspector();
     renderLayers();

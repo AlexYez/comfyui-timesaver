@@ -55,6 +55,7 @@ import json
 import logging
 import os
 import re
+import time
 
 ts_logger = logging.getLogger("comfyui_timesaver.ts_ideogram")
 LOG_PREFIX = "[TS Ideogram Designer]"
@@ -661,8 +662,54 @@ def dims_from_design(design_json: str) -> tuple[int, int]:
 # --------------------------------------------------------------------------- #
 # Graph IMAGE -> input dir (best-effort preview underlay)
 # --------------------------------------------------------------------------- #
+GRAPH_REF_PREFIX = "ts_ideogram_ref_"
+# A live node rewrites its reference on every graph run, so anything this old
+# almost certainly belongs to a deleted node / abandoned workflow.
+_GRAPH_REF_TTL_SECONDS = 7 * 24 * 3600
+_GRAPH_REF_NAME_RE = re.compile(r"^ts_ideogram_ref_[0-9A-Za-z_-]+\.png$")
+
+
 def _sanitize_node_id(node_id) -> str:
     return re.sub(r"[^0-9A-Za-z_-]", "_", str(node_id))[:64] or "node"
+
+
+def cleanup_stale_graph_refs(now: float | None = None) -> int:
+    """Delete graph-reference PNGs older than the TTL from the input dir.
+
+    They accumulate one per node id and were never reclaimed after a node /
+    workflow was deleted. Only files matching our exact prefix pattern in the
+    input-dir ROOT are touched; a reference belonging to a live node is
+    recreated on that node's next execute, so an over-eager delete costs at
+    most one missing auto-underlay until the next run. Best-effort: returns
+    the number of files removed.
+    """
+    try:
+        import folder_paths  # noqa: PLC0415
+
+        input_dir = folder_paths.get_input_directory()
+    except Exception as exc:  # noqa: BLE001
+        ts_logger.debug("%s Graph-ref cleanup unavailable: %s", LOG_PREFIX, exc)
+        return 0
+    cutoff = (now if now is not None else time.time()) - _GRAPH_REF_TTL_SECONDS
+    removed = 0
+    try:
+        names = os.listdir(input_dir)
+    except OSError:
+        return 0
+    for name in names:
+        if not _GRAPH_REF_NAME_RE.match(name):
+            continue
+        path = os.path.join(input_dir, name)
+        try:
+            if not os.path.isfile(path) or os.path.getmtime(path) > cutoff:
+                continue
+            os.remove(path)
+            removed += 1
+        except OSError as exc:
+            ts_logger.debug("%s Could not remove stale graph ref %s: %s", LOG_PREFIX, name, exc)
+    if removed:
+        ts_logger.info("%s Removed %d stale graph reference(s) from the input dir.", LOG_PREFIX, removed)
+    return removed
 
 
 def save_graph_reference(image_tensor, node_id) -> str | None:
@@ -688,7 +735,7 @@ def save_graph_reference(image_tensor, node_id) -> str | None:
         if array.ndim == 3 and array.shape[2] == 1:
             array = array[:, :, 0]
         image = Image.fromarray(array)
-        filename = f"ts_ideogram_ref_{_sanitize_node_id(node_id)}.png"
+        filename = f"{GRAPH_REF_PREFIX}{_sanitize_node_id(node_id)}.png"
         out_path = os.path.join(folder_paths.get_input_directory(), filename)
         image.save(out_path)
         _GRAPH_REF_BY_NODE[str(node_id)] = filename
@@ -705,7 +752,7 @@ def get_graph_reference(node_id) -> str | None:
     reference cached before a ComfyUI restart (the in-memory map is empty then)
     is still found.
     """
-    filename = _GRAPH_REF_BY_NODE.get(str(node_id)) or f"ts_ideogram_ref_{_sanitize_node_id(node_id)}.png"
+    filename = _GRAPH_REF_BY_NODE.get(str(node_id)) or f"{GRAPH_REF_PREFIX}{_sanitize_node_id(node_id)}.png"
     try:
         import folder_paths  # noqa: PLC0415
         if os.path.isfile(os.path.join(folder_paths.get_input_directory(), filename)):
@@ -734,6 +781,10 @@ def register_routes() -> None:
         return
 
     _ROUTES_REGISTERED = True
+
+    # One sweep per process start: reclaim graph-reference PNGs left behind by
+    # deleted nodes (cheap single-directory scan, best-effort).
+    cleanup_stale_graph_refs()
 
     @routes.get("/ts_ideogram/presets")
     async def _presets(_request):
