@@ -1885,7 +1885,7 @@ export function openIdeogramEditor(node, { design, presets, onSave, graphRef }) 
         if (node && node._tsIdeoEditorClose === close) delete node._tsIdeoEditorClose;
         if (activeDragCleanup) { try { activeDragCleanup(); } catch { /* ignore */ } activeDragCleanup = null; }
         document.removeEventListener("paste", onPaste);
-        document.removeEventListener("keydown", onKey);
+        window.removeEventListener("keydown", onKey, true);
         resizeObserver.disconnect();
         clearInterval(jsonTimer);
         clearTimeout(styleJsonTimer);
@@ -1898,7 +1898,14 @@ export function openIdeogramEditor(node, { design, presets, onSave, graphRef }) 
     }
     cancelBtn.addEventListener("click", close);
     saveBtn.addEventListener("click", commit);
+    // A handled shortcut must be invisible to ComfyUI: the graph keeps ITS OWN
+    // Ctrl+Z/Delete handlers, and letting Ctrl+Z through undoes graph actions —
+    // e.g. reverts the node-add, which deletes the node under the open editor
+    // and tears the modal down mid-edit. Hence stop() on every handled branch,
+    // and the listener sits on window in the CAPTURE phase (below) so it runs
+    // before ComfyUI's own document/bubble handlers.
     function onKey(e) {
+        const stop = () => { e.preventDefault(); e.stopPropagation(); };
         if (inlineEl) return;
         if (e.key === "Escape") { e.stopPropagation(); close(); return; }
         // Don't hijack shortcuts while typing in a panel field — let native
@@ -1906,7 +1913,7 @@ export function openIdeogramEditor(node, { design, presets, onSave, graphRef }) 
         const tag = document.activeElement?.tagName;
         if (tag === "TEXTAREA" || tag === "INPUT" || tag === "SELECT") return;
         if (e.key === "Delete" || e.key === "Backspace") {
-            if (getSelected()) { e.preventDefault(); deleteSelected(); }
+            if (getSelected()) { stop(); deleteSelected(); }
             return;
         }
         const mod = e.ctrlKey || e.metaKey;
@@ -1914,16 +1921,16 @@ export function openIdeogramEditor(node, { design, presets, onSave, graphRef }) 
         // e.code is the physical key, so these work on any layout (incl. Cyrillic).
         // Ctrl+C only grabs the BLOCK when no text is selected on the page —
         // otherwise it must stay the native copy (e.g. text selected in the JSON panel).
-        if (e.code === "KeyC") { if (getSelected() && !window.getSelection()?.toString()) { copySelected(); e.preventDefault(); } }
-        else if (e.code === "KeyV") { if (clipboardBlock) { pasteBlock(); e.preventDefault(); } }
-        else if (e.code === "KeyD") { if (getSelected()) { duplicateSelected(); e.preventDefault(); } }
-        else if (e.code === "KeyZ") { e.preventDefault(); if (e.shiftKey) performRedo(); else performUndo(); }
-        else if (e.code === "KeyY") { e.preventDefault(); performRedo(); }
+        if (e.code === "KeyC") { if (getSelected() && !window.getSelection()?.toString()) { copySelected(); stop(); } }
+        else if (e.code === "KeyV") { if (clipboardBlock) { pasteBlock(); stop(); } }
+        else if (e.code === "KeyD") { if (getSelected()) { duplicateSelected(); stop(); } }
+        else if (e.code === "KeyZ") { stop(); if (e.shiftKey) performRedo(); else performUndo(); }
+        else if (e.code === "KeyY") { stop(); performRedo(); }
         // Photoshop-style z-order: Ctrl+]/[ one step, Ctrl+Shift+]/[ to front/back.
-        else if (e.code === "BracketRight") { const s = getSelected(); if (s) { e.preventDefault(); e.shiftKey ? moveToFront(s.id) : moveBlock(s.id, +1); } }
-        else if (e.code === "BracketLeft") { const s = getSelected(); if (s) { e.preventDefault(); e.shiftKey ? moveToBack(s.id) : moveBlock(s.id, -1); } }
+        else if (e.code === "BracketRight") { const s = getSelected(); if (s) { stop(); e.shiftKey ? moveToFront(s.id) : moveBlock(s.id, +1); } }
+        else if (e.code === "BracketLeft") { const s = getSelected(); if (s) { stop(); e.shiftKey ? moveToBack(s.id) : moveBlock(s.id, -1); } }
     }
-    document.addEventListener("keydown", onKey);
+    window.addEventListener("keydown", onKey, true);
     // Let the node widget tear the editor down if the node dies while it is open
     // (workflow switch / node deletion) — see _tsIdeoCleanup in _ideogram_node.js.
     if (node) node._tsIdeoEditorClose = close;
