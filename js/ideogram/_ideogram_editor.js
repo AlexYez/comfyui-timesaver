@@ -132,6 +132,7 @@ function ensureStyles() {
 .ts-ideoe-btn.ghost{background:transparent}
 .ts-ideoe-btn.small{padding:5px 9px;font-size:11px}
 .ts-ideoe-btn:disabled{opacity:.35;cursor:default;pointer-events:none}
+.ts-ideoe-keyanchor{position:fixed;left:-9999px;top:-9999px;width:2px;height:2px;opacity:0;pointer-events:none;resize:none}
 .ts-ideoe-select{background:#0a0e14;border:1px solid #28323f;border-radius:6px;color:#e9eef6;padding:6px 8px;font-size:12px}
 .ts-ideoe-mp{display:inline-flex;align-items:center;gap:6px;border:1px solid #28323f;border-radius:8px;padding:3px 8px;background:#0a0e14}
 .ts-ideoe-mplabel{font-size:11px;color:#9aa6b8}
@@ -661,6 +662,36 @@ export function openIdeogramEditor(node, { design, presets, onSave, graphRef }) 
     shell.append(header, body);
     overlay.appendChild(shell);
     document.body.appendChild(overlay);
+
+    // Keyboard-focus anchor. ComfyUI's own hotkey service (window capture,
+    // registered before ours — unbeatable by event order) skips events whose
+    // target is a text field; without this, Ctrl+Z inside the editor reaches
+    // the GRAPH's ChangeTracker, undoes the node-add and tears the modal down.
+    // Keeping focus parked on a hidden read-only textarea makes every editor
+    // hotkey invisible to the graph, while onKey below special-cases the
+    // anchor so OUR shortcuts still fire. Trade-off: Tab-navigation between
+    // editor buttons is sacrificed (focus snaps back) — acceptable for a
+    // pointer-driven canvas tool.
+    const keyAnchor = el("textarea", "ts-ideoe-keyanchor");
+    keyAnchor.readOnly = true;
+    keyAnchor.tabIndex = -1;
+    keyAnchor.setAttribute("aria-hidden", "true");
+    overlay.appendChild(keyAnchor);
+    overlay.addEventListener("focusin", (ev) => {
+        const t = ev.target;
+        if (t === keyAnchor) return;
+        const tag = t?.tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || t?.isContentEditable) return;
+        keyAnchor.focus();  // buttons don't need to hold focus; keep hotkeys armed
+    });
+    // Clicking empty stage/canvas areas blurs whatever field had focus onto
+    // <body>; re-park it on the anchor or the next Ctrl+Z would hit the graph.
+    overlay.addEventListener("pointerup", () => {
+        const t = document.activeElement;
+        const tag = t?.tagName;
+        if (t === keyAnchor || tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || t?.isContentEditable) return;
+        keyAnchor.focus();
+    });
 
     const fileInput = el("input");
     fileInput.type = "file";
@@ -1908,10 +1939,13 @@ export function openIdeogramEditor(node, { design, presets, onSave, graphRef }) 
         const stop = () => { e.preventDefault(); e.stopPropagation(); };
         if (inlineEl) return;
         if (e.key === "Escape") { e.stopPropagation(); close(); return; }
-        // Don't hijack shortcuts while typing in a panel field — let native
-        // copy/paste/delete work there.
-        const tag = document.activeElement?.tagName;
-        if (tag === "TEXTAREA" || tag === "INPUT" || tag === "SELECT") return;
+        // Don't hijack shortcuts while typing in a REAL panel field — let native
+        // copy/paste/delete work there. The hidden keyAnchor is ours: with focus
+        // parked on it the editor shortcuts fire while ComfyUI's hotkey service
+        // (which skips text-field targets) stays out of the graph.
+        const active = document.activeElement;
+        const tag = active?.tagName;
+        if ((tag === "TEXTAREA" || tag === "INPUT" || tag === "SELECT") && active !== keyAnchor) return;
         if (e.key === "Delete" || e.key === "Backspace") {
             if (getSelected()) { stop(); deleteSelected(); }
             return;
@@ -1941,6 +1975,7 @@ export function openIdeogramEditor(node, { design, presets, onSave, graphRef }) 
     // ── Initial paint (synchronous + retry; robust to layout timing) ────── //
     function fullRender() { layoutArtboard(); renderReference(); renderBlocks(); }
     pushHistory();  // seed: the state the editor opened with is undo step 0
+    keyAnchor.focus();  // park keyboard focus so hotkeys are editor-scoped from the start
     relabelHeader();
     renderInspector();
     renderLayers();
