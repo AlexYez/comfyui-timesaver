@@ -6,7 +6,9 @@
 // fonts + style_description). Localized RU/EN UI, double-click inline editing of
 // text/object blocks, a stylized canvas preview, and custom-preset saving.
 //
-// openIdeogramEditor(node, { design, presets, onSave }) — onSave(newDesign).
+// openIdeogramEditor(node, { design, presets, onSave, graphRef }) — onSave(newDesign);
+// graphRef (optional) = input-dir filename of the node's cached graph IMAGE,
+// used as the tracing underlay when the design has no manual reference.
 
 import { api } from "/scripts/api.js";
 
@@ -52,8 +54,10 @@ import {
     makeBlockId,
     normHex,
     paletteGradientCss,
+    sanitizeBlocks,
     segLabel,
     t,
+    weightToCss,
 } from "./_ideogram_shared.js";
 
 const STYLE_ID = "ts-ideogram-editor-styles";
@@ -96,10 +100,7 @@ function ensureStyles() {
 .ts-ideoe-card h3{margin:0;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#8a93a3}
 .ts-ideoe-row{display:flex;flex-direction:column;gap:4px}
 .ts-ideoe-row label{font-size:11px;color:#9aa6b8}
-.ts-ideoe-hint{font-size:11px;color:#8a93a3;line-height:1.4}
-.ts-ideoe-banner{margin:0 12px;padding:8px 10px;border:1px solid #6b561f;background:rgba(255,207,107,.1);color:#ffcf6b;border-radius:8px;font-size:11px;line-height:1.4}
-.ts-ideoe-warns{display:flex;flex-direction:column;gap:4px}
-.ts-ideoe-warn{font-size:11px;color:#ffcf6b;background:rgba(255,207,107,.08);border:1px solid rgba(255,207,107,.25);border-radius:6px;padding:4px 7px}
+.ts-ideoe-hint{font-size:11px;color:#8a93a3;line-height:1.4;margin:2px 0 0}
 .ts-ideoe input[type=text],.ts-ideoe textarea,.ts-ideoe-inspector input[type=text],.ts-ideoe-inspector textarea,.ts-ideoe-inspector select{width:100%;box-sizing:border-box;background:#0a0e14;border:1px solid #28323f;border-radius:6px;color:#e9eef6;padding:6px 8px;font-size:12px;font-family:inherit;outline:none}
 .ts-ideoe-inspector textarea{resize:vertical;min-height:46px}
 .ts-ideoe-inspector input:focus,.ts-ideoe-inspector textarea:focus,.ts-ideoe-inspector select:focus{border-color:#4da3ff}
@@ -140,7 +141,6 @@ function ensureStyles() {
 .ts-ideoe-mprange::-moz-range-thumb{width:13px;height:13px;border:1px solid #2a4a8f;border-radius:50%;background:#5180ff;cursor:pointer}
 .ts-ideoe-mpval{font-size:11px;color:#cdd6e6;font-variant-numeric:tabular-nums;min-width:24px;text-align:center}
 .ts-ideoe-btnrow{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
-.ts-ideoe-hint{font-size:11px;color:#8a93a3;line-height:1.4;margin:2px 0 0}
 .ts-ideoe-tip{position:fixed;z-index:12000;max-width:300px;background:#0b1119;color:#e9eef6;border:1px solid #2a3950;border-radius:8px;padding:7px 10px;font-size:12px;line-height:1.45;box-shadow:0 8px 26px rgba(0,0,0,.6);pointer-events:none;opacity:0;transition:opacity .12s ease;white-space:normal}
 .ts-ideoe-empty{color:#6b7688;font-size:12px;text-align:center;padding:24px 8px}
 .ts-ideoe-layers{flex:0 0 252px;display:flex;flex-direction:column;background:#0c1118;min-height:0;min-width:0}
@@ -268,9 +268,6 @@ function buildPalette(getArr, setArr, cap, lang) {
     return wrap;
 }
 
-const WEIGHT_CSS = { Thin: 300, Regular: 400, Bold: 700, Heavy: 900 };
-function weightToCss(w) { return WEIGHT_CSS[w] || 700; }
-
 // Shrink a text element's font-size (binary search) so it fits its own box on
 // both axes — the WYSIWYG auto-fit, since the node has no explicit font-size
 // control. Must be called after the element is in the DOM and sized.
@@ -288,13 +285,20 @@ function fitText(textEl, iters = 12) {
     textEl.style.fontSize = `${best}px`;
 }
 
-export function openIdeogramEditor(node, { design, presets, onSave }) {
+export function openIdeogramEditor(node, { design, presets, onSave, graphRef }) {
     ensureStyles();
 
     const work = JSON.parse(JSON.stringify(design));
-    work.blocks = Array.isArray(work.blocks) ? work.blocks : [];
+    work.blocks = sanitizeBlocks(work.blocks);
     work.style = work.style || {};
     if (!LANGS.includes(work.language)) work.language = DEFAULT_LANG;
+    // The connected graph IMAGE (cached by execute) becomes the underlay when no
+    // manual reference was chosen — the promise behind the node's image input.
+    // ref_cleared marks an EXPLICIT removal, so the auto-underlay doesn't keep
+    // coming back after the user cleared it.
+    if (!work.ref?.filename && !work.ref_cleared && graphRef) {
+        work.ref = { filename: graphRef, subfolder: "", type: "input" };
+    }
 
     const layouts = layoutsList(presets);
     const stylePresets = presets?.styles || [];
@@ -315,6 +319,8 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
     // Teardown for an in-progress pointer drag (layer reorder / panel resize), so
     // closing the editor mid-drag can't leak window listeners or a floating clone.
     let activeDragCleanup = null;
+    // Set by close(): stops the layout retry loop and in-flight JSON refreshes.
+    let closed = false;
 
     const overlay = el("div", "ts-ideoe-overlay ts-ideoe");
     const shell = el("div", "ts-ideoe-shell");
@@ -431,10 +437,8 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
     const inspectorHead = el("div", "ts-ideoe-inspector__head");
     const inspectorTitle = el("div", "ts-ideoe-inspector__title", "General settings");
     inspectorHead.append(inspectorTitle);
-    const banner = el("div", "ts-ideoe-banner");
-    banner.style.display = "none";
     const inspectorScroll = el("div", "ts-ideoe-inspector__scroll");
-    inspector.append(inspectorHead, banner, inspectorScroll);
+    inspector.append(inspectorHead, inspectorScroll);
 
     // Live JSON-prompt panel (bottom of the general-settings column): polls the
     // server-authoritative caption builder (/ts_ideogram/preview, no JS/Python
@@ -472,11 +476,12 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
     let lastJsonSig = null;
     let jsonReqId = 0;
     async function refreshJson(force) {
+        if (closed) return;
         const dj = JSON.stringify(work);
         if (!force && dj === lastJsonSig) return;  // only re-fetch when the design changed
         const myReq = ++jsonReqId;
         const res = await fetchCaptionPreview(dj);
-        if (myReq !== jsonReqId) return;  // a newer request superseded this one — drop the stale answer
+        if (closed || myReq !== jsonReqId) return;  // superseded or the editor closed — drop the stale answer
         if (!res) return;  // transient failure: keep the last good panel + signature so the next tick retries
         lastJsonSig = dj;
         const text = res.json_prompt ? prettyJson(res.json_prompt) : "";
@@ -526,7 +531,7 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
                 const w = clamp(startW + grow * (e.clientX - startX), cfg.min, cfg.max);
                 panel.style.flex = `0 0 ${w}px`;
                 layoutArtboard();
-                renderBlocks();
+                refitBlocks();
             }
             function onUp() {
                 activeDragCleanup = null;
@@ -660,10 +665,22 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
     }
 
     // Any style/look/colour change re-tints the canvas and refreshes the live
-    // JSON prompt immediately, so every preset switch is visibly reflected.
+    // JSON prompt, so every preset switch is visibly reflected. The network
+    // refresh is debounced: prompt textareas fire this per keystroke, and one
+    // /preview POST per character is pointless (the panel still updates within
+    // ~150ms, and the 500ms poller is the backstop).
+    let styleJsonTimer = null;
     function onStyleChange() {
         renderBlocks();
-        refreshJson(true);
+        clearTimeout(styleJsonTimer);
+        styleJsonTimer = setTimeout(() => refreshJson(true), 150);
+    }
+
+    // Re-run the text auto-fit on the EXISTING block DOM. Block geometry is in
+    // percent, so panel/stage resizes only need a refit — not the full DOM
+    // rebuild renderBlocks does (which is far too heavy per resize event).
+    function refitBlocks() {
+        blocksLayer.querySelectorAll(".ts-ideoe-block__text, .ts-ideoe-block__obj").forEach((n) => fitText(n));
     }
 
     function renderReference() {
@@ -687,6 +704,7 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
             if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
             const data = await resp.json();
             work.ref = { filename: data.name, subfolder: data.subfolder || "", type: data.type || "input" };
+            work.ref_cleared = false;  // a manual pick re-arms the auto graph underlay
             renderReference();
         } catch (error) {
             console.error("[TS Ideogram] reference upload failed:", error);
@@ -770,11 +788,7 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
                     ev.preventDefault();
                     ev.stopPropagation();
                     lastClickInfo = { id: null, t: 0 };
-                    const copy = JSON.parse(JSON.stringify(block));
-                    copy.id = makeBlockId();
-                    work.blocks.push(copy);
-                    selectBlock(copy.id);
-                    startDrag(ev, copy, "move");
+                    startDrag(ev, cloneBlockAt(block), "move");
                     return;
                 }
                 const now = Date.now();
@@ -1079,18 +1093,26 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
             };
         work.blocks.push(block);
         selectBlock(block.id);
-        renderBlocks();
+    }
+
+    // The one clone path shared by Duplicate / Ctrl+V / Alt-drag: deep-copy with
+    // a fresh id, optionally nudged so the copy doesn't sit exactly on the
+    // original, appended + selected (selectBlock repaints everything).
+    function cloneBlockAt(src, offset = 0) {
+        const copy = JSON.parse(JSON.stringify(src));
+        copy.id = makeBlockId();
+        if (offset) {
+            const rc = copy.rect || { x: 0.1, y: 0.1, w: 0.4, h: 0.2 };
+            copy.rect = { ...rc, x: clamp((rc.x || 0) + offset, 0, 0.95), y: clamp((rc.y || 0) + offset, 0, 0.95) };
+        }
+        work.blocks.push(copy);
+        selectBlock(copy.id);
+        return copy;
     }
 
     function duplicateSelected() {
         const sel = getSelected();
-        if (!sel) return;
-        const copy = JSON.parse(JSON.stringify(sel));
-        copy.id = makeBlockId();
-        copy.rect = { ...sel.rect, x: clamp(sel.rect.x + 0.03, 0, 0.9), y: clamp(sel.rect.y + 0.03, 0, 0.9) };
-        work.blocks.push(copy);
-        selectBlock(copy.id);
-        renderBlocks();
+        if (sel) cloneBlockAt(sel, 0.03);
     }
 
     // Internal block clipboard (Ctrl+C / Ctrl+V).
@@ -1100,13 +1122,7 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
         if (sel) clipboardBlock = JSON.parse(JSON.stringify(sel));
     }
     function pasteBlock() {
-        if (!clipboardBlock) return;
-        const copy = JSON.parse(JSON.stringify(clipboardBlock));
-        copy.id = makeBlockId();
-        const rc = copy.rect || { x: 0.1, y: 0.1, w: 0.4, h: 0.2 };
-        copy.rect = { ...rc, x: clamp((rc.x || 0) + 0.03, 0, 0.95), y: clamp((rc.y || 0) + 0.03, 0, 0.95) };
-        work.blocks.push(copy);
-        selectBlock(copy.id);
+        if (clipboardBlock) cloneBlockAt(clipboardBlock, 0.03);
     }
 
     function deleteSelected() {
@@ -1478,7 +1494,7 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
 
     function blockCard() {
         const sel = getSelected();
-        if (!sel) return el("div", "ts-ideoe-empty", tr("select_block"));
+        if (!sel) { bboxReadoutEl = null; return el("div", "ts-ideoe-empty", tr("select_block")); }
         const card = el("div", "ts-ideoe-card");
         card.appendChild(el("h3", null, sel.type === "obj" ? tr("block_obj_title") : tr("block_text_title")));
 
@@ -1536,7 +1552,7 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
         const ta = el("textarea");
         tip(ta, "tip_text_literal");
         ta.value = sel.text || "";
-        ta.addEventListener("input", () => { sel.text = ta.value; renderBlocks(); renderLayers(); renderWarnings(); });
+        ta.addEventListener("input", () => { sel.text = ta.value; renderBlocks(); renderLayers(); });
         textRow.appendChild(ta);
         card.appendChild(textRow);
 
@@ -1545,7 +1561,7 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
         card.appendChild(segRow);
 
         const caseRow = row("case");
-        caseRow.appendChild(tip(buildSegmented(CASES, () => sel.case, (v) => { sel.case = v; renderBlocks(); renderDescPreview(); renderWarnings(); }, (o) => segLabel("case", o, work.language)), "tip_case"));
+        caseRow.appendChild(tip(buildSegmented(CASES, () => sel.case, (v) => { sel.case = v; renderBlocks(); renderDescPreview(); }, (o) => segLabel("case", o, work.language)), "tip_case"));
         card.appendChild(caseRow);
 
         const colorRow = row("text_color");
@@ -1592,7 +1608,7 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
         const voRow = el("label", "ts-ideoe-check");
         tip(voRow, "tip_visual_only");
         const vo = el("input"); vo.type = "checkbox"; vo.checked = !!sel.visual_only;
-        vo.addEventListener("change", () => { sel.visual_only = vo.checked; renderBlocks(); renderLayers(); renderDescPreview(); renderWarnings(); });
+        vo.addEventListener("change", () => { sel.visual_only = vo.checked; renderBlocks(); renderLayers(); renderDescPreview(); });
         voRow.append(vo, document.createTextNode(tr("visual_only")));
         card.appendChild(voRow);
 
@@ -1608,28 +1624,16 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
         prevRow.appendChild(prev);
         card.appendChild(prevRow);
 
-        const warns = el("div", "ts-ideoe-warns");
-        card.appendChild(warns);
-
         function renderDescPreview() {
             prev.textContent = sel.visual_only ? tr("visual_only_preview") : composeTextDesc(sel, fontMap);
         }
-        function renderWarnings() {
-            warns.innerHTML = "";  // Cyrillic warnings removed.
-        }
         card._renderDescPreview = renderDescPreview;
-        card._renderWarnings = renderWarnings;
         renderDescPreview();
-        renderWarnings();
         return card;
     }
 
     let currentBlockCard = null;
     function renderDescPreview() { currentBlockCard?._renderDescPreview?.(); }
-    function renderWarnings() { currentBlockCard?._renderWarnings?.(); updateBanner(); }
-    function updateBanner() {
-        banner.style.display = "none";  // Cyrillic warnings removed (per user: Cyrillic works fine).
-    }
 
     function renderInspector() {
         inspectorScroll.innerHTML = "";
@@ -1639,7 +1643,6 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
         relabelJson();
         inspectorScroll.appendChild(jsonCardEl);  // live JSON prompt at the bottom
         refreshJson(true);
-        updateBanner();
     }
 
     // The selected block's settings render in the LEFT column, under the layers
@@ -1677,7 +1680,7 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
         const fresh = JSON.parse(JSON.stringify(d));
         Object.keys(work).forEach((k) => delete work[k]);
         Object.assign(work, fresh);
-        work.blocks = Array.isArray(work.blocks) ? work.blocks : [];
+        work.blocks = sanitizeBlocks(work.blocks);
         work.style = work.style || {};
         if (!LANGS.includes(work.language)) work.language = DEFAULT_LANG;
         userSetSubjects.clear();
@@ -1765,6 +1768,7 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
         work.background_palette = [];
         work.high_level_description = "";
         work.ref = null;
+        work.ref_cleared = true;  // explicit wipe — don't re-add the graph underlay
         work.style = {
             preset_id: "", aesthetics: "", lighting: "", medium: "graphic_design",
             photo: "", art_style: "", color_palette: [], lighting_palette: [], font_preset_id: "",
@@ -1777,7 +1781,7 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
         renderInspector();
     });
     refBtn.addEventListener("click", () => fileInput.click());
-    refClear.addEventListener("click", () => { work.ref = null; renderReference(); });
+    refClear.addEventListener("click", () => { work.ref = null; work.ref_cleared = true; renderReference(); });
     fileInput.addEventListener("change", () => { uploadReference(fileInput.files?.[0]); fileInput.value = ""; });
 
     stageWrap.addEventListener("dragover", (e) => e.preventDefault());
@@ -1799,11 +1803,15 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
     });
 
     function close() {
+        if (closed) return;
+        closed = true;  // stops the ensureLaidOut retry loop + in-flight JSON refreshes
+        if (node && node._tsIdeoEditorClose === close) delete node._tsIdeoEditorClose;
         if (activeDragCleanup) { try { activeDragCleanup(); } catch { /* ignore */ } activeDragCleanup = null; }
         document.removeEventListener("paste", onPaste);
         document.removeEventListener("keydown", onKey);
         resizeObserver.disconnect();
         clearInterval(jsonTimer);
+        clearTimeout(styleJsonTimer);
         overlay.remove();
     }
     function commit() {
@@ -1827,7 +1835,9 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
         const mod = e.ctrlKey || e.metaKey;
         if (!mod) return;
         // e.code is the physical key, so these work on any layout (incl. Cyrillic).
-        if (e.code === "KeyC") { if (getSelected()) { copySelected(); e.preventDefault(); } }
+        // Ctrl+C only grabs the BLOCK when no text is selected on the page —
+        // otherwise it must stay the native copy (e.g. text selected in the JSON panel).
+        if (e.code === "KeyC") { if (getSelected() && !window.getSelection()?.toString()) { copySelected(); e.preventDefault(); } }
         else if (e.code === "KeyV") { if (clipboardBlock) { pasteBlock(); e.preventDefault(); } }
         else if (e.code === "KeyD") { if (getSelected()) { duplicateSelected(); e.preventDefault(); } }
         // Photoshop-style z-order: Ctrl+]/[ one step, Ctrl+Shift+]/[ to front/back.
@@ -1835,8 +1845,11 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
         else if (e.code === "BracketLeft") { const s = getSelected(); if (s) { e.preventDefault(); e.shiftKey ? moveToBack(s.id) : moveBlock(s.id, -1); } }
     }
     document.addEventListener("keydown", onKey);
+    // Let the node widget tear the editor down if the node dies while it is open
+    // (workflow switch / node deletion) — see _tsIdeoCleanup in _ideogram_node.js.
+    if (node) node._tsIdeoEditorClose = close;
 
-    const resizeObserver = new ResizeObserver(() => { layoutArtboard(); renderBlocks(); });
+    const resizeObserver = new ResizeObserver(() => { layoutArtboard(); refitBlocks(); });
     resizeObserver.observe(stageWrap);
 
     // ── Initial paint (synchronous + retry; robust to layout timing) ────── //
@@ -1846,10 +1859,10 @@ export function openIdeogramEditor(node, { design, presets, onSave }) {
     renderLayers();
     renderBlockPanel();
     fullRender();
-    requestAnimationFrame(fullRender);
+    requestAnimationFrame(() => { if (!closed) fullRender(); });
     let layoutAttempts = 0;
     (function ensureLaidOut() {
-        if (stage.getBoundingClientRect().width >= 2 || layoutAttempts >= 40) return;
+        if (closed || stage.getBoundingClientRect().width >= 2 || layoutAttempts >= 40) return;
         layoutAttempts += 1;
         fullRender();
         setTimeout(ensureLaidOut, 50);

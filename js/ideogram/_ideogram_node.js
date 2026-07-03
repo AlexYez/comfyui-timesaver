@@ -12,13 +12,13 @@ import {
     DESIGN_INPUT,
     MESH_POSITIONS,
     NODE_NAME,
+    WEIGHT_CSS,
     applyCase,
     aspectFitBox,
     cleanPalette,
     dimsFromAspectMp,
+    fetchGraphRef,
     fontFamilyForPreset,
-    fontsById,
-    getWidgetValue,
     hexToRgba,
     hideWidget,
     inputViewUrl,
@@ -27,7 +27,7 @@ import {
     makeDefaultDesign,
     normHex,
     parseDesign,
-    persistDesign,
+    readPersistedDesign,
     setWidgetValue,
     stopPropagation,
     t,
@@ -109,8 +109,6 @@ function paintPaletteRect(ctx, colors, x, y, w, h, { alpha = 1, mesh = true } = 
     return true;
 }
 
-const WEIGHT_CSS = { Thin: 300, Regular: 400, Bold: 700, Heavy: 900 };
-
 // Word-wrap a single line to fit maxW (keeps an over-long word on its own line).
 function wrapLine(ctx, line, maxW) {
     const words = line.split(" ");
@@ -186,9 +184,8 @@ export function setupIdeogramNode(node) {
     node.min_size = [MIN_NODE_WIDTH, MIN_NODE_HEIGHT];
 
     const state = {
-        design: parseDesign(getWidgetValue(node, DESIGN_INPUT, "")),
+        design: parseDesign(readPersistedDesign(node)),
         presets: { styles: [], fonts: [] },
-        fontsById: {},
         refImg: null,
         refKey: "",
     };
@@ -275,7 +272,8 @@ export function setupIdeogramNode(node) {
         }
         const img = new Image();
         img.onload = () => { state.refImg = img; requestRedraw(); };
-        img.onerror = () => { state.refImg = null; };
+        // Repaint on failure too, or the canvas keeps showing the previous frame.
+        img.onerror = () => { state.refImg = null; requestRedraw(); };
         img.src = inputViewUrl(ref.filename, ref.subfolder, ref.type);
     }
 
@@ -414,7 +412,6 @@ export function setupIdeogramNode(node) {
             node.properties ||= {};
             node.properties[DESIGN_INPUT] = json;
         }
-        persistDesign(json);
         ensureRefImage();
         updateSummary();
         requestRedraw();
@@ -424,11 +421,18 @@ export function setupIdeogramNode(node) {
     async function openEditor() {
         if (!state.presets.fonts?.length && !state.presets.styles?.length) {
             state.presets = await loadPresets();
-            state.fontsById = fontsById(state.presets);
+        }
+        // Offer the graph IMAGE input (cached by execute) as a tracing underlay
+        // when the design has no reference and the user hasn't explicitly
+        // cleared one (ref_cleared).
+        let graphRef = null;
+        if (!state.design.ref?.filename && !state.design.ref_cleared) {
+            graphRef = await fetchGraphRef(node.id);
         }
         openIdeogramEditor(node, {
             design: state.design,
             presets: state.presets,
+            graphRef,
             onSave: (design) => applyDesign(design),
         });
     }
@@ -449,12 +453,15 @@ export function setupIdeogramNode(node) {
 
     node._tsIdeoApplyDesign = applyDesign;
     node._tsIdeoSync = () => {
-        state.design = parseDesign(getWidgetValue(node, DESIGN_INPUT, ""));
+        state.design = parseDesign(readPersistedDesign(node));
         ensureRefImage();
         updateSummary();
         requestRedraw();
     };
     node._tsIdeoCleanup = () => {
+        // Tear down an editor left open for this node (its close() also removes
+        // the document-level keydown/paste listeners and the JSON poll timer).
+        try { node._tsIdeoEditorClose?.(); } catch { /* ignore */ }
         resizeObserver.disconnect();
     };
 
@@ -471,7 +478,6 @@ export function setupIdeogramNode(node) {
     requestRedraw();
     loadPresets().then((presets) => {
         state.presets = presets;
-        state.fontsById = fontsById(presets);
         updateSummary();
     });
 }

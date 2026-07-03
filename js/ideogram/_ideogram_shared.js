@@ -58,6 +58,16 @@ export function setWidgetValue(node, name, value) {
     }
 }
 
+// Read the persisted design JSON with the node.properties mirror as a fallback:
+// applyDesign writes BOTH channels, so restores must consult both too (a hidden
+// widget's value may not survive some V2 Vue serialization paths).
+export function readPersistedDesign(node) {
+    const w = getWidgetValue(node, DESIGN_INPUT, "");
+    if (typeof w === "string" && w) return w;
+    const p = node?.properties?.[DESIGN_INPUT];
+    return typeof p === "string" ? p : "";
+}
+
 export function stopPropagation(element, events) {
     events.forEach((name) => element.addEventListener(name, (event) => event.stopPropagation()));
 }
@@ -134,8 +144,11 @@ export function applyCase(text, mode) {
     return text || "";
 }
 
-const WEIGHT_PHRASE = { Thin: "thin light weight", Bold: "bold weight", Heavy: "heavy black weight" };
+const WEIGHT_PHRASE = { Thin: "thin light weight", Bold: "bold weight" };
 const CASE_PHRASE = { UPPERCASE: "all uppercase", Title: "title case" };
+// CSS numeric weight per WEIGHTS value — for the WYSIWYG previews (editor + node).
+export const WEIGHT_CSS = { Thin: 300, Regular: 400, Bold: 700 };
+export function weightToCss(w) { return WEIGHT_CSS[w] || 700; }
 // Size is derived from the DRAWN block height (not a manual picker), reinforcing
 // the bbox the model already gets — so the rendered size IS the requested size.
 export function sizePhraseFromRect(rect) {
@@ -212,21 +225,43 @@ export function makeDefaultDesign() {
     };
 }
 
+let _uidCounter = 0;
+export function makeBlockId() {
+    _uidCounter += 1;
+    return `b${Date.now().toString(36)}_${_uidCounter}`;
+}
+
+// Normalize a blocks array from an untrusted source (imported design file,
+// hand-edited design_json): keep only object entries and guarantee the fields
+// every editor/preview code path relies on — a unique string id (selection,
+// drag and delete all key off [data-id]), a known type and a rect object.
+export function sanitizeBlocks(blocks) {
+    if (!Array.isArray(blocks)) return [];
+    const seen = new Set();
+    const out = [];
+    for (const raw of blocks) {
+        if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
+        const block = raw;
+        if (typeof block.id !== "string" || !block.id || seen.has(block.id)) block.id = makeBlockId();
+        seen.add(block.id);
+        if (block.type !== "text" && block.type !== "obj") block.type = "obj";
+        if (!block.rect || typeof block.rect !== "object") block.rect = { x: 0.1, y: 0.1, w: 0.4, h: 0.2 };
+        out.push(block);
+    }
+    return out;
+}
+
 export function parseDesign(raw) {
     if (!raw || typeof raw !== "string") return makeDefaultDesign();
     try {
         const data = JSON.parse(raw);
         if (!data || typeof data !== "object") return makeDefaultDesign();
-        return { ...makeDefaultDesign(), ...data, style: { ...makeDefaultDesign().style, ...(data.style || {}) } };
+        const design = { ...makeDefaultDesign(), ...data, style: { ...makeDefaultDesign().style, ...(data.style || {}) } };
+        design.blocks = sanitizeBlocks(design.blocks);
+        return design;
     } catch {
         return makeDefaultDesign();
     }
-}
-
-let _uidCounter = 0;
-export function makeBlockId() {
-    _uidCounter += 1;
-    return `b${Date.now().toString(36)}_${_uidCounter}`;
 }
 
 export function aspectToRatio(aspect) {
@@ -274,11 +309,13 @@ export async function loadPresets() {
         const response = await fetch(api.apiURL(`${ROUTE_BASE}/presets`));
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         _presetsCache = await response.json();
+        return _presetsCache;
     } catch (error) {
+        // Do NOT cache the failure: a transient error (server restarting) must
+        // not leave the editor preset-less until a full page reload.
         console.error("[TS Ideogram] Failed to load presets:", error);
-        _presetsCache = { layouts: [], styles: [], fonts: [], aspect_ratios: ASPECT_RATIOS, default_aspect_ratio: DEFAULT_ASPECT_RATIO };
+        return { layouts: [], styles: [], fonts: [], designs: [], aspect_ratios: ASPECT_RATIOS, default_aspect_ratio: DEFAULT_ASPECT_RATIO };
     }
-    return _presetsCache;
 }
 
 export function fontsById(presets) {
@@ -349,16 +386,16 @@ export async function deleteDesignPreset(id) {
     } catch (e) { console.warn("[TS Ideogram] delete_design failed:", e); return null; }
 }
 
-export async function persistDesign(designJson) {
+// Filename of the graph-image reference cached by the node's execute() for
+// this node id (the optional IMAGE input), or null. Lets the editor offer the
+// connected image as a tracing underlay.
+export async function fetchGraphRef(nodeId) {
     try {
-        await fetch(api.apiURL(`${ROUTE_BASE}/config`), {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ design_json: designJson }),
-        });
-    } catch {
-        /* best-effort */
-    }
+        const r = await fetch(api.apiURL(`${ROUTE_BASE}/graph_ref?node_id=${encodeURIComponent(String(nodeId))}`));
+        if (!r.ok) return null;
+        const d = await r.json();
+        return d && typeof d.filename === "string" && d.filename ? d.filename : null;
+    } catch { return null; }
 }
 
 // Build a /view URL for an input-dir image (reference underlay).
@@ -1284,7 +1321,7 @@ const I18N = {
         tip_obj_desc: "Describe what this graphic shows — e.g. a smiling sneaker, a coffee cup. Ideogram draws it here.",
         tip_text_literal: "Type the exact words you want to appear — these letters are drawn on the image as-is.",
         tip_font_preset: "The text style — the lettering's typographic character. Ideogram can't use a typeface by name, so this sets a type DESCRIPTION (the real lever). Set weight, case and color below.",
-        tip_weight: "How thick the letters look — from delicate Thin up to chunky Heavy.",
+        tip_weight: "How thick the letters look — from delicate Thin up to chunky Bold.",
         tip_case: "How the letters are cased: as you typed, ALL CAPS, or Title Style.",
         tip_text_color: "Pick the color of these letters — tap the swatch to choose any shade.",
         tip_outline_color: "The color of the outline around the letters.",
@@ -1381,7 +1418,7 @@ const I18N = {
         tip_obj_desc: "Опишите, что здесь нарисовать — например, улыбающийся кроссовок или чашка кофе. Ideogram это и нарисует.",
         tip_text_literal: "Впишите точные слова, которые должны появиться — эти буквы рисуются на картинке буква-в-букву.",
         tip_font_preset: "Стиль текста — типографический характер букв. Ideogram не умеет шрифт по имени, поэтому это задаёт ОПИСАНИЕ типа (реальный рычаг). Вес, регистр и цвет — ниже.",
-        tip_weight: "Насколько толстые буквы — от тонких до жирных и совсем мощных.",
+        tip_weight: "Насколько толстые буквы — от тонких до жирных.",
         tip_case: "Как оформить буквы: как набрали, ВСЕ ЗАГЛАВНЫЕ или С Заглавных.",
         tip_text_color: "Выберите цвет этих букв — нажмите на квадратик и подберите любой оттенок.",
         tip_outline_color: "Цвет обводки вокруг букв.",
