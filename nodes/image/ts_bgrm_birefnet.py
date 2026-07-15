@@ -9,7 +9,6 @@ import sys
 import types
 from contextlib import contextmanager
 
-import comfy.model_management as model_management
 import folder_paths
 import numpy as np
 import torch
@@ -17,6 +16,20 @@ import torch.nn.functional as F
 from comfy.utils import ProgressBar
 from comfy_api.v0_0_2 import IO
 from PIL import Image, ImageFilter
+
+from .._hf_download import snapshot_download_resilient
+
+# Shared with ts_matting_vitmatte. Imported (not defined) here, and re-exported
+# so any existing `from .ts_bgrm_birefnet import pil2tensor, ...` keeps working.
+from ._image_utils import (  # noqa: F401
+    _format_device_label,
+    _get_target_device,
+    _safe_empty_cache,
+    _update_progress,
+    hex_to_rgba,
+    pil2tensor,
+    tensor2pil,
+)
 
 logger = logging.getLogger(__name__)
 _LOG_PREFIX = "[TS Remove Background]"
@@ -170,22 +183,6 @@ MODEL_CONFIG = {
 }
 
 # Utility functions
-def _get_target_device():
-    """Resolve the inference device strictly via ComfyUI's model_management.
-
-    Previously this function silently overrode CPU back to cuda whenever CUDA
-    was physically present, which broke `--cpu`, lowvram fallback, and
-    multi-GPU index selection. Trusting `model_management.get_torch_device()`
-    matches the documented ComfyUI contract — if the user asked for CPU, they
-    get CPU; if ComfyUI chose `cuda:N`, that index is preserved.
-    """
-    try:
-        return model_management.get_torch_device()
-    except Exception as exc:
-        logger.warning("%s Could not resolve ComfyUI device, using CPU: %s", _LOG_PREFIX, exc)
-        return torch.device("cpu")
-
-
 def _target_dtype(target_device):
     device_type = getattr(target_device, "type", str(target_device))
     return torch.float16 if device_type == "cuda" else torch.float32
@@ -304,30 +301,6 @@ def _resolve_birefnet_dtype(target_device, precision: str) -> "torch.dtype":
     return dtype
 
 
-def _format_device_label(target_device):
-    device_type = getattr(target_device, "type", str(target_device))
-    if device_type == "cuda":
-        index = getattr(target_device, "index", None)
-        if index is None:
-            index = torch.cuda.current_device() if torch.cuda.is_available() else 0
-        try:
-            name = torch.cuda.get_device_name(index)
-        except Exception:
-            name = "unknown GPU"
-        return f"cuda ({name})"
-    return "cpu"
-
-
-def _safe_empty_cache():
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
-
-
-def _update_progress(progress_bar, value, total=100):
-    if progress_bar is not None:
-        progress_bar.update_absolute(int(value), total=total)
-
-
 @contextmanager
 def _progress_pulse(progress_bar, start_step, cap_step, total_steps=100, interval=0.75):
     """No-op context manager. The previous implementation spawned a
@@ -384,25 +357,6 @@ def _scoped_sys_modules(aliases: dict):
 def _mask_to_pil(mask):
     mask_np = np.clip(mask.detach().cpu().numpy() * 255.0, 0, 255).astype(np.uint8)
     return Image.fromarray(mask_np)
-
-
-def hex_to_rgba(hex_color):
-    hex_color = hex_color.lstrip('#')
-    if len(hex_color) == 6:
-        r, g, b = int(hex_color[0:2], 16), int(hex_color[2:4], 16), int(hex_color[4:6], 16)
-        a = 255
-    elif len(hex_color) == 8:
-        r, g, b, a = int(hex_color[0:2], 16), int(hex_color[2:4], 16), int(hex_color[4:6], 16), int(hex_color[6:8], 16)
-    else:
-        raise ValueError("Invalid color format")
-    return (r, g, b, a)
-
-
-def tensor2pil(image):
-    return Image.fromarray(np.clip(255. * image.cpu().numpy().squeeze(), 0, 255).astype(np.uint8))
-
-def pil2tensor(image):
-    return torch.from_numpy(np.array(image).astype(np.float32) / 255.0).unsqueeze(0)
 
 
 def handle_model_error(message, cause: Exception | None = None):
@@ -628,10 +582,6 @@ class BiRefNetModel:
 
         os.makedirs(cache_dir, exist_ok=True)
 
-        # Lazy: huggingface_hub pulls in HTTP/auth/cache infra. Only
-        # imported on the first download attempt.
-        from huggingface_hub import snapshot_download
-
         # When the primary repo is actually the 1038lab aggregated mirror
         # (because some variants — e.g. ``BiRefNet_512x512`` — exist only
         # there) we must restrict the snapshot to the right filename;
@@ -664,12 +614,16 @@ class BiRefNetModel:
             try:
                 _update_progress(progress_bar, start_step)
                 with _progress_pulse(progress_bar, start_step, max(start_step, end_step - 1)):
-                    snapshot_download(
+                    # Shared transport adds mirror cycling (HF_ENDPOINT) + hub
+                    # kwarg compatibility. The narrow allow_patterns stay here:
+                    # a wide pattern on the mirror repo would pull GBs of extras.
+                    snapshot_download_resilient(
                         repo_id=primary_repo,
-                        revision="main",
                         local_dir=cache_dir,
-                        local_dir_use_symlinks=False,
+                        revision="main",
                         allow_patterns=primary_patterns,
+                        log=logger,
+                        log_prefix=_LOG_PREFIX,
                     )
                 _update_progress(progress_bar, end_step)
                 return True, f"Downloaded from {primary_repo}"
@@ -696,11 +650,10 @@ class BiRefNetModel:
             # ``birefnet.py``/``birefnet_lite.py``/``BiRefNet_config.py``.
             # We pull just the files we actually need.
             with _progress_pulse(progress_bar, start_step, max(start_step, end_step - 1)):
-                snapshot_download(
+                snapshot_download_resilient(
                     repo_id=fallback_repo,
-                    revision="main",
                     local_dir=cache_dir,
-                    local_dir_use_symlinks=False,
+                    revision="main",
                     allow_patterns=[
                         fallback_filename,
                         "birefnet.py",
@@ -708,6 +661,8 @@ class BiRefNetModel:
                         "BiRefNet_config.py",
                         "config.json",
                     ],
+                    log=logger,
+                    log_prefix=_LOG_PREFIX,
                 )
             _update_progress(progress_bar, end_step)
             return True, f"Downloaded from fallback mirror {fallback_repo}"

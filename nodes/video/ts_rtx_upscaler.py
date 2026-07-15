@@ -7,12 +7,9 @@ import torch
 
 from comfy_api.v0_0_2 import IO
 
-try:
-    import nvvfx
-    TS_NVVFX_IMPORT_ERROR = None
-except Exception as import_error:
-    nvvfx = None
-    TS_NVVFX_IMPORT_ERROR = import_error
+from .._deps import TSDependencyManager
+
+nvvfx = TSDependencyManager.import_optional("nvvfx")
 
 logger = logging.getLogger("comfyui_timesaver.ts_rtx_upscaler")
 LOG_PREFIX = "[TS RTX Upscaler]"
@@ -99,13 +96,10 @@ class TS_RTX_Upscaler(IO.ComfyNode):
     @staticmethod
     def _ensure_runtime_ready():
         if nvvfx is None:
-            message = (
-                "[TS RTX Upscaler] nvidia-vfx is not installed. Install it with "
-                "`pip install nvidia-vfx` in your ComfyUI environment."
+            raise RuntimeError(
+                "[TS RTX Upscaler] nvidia-vfx is not installed (or failed to import). "
+                "Install it with `pip install nvidia-vfx` in your ComfyUI environment."
             )
-            if TS_NVVFX_IMPORT_ERROR is not None:
-                message = f"{message} Original import error: {TS_NVVFX_IMPORT_ERROR}"
-            raise RuntimeError(message)
 
         if not torch.cuda.is_available():
             raise RuntimeError("[TS RTX Upscaler] CUDA is required. No CUDA device is available.")

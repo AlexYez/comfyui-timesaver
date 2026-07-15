@@ -3,7 +3,7 @@ import torch
 
 from comfy_api.v0_0_2 import IO
 
-from ...ts_dependency_manager import TSDependencyManager
+from .._deps import TSDependencyManager
 
 py360convert = TSDependencyManager.import_optional("py360convert")
 

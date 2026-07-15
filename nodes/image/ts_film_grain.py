@@ -2,9 +2,12 @@ import logging
 
 import torch
 import torch.nn.functional as F
-import kornia.filters
 
 from comfy_api.v0_0_2 import IO
+
+from .._deps import TSDependencyManager
+
+kornia_filters = TSDependencyManager.import_optional("kornia.filters")
 
 logger = logging.getLogger("comfyui_timesaver.ts_film_grain")
 LOG_PREFIX = "[TS Film Grain]"
@@ -59,6 +62,15 @@ class TS_FilmGrain(IO.ComfyNode):
     @classmethod
     def execute(cls, images, force_gpu, grain_size, grain_intensity, grain_speed,
                 grain_softness, color_grain_strength, mid_tone_grain_bias, seed) -> IO.NodeOutput:
+        # kornia is optional: only the grain_softness blur needs it, so the node
+        # stays usable without it and reports an actionable error when it is
+        # actually required (CLAUDE.md §14).
+        if grain_softness > 0 and kornia_filters is None:
+            raise RuntimeError(
+                f"{LOG_PREFIX} 'grain_softness' > 0 requires the 'kornia' package, which is "
+                f"not installed. Install it (pip install kornia) or set grain_softness to 0."
+            )
+
         B, H, W, C = images.shape
 
         # IMAGE contract: give back what we received. force_gpu may compute in
@@ -164,7 +176,7 @@ class TS_FilmGrain(IO.ComfyNode):
             kernel_size = int(grain_softness * 2) * 2 + 1
             sigma = grain_softness
 
-            final_grain = kornia.filters.gaussian_blur2d(
+            final_grain = kornia_filters.gaussian_blur2d(
                 final_grain.permute(0, 3, 1, 2),
                 (kernel_size, kernel_size),
                 (sigma, sigma)

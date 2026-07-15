@@ -15,14 +15,13 @@ import folder_paths
 
 from comfy_api.v0_0_2 import IO
 
+from .._deps import TSDependencyManager
+
 logger = logging.getLogger("comfyui_timesaver.ts_video_upscale_with_model")
 LOG_PREFIX = "[TS Video Upscale]"
 
-try:
-    from spandrel import ModelLoader
-except ImportError:
-    logger.warning("%s Spandrel library not found. Please install spandrel.", LOG_PREFIX)
-    ModelLoader = None
+_spandrel = TSDependencyManager.import_optional("spandrel")
+ModelLoader = getattr(_spandrel, "ModelLoader", None) if _spandrel else None
 
 
 _UPSCALE_METHODS = ["nearest-exact", "bilinear", "area", "bicubic"]
@@ -211,8 +210,15 @@ class TS_Video_Upscale_With_Model(IO.ComfyNode):
         if device_strategy == "auto":
             if torch.cuda.is_available():
                 try:
-                    total_memory = torch.cuda.get_device_properties(0).total_memory
-                    reserved_memory = torch.cuda.memory_reserved(0)
+                    # Probe the device we are actually going to run on: ComfyUI may
+                    # be pinned to a non-zero GPU, and a hardcoded index 0 would
+                    # then report a different card's memory (CLAUDE.md §8).
+                    if getattr(device, "type", None) == "cuda" and device.index is not None:
+                        probe_index = device.index
+                    else:
+                        probe_index = torch.cuda.current_device()
+                    total_memory = torch.cuda.get_device_properties(probe_index).total_memory
+                    reserved_memory = torch.cuda.memory_reserved(probe_index)
 
                     if (total_memory - reserved_memory) / total_memory > 0.5:
                         device_strategy = "keep_loaded"

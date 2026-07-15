@@ -11,9 +11,9 @@ edges, hair and semi-transparency without dropping into Photoshop.
 Models cached under ``models/vitmatte/<variant>/``. First call downloads
 weights from Hugging Face via ``snapshot_download``.
 
-Reuses the post-processing pipeline of TS_BGRM_BiRefNet via direct helper
-imports — exactly the same blur/offset/invert/background contract so the two
-nodes are drop-in replacements for each other.
+Shares the post-processing helpers of TS_BGRM_BiRefNet via ``_image_utils`` —
+exactly the same blur/offset/invert/background contract so the two nodes are
+drop-in replacements for each other.
 """
 
 from __future__ import annotations
@@ -29,7 +29,8 @@ from comfy.utils import ProgressBar
 from comfy_api.v0_0_2 import IO
 from PIL import Image, ImageFilter
 
-from .ts_bgrm_birefnet import (
+from .._hf_download import snapshot_download_resilient
+from ._image_utils import (
     _format_device_label,
     _get_target_device,
     _safe_empty_cache,
@@ -306,16 +307,15 @@ def _download_model_files(variant: str) -> Path:
     repo_id = MODEL_VARIANTS[variant]["repo_id"]
     logger.info("%s Downloading %s from %s", _LOG_PREFIX, variant, repo_id)
 
-    # huggingface_hub.snapshot_download pulls in HTTP/auth/cache infra and is
-    # only needed on the very first run; keep it lazy so cold startup is fast.
-    from huggingface_hub import snapshot_download
-
-    snapshot_download(
+    # Shared transport: mirror cycling (HF_ENDPOINT) + huggingface_hub kwarg
+    # compatibility. The allow_patterns stay here — they are node policy.
+    snapshot_download_resilient(
         repo_id=repo_id,
-        revision="main",
         local_dir=str(local_dir),
-        local_dir_use_symlinks=False,
+        revision="main",
         allow_patterns=["*.json", "*.safetensors", "*.bin", "*.txt"],
+        log=logger,
+        log_prefix=_LOG_PREFIX,
     )
     return local_dir
 
