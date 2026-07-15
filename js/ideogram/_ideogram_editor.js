@@ -551,6 +551,7 @@ export function openIdeogramEditor(node, { design, presets, onSave, graphRef }) 
         if (selectedId && !work.blocks.some((b) => b.id === selectedId)) {
             selectedId = work.blocks[0]?.id || null;
         }
+        userSetSubjects.clear();  // ownership marks describe edits that were just rewound
         relabelHeader();
         layoutArtboard();
         renderReference();
@@ -577,7 +578,9 @@ export function openIdeogramEditor(node, { design, presets, onSave, graphRef }) 
         applyHistorySnapshot();
     }
 
-    const jsonTimer = setInterval(() => { pushHistory(); refreshJson(false); }, 500);
+    // The tick doubles as a focus safety net: parkFocus() reclaims any escape
+    // route the explicit call sites below miss (worst case ~500ms exposure).
+    const jsonTimer = setInterval(() => { parkFocus(); pushHistory(); refreshJson(false); }, 500);
 
     // Resizable, fluid panels: drag the dividers to set the layers/inspector
     // widths (and the vertical divider for the layers-list height); the stage
@@ -677,6 +680,16 @@ export function openIdeogramEditor(node, { design, presets, onSave, graphRef }) 
     keyAnchor.tabIndex = -1;
     keyAnchor.setAttribute("aria-hidden", "true");
     overlay.appendChild(keyAnchor);
+    // Re-park whenever focus has escaped the modal entirely (onto <body> or a
+    // canvas-world element): every such state re-arms ComfyUI's own hotkeys.
+    // Escapes happen after inline-editor teardown, window.prompt/confirm/alert,
+    // file dialogs, and any inspector re-render that removes the focused field.
+    // Never steals focus from a live field INSIDE the modal.
+    function parkFocus() {
+        if (closed) return;
+        const t = document.activeElement;
+        if (!t || t === document.body || !overlay.contains(t)) keyAnchor.focus();
+    }
     overlay.addEventListener("focusin", (ev) => {
         const t = ev.target;
         if (t === keyAnchor) return;
@@ -705,7 +718,7 @@ export function openIdeogramEditor(node, { design, presets, onSave, graphRef }) 
     importInput.multiple = true;
     importInput.style.display = "none";
     overlay.appendChild(importInput);
-    importInput.addEventListener("change", () => { handleDesignImport(Array.from(importInput.files || [])); });
+    importInput.addEventListener("change", () => { handleDesignImport(Array.from(importInput.files || [])); parkFocus(); });
 
     // ── Tooltips: one floating bubble, shown on hover over any [data-tip] ───── //
     // The element stores the i18n KEY; the text is resolved in the current
@@ -964,6 +977,7 @@ export function openIdeogramEditor(node, { design, presets, onSave, graphRef }) 
             rowEl.addEventListener("pointerdown", (e) => startLayerDrag(e, block, rowEl));
             layersList.appendChild(rowEl);
         }
+        parkFocus();  // a focused ▲/▼/✕ layer button may just have been removed
     }
 
     // Reorder by one step. dir +1 = toward the front (end of array), -1 = back.
@@ -1105,12 +1119,14 @@ export function openIdeogramEditor(node, { design, presets, onSave, graphRef }) 
             renderBlocks();
             renderLayers();
             renderBlockPanel();
+            parkFocus();  // ta.remove() dropped focus onto <body> — a Ctrl+Z here must stay editor-scoped
         };
         const cancel = () => {
             if (!inlineEl) return;
             inlineEl = null;
             teardown();
             ta.remove();
+            parkFocus();
         };
         // Reliable outside-click commit: a capture-phase document listener fires
         // even when the clicked area (stage/artboard/inspector) is non-focusable,
@@ -1289,7 +1305,11 @@ export function openIdeogramEditor(node, { design, presets, onSave, graphRef }) 
         const impBtn = tip(el("button", "ts-ideoe-btn ghost small", tr("import_btn")), "tip_design_import");
         impBtn.addEventListener("click", () => importDesignFiles());
         const delBtn = tip(el("button", "ts-ideoe-btn danger small", "🗑"), "tip_design_delete");
-        delBtn.addEventListener("click", () => { if (sel.value && window.confirm(tr("design_delete_confirm"))) deleteDesign(sel.value); });
+        delBtn.addEventListener("click", () => {
+            const ok = sel.value && window.confirm(tr("design_delete_confirm"));
+            parkFocus();  // confirm() dropped focus onto <body>
+            if (ok) deleteDesign(sel.value);
+        });
         const foot = el("div", "ts-ideoe-btnrow");
         foot.append(applyBtn, saveBtn, expBtn, impBtn, delBtn);
         card.appendChild(foot);
@@ -1749,6 +1769,7 @@ export function openIdeogramEditor(node, { design, presets, onSave, graphRef }) 
         relabelJson();
         inspectorScroll.appendChild(jsonCardEl);  // live JSON prompt at the bottom
         refreshJson(true);
+        parkFocus();  // the rebuild may have removed the focused field
     }
 
     // The selected block's settings render in the LEFT column, under the layers
@@ -1757,6 +1778,7 @@ export function openIdeogramEditor(node, { design, presets, onSave, graphRef }) 
         blockPanel.innerHTML = "";
         currentBlockCard = blockCard();
         blockPanel.appendChild(currentBlockCard);
+        parkFocus();  // the rebuild may have removed the focused field
     }
 
     // ── Language ────────────────────────────────────────────────────────── //
@@ -1809,6 +1831,7 @@ export function openIdeogramEditor(node, { design, presets, onSave, graphRef }) 
 
     async function saveCurrentDesign() {
         const name = window.prompt(tr("design_name_prompt"));
+        parkFocus();  // native dialogs drop focus onto <body>
         if (!name || !name.trim()) return;
         const res = await saveDesignPreset(name.trim(), JSON.parse(JSON.stringify(work)));
         if (res && res.ok) await refreshDesigns();
@@ -1836,6 +1859,7 @@ export function openIdeogramEditor(node, { design, presets, onSave, graphRef }) 
         }
         await refreshDesigns();
         window.alert(added ? tr("import_done", { n: added }) : tr("import_empty"));
+        parkFocus();
     }
 
     async function deleteDesign(id) {
@@ -1866,7 +1890,9 @@ export function openIdeogramEditor(node, { design, presets, onSave, graphRef }) 
             || (st.color_palette || []).length || (work.background_palette || []).length || (st.lighting_palette || []).length
             || work.background || work.high_level_description
             || st.aesthetics || st.lighting || st.photo || st.art_style || st.preset_id;
-        if (hasContent && !window.confirm(tr("clear_confirm"))) return;
+        const confirmed = !hasContent || window.confirm(tr("clear_confirm"));
+        parkFocus();  // confirm() dropped focus onto <body>
+        if (!confirmed) return;
         // Wipe everything that is "content" — blocks, style, ALL colour palettes
         // (image + background + lighting), background, brief and the reference
         // underlay. Keep document settings the user set: aspect / MP / language.
@@ -1890,7 +1916,7 @@ export function openIdeogramEditor(node, { design, presets, onSave, graphRef }) 
     });
     refBtn.addEventListener("click", () => fileInput.click());
     refClear.addEventListener("click", () => { work.ref = null; work.ref_cleared = true; renderReference(); });
-    fileInput.addEventListener("change", () => { uploadReference(fileInput.files?.[0]); fileInput.value = ""; });
+    fileInput.addEventListener("change", () => { uploadReference(fileInput.files?.[0]); fileInput.value = ""; parkFocus(); });
 
     stageWrap.addEventListener("dragover", (e) => e.preventDefault());
     stageWrap.addEventListener("drop", (e) => {

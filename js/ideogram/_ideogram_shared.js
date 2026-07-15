@@ -20,7 +20,6 @@ export const DEFAULT_LANG = "ru";
 export const LANGS = ["ru", "en"];
 export const WEIGHTS = ["Thin", "Regular", "Bold"];
 export const CASES = ["As-typed", "UPPERCASE", "Title"];
-export const PHOTO_MEDIUM = "photograph";
 export const IMAGE_PALETTE_CAP = 16;
 export const ELEMENT_PALETTE_CAP = 5;
 export const DEFAULT_MEGAPIXELS = 1.0;

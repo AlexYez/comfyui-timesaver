@@ -47,7 +47,8 @@ class TS_IdeogramDesigner(IO.ComfyNode):
             description=(
                 "Визуальный редактор JSON-промтов для Ideogram 4: расставьте "
                 "текстовые/объектные блоки, выберите шрифты и стиль — на выходе "
-                "валидный Ideogram-4 капшен (STRING) + соотношение сторон."
+                "валидный Ideogram-4 капшен (STRING) + размеры width/height (INT), "
+                "рассчитанные из соотношения сторон и мегапикселей."
             ),
             inputs=[
                 IO.Image.Input(
