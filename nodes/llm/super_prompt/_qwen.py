@@ -46,8 +46,8 @@ from .._qwen_engine import (
     _template_accepts_kwargs,
     apply_chat_template_no_thinking as _engine_apply_chat_template_no_thinking,
     get_qwen_engine,
+    load_presets as _qwen_load_presets,
 )
-from ..ts_qwen3_vl import _load_presets as _qwen_load_presets
 from ._helpers import (
     CUSTOM_PRESET,
     DEFAULT_MODEL_ID,
@@ -592,6 +592,10 @@ def _generate_with_qwen(
         finally:
             if SUPER_PROMPT_UNLOAD_AFTER_GENERATION:
                 send_progress(operation_id, "Unloading Qwen", 96.0)
+                # Drop our own references first: the engine's unload cannot free
+                # the module while these locals still point at it.
+                model = None
+                processor = None
                 engine.unload_model(DEFAULT_MODEL_ID, resolved_precision, resolved_attention)
             elif moved_to_gpu:
                 try:

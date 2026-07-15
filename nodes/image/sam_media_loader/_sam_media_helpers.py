@@ -315,6 +315,36 @@ def _first_video_frame_rgb(filepath: str) -> "Image.Image | None":
     return Image.fromarray(rgb)
 
 
+def _video_meta_and_first_frame(filepath: str) -> tuple[dict, "Image.Image | None"]:
+    """Return ``(_video_meta(...)-shaped dict, first frame)`` from a single open.
+
+    Opening a capture pays the container's demux/probe cost, so the probe path
+    reads both the properties and the first frame from one capture rather than
+    opening the file twice.
+    """
+    cv2 = _cv2()
+    cap = _open_video_capture(filepath)
+    try:
+        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        fps = float(cap.get(cv2.CAP_PROP_FPS) or 0.0)
+        frame_image = None
+        if Image is not None:
+            ret, frame = cap.read()
+            if ret and frame is not None:
+                frame_image = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+    finally:
+        cap.release()
+    meta = {
+        "width": int(max(0, width)),
+        "height": int(max(0, height)),
+        "frame_count": int(max(0, frame_count)),
+        "fps": float(fps if fps == fps and fps > 0 else 0.0),
+    }
+    return meta, frame_image
+
+
 def _load_video_tensor(
     filepath: str,
     max_frames: int = 0,
@@ -458,6 +488,46 @@ def _image_to_base64_jpeg(image: "Image.Image", quality: int = 88) -> str:
     return base64.b64encode(buffer.getvalue()).decode("ascii")
 
 
+class _PreviewUnavailable(RuntimeError):
+    """Raised when a preview cannot be produced for a reportable reason."""
+
+
+def _first_frame_full_rgb(filepath: str, media_type: str) -> "Image.Image | None":
+    """First frame of ``filepath`` as a full-resolution PIL RGB image.
+
+    Blocking (decode); call it through a thread from async handlers.
+    """
+    if Image is None:
+        return None
+    if media_type == "image":
+        with Image.open(filepath) as handle:
+            return handle.convert("RGB").copy()
+    return _first_video_frame_rgb(filepath)
+
+
+def _render_preview_jpeg(filepath: str, media_type: str) -> bytes:
+    """Render the first frame of ``filepath`` as downscaled JPEG bytes.
+
+    Blocking (decode + encode); call it through a thread from async handlers.
+    """
+    if media_type == "image":
+        if Image is None:
+            raise _PreviewUnavailable("Pillow unavailable.")
+        with Image.open(filepath) as handle:
+            preview = _downscale_for_preview(handle.convert("RGB"))
+            buffer = _io.BytesIO()
+            preview.save(buffer, format="JPEG", quality=88, optimize=True)
+        return buffer.getvalue()
+
+    frame = _first_video_frame_rgb(filepath)
+    if frame is None:
+        raise _PreviewUnavailable("Could not decode first frame.")
+    preview = _downscale_for_preview(frame)
+    buffer = _io.BytesIO()
+    preview.save(buffer, format="JPEG", quality=88, optimize=True)
+    return buffer.getvalue()
+
+
 def _first_frame_base64(filepath: str, media_type: str) -> dict:
     """Return ``{width, height, frame_count, fps, first_frame_b64}`` for preview."""
     if not filepath or not os.path.isfile(filepath):
@@ -477,8 +547,7 @@ def _first_frame_base64(filepath: str, media_type: str) -> dict:
             "first_frame_b64": b64,
         }
     if media_type == "video":
-        meta = _video_meta(filepath)
-        frame = _first_video_frame_rgb(filepath)
+        meta, frame = _video_meta_and_first_frame(filepath)
         b64 = _image_to_base64_jpeg(frame) if frame is not None else ""
         # If cv2 reports 0×0 (some containers), use the decoded frame size.
         if frame is not None and (meta["width"] == 0 or meta["height"] == 0):
@@ -562,7 +631,8 @@ async def ts_sam_media_loader_upload(request: web.Request) -> web.StreamResponse
 
     media_type = _classify_media(saved_path.name)
     try:
-        preview = _first_frame_base64(str(saved_path), media_type)
+        # Blocking decode — keep it off the event loop (see /probe).
+        preview = await asyncio.to_thread(_first_frame_base64, str(saved_path), media_type)
     except Exception as exc:
         _log_warning(f"Preview extraction failed for '{saved_path}': {exc}")
         preview = {"width": 0, "height": 0, "frame_count": 0, "fps": 0.0, "first_frame_b64": ""}
@@ -610,7 +680,10 @@ async def ts_sam_media_loader_probe(request: web.Request) -> web.StreamResponse:
     if not media_type:
         return web.json_response({"error": "Unsupported media type."}, status=400)
     try:
-        preview = _first_frame_base64(resolved, media_type)
+        # Decoding blocks (cv2/ffmpeg under the hood) and this route fires
+        # automatically on every workflow restore, so it must not run on the event
+        # loop — that would freeze every other route and websocket meanwhile.
+        preview = await asyncio.to_thread(_first_frame_base64, resolved, media_type)
     except Exception as exc:
         _log_warning(f"Probe failed for '{resolved}': {exc}")
         return web.json_response({"error": str(exc)}, status=500)
@@ -641,25 +714,15 @@ async def ts_sam_media_loader_preview(request: web.Request) -> web.StreamRespons
     if not media_type:
         return web.Response(status=400, text="Unsupported media type.")
     try:
-        if media_type == "image":
-            if Image is None:
-                return web.Response(status=500, text="Pillow unavailable.")
-            with Image.open(resolved) as handle:
-                rgb = _downscale_for_preview(handle.convert("RGB"))
-                buffer = _io.BytesIO()
-                rgb.save(buffer, format="JPEG", quality=88, optimize=True)
-        else:
-            frame = _first_video_frame_rgb(resolved)
-            if frame is None:
-                return web.Response(status=500, text="Could not decode first frame.")
-            preview = _downscale_for_preview(frame)
-            buffer = _io.BytesIO()
-            preview.save(buffer, format="JPEG", quality=88, optimize=True)
+        # Same reason as /probe: keep the blocking decode off the event loop.
+        jpeg_bytes = await asyncio.to_thread(_render_preview_jpeg, resolved, media_type)
+    except _PreviewUnavailable as exc:
+        return web.Response(status=500, text=str(exc))
     except Exception as exc:
         _log_warning(f"Preview render failed for '{resolved}': {exc}")
         return web.Response(status=500, text=str(exc))
     return web.Response(
-        body=buffer.getvalue(),
+        body=jpeg_bytes,
         content_type="image/jpeg",
         headers={"Cache-Control": "private, max-age=60"},
     )
@@ -1242,15 +1305,11 @@ async def ts_sam_media_loader_preview_mask(request: web.Request) -> web.StreamRe
         return web.json_response({"error": "Pillow unavailable on the server."}, status=500)
 
     # Decode first frame as PIL (full resolution — SAM3 normalises internally).
+    # Blocking decode → thread, like the segmentation call further down.
     try:
-        if media_type == "image":
-            with Image.open(resolved) as handle:
-                first_frame = handle.convert("RGB").copy()
-        else:
-            frame = _first_video_frame_rgb(resolved)
-            if frame is None:
-                return web.json_response({"error": "Could not decode first frame."}, status=500)
-            first_frame = frame
+        first_frame = await asyncio.to_thread(_first_frame_full_rgb, resolved, media_type)
+        if first_frame is None:
+            return web.json_response({"error": "Could not decode first frame."}, status=500)
     except Exception as exc:
         return web.json_response({"error": f"Frame decode failed: {exc}"}, status=500)
 

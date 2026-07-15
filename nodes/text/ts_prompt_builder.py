@@ -255,6 +255,26 @@ async def ts_prompt_builder_config(request):
     return web.json_response({"files": files, "blocks": blocks})
 
 
+def ts_prompt_files_fingerprint():
+    """mtime snapshot of every prompt .txt file execute() may read.
+
+    Their contents are external state the node's inputs do not capture: with a
+    fixed seed, editing lines inside an enabled block would otherwise keep
+    serving the previously cached pick.
+    """
+    prompts_dir = ts_prompts_dir()
+    stamps = []
+    for file_name in ts_list_prompt_files():
+        file_path = ts_safe_join(prompts_dir, file_name)
+        if not file_path:
+            continue
+        try:
+            stamps.append((file_name, os.path.getmtime(file_path)))
+        except OSError:
+            stamps.append((file_name, None))
+    return tuple(stamps)
+
+
 class TS_PromptBuilder(IO.ComfyNode):
     @classmethod
     def define_schema(cls) -> IO.Schema:
@@ -284,7 +304,7 @@ class TS_PromptBuilder(IO.ComfyNode):
             seed_value = 0
         if seed_value == 0:
             return (config_json, random.SystemRandom().random())
-        return (config_json, seed_value)
+        return (config_json, seed_value, ts_prompt_files_fingerprint())
 
     @classmethod
     def execute(cls, seed, config_json) -> IO.NodeOutput:

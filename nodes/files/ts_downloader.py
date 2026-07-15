@@ -66,6 +66,31 @@ def _resolve_pack_version() -> str:
 _USER_AGENT = f"comfyui-timesaver/{_resolve_pack_version()}"
 
 
+def _redact_proxy_url(proxy_url: str) -> str:
+    """Return a proxy URL safe to log — scheme, host and port only.
+
+    Proxy URLs routinely carry ``user:password@`` userinfo, which must never
+    reach the console or a log file (CLAUDE.md §15).
+    """
+    candidate = (proxy_url or "").strip()
+    if not candidate:
+        return ""
+    try:
+        parsed = urlparse(candidate)
+    except ValueError:
+        return "<proxy>"
+    if not parsed.hostname:
+        # Unparseable (e.g. a bare "host:port") — do not echo the raw value back.
+        return "<proxy>"
+    netloc = parsed.hostname
+    if parsed.port:
+        netloc = f"{netloc}:{parsed.port}"
+    if parsed.username or parsed.password:
+        netloc = f"***@{netloc}"
+    scheme = f"{parsed.scheme}://" if parsed.scheme else ""
+    return f"{scheme}{netloc}"
+
+
 class TS_DownloadFilesNode(IO.ComfyNode):
     """
     A ComfyUI node to download files.
@@ -137,7 +162,11 @@ class TS_DownloadFilesNode(IO.ComfyNode):
         })
 
         if proxy_url and proxy_url.strip():
-            logger.info(f"{LOG_PREFIX} TS_DownloadNode: Proxy enabled: {proxy_url}")
+            logger.info(
+                "%s TS_DownloadNode: Proxy enabled: %s",
+                LOG_PREFIX,
+                _redact_proxy_url(proxy_url),
+            )
             session.proxies = {
                 'http': proxy_url.strip(),
                 'https': proxy_url.strip(),

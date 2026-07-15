@@ -33,6 +33,49 @@ from PIL import Image
 _DEFAULT_LOG_PREFIX = "[TS Qwen Engine]"
 _DEFAULT_LOGGER_NAME = "comfyui_timesaver.qwen_engine"
 
+_MODULE_DIR = os.path.dirname(os.path.abspath(__file__))
+_PRESETS_LOGGER = logging.getLogger(_DEFAULT_LOGGER_NAME)
+
+
+# ---------------------------------------------------------------------------
+# Preset loading (shared by TS_Qwen3_VL_V3 and TS_SuperPrompt)
+# ---------------------------------------------------------------------------
+
+
+def presets_path() -> str:
+    """Return the path to ``qwen_3_vl_presets.json``.
+
+    Prefer the file next to this module (``nodes/llm/``); fall back to the
+    legacy location one level up (``nodes/``) for backward compatibility.
+    """
+    preferred = os.path.join(_MODULE_DIR, "qwen_3_vl_presets.json")
+    if os.path.exists(preferred):
+        return preferred
+    return os.path.join(os.path.dirname(_MODULE_DIR), "qwen_3_vl_presets.json")
+
+
+def load_presets(path: str | None = None) -> tuple[dict[str, Any], list[str]]:
+    """Load ``qwen_3_vl_presets.json`` on demand.
+
+    Lives in the engine because both Qwen nodes need it; keeping it in either
+    node file would make the other import across a public node module.
+
+    ``path`` lets a caller supply its own resolver's answer (the nodes pass
+    theirs) instead of the default lookup.
+    """
+    path = path or presets_path()
+    if not os.path.exists(path):
+        return {}, []
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            data = json.load(handle)
+        if not isinstance(data, dict):
+            data = {}
+    except Exception as exc:
+        _PRESETS_LOGGER.warning("%s Preset load failed: %s", _DEFAULT_LOG_PREFIX, exc)
+        data = {}
+    return data, list(data.keys())
+
 
 # Explicit model sizes (in billions of parameters). Used by ``model_size_b``
 # as the authoritative source; anything missing (e.g. user-supplied
@@ -734,6 +777,24 @@ class QwenEngine:
             self._cache_order.remove(key)
         if not cached:
             return
+        # Callers unload from their `finally` while their own `model`/`processor`
+        # locals are still alive, so dropping the cache's reference alone leaves
+        # the refcount above zero and empty_cache() reclaims nothing. Moving the
+        # weights to CPU releases the CUDA storages no matter who still holds the
+        # module, which is what makes "unload now" actually free VRAM now.
+        model = cached[0] if isinstance(cached, tuple) and cached else None
+        if model is not None:
+            try:
+                model.to("cpu")
+            except Exception as move_error:
+                # Quantised (bitsandbytes) weights refuse a device move; fall back
+                # to the refcount drop below.
+                self._logger.debug(
+                    "%s Could not move model to CPU before unload (%s).",
+                    self._log_prefix,
+                    move_error,
+                )
+        del model
         del cached
         gc.collect()
         if torch.cuda.is_available():

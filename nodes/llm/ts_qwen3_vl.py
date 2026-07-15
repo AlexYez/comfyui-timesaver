@@ -10,7 +10,6 @@ node_id: TS_Qwen3_VL_V3
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 from contextlib import nullcontext
@@ -21,12 +20,17 @@ import torch
 
 from comfy_api.v0_0_2 import IO
 
-from ._qwen_engine import QWEN_MODEL_LOCK, QwenEngine, get_qwen_engine
+from ._qwen_engine import (
+    QWEN_MODEL_LOCK,
+    QwenEngine,
+    get_qwen_engine,
+    load_presets as engine_load_presets,
+    presets_path as engine_presets_path,
+)
 
 
 _LOGGER = logging.getLogger("comfyui_timesaver.ts_qwen3_vl")
 _LOG_PREFIX = "[TS Qwen3 VL V3]"
-_CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # Canonical defaults used by ``execute`` to keep legacy workflows alive:
 # any saved ``model_name`` not in ``_MODEL_LIST`` (i.e. removed from a newer
@@ -42,32 +46,20 @@ _DEFAULT_PRESET_NAME = "Prompts enhance"
 # Preset loading
 # ---------------------------------------------------------------------------
 
-def _presets_path() -> str:
-    """Return the path to ``qwen_3_vl_presets.json``.
+# The preset loader itself lives in the shared engine (TS_SuperPrompt needs it
+# too, and reaching into a public node module for it was the wrong direction).
+# These thin delegates keep the module-local names — and anything that patches
+# `_presets_path` — working exactly as before.
 
-    Prefer the file next to this module (``nodes/llm/``); fall back to the
-    legacy location one level up (``nodes/``) for backward compatibility.
-    """
-    preferred = os.path.join(_CURRENT_DIR, "qwen_3_vl_presets.json")
-    if os.path.exists(preferred):
-        return preferred
-    return os.path.join(os.path.dirname(_CURRENT_DIR), "qwen_3_vl_presets.json")
+
+def _presets_path() -> str:
+    """Path to ``qwen_3_vl_presets.json`` (resolved by the shared engine)."""
+    return engine_presets_path()
 
 
 def _load_presets() -> tuple[dict[str, Any], list[str]]:
-    """Load ``qwen_3_vl_presets.json`` once on demand. Shared with TS_SuperPrompt."""
-    presets_path = _presets_path()
-    if not os.path.exists(presets_path):
-        return {}, []
-    try:
-        with open(presets_path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        if not isinstance(data, dict):
-            data = {}
-    except Exception as exc:
-        _LOGGER.warning("%s Preset load failed: %s", _LOG_PREFIX, exc)
-        data = {}
-    return data, list(data.keys())
+    """Load the preset JSON via the shared engine, honouring ``_presets_path``."""
+    return engine_load_presets(_presets_path())
 
 
 # Old presets (and user-supplied JSON edits) may use OpenAI-style param
@@ -586,6 +578,10 @@ def _run_qwen_generation(
         output_text = f"ERROR: {exc}"
     finally:
         if unload_after_generation:
+            # Drop our own references first: the engine's unload cannot free the
+            # module while these locals still point at it.
+            model = None
+            processor = None
             engine.unload_model(resolved_model_id, resolved_precision, resolved_attention)
         elif moved_to_gpu:
             try:

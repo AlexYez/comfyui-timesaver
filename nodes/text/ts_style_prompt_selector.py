@@ -154,7 +154,16 @@ class TS_StylePromptSelector(IO.ComfyNode):
 
     @classmethod
     def fingerprint_inputs(cls, style_id):
-        return _as_text(style_id).strip()
+        # The prompt text lives in styles.json, not in the inputs, so the id alone
+        # adds nothing ComfyUI does not already hash — editing a style's prompt
+        # while keeping its id would keep serving the cached text. Track the file's
+        # mtime too, mirroring TS_Qwen3_VL_V3's preset handling.
+        styles_path = _styles_json_path()
+        try:
+            mtime = styles_path.stat().st_mtime if styles_path.exists() else None
+        except OSError:
+            mtime = None
+        return (_as_text(style_id).strip(), mtime)
 
     @classmethod
     def execute(cls, style_id) -> IO.NodeOutput:
