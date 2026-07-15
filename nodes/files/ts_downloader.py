@@ -128,6 +128,12 @@ class TS_DownloadFilesNode(IO.ComfyNode):
 
         session.headers.update({
             'User-Agent': _USER_AGENT,
+            # Big binaries must arrive byte-identical to Content-Length. When a
+            # server transparently gzips the stream, requests inflates it on the
+            # fly, the file on disk grows PAST the advertised size, and every
+            # size check (skip_existing, post-download verify) flags it corrupt
+            # -> the same model re-downloads on every single run.
+            'Accept-Encoding': 'identity',
         })
 
         if proxy_url and proxy_url.strip():
@@ -198,8 +204,23 @@ class TS_DownloadFilesNode(IO.ComfyNode):
                 logger.info(f"{LOG_PREFIX} Target '{base_url}' is REACHABLE.")
                 return True
             except requests.RequestException:
-                logger.warning(f"{LOG_PREFIX} Target '{base_url}' is UNREACHABLE.")
-                continue
+                # Some hosts/CDNs drop bare HEAD requests. That must not flip a
+                # perfectly online machine into OFFLINE MODE ("the node just
+                # doesn't download") — settle reachability with a one-byte GET.
+                try:
+                    with session.get(
+                        probe_url,
+                        headers={"Range": "bytes=0-0"},
+                        stream=True,
+                        timeout=cls._CONNECTIVITY_TIMEOUT,
+                        allow_redirects=True,
+                    ):
+                        pass
+                    logger.info(f"{LOG_PREFIX} Target '{base_url}' is REACHABLE (via GET probe; HEAD rejected).")
+                    return True
+                except requests.RequestException:
+                    logger.warning(f"{LOG_PREFIX} Target '{base_url}' is UNREACHABLE.")
+                    continue
 
         return False
 
@@ -272,7 +293,28 @@ class TS_DownloadFilesNode(IO.ComfyNode):
         return url
 
     @staticmethod
-    def _resolve_target_directory(target_path):
+    def _known_model_folder_root(folder_name: str) -> str | None:
+        """Absolute root registered in ComfyUI for a model-folder name
+        ("checkpoints", "loras", "vae", "diffusion_models", ...) — honouring
+        extra_model_paths.yaml. None when the name is not a registered folder.
+        """
+        if not folder_paths:
+            return None
+        try:
+            registered = getattr(folder_paths, "folder_names_and_paths", {}) or {}
+            wanted = folder_name.lower()
+            for name in registered.keys():
+                if str(name).lower() != wanted:
+                    continue
+                paths = folder_paths.get_folder_paths(name)
+                if paths:
+                    return str(paths[0])
+        except Exception as exc:
+            logger.debug(f"{LOG_PREFIX} Known-folder lookup failed for '{folder_name}': {exc}")
+        return None
+
+    @classmethod
+    def _resolve_target_directory(cls, target_path):
         if target_path is None:
             return None
 
@@ -281,28 +323,54 @@ class TS_DownloadFilesNode(IO.ComfyNode):
             return None
 
         expanded = os.path.expandvars(os.path.expanduser(cleaned))
-        if os.path.isabs(expanded):
+
+        # Honour a target only when it is TRULY absolute: a drive letter or a
+        # UNC share on Windows, or any absolute path on POSIX. A bare leading
+        # slash on Windows ("\models\vae" — an easy typo) also passes
+        # os.path.isabs(), but abspath() would glue it to the CURRENT DRIVE
+        # root and the models silently land in C:\models, outside ComfyUI.
+        # Treat that rooted-but-driveless form as a relative path instead.
+        drive, _tail = os.path.splitdrive(expanded)
+        if os.path.isabs(expanded) and (drive or os.sep == "/"):
             return os.path.abspath(expanded)
 
-        normalized = expanded.replace("\\", "/")
+        normalized = expanded.replace("\\", "/").lstrip("/")
         while normalized.startswith("./"):
-            normalized = normalized[2:]
+            normalized = normalized[2:].lstrip("/")
+        if not normalized:
+            return None
 
-        normalized_lower = normalized.lower()
-        if normalized_lower == "models" or normalized_lower.startswith("models/"):
+        first, _, rest = normalized.partition("/")
+        first_lower = first.lower()
+
+        # models[/...] -> the real ComfyUI models directory, never base_path.
+        if first_lower == "models":
             models_root = None
             if folder_paths and getattr(folder_paths, "models_dir", None):
                 models_root = folder_paths.models_dir
             if not models_root and folder_paths and getattr(folder_paths, "base_path", None):
                 models_root = os.path.join(folder_paths.base_path, "models")
             if models_root:
-                suffix = normalized[6:].lstrip("/")
-                return os.path.abspath(os.path.join(models_root, suffix)) if suffix else os.path.abspath(models_root)
+                resolved = os.path.abspath(os.path.join(models_root, rest)) if rest else os.path.abspath(models_root)
+                logger.info(f"{LOG_PREFIX} Target '{target_path}' -> '{resolved}'")
+                return resolved
+
+        # A registered model-folder name used directly ("checkpoints",
+        # "loras/flux", "vae", ...) resolves into that model folder —
+        # honouring extra_model_paths.yaml — instead of leaking into
+        # ComfyUI's root as a stray sibling directory.
+        known_root = cls._known_model_folder_root(first_lower)
+        if known_root:
+            resolved = os.path.abspath(os.path.join(known_root, rest)) if rest else os.path.abspath(known_root)
+            logger.info(f"{LOG_PREFIX} Target '{target_path}' -> '{resolved}' (registered model folder)")
+            return resolved
 
         if folder_paths and getattr(folder_paths, "base_path", None):
-            return os.path.abspath(os.path.join(folder_paths.base_path, expanded))
+            resolved = os.path.abspath(os.path.join(folder_paths.base_path, normalized))
+            logger.info(f"{LOG_PREFIX} Target '{target_path}' -> '{resolved}'")
+            return resolved
 
-        return os.path.abspath(expanded)
+        return os.path.abspath(normalized)
 
     @classmethod
     def _parse_file_list(cls, file_list_text):
@@ -446,7 +514,10 @@ class TS_DownloadFilesNode(IO.ComfyNode):
                 json.dump(payload, f, ensure_ascii=False, indent=2)
             os.replace(tmp_path, path)
             return True
-        except Exception:
+        except Exception as exc:
+            # A meta file that never lands means e.g. the HF SHA256 gets
+            # re-hashed on every run — worth a trace when debugging "slow" runs.
+            logger.debug(f"{LOG_PREFIX} Could not write meta file '{path}': {exc}")
             try:
                 if os.path.exists(tmp_path):
                     os.remove(tmp_path)
@@ -639,11 +710,22 @@ class TS_DownloadFilesNode(IO.ComfyNode):
             hf_expected_sha256 = remote_info["hf_expected_sha256"]
             use_hf_sha256 = verify_size and integrity_mode == "hf_sha256_auto" and bool(hf_expected_sha256)
 
-            filename_from_url = os.path.basename(requests_unquote(url.split('?')[0].split('#')[0]))
-            final_filename = cls._get_filename_from_header_map(remote_info["headers"])
-            if not final_filename:
-                final_filename = filename_from_url
-            final_filename = cls._sanitize_filename(final_filename)
+            filename_from_url = cls._sanitize_filename(
+                os.path.basename(requests_unquote(url.split('?')[0].split('#')[0]))
+            )
+            header_name = cls._get_filename_from_header_map(remote_info["headers"])
+            filename_from_header = cls._sanitize_filename(header_name) if header_name else None
+            # The Content-Disposition name can differ between probe methods (a
+            # HEAD often lacks the header that a GET later supplies), which used
+            # to make skip_existing miss an already-downloaded file and pull the
+            # same model again under the other name. Prefer whichever candidate
+            # ALREADY EXISTS in the target dir; otherwise keep the old priority
+            # (header name over URL name).
+            candidates = [n for n in (filename_from_header, filename_from_url) if n]
+            final_filename = next(
+                (n for n in candidates if os.path.exists(os.path.join(target_dir, n))),
+                candidates[0],
+            )
 
             local_file_path = os.path.join(target_dir, final_filename)
             temp_file_path = local_file_path + ".part"
@@ -662,6 +744,19 @@ class TS_DownloadFilesNode(IO.ComfyNode):
                     return True
 
                 local_file_size = cls._safe_int(os.path.getsize(local_file_path), -1)
+                if remote_file_size <= 0:
+                    # The server reports no usable size (no Content-Length /
+                    # x-linked-size / Content-Range). There is nothing to verify
+                    # against — and re-downloading wouldn't make the result any
+                    # more verifiable. The old code fell through this branch and
+                    # pulled the same file again on EVERY run.
+                    logger.info(
+                        f"{LOG_PREFIX} File exists and the server reports no size to verify against. "
+                        f"Keeping the existing file (delete it manually to force a re-download)."
+                    )
+                    if unzip_after_download and local_file_path.lower().endswith('.zip'):
+                        cls._extract_zip(local_file_path, target_dir)
+                    return True
                 if remote_file_size > 0 and local_file_size == remote_file_size:
                     if use_hf_sha256:
                         cached_meta = cls._read_json_file(final_meta_path) or {}
@@ -816,9 +911,22 @@ class TS_DownloadFilesNode(IO.ComfyNode):
 
             response_get.raise_for_status()
 
+            # Despite Accept-Encoding: identity some servers compress anyway;
+            # requests then inflates the stream and the on-disk size can NEVER
+            # match Content-Length. Disable size accounting for this transfer
+            # rather than dead-looping on a false "corrupt" verdict.
+            content_encoding = str(response_get.headers.get("content-encoding", "")).strip().lower()
+            size_accounting_ok = not content_encoding or content_encoding == "identity"
+            if not size_accounting_ok:
+                logger.warning(
+                    f"{LOG_PREFIX} Server forced content-encoding '{content_encoding}'; "
+                    f"size verification disabled for this file."
+                )
+                remote_file_size = -1
+
             final_direct_url = response_get.url or final_direct_url
             get_reported_size = cls._extract_remote_size_from_headers(response_get.headers)
-            if remote_file_size <= 0 and get_reported_size > 0:
+            if size_accounting_ok and remote_file_size <= 0 and get_reported_size > 0:
                 remote_file_size = get_reported_size
             if response_get.status_code == 206:
                 supports_ranges = True
