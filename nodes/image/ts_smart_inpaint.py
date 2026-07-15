@@ -478,6 +478,16 @@ def _color_correct_patch(
     NEW tensor; never mutates inputs."""
     if refined.shape != original.shape or refined.dim() != 4:
         return refined
+    if alpha.dim() != 4 or alpha.shape[1:3] != refined.shape[1:3]:
+        return refined
+    # The mask is reduced to batch 1 upstream, so `alpha` arrives as [1, h, w, 1]
+    # while the patch keeps the image batch. `preserved` below indexes the
+    # flattened [B*h*w] rows, and a boolean index does not broadcast — expand the
+    # alpha to B first or the index length mismatches for B > 1.
+    if alpha.shape[0] == 1 and refined.shape[0] > 1:
+        alpha = alpha.expand(refined.shape[0], -1, -1, -1)
+    elif alpha.shape[0] != refined.shape[0]:
+        return refined
     channels = int(refined.shape[-1])
     preserved = (alpha[..., 0] < alpha_eps).reshape(-1)        # [B*h*w] bool
     n = int(preserved.sum().item())

@@ -9,7 +9,7 @@ import torch
 
 from comfy_api.v0_0_2 import IO
 
-from ...ts_dependency_manager import TSDependencyManager
+from .._deps import TSDependencyManager
 
 logger = logging.getLogger("comfyui_timesaver.ts_music_stems")
 LOG_PREFIX = "[TS Music Stems]"
@@ -208,6 +208,12 @@ class TS_MusicStems(IO.ComfyNode):
 
         def restore(tensor, mean, std):
             return tensor * std + mean
+
+        # The stats follow the INPUT waveform's device, while `sources` was pulled
+        # to CPU above. AUDIO is CPU by convention, but an upstream node may hand
+        # us a CUDA waveform — mixing devices here would raise.
+        wav_mean = wav_mean.to(sources.device)
+        wav_std = wav_std.to(sources.device)
 
         vocals = restore(vocals_t, wav_mean, wav_std)
         bass = restore(bass_t, wav_mean, wav_std)

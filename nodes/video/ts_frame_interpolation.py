@@ -544,6 +544,17 @@ class TS_Frame_Interpolation(IO.ComfyNode):
         if not schedule and output_count == images.shape[0] and all(exact_frames.get(i) == i for i in range(output_count)):
             return IO.NodeOutput(images)
 
+        # RIFE/FILM are 3-channel models and the output buffer below is [N,3,H,W].
+        # An RGBA batch (e.g. TS_BGRM_BiRefNet with background="Alpha") would raise
+        # on the exact-frame copy, so drop the alpha here instead.
+        if images.shape[-1] > 3:
+            logger.warning(
+                "[TS Frame Interpolation] Input has %d channels; interpolating RGB only "
+                "and dropping the extra channel(s).",
+                int(images.shape[-1]),
+            )
+            images = images[..., :3]
+
         height = int(images.shape[1])
         width = int(images.shape[2])
         output_device = torch.device("cpu")

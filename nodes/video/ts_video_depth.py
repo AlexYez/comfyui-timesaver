@@ -13,6 +13,8 @@ from comfy.utils import ProgressBar, load_torch_file
 
 from comfy_api.v0_0_2 import IO
 
+from .._hf_download import snapshot_download_resilient
+
 logger = logging.getLogger("comfyui_timesaver.ts_video_depth")
 LOG_PREFIX = "[TS Video Depth]"
 
@@ -355,17 +357,18 @@ def _load_model_to_offload_cpu(model_filename: str, on_download_start=None):
             on_download_start(model_filename)
         logger.info("%s Downloading weights for %s from HuggingFace…", LOG_PREFIX, model_filename)
         os.makedirs(download_path, exist_ok=True)
-        from huggingface_hub import snapshot_download
         repo_map = {"vits": "depth-anything/Video-Depth-Anything-Small", "vitl": "depth-anything/Video-Depth-Anything-Large"}
         model_key = next((key for key in repo_map if key in model_filename.lower()), None)
         if not model_key:
             raise ValueError(f"Cannot determine repository for model: {model_filename}.")
-        snapshot_download(
+        # Shared transport: mirror cycling (HF_ENDPOINT) + hub kwarg compatibility.
+        snapshot_download_resilient(
             repo_id=repo_map[model_key],
+            local_dir=download_path,
             revision="main",
             allow_patterns=[f"*{model_filename}*"],
-            local_dir=download_path,
-            local_dir_use_symlinks=False,
+            log=logger,
+            log_prefix=LOG_PREFIX,
         )
         logger.info("%s Download complete: %s", LOG_PREFIX, model_filename)
     model_configs = {
@@ -947,7 +950,9 @@ class TS_VideoDepth(IO.ComfyNode):
         postprocess_pbar = _StagePBar(master_pbar, postprocess_base, _PBAR_WEIGHT_POSTPROCESS, n_frames * 2)
         output = _postprocess_depth(
             depth_raw=depth_raw,
-            rgb_for_guide=images if edge_aware_upscale else None,
+            # Needed by BOTH the guided upscale and the bilateral denoise, so it is
+            # passed unconditionally; each consumer gates on its own option.
+            rgb_for_guide=images,
             original_h=original_h,
             original_w=original_w,
             normalization_mode=normalization_mode,
@@ -1016,7 +1021,29 @@ def _postprocess_depth(
             if method == "median":
                 chunk = _median_blur_chunk(chunk)
             elif method == "bilateral":
-                chunk = _bilateral_blur_chunk(chunk, rgb_chunk=None)
+                # Guide the range term with the source luma, resampled to the
+                # depth's inference resolution. Without a guide the filter's range
+                # weights collapse to 1 and it degrades to a plain Gaussian, which
+                # is not the edge-preserving behaviour the option advertises.
+                guide_chunk = None
+                if rgb_for_guide is not None:
+                    guide_chunk = (
+                        rgb_for_guide[start:end]
+                        .to(device, non_blocking=True)
+                        .permute(0, 3, 1, 2)
+                        .contiguous()
+                        .float()
+                    )
+                    if guide_chunk.shape[-2:] != chunk.shape[-2:]:
+                        guide_chunk = F.interpolate(
+                            guide_chunk,
+                            size=(int(chunk.shape[1]), int(chunk.shape[2])),
+                            mode="bilinear",
+                            align_corners=False,
+                            antialias=True,
+                        )
+                chunk = _bilateral_blur_chunk(chunk, rgb_chunk=guide_chunk)
+                del guide_chunk
             denoised_chunks.append(chunk.cpu())
             del chunk
             if device.type == "cuda":
