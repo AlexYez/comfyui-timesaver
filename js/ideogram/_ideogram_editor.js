@@ -706,17 +706,28 @@ export function openIdeogramEditor(node, { design, presets, onSave, graphRef }) 
         keyAnchor.focus();
     });
 
+    // Hidden file inputs are parked off-screen rather than display:none — some
+    // browsers refuse a programmatic .click() on a collapsed/undisplayed input
+    // (CLAUDE.md §12.5.11). Both are opened via .click() below.
+    const hideFileInput = (input) => {
+        input.style.position = "fixed";
+        input.style.left = "-9999px";
+        input.style.top = "-9999px";
+        input.style.opacity = "0";
+        input.style.pointerEvents = "none";
+    };
+
     const fileInput = el("input");
     fileInput.type = "file";
     fileInput.accept = "image/*";
-    fileInput.style.display = "none";
+    hideFileInput(fileInput);
     overlay.appendChild(fileInput);
 
     const importInput = el("input");
     importInput.type = "file";
     importInput.accept = "application/json,.json";
     importInput.multiple = true;
-    importInput.style.display = "none";
+    hideFileInput(importInput);
     overlay.appendChild(importInput);
     importInput.addEventListener("change", () => { handleDesignImport(Array.from(importInput.files || [])); parkFocus(); });
 
@@ -1072,6 +1083,9 @@ export function openIdeogramEditor(node, { design, presets, onSave, graphRef }) 
 
     // ── Inline (double-click) editing on the canvas ─────────────────────── //
     let inlineEl = null;
+    // Set while an inline editor is open, so a modal teardown can release its
+    // document-level listener (only commit/cancel would otherwise remove it).
+    let inlineCancel = null;
     function startInlineEdit(block) {
         if (inlineEl) inlineEl.remove();
         if (block.type === "text" && block.visual_only) return;
@@ -1108,7 +1122,10 @@ export function openIdeogramEditor(node, { design, presets, onSave, graphRef }) 
             if (ta.contains(ev.target)) return;  // clicks inside the editor are fine
             commit();
         }
-        function teardown() { document.removeEventListener("pointerdown", onDocDown, true); }
+        function teardown() {
+            document.removeEventListener("pointerdown", onDocDown, true);
+            inlineCancel = null;
+        }
         const commit = () => {
             if (!inlineEl) return;
             const v = ta.value;
@@ -1128,6 +1145,7 @@ export function openIdeogramEditor(node, { design, presets, onSave, graphRef }) 
             ta.remove();
             parkFocus();
         };
+        inlineCancel = cancel;
         // Reliable outside-click commit: a capture-phase document listener fires
         // even when the clicked area (stage/artboard/inspector) is non-focusable,
         // which the textarea's blur alone does not catch. Registered synchronously
@@ -1941,6 +1959,11 @@ export function openIdeogramEditor(node, { design, presets, onSave, graphRef }) 
         closed = true;  // stops the ensureLaidOut retry loop + in-flight JSON refreshes
         if (node && node._tsIdeoEditorClose === close) delete node._tsIdeoEditorClose;
         if (activeDragCleanup) { try { activeDragCleanup(); } catch { /* ignore */ } activeDragCleanup = null; }
+        // An open inline editor holds a capture-phase document listener that only
+        // its own commit/cancel removes. Closing the modal around it (node
+        // removal, workflow-tab switch) would leave it — and the whole editor
+        // closure — alive. Save() commits the text first via inlineEl.blur().
+        if (inlineCancel) { try { inlineCancel(); } catch { /* ignore */ } inlineCancel = null; }
         document.removeEventListener("paste", onPaste);
         window.removeEventListener("keydown", onKey, true);
         resizeObserver.disconnect();

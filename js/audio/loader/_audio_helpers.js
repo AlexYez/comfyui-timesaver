@@ -78,6 +78,9 @@ function ensureStyles() {
 .ts-audio-loader__play svg{width:14px;height:14px;fill:currentColor;pointer-events:none}
 .ts-audio-loader__play svg *{pointer-events:none}
 .ts-audio-loader__hidden-media{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+/* File inputs are parked off-screen instead of collapsed to 1x1: some browsers
+   refuse a programmatic .click() on a collapsed input (CLAUDE.md 12.5.11). */
+.ts-audio-loader__hidden-input{position:fixed;left:-9999px;top:-9999px;opacity:0;pointer-events:none}
 .ts-audio-loader__zoom-group{display:inline-flex;align-items:stretch;border:1px solid var(--tsal-border);border-radius:8px;overflow:hidden;background:linear-gradient(180deg,#1f2732,#151b23)}
 .ts-audio-loader__zoom-btn{border:none;background:transparent;color:var(--tsal-text);padding:6px 10px;font-size:12px;line-height:1;cursor:pointer;border-radius:0;min-width:32px}
 .ts-audio-loader__zoom-btn+.ts-audio-loader__zoom-btn{border-left:1px solid var(--tsal-border)}
@@ -271,7 +274,7 @@ export function setupAudioLoader(node) {
     videoEl.preload = "metadata";
     const fileInput = !isPreviewNode ? document.createElement("input") : null;
     if (fileInput) {
-        fileInput.className = "ts-audio-loader__hidden-media";
+        fileInput.className = "ts-audio-loader__hidden-input";
         fileInput.type = "file";
         fileInput.accept = MEDIA_UPLOAD_ACCEPT;
         waveWrap.append(canvas, empty, audioEl, videoEl, fileInput);

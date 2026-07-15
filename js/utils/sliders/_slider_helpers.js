@@ -63,6 +63,31 @@ export function tsSnapToStep(tsValue, tsMin, tsStep, tsType, tsAnchor) {
     return tsSnapped;
 }
 
+function tsSnapBackIntoRange(tsValue, tsConfig, tsType) {
+    // tsSnapToStep grids on `default`, so when min/max do not sit on that grid a
+    // value at the boundary can snap one step OUTSIDE the declared range — and
+    // ComfyUI rejects an out-of-range widget at queue time. Walk back to the
+    // nearest grid point that is still inside the range.
+    if (!Number.isFinite(tsValue)) return tsValue;
+    const tsStep = tsConfig.step;
+    if (Number.isFinite(tsStep) && tsStep > 0) {
+        if (tsValue > tsConfig.max) {
+            tsValue -= Math.ceil((tsValue - tsConfig.max) / tsStep) * tsStep;
+        } else if (tsValue < tsConfig.min) {
+            tsValue += Math.ceil((tsConfig.min - tsValue) / tsStep) * tsStep;
+        }
+        if (tsType === "int") {
+            tsValue = Math.round(tsValue);
+        } else {
+            const tsDecimals = tsCountDecimals(tsStep);
+            if (tsDecimals > 0) tsValue = Number(tsValue.toFixed(tsDecimals));
+        }
+    }
+    // A range narrower than one step may contain no grid point at all; the
+    // boundary is then the only valid answer.
+    return Math.min(tsConfig.max, Math.max(tsConfig.min, tsValue));
+}
+
 export function tsEnsureProperties(tsNode, tsWidget, tsType) {
     if (!tsNode || !tsWidget) return;
     tsNode.properties = tsNode.properties || {};
@@ -188,6 +213,7 @@ export function tsApplyConfig(tsNode, tsWidget, tsType, tsConfig, tsForceDefault
 
     tsValue = Math.min(tsConfig.max, Math.max(tsConfig.min, tsValue));
     tsValue = tsSnapToStep(tsValue, tsConfig.min, tsConfig.step, tsType, tsConfig.default);
+    tsValue = tsSnapBackIntoRange(tsValue, tsConfig, tsType);
 
     if (tsValue !== tsWidget.value) {
         tsWidget.value = tsValue;
