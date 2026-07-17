@@ -15,9 +15,7 @@ Private — loader skips paths with `_`-prefixed components.
 from __future__ import annotations
 
 import difflib
-import importlib.util
 import re
-import subprocess
 import threading
 import time
 import unicodedata
@@ -29,7 +27,6 @@ import folder_paths
 
 from ._helpers import (
     ACTIVE_MODEL,
-    ALL_MODELS,
     AUDIO_EDGE_FADE_MS,
     AUDIO_NORMALIZE_ENABLED,
     AUDIO_NORMALIZE_MAX_GAIN_DB,
@@ -45,14 +42,11 @@ from ._helpers import (
     AUDIO_VAD_PADDING_SEC,
     AUDIO_VAD_RMS_THRESHOLD,
     BEAM_SIZE,
-    DOWNLOAD_LOCK,
     GPU_PRECISION,
     INITIAL_PROMPT,
     INITIAL_PROMPT_ENABLED,
     INITIAL_PROMPT_EXTRA,
     LOGGER,
-    MODEL_FILE_NAMES,
-    MODEL_SIZES,
     TEMPERATURE,
     VOICE_LOG_PREFIX,
     VOICE_MODEL_BASE,

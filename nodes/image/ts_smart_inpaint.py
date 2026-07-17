@@ -54,9 +54,7 @@ Algorithm credit: the "Xtra-Fine" inpaint path of ComfyUI-Angelo
 (shootthesound/ComfyUI-Angelo, angelo_nodes.py) — the helpers below are taken
 from its `_refine_with_fine_upscaling` so the behaviour matches it, with ONE
 local extension (the optional `extra_reference_latents` chaining used in Replace
-mode). The custom-sampler helpers (`_guider_*`, `_do_sample`'s guider path) are
-from @KursatAs's customSampler branch. Upstream is MIT-licensed; its notice is
-reproduced below as required:
+mode). Upstream is MIT-licensed; its notice is reproduced below as required:
 
     MIT License — Copyright (c) 2026 Peter Neill
 
@@ -82,13 +80,11 @@ node_id: TSSmartInpaint
 """
 from __future__ import annotations
 
-import copy
 import logging
 import math
 
 import torch
 
-import comfy.model_management
 import comfy.sample
 import comfy.samplers
 import comfy.utils
@@ -129,88 +125,8 @@ def _pct_to_px(pct: float, base_px: float, floor_px: float, ceil_px: float) -> f
     return float(min(ceil_px, max(floor_px, pct / 100.0 * base_px)))
 
 
-def _guider_sample(
-        temp_g,
-        noise: torch.Tensor,
-        latent: torch.Tensor,
-        sampler,
-        sigmas: torch.Tensor,
-        *,
-        denoise_mask: torch.Tensor | None = None,
-        callback=None,
-        disable_pbar: bool = False,
-        seed: int | None = None,
-) -> torch.Tensor:
-    """Device-safe wrapper around guider.sample(). (From @KursatAs.)
-
-    ComfyUI's built-in CFGGuider.sample() moves noise, latent, and
-    denoise_mask to the model's load device before sampling. Some
-    third-party extensions (e.g. ComfyUI-NAG-Extended) override
-    inner_sample() without repeating that movement, so CPU tensors
-    survive into the k-sampler's inpaint path where they collide with
-    GPU tensors and raise a device-mismatch RuntimeError. Moving
-    everything to load_device here is a safe no-op when the built-in
-    already does it, and fixes the crash for extensions that don't."""
-    device = temp_g.model_patcher.load_device
-    noise = noise.to(device)
-    latent = latent.to(device)
-    if denoise_mask is not None:
-        denoise_mask = denoise_mask.to(device)
-    samples = temp_g.sample(
-        noise, latent, sampler, sigmas,
-        denoise_mask=denoise_mask,
-        callback=callback,
-        disable_pbar=disable_pbar,
-        seed=seed,
-    )
-    # Mirror comfy.sample.sample()'s exit move so the rest of Angelo's
-    # pipeline (VAE decode, pixel composite, latent blend in Fine Upscale)
-    # sees the same intermediate device + dtype it does on the default
-    # path. Without this, the guider path returns the sampled latent on
-    # the model's load_device (cuda) while cached_pixels / mask are on
-    # intermediate_device (typically CPU), causing a device-mismatch at
-    # the composite step in _refine_with_fine_upscaling.
-    return samples.to(
-        device=comfy.model_management.intermediate_device(),
-        dtype=comfy.model_management.intermediate_dtype(),
-    )
-
-
-def _guider_with_conds(guider, positive, negative):
-    """Copy a wired GUIDER and apply Angelo's per-call positive/negative
-    conds to it. Handles both CFGGuider (takes both conds) and
-    BasicGuider (positive only). (From @KursatAs.) Lets the user wire
-    a generic guider once and Angelo keeps using its dynamic conds
-    (Refine vs Area Prompt vs Smart Inpaint reference_latents etc.)
-    for each sample call."""
-    g = copy.copy(guider)
-    try:
-        g.set_conds(positive, negative)  # comfy.samplers.CFGGuider
-    except TypeError:
-        g.set_conds(positive)            # BasicGuider / BaseGuider
-    return g
-
-
-def _truncate_sigmas_for_denoise(sigmas: torch.Tensor, denoise: float) -> torch.Tensor:
-    """Tail-slice the wired SIGMAS tensor by Angelo's per-call denoise,
-    matching ComfyUI's SplitSigmasDenoise convention. (From @KursatAs.)
-    A wired sigmas tensor comes pre-baked from a scheduler node at
-    denoise=1.0; Angelo applies its own refine denoise here so the
-    refine slider keeps meaning what it did before."""
-    if denoise >= 1.0:
-        return sigmas
-    if denoise <= 0.0:
-        return sigmas[-1:].new_zeros(2)
-    n_total = len(sigmas) - 1
-    n_refine = max(1, round(n_total * denoise))
-    return sigmas[-(n_refine + 1):]
-
-
 def _do_sample(
         *,
-        guider,
-        sampler,
-        sigmas,
         model,
         noise: torch.Tensor,
         steps: int,
@@ -226,25 +142,8 @@ def _do_sample(
         seed: int,
         noise_mask: torch.Tensor | None = None,
 ) -> torch.Tensor:
-    """Single sample dispatch for every Angelo sample call. If a custom
-    guider + sampler + sigmas trio is wired through Overrides, take the
-    custom path (via _guider_sample); otherwise fall through to the
-    standard comfy.sample.sample(...) path that's existed since v1.0.
-
-    All-or-nothing on the trio: partial wiring (e.g. sampler without
-    sigmas) silently falls through to the default path. Users see the
-    custom-sampler kwargs only by wiring the full bundle from a proper
-    GUIDER + SAMPLER + SIGMAS chain in their workflow."""
-    if guider is not None and sampler is not None and sigmas is not None:
-        g = _guider_with_conds(guider, positive, negative)
-        s = _truncate_sigmas_for_denoise(sigmas, denoise)
-        return _guider_sample(
-            g, noise, source_latent, sampler, s,
-            denoise_mask=noise_mask,
-            callback=callback,
-            disable_pbar=disable_pbar,
-            seed=seed,
-        )
+    """Single sample dispatch for every Angelo sample call — the standard
+    ``comfy.sample.sample(...)`` path that has existed since v1.0."""
     return comfy.sample.sample(
         model, noise, steps, cfg, sampler_name, scheduler,
         positive, negative, source_latent,
@@ -556,11 +455,6 @@ def _refine_with_fine_upscaling(
     denoise: float,
     callback,
     disable_pbar: bool,
-    # #8 custom-sampler trio — None = use the default comfy.sample.sample
-    # path; all three set = dispatch via _do_sample to the guider path.
-    ov_guider=None,
-    ov_sampler=None,
-    ov_sigmas=None,
     # LOCAL extension (not from upstream): extra reference_latents to CHAIN after
     # the crop's own reference in Smart Inpaint mode — e.g. a user "fill with
     # THIS picture" image. None / empty = behaves exactly like upstream.
@@ -741,7 +635,6 @@ def _refine_with_fine_upscaling(
     # ----- Refine via noise-injection inpaint on the upscaled latent -----
     noise = comfy.sample.prepare_noise(latent_up, seed, None)
     refined_latent_up = _do_sample(
-        guider=ov_guider, sampler=ov_sampler, sigmas=ov_sigmas,
         model=model, noise=noise,
         steps=steps, cfg=cfg, sampler_name=sampler_name, scheduler=scheduler,
         positive=positive, negative=negative,

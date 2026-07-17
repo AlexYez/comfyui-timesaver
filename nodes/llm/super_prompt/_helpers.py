@@ -31,10 +31,7 @@ from ..._whisper_engine import (  # noqa: F401 - re-exported
     MODEL_CACHE as VOICE_MODEL_CACHE,
 )
 
-try:
-    import server
-except Exception:
-    server = None
+from ..._shared import make_route_registrars, resolve_prompt_server
 
 
 LOGGER = logging.getLogger("comfyui_timesaver.ts_super_prompt")
@@ -239,44 +236,8 @@ def voice_log_warning(message: str) -> None:
     LOGGER.warning("%s %s", VOICE_LOG_PREFIX, message)
 
 
-def _resolve_prompt_server():
-    if server is None:
-        log_warning("PromptServer unavailable. HTTP routes disabled.")
-        return None
-    try:
-        return server.PromptServer.instance
-    except Exception as exc:
-        log_warning(f"PromptServer init failed. HTTP routes disabled: {exc}")
-        return None
-
-
-PROMPT_SERVER = _resolve_prompt_server()
-
-
-def register_post(path: str):
-    def decorator(func):
-        if PROMPT_SERVER is None:
-            return func
-        try:
-            PROMPT_SERVER.routes.post(path)(func)
-        except Exception as exc:
-            log_warning(f"Failed to register POST route '{path}': {exc}")
-        return func
-
-    return decorator
-
-
-def register_get(path: str):
-    def decorator(func):
-        if PROMPT_SERVER is None:
-            return func
-        try:
-            PROMPT_SERVER.routes.get(path)(func)
-        except Exception as exc:
-            log_warning(f"Failed to register GET route '{path}': {exc}")
-        return func
-
-    return decorator
+PROMPT_SERVER = resolve_prompt_server(log_warning)
+register_get, register_post = make_route_registrars(PROMPT_SERVER, log_warning)
 
 
 def send_ai_event(event: str, payload: dict[str, Any]) -> None:

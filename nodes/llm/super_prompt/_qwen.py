@@ -563,7 +563,10 @@ def _generate_with_qwen(
             )
             gen_params = _filter_generation_params(model, gen_params)
 
-            with rng_context:
+            # TF32 / high fp32-matmul precision is enabled ONLY for this
+            # generation and restored on exit, so it never leaks into the
+            # samplers of other nodes (see engine.qwen_matmul_precision).
+            with engine.qwen_matmul_precision(), rng_context:
                 if "generator" not in gen_params:
                     torch.manual_seed(int(SUPER_PROMPT_SEED))
                     for idx in rng_cuda_devices:

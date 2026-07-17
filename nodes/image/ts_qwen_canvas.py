@@ -3,11 +3,16 @@
 node_id: TS_QwenCanvas
 """
 
+import logging
+
 import torch
 import numpy as np
 from PIL import Image
 
 from comfy_api.v0_0_2 import IO
+
+logger = logging.getLogger("comfyui_timesaver.ts_qwen_canvas")
+LOG_PREFIX = "[TS Qwen Canvas]"
 
 
 QWEN_IMAGE_CANVAS_SUPPORTED_RESOLUTIONS = [
@@ -32,8 +37,16 @@ class TS_QwenCanvas(IO.ComfyNode):
             category="TS/Image",
             inputs=[
                 IO.Combo.Input("resolution", options=ASPECT_OPTIONS, default="1:1"),
-                IO.Image.Input("image", optional=True),
-                IO.Mask.Input("mask", optional=True),
+                IO.Image.Input(
+                    "image",
+                    optional=True,
+                    tooltip="Optional image to place on the canvas. Only the FIRST frame of a batch is used.",
+                ),
+                IO.Mask.Input(
+                    "mask",
+                    optional=True,
+                    tooltip="Optional mask to crop the placed image to its bounding box. Only the FIRST frame of a batch is used.",
+                ),
             ],
             outputs=[
                 IO.Image.Output(display_name="canvas_image"),
@@ -55,6 +68,11 @@ class TS_QwenCanvas(IO.ComfyNode):
         canvas = Image.new("RGB", (target_w, target_h), (255, 255, 255))
 
         if image is not None:
+            if hasattr(image, "shape") and image.ndim == 4 and image.shape[0] > 1:
+                logger.warning(
+                    "%s Image batch of %d received; only the first frame is placed on the canvas.",
+                    LOG_PREFIX, int(image.shape[0]),
+                )
             img_tensor = image[0]
             img_np = (img_tensor.cpu().numpy() * 255).astype(np.uint8)
             img = Image.fromarray(img_np)

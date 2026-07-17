@@ -61,8 +61,6 @@ class _VideoDepthState:
     model_patcher = None
     loaded_filename: str | None = None
     colormap_luts: dict[str, torch.Tensor] = {}
-    blue_noise_tile: torch.Tensor | None = None
-    cudnn_benchmark_set: bool = False
 
 
 _state = _VideoDepthState()
@@ -698,12 +696,6 @@ class TS_VideoDepth(IO.ComfyNode):
         n_frames, original_h, original_w = images.shape[0], images.shape[1], images.shape[2]
         load_device = mm.get_torch_device()
 
-        # cudnn autotune pays off immediately for the fixed transformer shapes
-        # we hit, and is a no-op on non-CUDA devices.
-        if load_device.type == "cuda" and not _state.cudnn_benchmark_set:
-            torch.backends.cudnn.benchmark = True
-            _state.cudnn_benchmark_set = True
-
         # --- single outer progress bar covering all stages ---
         master_pbar = ProgressBar(_PBAR_TOTAL)
         outer_cursor = 0
@@ -857,83 +849,95 @@ class TS_VideoDepth(IO.ComfyNode):
                     except Exception:
                         pass
 
-        for attempt_idx, attempt_input_size in enumerate(attempt_sizes):
-            # Recompute resize target for this attempt's input_size.
-            scale = max(attempt_input_size / proc_h, attempt_input_size / proc_w)
-            attempt_target_h = max(14, round((proc_h * scale) / 14) * 14)
-            attempt_target_w = max(14, round((proc_w * scale) / 14) * 14)
-            if attempt_target_h < attempt_input_size:
-                attempt_target_h = ((attempt_input_size + 13) // 14) * 14
-            if attempt_target_w < attempt_input_size:
-                attempt_target_w = ((attempt_input_size + 13) // 14) * 14
+        # cudnn.benchmark autotunes conv algorithms for the transformer's fixed
+        # shapes (a real speed-up across the many sliding windows in one run).
+        # It is a GLOBAL flag, so we set it only for the inference block and
+        # restore the previous value in `finally` — leaving it on would leak
+        # into every other node's convs (varying-shape models re-autotune and
+        # lose determinism). No-op on non-CUDA devices.
+        cudnn_benchmark_prev = torch.backends.cudnn.benchmark
+        if load_device.type == "cuda":
+            torch.backends.cudnn.benchmark = True
+        try:
+            for attempt_idx, attempt_input_size in enumerate(attempt_sizes):
+                # Recompute resize target for this attempt's input_size.
+                scale = max(attempt_input_size / proc_h, attempt_input_size / proc_w)
+                attempt_target_h = max(14, round((proc_h * scale) / 14) * 14)
+                attempt_target_w = max(14, round((proc_w * scale) / 14) * 14)
+                if attempt_target_h < attempt_input_size:
+                    attempt_target_h = ((attempt_input_size + 13) // 14) * 14
+                if attempt_target_w < attempt_input_size:
+                    attempt_target_w = ((attempt_input_size + 13) // 14) * 14
 
-            try:
-                logger.info(
-                    "%s [stage 1/3] Preprocess: %s frames %sx%s → %sx%s on %s (%s)",
-                    LOG_PREFIX, n_frames, original_h, original_w,
-                    attempt_target_h, attempt_target_w, load_device, precision,
-                )
-                preprocess_pbar.inner = 0
-                preprocess_pbar.update_absolute(0, total=n_frames)
-                frames_gpu = _preprocess_frames_gpu(
-                    images, attempt_target_h, attempt_target_w,
-                    load_device, model_dtype, chunk_size=8,
-                    on_chunk_done=preprocess_pbar.update,
-                )
-                preprocess_pbar.finish()
-
-                logger.info(
-                    "%s [stage 2/3] Inference: input_size=%s precision=%s frames=%s (attempt %s)",
-                    LOG_PREFIX, attempt_input_size, precision, n_frames, attempt_idx + 1,
-                )
-                inference_pbar.inner = 0
-                inference_pbar.update_absolute(0, total=n_frames)
-                depth_raw = model.infer_video_depth_torch(
-                    frames_gpu,
-                    input_size=attempt_input_size,
-                    device=load_device,
-                    fp32=(precision == "fp32"),
-                    pbar=inference_pbar,
-                    interrupt_cb=interrupt_cb,
-                )
-                inference_pbar.finish()
-                del frames_gpu
-                if load_device.type == "cuda":
-                    torch.cuda.empty_cache()
-                break
-            except Exception as exc:  # noqa: BLE001 — broad on purpose
-                if not _is_cuda_memory_error(exc):
-                    raise
-                last_error = exc
                 try:
-                    del frames_gpu
-                except UnboundLocalError:
-                    pass
-                _hard_reclaim_vram()
-                # Release the model THROUGH model_management so its
-                # bookkeeping stays consistent. The old code called
-                # patcher.model.to("cpu") behind the ModelPatcher's back:
-                # load_model_gpu() then saw an "already loaded" patcher,
-                # no-opped, and the retry crashed with a device mismatch —
-                # and the cached MODEL stayed desynced for later prompts.
-                # A clean unload also lets CUDAMallocAsync defragment.
-                try:
-                    if hasattr(mm, "unload_model_and_clones"):
-                        mm.unload_model_and_clones(patcher)
-                    elif hasattr(mm, "unload_model_clones"):
-                        mm.unload_model_clones(patcher)
-                except Exception as unload_exc:
-                    logger.debug("%s unload between OOM retries failed: %s", LOG_PREFIX, unload_exc)
-                _hard_reclaim_vram()
-                if attempt_idx + 1 < len(attempt_sizes):
-                    logger.warning(
-                        "%s CUDA OOM at input_size=%s (%s). Retrying with input_size=%s.",
-                        LOG_PREFIX, attempt_input_size, type(exc).__name__,
-                        attempt_sizes[attempt_idx + 1],
+                    logger.info(
+                        "%s [stage 1/3] Preprocess: %s frames %sx%s → %sx%s on %s (%s)",
+                        LOG_PREFIX, n_frames, original_h, original_w,
+                        attempt_target_h, attempt_target_w, load_device, precision,
                     )
-                    # Reload model onto GPU before the next attempt.
-                    mm.load_model_gpu(patcher)
-                    model = patcher.model
+                    preprocess_pbar.inner = 0
+                    preprocess_pbar.update_absolute(0, total=n_frames)
+                    frames_gpu = _preprocess_frames_gpu(
+                        images, attempt_target_h, attempt_target_w,
+                        load_device, model_dtype, chunk_size=8,
+                        on_chunk_done=preprocess_pbar.update,
+                    )
+                    preprocess_pbar.finish()
+
+                    logger.info(
+                        "%s [stage 2/3] Inference: input_size=%s precision=%s frames=%s (attempt %s)",
+                        LOG_PREFIX, attempt_input_size, precision, n_frames, attempt_idx + 1,
+                    )
+                    inference_pbar.inner = 0
+                    inference_pbar.update_absolute(0, total=n_frames)
+                    depth_raw = model.infer_video_depth_torch(
+                        frames_gpu,
+                        input_size=attempt_input_size,
+                        device=load_device,
+                        fp32=(precision == "fp32"),
+                        pbar=inference_pbar,
+                        interrupt_cb=interrupt_cb,
+                    )
+                    inference_pbar.finish()
+                    del frames_gpu
+                    if load_device.type == "cuda":
+                        torch.cuda.empty_cache()
+                    break
+                except Exception as exc:  # noqa: BLE001 — broad on purpose
+                    if not _is_cuda_memory_error(exc):
+                        raise
+                    last_error = exc
+                    try:
+                        del frames_gpu
+                    except UnboundLocalError:
+                        pass
+                    _hard_reclaim_vram()
+                    # Release the model THROUGH model_management so its
+                    # bookkeeping stays consistent. The old code called
+                    # patcher.model.to("cpu") behind the ModelPatcher's back:
+                    # load_model_gpu() then saw an "already loaded" patcher,
+                    # no-opped, and the retry crashed with a device mismatch —
+                    # and the cached MODEL stayed desynced for later prompts.
+                    # A clean unload also lets CUDAMallocAsync defragment.
+                    try:
+                        if hasattr(mm, "unload_model_and_clones"):
+                            mm.unload_model_and_clones(patcher)
+                        elif hasattr(mm, "unload_model_clones"):
+                            mm.unload_model_clones(patcher)
+                    except Exception as unload_exc:
+                        logger.debug("%s unload between OOM retries failed: %s", LOG_PREFIX, unload_exc)
+                    _hard_reclaim_vram()
+                    if attempt_idx + 1 < len(attempt_sizes):
+                        logger.warning(
+                            "%s CUDA OOM at input_size=%s (%s). Retrying with input_size=%s.",
+                            LOG_PREFIX, attempt_input_size, type(exc).__name__,
+                            attempt_sizes[attempt_idx + 1],
+                        )
+                        # Reload model onto GPU before the next attempt.
+                        mm.load_model_gpu(patcher)
+                        model = patcher.model
+        finally:
+            torch.backends.cudnn.benchmark = cudnn_benchmark_prev
 
         if depth_raw is None:
             raise RuntimeError(

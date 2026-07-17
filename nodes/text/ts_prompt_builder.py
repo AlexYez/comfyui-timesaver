@@ -4,15 +4,13 @@ import logging
 import os
 import random
 import tempfile
+from pathlib import Path
 
 import folder_paths
 from aiohttp import web
 from comfy_api.v0_0_2 import IO
 
-try:
-    from server import PromptServer
-except Exception:
-    PromptServer = None
+from .._shared import make_route_registrars, resolve_prompt_server
 
 
 ts_logger = logging.getLogger("TimesaverVFX_Pack")
@@ -20,37 +18,24 @@ TS_PROMPTS_DIRNAME = "prompts"
 TS_PROMPT_BUILDER_CONFIG_FILENAME = "ts-prompt-builder-config.json"
 
 
-if PromptServer is None:
-    ts_logger.warning("[TS Prompt Builder] PromptServer unavailable. API routes will be disabled.")
+def _warn_route(message: str) -> None:
+    ts_logger.warning("[TS Prompt Builder] %s", message)
 
 
-def _register_get(path):
-    def decorator(func):
-        if PromptServer is None:
-            return func
-        try:
-            PromptServer.instance.routes.get(path)(func)
-        except Exception as exc:
-            ts_logger.warning("[TS Prompt Builder] Failed to register route '%s': %s", path, exc)
-        return func
-
-    return decorator
-
-
-def _register_post(path):
-    def decorator(func):
-        if PromptServer is None:
-            return func
-        try:
-            PromptServer.instance.routes.post(path)(func)
-        except Exception as exc:
-            ts_logger.warning("[TS Prompt Builder] Failed to register route '%s': %s", path, exc)
-        return func
-
-    return decorator
+_PROMPT_SERVER = resolve_prompt_server(_warn_route)
+_register_get, _register_post = make_route_registrars(_PROMPT_SERVER, _warn_route)
 
 
 def ts_find_pack_root():
+    # This file lives at ``<pack>/nodes/text/ts_prompt_builder.py``, so the
+    # pack root is parents[2] — robust regardless of what the clone folder is
+    # named (a hardcoded "comfyui-timesaver" scan silently missed a renamed
+    # clone, and the old os.path.dirname(__file__) fallback pointed at
+    # nodes/text/, where the prompts folder does not exist).
+    pack_root = Path(__file__).resolve().parents[2]
+    if pack_root.is_dir():
+        return str(pack_root)
+    # Legacy fallback: scan ComfyUI's registered custom_nodes for the pack.
     try:
         for base in folder_paths.get_folder_paths("custom_nodes"):
             candidate = os.path.join(base, "comfyui-timesaver")

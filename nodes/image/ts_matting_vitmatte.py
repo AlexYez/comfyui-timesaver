@@ -33,7 +33,9 @@ from .._hf_download import snapshot_download_resilient
 from ._image_utils import (
     _format_device_label,
     _get_target_device,
+    _resolve_dtype,
     _safe_empty_cache,
+    _temporal_smooth_alphas,
     _update_progress,
     hex_to_rgba,
     pil2tensor,
@@ -75,78 +77,8 @@ MODEL_VARIANTS: dict[str, dict[str, str]] = {
 _PRECISION_OPTIONS = ("auto", "fp16", "bf16", "fp32")
 _TEMPORAL_SMOOTH_OPTIONS = ("off", "median3", "median5", "ema_causal")
 
-
-def _temporal_smooth_alphas(
-    alphas: list,
-    mode: str,
-    ema_alpha: float,
-) -> list:
-    """Apply temporal smoothing across the alpha sequence.
-
-    Per-frame matting has no concept of time, so identical objects in
-    adjacent frames produce slightly different alphas — visually the edge
-    "boils". This pass operates on the already-computed alphas:
-
-    - ``median3`` / ``median5`` — N-frame temporal median. Best for random
-      flicker; introduces ``N // 2`` frames of lag at the very edge of the
-      batch (handled with ``mode="nearest"`` reflection in scipy).
-    - ``ema_causal`` — exponential moving average. Causal, no lag, but a
-      sudden alpha change in the middle of the clip is blended with the
-      past, which can read as motion blur for fast objects.
-    """
-    n = len(alphas)
-    if mode == "off" or n <= 1:
-        return alphas
-    stack = np.stack(alphas, axis=0)  # [N, H, W]
-    if mode in ("median3", "median5"):
-        size = 3 if mode == "median3" else 5
-        try:
-            import scipy.ndimage as _ndi
-
-            stack = _ndi.median_filter(stack, size=(size, 1, 1), mode="nearest")
-        except ImportError:
-            # Pure-numpy fallback (slow for huge batches but correctness-safe).
-            radius = size // 2
-            padded = np.empty((n + 2 * radius,) + stack.shape[1:], dtype=stack.dtype)
-            padded[:radius] = stack[0]
-            padded[radius : radius + n] = stack
-            padded[radius + n :] = stack[-1]
-            out = np.empty_like(stack)
-            for i in range(n):
-                out[i] = np.median(padded[i : i + size], axis=0)
-            stack = out
-    elif mode == "ema_causal":
-        a = float(np.clip(ema_alpha, 0.0, 0.99))
-        if a > 0.0:
-            for i in range(1, n):
-                stack[i] = a * stack[i - 1] + (1.0 - a) * stack[i]
-    return [stack[i] for i in range(n)]
-
-
-def _resolve_dtype(target_device: torch.device, precision: str) -> torch.dtype:
-    """Map the user-facing precision combo to a torch dtype.
-
-    'auto' picks bf16 when the GPU supports it (Ampere+ with Tensor Core
-    bf16; H100/L40/RTX 30+ etc.), falling back to fp16 elsewhere. CPU stays
-    fp32 — running ViTMatte in half precision on CPU is dramatically slower
-    than fp32 because Intel/AMD don't have hardware fp16 matmul.
-    """
-    device_type = getattr(target_device, "type", str(target_device))
-    if device_type != "cuda":
-        return torch.float32
-    if precision == "fp32":
-        return torch.float32
-    if precision == "fp16":
-        return torch.float16
-    if precision == "bf16":
-        return torch.bfloat16
-    # auto
-    try:
-        if torch.cuda.is_bf16_supported():
-            return torch.bfloat16
-    except Exception:
-        pass
-    return torch.float16
+# ``_resolve_dtype`` and ``_temporal_smooth_alphas`` are shared with
+# ts_bgrm_birefnet via ``_image_utils`` (imported above).
 
 
 # ---------------------------------------------------------------------------
@@ -735,6 +667,16 @@ class TS_Matting_ViTMatte(IO.ComfyNode):
             raise RuntimeError(
                 f"{_LOG_PREFIX} image must be [B, H, W, 3], got shape {tuple(image.shape)}."
             )
+        # ViTMatte + the trimap/composite path operate on RGB; an RGBA batch
+        # (e.g. TS_BGRM_BiRefNet with background="Alpha") would otherwise crash
+        # in Image.fromarray(..., mode="RGB"). Drop the alpha channel, matching
+        # TS_BGRM_BiRefNet's `[..., :3]` behaviour.
+        if image.shape[-1] > 3:
+            logger.warning(
+                "%s image has %d channels; using RGB only and dropping the extra channel(s).",
+                _LOG_PREFIX, int(image.shape[-1]),
+            )
+            image = image[..., :3]
 
         if mask.ndim == 2:
             mask = mask.unsqueeze(0)

@@ -50,10 +50,7 @@ try:
 except ImportError:
     imageio_ffmpeg = None
 
-try:
-    import server
-except Exception:
-    server = None
+from ..._shared import make_route_registrars, resolve_prompt_server
 
 LOGGER = logging.getLogger("comfyui_timesaver.ts_audio_loader")
 LOG_PREFIX = "[TS Audio Loader]"
@@ -92,44 +89,8 @@ def _log_warning(message: str) -> None:
     LOGGER.warning("%s %s", LOG_PREFIX, message)
 
 
-def _resolve_prompt_server():
-    if server is None:
-        _log_warning("PromptServer unavailable. HTTP routes disabled.")
-        return None
-    try:
-        return server.PromptServer.instance
-    except Exception as exc:
-        _log_warning(f"PromptServer init failed. HTTP routes disabled: {exc}")
-        return None
-
-
-_PROMPT_SERVER = _resolve_prompt_server()
-
-
-def _register_get(path: str):
-    def decorator(func):
-        if _PROMPT_SERVER is None:
-            return func
-        try:
-            _PROMPT_SERVER.routes.get(path)(func)
-        except Exception as exc:
-            _log_warning(f"Failed to register GET route '{path}': {exc}")
-        return func
-
-    return decorator
-
-
-def _register_post(path: str):
-    def decorator(func):
-        if _PROMPT_SERVER is None:
-            return func
-        try:
-            _PROMPT_SERVER.routes.post(path)(func)
-        except Exception as exc:
-            _log_warning(f"Failed to register POST route '{path}': {exc}")
-        return func
-
-    return decorator
+_PROMPT_SERVER = resolve_prompt_server(_log_warning)
+_register_get, _register_post = make_route_registrars(_PROMPT_SERVER, _log_warning)
 
 
 def _normalize_path(path: str) -> str:
@@ -186,6 +147,38 @@ def _hash_file_identity(filepath: str) -> str:
 
 def _cache_path(filepath: str) -> Path:
     return CACHE_DIR / f"{_hash_file_identity(filepath)}.json"
+
+
+# Both the peaks-cache JSON (CACHE_DIR) and the generated preview WAVs
+# (GENERATED_AUDIO_DIR) are keyed by content identity and regenerate on demand,
+# so they previously grew without bound — one entry per unique clip. Reclaim any
+# older than this TTL on module import (best-effort, single directory scan).
+_CACHE_TTL_SECONDS = 7 * 24 * 3600
+
+
+def _cleanup_stale_cache_files(now: float | None = None) -> int:
+    """Delete peaks-cache JSON and generated preview WAVs older than the TTL.
+
+    Over-eager deletion costs at most one re-decode of a stale entry. Returns
+    the number of files removed. Best-effort — never raises."""
+    cutoff = (now if now is not None else time.time()) - _CACHE_TTL_SECONDS
+    removed = 0
+    for directory, pattern in ((CACHE_DIR, "*.json"), (GENERATED_AUDIO_DIR, "*.wav")):
+        try:
+            if not directory.is_dir():
+                continue
+            for path in directory.glob(pattern):
+                try:
+                    if path.is_file() and path.stat().st_mtime <= cutoff:
+                        path.unlink()
+                        removed += 1
+                except OSError:
+                    continue
+        except OSError:
+            continue
+    if removed:
+        _log_info(f"Removed {removed} stale audio cache file(s).")
+    return removed
 
 
 def _seconds_to_hms(value: float) -> str:
@@ -538,13 +531,44 @@ def _build_peaks_from_audio_tensor(
     return [float(section.max()) if section.size else 0.0 for section in sections]
 
 
+# Cap on how many waveform elements are hashed byte-for-byte in the cache key.
+# Hashing a full hour-long clip was hundreds of MB per fingerprint_inputs call
+# (TS_AudioPreview hashes on every queue). A strided sample of at most this many
+# elements plus global stats over the FULL tensor keeps the key strongly
+# discriminating while bounding the cost.
+_HASH_MAX_ELEMENTS = 1_000_000
+
+
 def _hash_audio_tensor(waveform: torch.Tensor, sample_rate: int, prefix: str) -> str:
-    """Build a stable cache key for generated preview audio."""
+    """Build a stable cache key for generated preview audio.
+
+    Content-sensitive but bounded: a strided subsample of the raw samples plus
+    global min/max/mean/sum over the whole clip (both cheap reductions, no full
+    copy) — so two different clips that happen to match on the subsample still
+    differ on the stats.
+    """
     hasher = hashlib.sha256()
     hasher.update(prefix.encode("utf-8"))
     hasher.update(str(sample_rate).encode("utf-8"))
     hasher.update(str(tuple(waveform.shape)).encode("utf-8"))
-    hasher.update(waveform.contiguous().numpy().tobytes())
+
+    flat = waveform.contiguous().reshape(-1)
+    n = int(flat.shape[0]) if flat.ndim else 0
+    hasher.update(str(n).encode("utf-8"))
+    if n > _HASH_MAX_ELEMENTS:
+        stride = (n + _HASH_MAX_ELEMENTS - 1) // _HASH_MAX_ELEMENTS
+        sampled = flat[::stride]
+    else:
+        sampled = flat
+    hasher.update(sampled.contiguous().numpy().tobytes())
+    if n > 0:
+        stats = (
+            float(flat.min()),
+            float(flat.max()),
+            float(flat.mean()),
+            float(flat.sum()),
+        )
+        hasher.update(repr([round(value, 6) for value in stats]).encode("utf-8"))
     return hasher.hexdigest()
 
 
@@ -655,4 +679,12 @@ async def ts_audio_loader_upload_recording(request: web.Request) -> web.StreamRe
         raise
     except Exception as exc:
         return web.json_response({"error": str(exc)}, status=500)
+
+
+# One sweep per process start: reclaim peaks-cache JSON / preview WAVs left
+# behind by clips that are no longer opened (best-effort, never fatal).
+try:
+    _cleanup_stale_cache_files()
+except Exception as _cleanup_exc:  # noqa: BLE001 - cache cleanup must never block import
+    LOGGER.debug("%s Startup cache cleanup skipped: %s", LOG_PREFIX, _cleanup_exc)
 

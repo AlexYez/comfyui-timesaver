@@ -24,7 +24,9 @@ from .._hf_download import snapshot_download_resilient
 from ._image_utils import (  # noqa: F401
     _format_device_label,
     _get_target_device,
+    _resolve_dtype,
     _safe_empty_cache,
+    _temporal_smooth_alphas,
     _update_progress,
     hex_to_rgba,
     pil2tensor,
@@ -88,8 +90,8 @@ MODEL_CONFIG = {
         "fallback_filename": "BiRefNet_512x512.safetensors",
         # Primary already targets 1038lab; reuse the same allow-pattern
         # logic by leaving fallback_filename so download_model picks the
-        # right .safetensors file.
-        "primary_mode": "mirror",
+        # right .safetensors file (mirror detection is by the "1038lab"
+        # repo prefix in download_model, so no explicit flag is needed).
         "description": "Optimized for 512x512 resolution, faster processing",
         "default_res": 512,
         "max_res": 1024,
@@ -189,88 +191,10 @@ def _target_dtype(target_device):
 
 
 _PRECISION_OPTIONS = ("auto", "fp16", "bf16", "fp32")
-
-
-def _resolve_dtype(target_device, precision: str) -> "torch.dtype":
-    """Map the user-facing precision combo to a torch dtype.
-
-    'auto' picks bf16 when the GPU supports it (Ampere+ with Tensor Core
-    bf16 — RTX 30/40, A100, H100, etc.), otherwise fp16. CPU always runs
-    fp32 — half precision on CPU has no Tensor Core path and is markedly
-    slower than fp32 in practice.
-
-    For BiRefNet specifically use ``_resolve_birefnet_dtype`` instead —
-    it patches the bf16 path because torchvision's ``deform_conv2d``
-    (used in the HR variants' ASPP head) has no BF16 CUDA kernel.
-    """
-    device_type = getattr(target_device, "type", str(target_device))
-    if device_type != "cuda":
-        return torch.float32
-    if precision == "fp32":
-        return torch.float32
-    if precision == "fp16":
-        return torch.float16
-    if precision == "bf16":
-        return torch.bfloat16
-    # auto
-    try:
-        if torch.cuda.is_bf16_supported():
-            return torch.bfloat16
-    except Exception:
-        pass
-    return torch.float16
-
-
 _TEMPORAL_SMOOTH_OPTIONS = ("off", "median3", "median5", "ema_causal")
 
-
-def _temporal_smooth_alphas(
-    alphas: list,
-    mode: str,
-    ema_alpha: float,
-) -> list:
-    """Smooth alpha across the time axis to suppress per-frame edge wobble.
-
-    Per-frame BiRefNet inference has no temporal model; identical objects
-    in adjacent frames produce slightly different alphas → the edge
-    "boils". Applied after inference on the already-computed alpha
-    sequence:
-
-    - ``median3`` / ``median5`` — N-frame temporal median. Best for
-      random flicker; mild lag at clip boundaries (handled by
-      ``mode="nearest"`` reflection in scipy).
-    - ``ema_causal`` — exponential moving average. Causal, no lag, but a
-      sudden alpha change blends with the past and can read as motion
-      blur on fast objects.
-    - ``off`` — passthrough.
-    """
-    n = len(alphas)
-    if mode == "off" or n <= 1:
-        return alphas
-    stack = np.stack(alphas, axis=0)  # [N, H, W]
-    if mode in ("median3", "median5"):
-        size = 3 if mode == "median3" else 5
-        try:
-            import scipy.ndimage as _ndi
-
-            stack = _ndi.median_filter(stack, size=(size, 1, 1), mode="nearest")
-        except ImportError:
-            # Pure-numpy fallback if scipy isn't available.
-            radius = size // 2
-            padded = np.empty((n + 2 * radius,) + stack.shape[1:], dtype=stack.dtype)
-            padded[:radius] = stack[0]
-            padded[radius : radius + n] = stack
-            padded[radius + n :] = stack[-1]
-            out = np.empty_like(stack)
-            for i in range(n):
-                out[i] = np.median(padded[i : i + size], axis=0)
-            stack = out
-    elif mode == "ema_causal":
-        a = float(np.clip(ema_alpha, 0.0, 0.99))
-        if a > 0.0:
-            for i in range(1, n):
-                stack[i] = a * stack[i - 1] + (1.0 - a) * stack[i]
-    return [stack[i] for i in range(n)]
+# ``_resolve_dtype`` and ``_temporal_smooth_alphas`` are shared with
+# ts_matting_vitmatte via ``_image_utils`` (imported + re-exported above).
 
 
 def _resolve_birefnet_dtype(target_device, precision: str) -> "torch.dtype":

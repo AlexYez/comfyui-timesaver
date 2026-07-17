@@ -13,6 +13,7 @@ Private — loader skips paths with `_`-prefixed components.
 
 from __future__ import annotations
 
+import contextlib
 import gc
 import importlib.util
 import inspect
@@ -109,25 +110,22 @@ class QwenEngine:
     # Runtime optimisations (Qwen 3.5 inference path)
     # ------------------------------------------------------------------
     def apply_runtime_optimizations(self) -> None:
-        """Enable matmul + attention backends that benefit Qwen 3.5 on CUDA.
+        """Enable the SDPA attention backends that benefit Qwen 3.5 on CUDA.
 
         Idempotent — paid once per process. Wrapped in best-effort try/except
         so older PyTorch builds that don't expose every backend toggle still
         load the model (the corresponding optimisation is just skipped).
 
-        Tuned for Qwen 3.5 dense-LLM inference under bf16/fp16 + SDPA:
+        Only the SDPA *backend* toggles live here (flash / mem-efficient /
+        math): they merely let PyTorch pick the best attention kernel per op
+        and do NOT change the numerics of any other node's ops.
 
-        * TF32 on Ampere+: ``cuda.matmul`` and ``cudnn`` allow_tf32 give a
-          measurable speed-up for fp32 ops without affecting bf16/fp16
-          accuracy meaningfully.
-        * ``set_float32_matmul_precision('high')`` aliases the same TF32
-          path for any nn.Linear-style call that PyTorch routes through
-          its matmul precision flag.
-        * Reduced-precision fp16 reductions: lets the matmul kernels keep
-          their accumulator in fp16 for a small bandwidth win on Ampere.
-        * SDPA backends: explicitly enable flash + mem-efficient + math
-          backends so PyTorch picks the best one (flash for sm_80+ /
-          bf16/fp16, mem-efficient otherwise, math as final fallback).
+        The TF32 / fp32-matmul-precision flags, which DO change fp32 matmul
+        accuracy process-wide (samplers included — the exact reason
+        ``ts_bgrm_birefnet`` stopped calling
+        ``set_float32_matmul_precision('high')``), are applied per-generation
+        and restored via :meth:`qwen_matmul_precision` instead of being leaked
+        globally.
         """
         if self._optimizations_applied:
             return
@@ -144,27 +142,60 @@ class QwenEngine:
             self._logger.debug("%s Skipping CUDA opts: no GPU detected.", self._log_prefix)
             return
 
-        _try(lambda: setattr(torch.backends.cuda.matmul, "allow_tf32", True), "cuda.matmul.allow_tf32")
-        _try(lambda: setattr(torch.backends.cudnn, "allow_tf32", True), "cudnn.allow_tf32")
-        _try(
-            lambda: torch.set_float32_matmul_precision("high"),
-            "set_float32_matmul_precision",
-        )
-        _try(
-            lambda: setattr(
-                torch.backends.cuda.matmul,
-                "allow_fp16_reduced_precision_reduction",
-                True,
-            ),
-            "cuda.matmul.allow_fp16_reduced_precision_reduction",
-        )
         _try(lambda: torch.backends.cuda.enable_flash_sdp(True), "enable_flash_sdp")
         _try(
             lambda: torch.backends.cuda.enable_mem_efficient_sdp(True),
             "enable_mem_efficient_sdp",
         )
         _try(lambda: torch.backends.cuda.enable_math_sdp(True), "enable_math_sdp")
-        self._logger.info("%s Qwen 3.5 runtime optimizations applied (TF32 + SDP).", self._log_prefix)
+        self._logger.info("%s Qwen 3.5 SDPA backends enabled.", self._log_prefix)
+
+    @contextlib.contextmanager
+    def qwen_matmul_precision(self):
+        """Enable TF32 / high fp32-matmul precision ONLY for a Qwen generation.
+
+        Restores the previous process-wide flags on exit. These flags
+        materially change fp32 matmul accuracy for the WHOLE process (samplers
+        included), so leaking them globally is the exact side effect
+        ``ts_bgrm_birefnet`` was cleaned up to avoid. Scoping them here keeps
+        the Qwen speed-up (bf16/fp16 accuracy is unaffected either way) without
+        touching any other node's numerics. A no-op on CPU / non-CUDA builds.
+        """
+        if not torch.cuda.is_available():
+            yield
+            return
+
+        matmul = torch.backends.cuda.matmul
+        cudnn = torch.backends.cudnn
+        prev_matmul_tf32 = getattr(matmul, "allow_tf32", None)
+        prev_cudnn_tf32 = getattr(cudnn, "allow_tf32", None)
+        prev_fp16_reduce = getattr(matmul, "allow_fp16_reduced_precision_reduction", None)
+        try:
+            prev_precision = torch.get_float32_matmul_precision()
+        except Exception:
+            prev_precision = None
+
+        def _set(setter):
+            try:
+                setter()
+            except Exception:  # noqa: BLE001 — best-effort optimisation
+                pass
+
+        _set(lambda: setattr(matmul, "allow_tf32", True))
+        _set(lambda: setattr(cudnn, "allow_tf32", True))
+        _set(lambda: setattr(matmul, "allow_fp16_reduced_precision_reduction", True))
+        _set(lambda: torch.set_float32_matmul_precision("high"))
+        try:
+            yield
+        finally:
+            if prev_matmul_tf32 is not None:
+                _set(lambda: setattr(matmul, "allow_tf32", prev_matmul_tf32))
+            if prev_cudnn_tf32 is not None:
+                _set(lambda: setattr(cudnn, "allow_tf32", prev_cudnn_tf32))
+            if prev_fp16_reduce is not None:
+                _set(lambda: setattr(matmul, "allow_fp16_reduced_precision_reduction", prev_fp16_reduce))
+            if prev_precision is not None:
+                _set(lambda: torch.set_float32_matmul_precision(prev_precision))
 
     # ------------------------------------------------------------------
     # Capabilities

@@ -24,11 +24,9 @@ _DEFAULT_MKL_SAMPLE_POINTS = 300000
 _DEFAULT_SINKHORN_MAX_POINTS = 2048
 _SUPPORTED_MASK_MODES = ["none", "rectangle", "ellipse"]
 
-_SINKHORN_AVAILABLE = True
-
-_SUPPORTED_MODES = ["mkl"]
-if _SINKHORN_AVAILABLE:
-    _SUPPORTED_MODES.append("sinkhorn")
+# Both transforms are implemented in pure torch below, so both are always
+# available — no optional-dependency gating needed.
+_SUPPORTED_MODES = ["mkl", "sinkhorn"]
 
 
 def _log_info(message, enabled):
@@ -398,17 +396,6 @@ class TS_Color_Match(IO.ComfyNode):
                 mask_size=mask_size,
             )
         if mode == "sinkhorn":
-            if not _SINKHORN_AVAILABLE:
-                _log_info("Sinkhorn requested but not available. Falling back to MKL.", log_enabled)
-                return _mkl_compute_transform(
-                    fix_img,
-                    ref_img,
-                    sample_points=mkl_sample_points,
-                    seed=sample_seed,
-                    ref_stats=ref_stats,
-                    mask_mode=match_mask,
-                    mask_size=mask_size,
-                )
             return _sinkhorn_compute_transform(
                 fix_img,
                 ref_img,
@@ -576,10 +563,6 @@ class TS_Color_Match(IO.ComfyNode):
 
         if not enable:
             return IO.NodeOutput(target.clamp(0.0, 1.0))
-
-        if mode == "sinkhorn" and not _SINKHORN_AVAILABLE:
-            _log_info("Sinkhorn selected but not available. Falling back to MKL.", log_enabled)
-            mode = "mkl"
 
         target_device = cls._resolve_device(device, log_enabled)
 

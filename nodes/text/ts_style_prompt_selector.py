@@ -6,10 +6,7 @@ import folder_paths
 from aiohttp import web
 from comfy_api.v0_0_2 import IO
 
-try:
-    from server import PromptServer
-except Exception:
-    PromptServer = None
+from .._shared import make_route_registrars, resolve_prompt_server
 
 
 logger = logging.getLogger("TimesaverVFX_Pack")
@@ -17,24 +14,25 @@ _NO_STYLE_OPTION = "None"
 _LOG_PREFIX = "[TS Style Prompt Selector]"
 
 
-if PromptServer is None:
-    logger.warning("%s PromptServer unavailable. API routes will be disabled.", _LOG_PREFIX)
+def _warn_route(message: str) -> None:
+    logger.warning("%s %s", _LOG_PREFIX, message)
 
 
-def _register_get(path):
-    def decorator(func):
-        if PromptServer is None:
-            return func
-        try:
-            PromptServer.instance.routes.get(path)(func)
-        except Exception as exc:
-            logger.warning("%s Failed to register route '%s': %s", _LOG_PREFIX, path, exc)
-        return func
-
-    return decorator
+_PROMPT_SERVER = resolve_prompt_server(_warn_route)
+# Only GET routes are used here; the POST registrar is intentionally unused.
+_register_get, _ = make_route_registrars(_PROMPT_SERVER, _warn_route)
 
 
 def _find_pack_root():
+    # This file lives at ``<pack>/nodes/text/ts_style_prompt_selector.py``, so
+    # the pack root is parents[2] — robust regardless of what the clone folder
+    # is named (a hardcoded "comfyui-timesaver" scan silently missed a renamed
+    # clone, and the old ``.parent`` fallback pointed at nodes/text/, where the
+    # styles folder does not exist).
+    pack_root = Path(__file__).resolve().parents[2]
+    if pack_root.is_dir():
+        return pack_root
+    # Legacy fallback: scan ComfyUI's registered custom_nodes for the pack.
     try:
         for base in folder_paths.get_folder_paths("custom_nodes"):
             candidate = Path(base) / "comfyui-timesaver"

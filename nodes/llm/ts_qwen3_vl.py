@@ -187,7 +187,7 @@ class TS_Qwen3_VL_V3(IO.ComfyNode):
                     "hf_token",
                     default="",
                     multiline=False,
-                    tooltip="Ваш токен HuggingFace (Write/Read) для скачивания моделей. Оставьте пустым для публичных моделей.",
+                    tooltip="Ваш токен HuggingFace (Write/Read) для скачивания моделей. Оставьте пустым для публичных моделей. ВНИМАНИЕ: сохраняется в workflow JSON открытым текстом — не делитесь файлом с токеном.",
                 ),
                 IO.Combo.Input(
                     "system_preset",
@@ -546,7 +546,10 @@ def _run_qwen_generation(
             and dtype in (torch.float16, torch.bfloat16)
         )
 
-        with rng_context:
+        # TF32 / high fp32-matmul precision is enabled ONLY for this generation
+        # and restored on exit, so it never leaks into the samplers of other
+        # nodes running in the same process (see engine.qwen_matmul_precision).
+        with engine.qwen_matmul_precision(), rng_context:
             if "generator" not in gen_params:
                 torch.manual_seed(seed)
                 for idx in rng_cuda_devices:

@@ -76,7 +76,9 @@ class TS_WAN_SafeResize(IO.ComfyNode):
             internal_quality = _QUALITY_MAP[quality]
 
         b, h, w, c = image.shape
-        assert c in [3, 4], f"Expected 3 or 4 channels, got {c}"
+        # Explicit validation (a bare ``assert`` is stripped under ``python -O``).
+        if c not in (3, 4):
+            raise ValueError(f"[TS WAN Safe Resize] Expected 3 or 4 channels, got {c}.")
 
         aspect_key = cls.detect_aspect_ratio(w, h)
         target_w, target_h = _WAN_RESOLUTIONS[internal_quality][aspect_key]
@@ -88,8 +90,11 @@ class TS_WAN_SafeResize(IO.ComfyNode):
             pil_img = Image.fromarray(img_np)
 
             scale = max(target_w / w, target_h / h)
-            new_w = int(w * scale)
-            new_h = int(h * scale)
+            # round(), and floor at the target: int() truncation could yield
+            # target_w - 1 for the limiting axis, making the crop box start at
+            # -1 and leaving a 1px black seam on the edge.
+            new_w = max(target_w, int(round(w * scale)))
+            new_h = max(target_h, int(round(h * scale)))
             resized = pil_img.resize((new_w, new_h), resample=Image.LANCZOS)
 
             left = (new_w - target_w) // 2

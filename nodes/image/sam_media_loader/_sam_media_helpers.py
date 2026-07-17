@@ -46,6 +46,8 @@ import numpy as np
 import torch
 from aiohttp import web
 
+from ..._shared import make_route_registrars, resolve_prompt_server
+
 try:
     from PIL import Image
 except ImportError:  # pragma: no cover - Pillow ships with ComfyUI
@@ -98,44 +100,8 @@ def _log_error(message: str) -> None:
     LOGGER.error("%s %s", LOG_PREFIX, message)
 
 
-def _resolve_prompt_server():
-    if server is None:
-        _log_warning("PromptServer unavailable. HTTP routes disabled.")
-        return None
-    try:
-        return server.PromptServer.instance
-    except Exception as exc:
-        _log_warning(f"PromptServer init failed. HTTP routes disabled: {exc}")
-        return None
-
-
-_PROMPT_SERVER = _resolve_prompt_server()
-
-
-def _register_post(path: str):
-    def decorator(func):
-        if _PROMPT_SERVER is None:
-            return func
-        try:
-            _PROMPT_SERVER.routes.post(path)(func)
-        except Exception as exc:
-            _log_warning(f"Failed to register POST route '{path}': {exc}")
-        return func
-
-    return decorator
-
-
-def _register_get(path: str):
-    def decorator(func):
-        if _PROMPT_SERVER is None:
-            return func
-        try:
-            _PROMPT_SERVER.routes.get(path)(func)
-        except Exception as exc:
-            _log_warning(f"Failed to register GET route '{path}': {exc}")
-        return func
-
-    return decorator
+_PROMPT_SERVER = resolve_prompt_server(_log_warning)
+_register_get, _register_post = make_route_registrars(_PROMPT_SERVER, _log_warning)
 
 
 def _normalize_path(path: str) -> str:

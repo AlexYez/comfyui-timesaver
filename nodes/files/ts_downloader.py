@@ -121,10 +121,19 @@ class TS_DownloadFilesNode(IO.ComfyNode):
                 IO.Boolean.Input("skip_existing", default=True),
                 IO.Boolean.Input("verify_size", default=True),
                 IO.Int.Input("chunk_size_kb", default=4096, min=1, max=65536, step=1),
-                IO.String.Input("hf_token", default="", multiline=False, optional=True),
+                IO.String.Input(
+                    "hf_token", default="", multiline=False, optional=True,
+                    tooltip="HuggingFace token for gated repos. WARNING: stored in the workflow JSON as plain text — do not share a file that contains it.",
+                ),
                 IO.String.Input("hf_domain", default="huggingface.co, hf-mirror.com", multiline=False, optional=True),
-                IO.String.Input("proxy_url", default="", multiline=False, optional=True),
-                IO.String.Input("modelscope_token", default="", multiline=False, optional=True),
+                IO.String.Input(
+                    "proxy_url", default="", multiline=False, optional=True,
+                    tooltip="Proxy URL (may contain credentials). WARNING: stored in the workflow JSON as plain text — do not share a file that contains it.",
+                ),
+                IO.String.Input(
+                    "modelscope_token", default="", multiline=False, optional=True,
+                    tooltip="ModelScope token. WARNING: stored in the workflow JSON as plain text — do not share a file that contains it.",
+                ),
                 IO.Boolean.Input("unzip_after_download", default=False, optional=True),
                 IO.Boolean.Input("enable", default=True, optional=True),
                 IO.Combo.Input("integrity_mode", options=["hf_sha256_auto", "size_only"], default="hf_sha256_auto", optional=True),
