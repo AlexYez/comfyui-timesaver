@@ -49,7 +49,10 @@ const DEFAULT_NODE_SIZE = [320, 300];
 const MIN_NODE_WIDTH = 240;
 const MIN_NODE_HEIGHT = 220;
 const PAD = 10;
-const TOOLBAR_H = 34;
+// Tall enough for the shared launcher button (which is bigger than the
+// node's old inline button) plus breathing room, so it cannot spill over
+// the artboard drawn underneath.
+const TOOLBAR_H = 44;
 const SUMMARY_H = 22;
 
 function ensureStyles() {
