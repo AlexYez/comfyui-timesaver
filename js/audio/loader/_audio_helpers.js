@@ -68,7 +68,7 @@ function ensureStyles() {
     const style = document.createElement("style");
     style.id = STYLE_ID;
     style.textContent = `
-.ts-audio-loader{width:100%;height:100%;min-height:0;box-sizing:border-box;padding:8px;display:flex;flex-direction:column;gap:8px;color:var(--ts-text);font-family:var(--ts-font);background:radial-gradient(circle at top right,var(--ts-accent-soft),transparent 32%),var(--ts-bg);border:1px solid var(--ts-border-soft);border-radius:12px;overflow:hidden}
+.ts-audio-loader{width:100%;height:100%;min-height:0;box-sizing:border-box;padding:8px;display:flex;flex-direction:column;gap:8px;color:var(--ts-text);font-family:var(--ts-font);background:var(--ts-bg);border:1px solid var(--ts-border-soft);border-radius:12px;overflow:hidden}
 .ts-audio-loader__topbar{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap}
 .ts-audio-loader__actions{display:flex;gap:6px;flex-wrap:wrap}
 .ts-audio-loader__button{border:1px solid var(--ts-border);background:var(--ts-surface);color:var(--ts-text);border-radius:8px;padding:6px 12px;font-size:var(--ts-fs-sm);cursor:pointer}
