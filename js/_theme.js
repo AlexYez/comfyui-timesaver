@@ -294,6 +294,37 @@ export function getOpenInterfaceLabel(lang) {
     return OPEN_INTERFACE_LABELS[key] || OPEN_INTERFACE_LABELS.en;
 }
 
+/**
+ * Resolve a per-node UI dictionary against the current ComfyUI locale.
+ *
+ * Usage (top of a node module):
+ *     const STRINGS = {
+ *         en: { load: "Load Image", uploading: "Uploading..." },
+ *         ru: { load: "Загрузить изображение", uploading: "Загрузка..." },
+ *     };
+ *     // inside setup(): resolve lazily so the settings store is ready
+ *     const L = pickLocaleStrings(STRINGS);
+ *     button.textContent = L.load;
+ *
+ * Merging is PER KEY: a key missing from the active language falls back to its
+ * English value instead of rendering `undefined`. Values may be strings or
+ * functions (for parameterised messages: `saved: (name) => \`Saved: ${name}\``).
+ *
+ * A locale change reloads the ComfyUI page (verified behaviour of the Vue
+ * frontend), so resolving once per setup is correct — no live re-render needed.
+ * Log messages (console.*, logging) stay English by project convention; this
+ * helper is for USER-VISIBLE text only.
+ *
+ * @template {Record<string, any>} T
+ * @param {{en: T} & Record<string, Partial<T>>} dictionaries
+ * @returns {T}
+ */
+export function pickLocaleStrings(dictionaries) {
+    const base = dictionaries?.en || {};
+    const localized = dictionaries?.[getUiLanguage()] || {};
+    return { ...base, ...localized };
+}
+
 function launchIconSvg() {
     // Material Design "open_in_full".
     return `<svg viewBox="0 0 24 24"><path d="M21 11V3h-8l3.29 3.29-10 10L3 13v8h8l-3.29-3.29 10-10z"/></svg>`;

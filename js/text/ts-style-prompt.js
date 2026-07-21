@@ -1,7 +1,7 @@
 import { app } from "/scripts/app.js";
 import { api } from "/scripts/api.js";
 
-import { TS_UI_CLASS, ensureThemeStyles } from "../_theme.js";
+import { TS_UI_CLASS, ensureThemeStyles, pickLocaleStrings } from "../_theme.js";
 
 const EXTENSION_ID = "ts_suite.style_prompt_selector";
 const NODE_NAME = "TS_StylePromptSelector";
@@ -18,6 +18,21 @@ const MAX_NODE_HEIGHT = 900;
 const MIN_WIDGET_HEIGHT = 180;
 const WIDGET_CHROME_HEIGHT = 56;
 const GRID_GAP = 4;
+
+const STRINGS = {
+    en: {
+        searchPlaceholder: "Search styles...",
+        loading: "Loading styles...",
+        noStyles: "No styles found.",
+        loadFailed: "Failed to load styles.",
+    },
+    ru: {
+        searchPlaceholder: "Поиск стилей...",
+        loading: "Загрузка стилей...",
+        noStyles: "Стили не найдены.",
+        loadFailed: "Не удалось загрузить стили.",
+    },
+};
 
 function ensureStyles() {
     // Colours come from the shared --ts-* tokens (js/_theme.js); keep this
@@ -215,6 +230,7 @@ function setupStyleSelector(node) {
     }
     removeDomWidgets(node);
 
+    const L = pickLocaleStrings(STRINGS);
     ensureStyles();
     hideStyleWidget(node);
     sanitizeNodeSize(node);
@@ -234,14 +250,14 @@ function setupStyleSelector(node) {
     const search = document.createElement("input");
     search.type = "text";
     search.className = "ts-style-search";
-    search.placeholder = "Search styles...";
+    search.placeholder = L.searchPlaceholder;
 
     const grid = document.createElement("div");
     grid.className = "ts-style-grid";
 
     const empty = document.createElement("div");
     empty.className = "ts-style-empty";
-    empty.textContent = "Loading styles...";
+    empty.textContent = L.loading;
 
     container.appendChild(search);
     container.appendChild(grid);
@@ -390,13 +406,13 @@ function setupStyleSelector(node) {
         grid.innerHTML = "";
 
         if (state.loading) {
-            empty.textContent = "Loading styles...";
+            empty.textContent = L.loading;
             empty.style.display = "block";
             return;
         }
 
         if (!state.filtered.length) {
-            empty.textContent = "No styles found.";
+            empty.textContent = L.noStyles;
             empty.style.display = "block";
             return;
         }
@@ -485,7 +501,7 @@ function setupStyleSelector(node) {
         } catch (error) {
             state.loading = false;
             state.filtered = [];
-            empty.textContent = "Failed to load styles.";
+            empty.textContent = L.loadFailed;
             empty.style.display = "block";
             console.error("[TS Style Prompt Selector] Failed to load styles:", error);
         }

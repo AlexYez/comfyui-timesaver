@@ -1,7 +1,7 @@
 import { app } from "/scripts/app.js";
 import { api } from "/scripts/api.js";
 
-import { TS_UI_CLASS, ensureThemeStyles } from "../_theme.js";
+import { TS_UI_CLASS, ensureThemeStyles, pickLocaleStrings } from "../_theme.js";
 
 const TS_PROMPT_BUILDER_EXTENSION_ID = "ts.prompt_builder";
 const TS_PROMPT_BUILDER_NODE_NAME = "TS_PromptBuilder";
@@ -10,6 +10,21 @@ const TS_PROMPT_BUILDER_STYLE_ID = "ts-prompt-builder-styles";
 const TS_PROMPT_BUILDER_NODE_WIDTH = 260;
 const TS_PROMPT_BUILDER_NODE_HEIGHT = 340;
 const TS_PROMPT_BUILDER_WIDGET_HEIGHT = 260;
+
+const STRINGS = {
+    en: {
+        hint: "Click to toggle. Drag handle to reorder.",
+        loading: "Loading prompt blocks...",
+        noFiles: "No prompt files found.",
+        loadFailed: "Failed to load prompt files.",
+    },
+    ru: {
+        hint: "Клик — вкл/выкл. Тяните за ручку для порядка.",
+        loading: "Загрузка блоков промпта...",
+        noFiles: "Файлы промптов не найдены.",
+        loadFailed: "Не удалось загрузить файлы промптов.",
+    },
+};
 
 function tsEnsureStyles() {
     // Colours come from the shared --ts-* tokens (js/_theme.js); keep this
@@ -189,6 +204,7 @@ function tsSetupPromptBuilder(tsNode) {
         return;
     }
 
+    const L = pickLocaleStrings(STRINGS);
     tsEnsureStyles();
     tsHideConfigWidget(tsNode);
 
@@ -205,11 +221,11 @@ function tsSetupPromptBuilder(tsNode) {
 
     const tsHint = document.createElement("div");
     tsHint.className = "ts-prompt-hint";
-    tsHint.textContent = "Click to toggle. Drag handle to reorder.";
+    tsHint.textContent = L.hint;
 
     const tsEmpty = document.createElement("div");
     tsEmpty.className = "ts-prompt-empty";
-    tsEmpty.textContent = "Loading prompt blocks...";
+    tsEmpty.textContent = L.loading;
 
     tsContainer.appendChild(tsList);
     tsContainer.appendChild(tsHint);
@@ -335,13 +351,13 @@ function tsSetupPromptBuilder(tsNode) {
         tsList.innerHTML = "";
 
         if (tsState.loading) {
-            tsEmpty.textContent = "Loading prompt blocks...";
+            tsEmpty.textContent = L.loading;
             tsEmpty.style.display = "block";
             return;
         }
 
         if (!tsState.items.length) {
-            tsEmpty.textContent = "No prompt files found.";
+            tsEmpty.textContent = L.noFiles;
             tsEmpty.style.display = "block";
             return;
         }
@@ -448,7 +464,7 @@ function tsSetupPromptBuilder(tsNode) {
             tsState.loading = false;
             tsState.items = [];
             tsRenderList();
-            tsEmpty.textContent = "Failed to load prompt files.";
+            tsEmpty.textContent = L.loadFailed;
             tsEmpty.style.display = "block";
             console.error("[TS Prompt Builder] Failed to load prompt files:", tsError);
         }

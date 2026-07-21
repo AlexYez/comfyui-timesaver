@@ -4,7 +4,7 @@
 import { app } from "/scripts/app.js";
 import { api } from "/scripts/api.js";
 
-import { TS_UI_CLASS, createOpenInterfaceButton, ensureThemeStyles } from "../../_theme.js";
+import { TS_UI_CLASS, createOpenInterfaceButton, ensureThemeStyles, pickLocaleStrings } from "../../_theme.js";
 
 export const NODE_NAME = "TS_LamaCleanup";
 const ROUTE_BASE = "/ts_lama_cleanup";
@@ -61,6 +61,111 @@ const MAX_HISTORY = 30;
 // CSS variables cannot be used.
 const MASK_TINT = "rgba(84, 74, 112, 1)";
 const MEDIA_UPLOAD_ACCEPT = ["image/*", ".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tif", ".tiff"].join(",");
+
+// User-visible UI strings. Resolved via pickLocaleStrings inside
+// setupLamaCleanup (per-key ru→en fallback; locale switch reloads the page,
+// so resolving once per setup call is correct). Log messages (console.*)
+// intentionally stay English per project convention.
+const STRINGS = {
+    en: {
+        clickToBegin: "Click “Load Image” to begin.",
+        processing: "Processing...",
+        load: "Load Image",
+        save: "Save Image",
+        saveTitle: "Save the current cleaned image into the ComfyUI output folder.",
+        reset: "Reset",
+        resetTitle: "Discard local edits and restart from the loaded image.",
+        undoTitle: "Undo last edit",
+        redoTitle: "Redo edit",
+        brush: "Brush",
+        fit: "Fit",
+        fitTitle: "Fit image to view (resets zoom and pan).",
+        oneToOne: "1:1",
+        oneToOneTitle: "Show image at 1:1 (one image pixel per screen pixel).",
+        settingsTitle: "Advanced settings",
+        closeTitle: "Close editor (Esc)",
+        advanced: "Advanced",
+        maxResolutionField: "Max LaMa resolution",
+        maskPaddingField: "Mask context padding",
+        featherField: "Composite feather",
+        dropHint: "Drop image to load",
+        openEditorTitle: "Open the fullscreen editor",
+        noImageYet: "No image yet — drop or paste one here.",
+        imageFallback: "image",
+        stepTag: (index, total) => ` • step ${index}/${total}`,
+        undone: "Reverted previous edit.",
+        redone: "Restored next edit.",
+        failedLoadImage: "Failed to load image.",
+        failedPreview: (message) => `Failed to load image preview: ${message}`,
+        uploadFailed: "Upload failed.",
+        uploadingImage: "Uploading image...",
+        uploading: "Uploading...",
+        failedWorkingCopy: "Failed to prepare working copy.",
+        imageLoaded: "Image loaded. Paint defects with the brush.",
+        loadingModel: "Loading model...",
+        inpainting: "Inpainting...",
+        sendingRegion: "Sending region to LaMa...",
+        inpaintFailed: "Inpaint request failed.",
+        cleanupApplied: "Cleanup applied. Paint another area or press Save.",
+        nothingToSave: "Nothing to save yet.",
+        saveFailed: "Save failed.",
+        savedTo: (name) => `Saved to output: ${name}`,
+        unknownFile: "unknown",
+        noSource: "No source image to reset to.",
+        filePickerFailed: (message) => `Failed to open file picker: ${message}`,
+        loadedSaved: "Loaded saved working state.",
+        ready: "Ready — open the interface to load an image.",
+    },
+    ru: {
+        clickToBegin: "Нажмите «Загрузить изображение», чтобы начать.",
+        processing: "Обработка...",
+        load: "Загрузить изображение",
+        save: "Сохранить изображение",
+        saveTitle: "Сохранить текущее очищенное изображение в папку output ComfyUI.",
+        reset: "Сброс",
+        resetTitle: "Отменить локальные правки и начать заново с загруженного изображения.",
+        undoTitle: "Отменить последнюю правку",
+        redoTitle: "Вернуть правку",
+        brush: "Кисть",
+        fit: "Вписать",
+        fitTitle: "Вписать изображение в окно (сбрасывает масштаб и смещение).",
+        oneToOne: "1:1",
+        oneToOneTitle: "Показать изображение 1:1 (один пиксель изображения на пиксель экрана).",
+        settingsTitle: "Расширенные настройки",
+        closeTitle: "Закрыть редактор (Esc)",
+        advanced: "Расширенные",
+        maxResolutionField: "Макс. разрешение LaMa",
+        maskPaddingField: "Отступ контекста маски",
+        featherField: "Растушёвка склейки",
+        dropHint: "Отпустите изображение для загрузки",
+        openEditorTitle: "Открыть полноэкранный редактор",
+        noImageYet: "Изображения пока нет — перетащите или вставьте сюда.",
+        imageFallback: "изображение",
+        stepTag: (index, total) => ` • шаг ${index}/${total}`,
+        undone: "Предыдущая правка отменена.",
+        redone: "Следующая правка восстановлена.",
+        failedLoadImage: "Не удалось загрузить изображение.",
+        failedPreview: (message) => `Не удалось загрузить превью изображения: ${message}`,
+        uploadFailed: "Не удалось загрузить файл.",
+        uploadingImage: "Загрузка изображения...",
+        uploading: "Загрузка...",
+        failedWorkingCopy: "Не удалось подготовить рабочую копию.",
+        imageLoaded: "Изображение загружено. Закрашивайте дефекты кистью.",
+        loadingModel: "Загрузка модели...",
+        inpainting: "Ретушь...",
+        sendingRegion: "Отправка области в LaMa...",
+        inpaintFailed: "Запрос ретуши не выполнен.",
+        cleanupApplied: "Очистка применена. Закрасьте другую область или нажмите «Сохранить».",
+        nothingToSave: "Пока нечего сохранять.",
+        saveFailed: "Не удалось сохранить.",
+        savedTo: (name) => `Сохранено в output: ${name}`,
+        unknownFile: "неизвестно",
+        noSource: "Нет исходного изображения для сброса.",
+        filePickerFailed: (message) => `Не удалось открыть выбор файла: ${message}`,
+        loadedSaved: "Загружено сохранённое рабочее состояние.",
+        ready: "Готово — откройте интерфейс, чтобы загрузить изображение.",
+    },
+};
 
 function ensureStyles() {
     // Shared tokens and component classes (buttons, sliders, panels, modal
@@ -276,6 +381,9 @@ function makeSlider({ min, max, step, value, onInput, className }) {
 
 export function setupLamaCleanup(node) {
     if (!node || typeof node.addDOMWidget !== "function") return;
+    // Resolved here (not at module level) so the ComfyUI settings store is
+    // ready when the locale is read.
+    const L = pickLocaleStrings(STRINGS);
     if (typeof node._tsLamaCleanupCleanup === "function") {
         try { node._tsLamaCleanupCleanup(); } catch {}
     }
@@ -386,14 +494,14 @@ export function setupLamaCleanup(node) {
 
     const empty = document.createElement("div");
     empty.className = "ts-lama__empty";
-    empty.textContent = "Click “Load Image” to begin.";
+    empty.textContent = L.clickToBegin;
 
     const overlay = document.createElement("div");
     overlay.className = "ts-ui-scrim ts-lama__overlay";
     const spinner = document.createElement("div");
     spinner.className = "ts-ui-spinner";
     const overlayLabel = document.createElement("div");
-    overlayLabel.textContent = "Processing...";
+    overlayLabel.textContent = L.processing;
     overlay.append(spinner, overlayLabel);
 
     // Toolbar
@@ -404,23 +512,23 @@ export function setupLamaCleanup(node) {
     leftGroup.className = "ts-ui-group";
     const loadButton = document.createElement("button");
     loadButton.className = "ts-ui-btn ts-ui-btn--primary";
-    loadButton.textContent = "Load Image";
+    loadButton.textContent = L.load;
     const saveButton = document.createElement("button");
     saveButton.className = "ts-ui-btn";
-    saveButton.textContent = "Save Image";
-    saveButton.title = "Save the current cleaned image into the ComfyUI output folder.";
+    saveButton.textContent = L.save;
+    saveButton.title = L.saveTitle;
     const resetButton = document.createElement("button");
     resetButton.className = "ts-ui-btn";
-    resetButton.textContent = "Reset";
-    resetButton.title = "Discard local edits and restart from the loaded image.";
+    resetButton.textContent = L.reset;
+    resetButton.title = L.resetTitle;
     const undoButton = document.createElement("button");
     undoButton.className = "ts-ui-btn ts-ui-btn--icon";
-    undoButton.title = "Undo last edit";
+    undoButton.title = L.undoTitle;
     undoButton.innerHTML = undoIconSvg();
     undoButton.disabled = true;
     const redoButton = document.createElement("button");
     redoButton.className = "ts-ui-btn ts-ui-btn--icon";
-    redoButton.title = "Redo edit";
+    redoButton.title = L.redoTitle;
     redoButton.innerHTML = redoIconSvg();
     redoButton.disabled = true;
     leftGroup.append(loadButton, saveButton, resetButton, undoButton, redoButton);
@@ -429,7 +537,7 @@ export function setupLamaCleanup(node) {
     brushGroup.className = "ts-ui-group ts-lama__group--brush";
     const brushLabel = document.createElement("div");
     brushLabel.className = "ts-ui-label";
-    brushLabel.textContent = "Brush";
+    brushLabel.textContent = L.brush;
     // Brush slider uses a log scale (1 → 400 px in image-pixels) so small,
     // detail brushes get half the slider range instead of being squeezed into
     // the first few percent. The underlying widget stores the literal image-px
@@ -457,23 +565,23 @@ export function setupLamaCleanup(node) {
     zoomGroup.className = "ts-ui-group";
     const fitButton = document.createElement("button");
     fitButton.className = "ts-ui-btn";
-    fitButton.textContent = "Fit";
-    fitButton.title = "Fit image to view (resets zoom and pan).";
+    fitButton.textContent = L.fit;
+    fitButton.title = L.fitTitle;
     const oneToOneButton = document.createElement("button");
     oneToOneButton.className = "ts-ui-btn";
-    oneToOneButton.textContent = "1:1";
-    oneToOneButton.title = "Show image at 1:1 (one image pixel per screen pixel).";
+    oneToOneButton.textContent = L.oneToOne;
+    oneToOneButton.title = L.oneToOneTitle;
     zoomGroup.append(fitButton, oneToOneButton);
 
     const rightGroup = document.createElement("div");
     rightGroup.className = "ts-ui-group";
     const settingsButton = document.createElement("button");
     settingsButton.className = "ts-ui-btn ts-ui-btn--icon";
-    settingsButton.title = "Advanced settings";
+    settingsButton.title = L.settingsTitle;
     settingsButton.innerHTML = gearIconSvg();
     const closeButton = document.createElement("button");
     closeButton.className = "ts-ui-btn ts-ui-btn--icon";
-    closeButton.title = "Close editor (Esc)";
+    closeButton.title = L.closeTitle;
     closeButton.innerHTML = closeIconSvg();
     rightGroup.append(settingsButton, closeButton);
 
@@ -485,7 +593,7 @@ export function setupLamaCleanup(node) {
 
     const settingsTitle = document.createElement("div");
     settingsTitle.className = "ts-ui-title";
-    settingsTitle.textContent = "Advanced";
+    settingsTitle.textContent = L.advanced;
     settings.append(settingsTitle);
 
     function buildField(name, options, getter, setter, widgetKey) {
@@ -517,9 +625,9 @@ export function setupLamaCleanup(node) {
     }
 
     settings.append(
-        buildField("Max LaMa resolution", { min: 128, max: 2048, step: 64 }, () => state.maxResolution, (next) => { state.maxResolution = next; }, INPUT_MAX_RESOLUTION),
-        buildField("Mask context padding", { min: 0, max: 512, step: 8 }, () => state.maskPadding, (next) => { state.maskPadding = next; }, INPUT_MASK_PADDING),
-        buildField("Composite feather", { min: 0, max: 64, step: 1 }, () => state.feather, (next) => { state.feather = next; }, INPUT_FEATHER),
+        buildField(L.maxResolutionField, { min: 128, max: 2048, step: 64 }, () => state.maxResolution, (next) => { state.maxResolution = next; }, INPUT_MAX_RESOLUTION),
+        buildField(L.maskPaddingField, { min: 0, max: 512, step: 8 }, () => state.maskPadding, (next) => { state.maskPadding = next; }, INPUT_MASK_PADDING),
+        buildField(L.featherField, { min: 0, max: 64, step: 1 }, () => state.feather, (next) => { state.feather = next; }, INPUT_FEATHER),
     );
 
     // Status bar
@@ -527,7 +635,7 @@ export function setupLamaCleanup(node) {
     statusBar.className = "ts-ui-statusbar ts-lama__statusbar";
     const statusText = document.createElement("div");
     statusText.className = "ts-ui-ellipsis";
-    statusText.textContent = "Click “Load Image” to begin.";
+    statusText.textContent = L.clickToBegin;
     const statusMeta = document.createElement("div");
     statusMeta.className = "ts-ui-meta";
     statusBar.append(statusText, statusMeta);
@@ -546,7 +654,7 @@ export function setupLamaCleanup(node) {
     // Visual hint shown while dragging an image file over the node.
     const dropHint = document.createElement("div");
     dropHint.className = "ts-ui-drop";
-    dropHint.textContent = "Drop image to load";
+    dropHint.textContent = L.dropHint;
 
     container.append(canvas, empty, overlay, toolbar, settings, statusBar, fileInput, cursorElement, dropHint);
 
@@ -560,7 +668,7 @@ export function setupLamaCleanup(node) {
 
     const shellPreview = document.createElement("div");
     shellPreview.className = "ts-lama-shell__preview";
-    shellPreview.title = "Open the fullscreen editor";
+    shellPreview.title = L.openEditorTitle;
     const shellImage = document.createElement("img");
     shellImage.alt = "";
     shellImage.style.display = "none";
@@ -569,7 +677,7 @@ export function setupLamaCleanup(node) {
     // No button label quoted here: the launcher right below already carries
     // the wording, and it is localised — embedding it produced a mixed-language
     // sentence.
-    shellPlaceholder.textContent = "No image yet — drop or paste one here.";
+    shellPlaceholder.textContent = L.noImageYet;
     shellPreview.append(shellImage, shellPlaceholder);
 
     const shellRow = document.createElement("div");
@@ -645,7 +753,7 @@ export function setupLamaCleanup(node) {
         shellStatus.classList.toggle("is-success", kind === "success");
     }
 
-    function setOverlay(active, label = "Processing...") {
+    function setOverlay(active, label = L.processing) {
         overlay.classList.toggle("is-active", Boolean(active));
         overlayLabel.textContent = label;
     }
@@ -678,13 +786,13 @@ export function setupLamaCleanup(node) {
     function updateMeta() {
         const filename = state.sourcePath ? state.sourcePath.split(/[\\/]/).pop().replace(/\s\[input\]$/i, "") : "";
         const historyTag = state.history.length > 1
-            ? ` • step ${state.historyIndex + 1}/${state.history.length}`
+            ? L.stepTag(state.historyIndex + 1, state.history.length)
             : "";
         const zoomTag = state.image && state.scale > 0
             ? ` • ${Math.round(state.scale * 100)}%`
             : "";
         statusMeta.textContent = state.imageWidth && state.imageHeight
-            ? `${filename || "image"} • ${state.imageWidth} × ${state.imageHeight}${historyTag}${zoomTag}`
+            ? `${filename || L.imageFallback} • ${state.imageWidth} × ${state.imageHeight}${historyTag}${zoomTag}`
             : filename || "";
         empty.style.display = state.image ? "none" : "flex";
         // Hide the native cursor only while an image is loaded (we draw our
@@ -757,13 +865,13 @@ export function setupLamaCleanup(node) {
     async function doUndo() {
         if (state.historyIndex <= 0) return;
         await goToHistory(state.historyIndex - 1);
-        setStatus("Reverted previous edit.", "info");
+        setStatus(L.undone, "info");
     }
 
     async function doRedo() {
         if (state.historyIndex >= state.history.length - 1) return;
         await goToHistory(state.historyIndex + 1);
-        setStatus("Restored next edit.", "info");
+        setStatus(L.redone, "info");
     }
 
     function ensureMaskCanvasSize() {
@@ -1065,7 +1173,7 @@ export function setupLamaCleanup(node) {
                 return;
             }
             image.onload = () => resolve();
-            image.onerror = () => reject(new Error("Failed to load image."));
+            image.onerror = () => reject(new Error(L.failedLoadImage));
         });
         return image;
     }
@@ -1104,7 +1212,7 @@ export function setupLamaCleanup(node) {
             updateMeta();
             requestRedraw();
         } catch (error) {
-            setStatus(`Failed to load image preview: ${error?.message || error}`, "error");
+            setStatus(L.failedPreview(error?.message || error), "error");
         }
     }
 
@@ -1114,18 +1222,18 @@ export function setupLamaCleanup(node) {
         form.append("type", "input");
         const response = await api.fetchApi("/upload/image", { method: "POST", body: form });
         const payload = await response.json();
-        if (!response.ok) throw new Error(payload?.error || payload?.message || "Upload failed.");
+        if (!response.ok) throw new Error(payload?.error || payload?.message || L.uploadFailed);
         return buildAnnotatedPath(payload);
     }
 
     async function chooseSourceFile(file) {
         if (!file) return;
         state.isProcessing = false;
-        setOverlay(true, "Uploading image...");
-        setStatus("Uploading...", "info");
+        setOverlay(true, L.uploadingImage);
+        setStatus(L.uploading, "info");
         try {
             const annotated = await uploadFile(file);
-            if (!annotated) throw new Error("Upload failed.");
+            if (!annotated) throw new Error(L.uploadFailed);
             state.sourcePath = annotated;
             state.workingPath = "";
             setWidgetValue(node, INPUT_SOURCE_PATH, annotated);
@@ -1133,7 +1241,7 @@ export function setupLamaCleanup(node) {
             clearMask();
             await seedWorkingFile();
         } catch (error) {
-            setStatus(error?.message || "Failed to load image.", "error");
+            setStatus(error?.message || L.failedLoadImage, "error");
         } finally {
             setOverlay(false);
             updateMeta();
@@ -1150,7 +1258,7 @@ export function setupLamaCleanup(node) {
             });
             const payload = await response.json().catch(() => ({}));
             if (!response.ok) {
-                setStatus(payload?.error || "Failed to prepare working copy.", "error");
+                setStatus(payload?.error || L.failedWorkingCopy, "error");
                 return;
             }
             state.workingPath = String(payload?.working_path || "");
@@ -1158,9 +1266,9 @@ export function setupLamaCleanup(node) {
             // Fresh source resets history to a single entry.
             resetHistoryTo(state.workingPath);
             await refreshImage({ clearMask: true });
-            setStatus("Image loaded. Paint defects with the brush.", "info");
+            setStatus(L.imageLoaded, "info");
         } catch (error) {
-            setStatus(error?.message || "Failed to prepare working copy.", "error");
+            setStatus(error?.message || L.failedWorkingCopy, "error");
         }
     }
 
@@ -1181,11 +1289,11 @@ export function setupLamaCleanup(node) {
                 const status = await response.json();
                 if (status?.loading) {
                     state.isModelLoading = true;
-                    setOverlay(true, String(status?.message || "Loading model..."));
+                    setOverlay(true, String(status?.message || L.loadingModel));
                 } else if (status?.loaded) {
                     if (state.isModelLoading) {
                         state.isModelLoading = false;
-                        setOverlay(true, "Inpainting...");
+                        setOverlay(true, L.inpainting);
                     }
                 }
             } catch {}
@@ -1209,8 +1317,8 @@ export function setupLamaCleanup(node) {
         if (isMaskEmpty()) return;
         state.isProcessing = true;
         updateMeta();
-        setOverlay(true, "Inpainting...");
-        setStatus("Sending region to LaMa...", "info");
+        setOverlay(true, L.inpainting);
+        setStatus(L.sendingRegion, "info");
         pollModelStatusWhileProcessing();
         try {
             const maskDataUrl = await maskCanvasToDataUrl();
@@ -1229,15 +1337,15 @@ export function setupLamaCleanup(node) {
             });
             const payload = await response.json().catch(() => ({}));
             if (!response.ok) {
-                throw new Error(payload?.error || "Inpaint request failed.");
+                throw new Error(payload?.error || L.inpaintFailed);
             }
             state.workingPath = String(payload?.working_path || "");
             setWidgetValue(node, INPUT_WORKING_PATH, state.workingPath);
             pushHistory(state.workingPath);
             await refreshImage({ clearMask: true });
-            setStatus("Cleanup applied. Paint another area or press Save.", "success");
+            setStatus(L.cleanupApplied, "success");
         } catch (error) {
-            setStatus(error?.message || "Inpaint request failed.", "error");
+            setStatus(error?.message || L.inpaintFailed, "error");
         } finally {
             state.isProcessing = false;
             state.isModelLoading = false;
@@ -1253,7 +1361,7 @@ export function setupLamaCleanup(node) {
 
     async function saveToOutput() {
         if (!state.workingPath) {
-            setStatus("Nothing to save yet.", "error");
+            setStatus(L.nothingToSave, "error");
             return;
         }
         if (state.isProcessing) return;
@@ -1269,18 +1377,18 @@ export function setupLamaCleanup(node) {
             });
             const payload = await response.json().catch(() => ({}));
             if (!response.ok) {
-                throw new Error(payload?.error || "Save failed.");
+                throw new Error(payload?.error || L.saveFailed);
             }
-            setStatus(`Saved to output: ${payload?.filename || payload?.saved_path || "unknown"}`, "success");
+            setStatus(L.savedTo(payload?.filename || payload?.saved_path || L.unknownFile), "success");
         } catch (error) {
-            setStatus(error?.message || "Save failed.", "error");
+            setStatus(error?.message || L.saveFailed, "error");
         }
     }
 
     async function resetToSource() {
         if (state.isProcessing) return;
         if (!state.sourcePath) {
-            setStatus("No source image to reset to.", "error");
+            setStatus(L.noSource, "error");
             return;
         }
         try {
@@ -1607,7 +1715,7 @@ export function setupLamaCleanup(node) {
             fileInput.click();
         } catch (error) {
             console.error("[TS Lama Cleanup] fileInput.click failed:", error);
-            setStatus(`Failed to open file picker: ${error?.message || error}`, "error");
+            setStatus(L.filePickerFailed(error?.message || error), "error");
         }
     });
     saveButton.addEventListener("click", (event) => { event.stopPropagation(); saveToOutput(); });
@@ -1799,11 +1907,11 @@ export function setupLamaCleanup(node) {
     requestAnimationFrame(async () => {
         if (state.workingPath) {
             await refreshImage({ clearMask: true });
-            setStatus("Loaded saved working state.", "info");
+            setStatus(L.loadedSaved, "info");
         } else if (state.sourcePath) {
             await seedWorkingFile();
         } else {
-            setStatus("Ready — open the interface to load an image.", "info");
+            setStatus(L.ready, "info");
         }
     });
 }

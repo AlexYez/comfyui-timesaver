@@ -11,7 +11,7 @@
 import { app } from "/scripts/app.js";
 import { api } from "/scripts/api.js";
 
-import { TS_UI_CLASS, ensureThemeStyles } from "../../_theme.js";
+import { TS_UI_CLASS, ensureThemeStyles, pickLocaleStrings } from "../../_theme.js";
 
 export const NODE_NAME = "TS_SAM_MediaLoader";
 const ROUTE_BASE = "/ts_sam_media_loader";
@@ -62,6 +62,73 @@ const MEDIA_UPLOAD_ACCEPT = [
     ".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tif", ".tiff", ".gif",
     ".mp4", ".mov", ".webm", ".mkv", ".avi", ".m4v", ".mpg", ".mpeg",
 ].join(",");
+
+// User-visible strings. Resolved per setup call via pickLocaleStrings so the
+// active ComfyUI locale is honoured; console.* messages stay English.
+const STRINGS = {
+    en: {
+        emptyTitle: 'Click "Load Image/Video"',
+        emptyHintPoints: "Left-click — positive point (green) · Shift / Right-click — negative point (red)",
+        emptyHintRemove: "Click on an existing point to remove it.",
+        uploading: "Uploading...",
+        loadButton: "Load Image/Video",
+        clearButton: "Clear Points",
+        clearButtonTitle: "Remove every positive and negative point.",
+        pillConnect: "Connect SAM3 model",
+        pillConnectTitle: "Connect a SAM3 checkpoint loader to the 'model' input to see the live mask overlay.",
+        pillAddPoints: "Add points to preview",
+        pillRunning: "Running SAM3...",
+        pillPreviewFailed: "Preview failed",
+        pillNoMask: "No mask",
+        pillReady: "SAM3 preview",
+        pillLoadingModel: "Loading SAM3 model...",
+        statusStart: "Load an image or a video to start placing SAM3 points.",
+        dropHint: "Drop image or video to load",
+        statusFilePicker: (message) => `Failed to open file picker: ${message}`,
+        statusCleared: "Cleared all points.",
+        statusUploadingFile: (name) => `Uploading ${name}...`,
+        statusUploadFailed: "Upload failed.",
+        statusLoaded: (noun, sizeNote) => `Loaded ${noun}${sizeNote}. Left-click — positive, Shift / right-click — negative.`,
+        nounImage: "image",
+        nounVideo: "video",
+        statusRestoreFailed: "Could not restore previous media.",
+        statusRestored: "Restored media from workflow.",
+        metaFrames: (count) => `${count} frames`,
+        metaFps: (fps) => `${fps} fps`,
+        metaImage: "image",
+    },
+    ru: {
+        emptyTitle: "Нажмите «Загрузить изображение/видео»",
+        emptyHintPoints: "ЛКМ — позитивная точка (зелёная) · Shift / ПКМ — негативная точка (красная)",
+        emptyHintRemove: "Клик по существующей точке удаляет её.",
+        uploading: "Загрузка...",
+        loadButton: "Загрузить изображение/видео",
+        clearButton: "Очистить точки",
+        clearButtonTitle: "Удалить все позитивные и негативные точки.",
+        pillConnect: "Подключите модель SAM3",
+        pillConnectTitle: "Подключите загрузчик чекпойнта SAM3 ко входу 'model', чтобы видеть маску в реальном времени.",
+        pillAddPoints: "Добавьте точки для предпросмотра",
+        pillRunning: "SAM3 выполняется...",
+        pillPreviewFailed: "Ошибка предпросмотра",
+        pillNoMask: "Маска не найдена",
+        pillReady: "Предпросмотр SAM3",
+        pillLoadingModel: "Загрузка модели SAM3...",
+        statusStart: "Загрузите изображение или видео, чтобы расставить точки SAM3.",
+        dropHint: "Перетащите изображение или видео",
+        statusFilePicker: (message) => `Не удалось открыть выбор файла: ${message}`,
+        statusCleared: "Все точки удалены.",
+        statusUploadingFile: (name) => `Загрузка ${name}...`,
+        statusUploadFailed: "Ошибка загрузки.",
+        statusLoaded: (noun, sizeNote) => `Загружено: ${noun}${sizeNote}. ЛКМ — позитивная, Shift / ПКМ — негативная.`,
+        nounImage: "изображение",
+        nounVideo: "видео",
+        statusRestoreFailed: "Не удалось восстановить медиа.",
+        statusRestored: "Медиа восстановлено из workflow.",
+        metaFrames: (count) => `${count} кадров`,
+        metaFps: (fps) => `${fps} fps`,
+        metaImage: "изображение",
+    },
+};
 
 function ensureStyles() {
     // Shared tokens come from js/_theme.js; the rules below are layout only.
@@ -199,7 +266,7 @@ function formatBytes(bytes) {
     return `${value.toFixed(value >= 10 ? 0 : 1)} ${units[unit]}`;
 }
 
-function buildMetaLine(state) {
+function buildMetaLine(state, L) {
     const parts = [];
     if (state.sourcePath) {
         const filename = state.sourcePath
@@ -212,10 +279,10 @@ function buildMetaLine(state) {
         parts.push(`${state.imageWidth}×${state.imageHeight}`);
     }
     if (state.mediaType === "video") {
-        if (state.frameCount > 0) parts.push(`${state.frameCount} frames`);
-        if (state.fps > 0) parts.push(`${state.fps.toFixed(2)} fps`);
+        if (state.frameCount > 0) parts.push(L.metaFrames(state.frameCount));
+        if (state.fps > 0) parts.push(L.metaFps(state.fps.toFixed(2)));
     } else if (state.mediaType === "image") {
-        parts.push("image");
+        parts.push(L.metaImage);
     }
     return parts.join(" · ");
 }
@@ -227,6 +294,7 @@ function dataUrlForBase64(b64) {
 
 export function setupSamMediaLoader(node) {
     if (!node || typeof node.addDOMWidget !== "function") return;
+    const L = pickLocaleStrings(STRINGS);
     if (typeof node._tsSamMediaLoaderCleanup === "function") {
         try { node._tsSamMediaLoaderCleanup(); } catch {}
     }
@@ -292,9 +360,9 @@ export function setupSamMediaLoader(node) {
     empty.className = "ts-sml__empty";
     empty.innerHTML = `
         <div>
-            <div style="font-weight:600;font-size:13px;margin-bottom:8px;">Click "Load Image/Video"</div>
-            <div style="color:var(--ts-muted);">Left-click — positive point (green) · Shift / Right-click — negative point (red)</div>
-            <div style="color:var(--ts-muted);margin-top:4px;">Click on an existing point to remove it.</div>
+            <div style="font-weight:600;font-size:13px;margin-bottom:8px;">${L.emptyTitle}</div>
+            <div style="color:var(--ts-muted);">${L.emptyHintPoints}</div>
+            <div style="color:var(--ts-muted);margin-top:4px;">${L.emptyHintRemove}</div>
         </div>
     `;
 
@@ -303,7 +371,7 @@ export function setupSamMediaLoader(node) {
     const spinner = document.createElement("div");
     spinner.className = "ts-sml__spinner";
     const overlayLabel = document.createElement("div");
-    overlayLabel.textContent = "Uploading...";
+    overlayLabel.textContent = L.uploading;
     overlay.append(spinner, overlayLabel);
 
     // Toolbar
@@ -315,12 +383,12 @@ export function setupSamMediaLoader(node) {
 
     const loadButton = document.createElement("button");
     loadButton.className = "ts-sml__btn ts-sml__btn--primary";
-    loadButton.textContent = "Load Image/Video";
+    loadButton.textContent = L.loadButton;
 
     const clearButton = document.createElement("button");
     clearButton.className = "ts-sml__btn ts-sml__btn--danger";
-    clearButton.textContent = "Clear Points";
-    clearButton.title = "Remove every positive and negative point.";
+    clearButton.textContent = L.clearButton;
+    clearButton.title = L.clearButtonTitle;
     clearButton.disabled = true;
 
     leftGroup.append(loadButton, clearButton);
@@ -353,9 +421,9 @@ export function setupSamMediaLoader(node) {
     const previewPillDot = document.createElement("span");
     previewPillDot.className = "ts-sml__preview-dot";
     const previewPillText = document.createElement("span");
-    previewPillText.textContent = "Connect SAM3 model";
+    previewPillText.textContent = L.pillConnect;
     previewPill.append(previewPillDot, previewPillText);
-    previewPill.title = "Connect a SAM3 checkpoint loader to the 'model' input to see the live mask overlay.";
+    previewPill.title = L.pillConnectTitle;
 
     toolbar.append(leftGroup, toolbarSpacer, counterGroup, previewPill);
 
@@ -364,7 +432,7 @@ export function setupSamMediaLoader(node) {
     statusBar.className = "ts-sml__statusbar";
     const statusText = document.createElement("div");
     statusText.className = "ts-sml__statusbar-text";
-    statusText.textContent = "Load an image or a video to start placing SAM3 points.";
+    statusText.textContent = L.statusStart;
     const statusMeta = document.createElement("div");
     statusMeta.className = "ts-sml__statusbar-meta";
     statusBar.append(statusText, statusMeta);
@@ -377,7 +445,7 @@ export function setupSamMediaLoader(node) {
 
     const dropHint = document.createElement("div");
     dropHint.className = "ts-sml__drop-hint";
-    dropHint.textContent = "Drop image or video to load";
+    dropHint.textContent = L.dropHint;
 
     container.append(canvas, empty, overlay, toolbar, statusBar, fileInput, dropHint);
 
@@ -418,7 +486,7 @@ export function setupSamMediaLoader(node) {
         statusBar.classList.toggle("is-success", kind === "success");
     }
 
-    function setOverlay(active, label = "Uploading...") {
+    function setOverlay(active, label = L.uploading) {
         overlay.classList.toggle("is-active", Boolean(active));
         overlayLabel.textContent = label;
     }
@@ -430,7 +498,7 @@ export function setupSamMediaLoader(node) {
     }
 
     function updateMeta() {
-        const meta = buildMetaLine(state);
+        const meta = buildMetaLine(state, L);
         statusMeta.textContent = meta;
         statusMeta.title = meta;
         empty.style.display = state.image ? "none" : "flex";
@@ -532,23 +600,23 @@ export function setupSamMediaLoader(node) {
         if (!hasPoints || !state.image || !state.sourcePath) {
             clearPreviewMask();
             if (!state.checkpointName) {
-                setPreviewPill("disconnected", "Connect SAM3 model");
+                setPreviewPill("disconnected", L.pillConnect);
             } else {
-                setPreviewPill("idle", "Add points to preview");
+                setPreviewPill("idle", L.pillAddPoints);
             }
             return;
         }
         refreshCheckpointDetection();
         if (!state.checkpointName) {
             clearPreviewMask();
-            setPreviewPill("disconnected", "Connect SAM3 model");
+            setPreviewPill("disconnected", L.pillConnect);
             return;
         }
         const signature = buildPreviewSignature();
         if (signature === state.lastRequestSignature && state.previewMask) return;
         state.lastRequestSignature = signature;
         const requestId = ++state.previewRequestId;
-        setPreviewPill("loading", "Running SAM3...");
+        setPreviewPill("loading", L.pillRunning);
 
         try {
             const response = await api.fetchApi(`${ROUTE_BASE}/preview_mask`, {
@@ -566,27 +634,27 @@ export function setupSamMediaLoader(node) {
             if (requestId !== state.previewRequestId) return; // stale
             if (!response.ok || !payload?.ok) {
                 if (payload?.needs_model) {
-                    setPreviewPill("disconnected", "Connect SAM3 model");
+                    setPreviewPill("disconnected", L.pillConnect);
                     clearPreviewMask();
                     return;
                 }
-                setPreviewPill("error", payload?.error || "Preview failed");
+                setPreviewPill("error", payload?.error || L.pillPreviewFailed);
                 return;
             }
             if (!payload.mask_b64) {
                 clearPreviewMask();
-                setPreviewPill("ready", "No mask");
+                setPreviewPill("ready", L.pillNoMask);
                 return;
             }
             const img = await loadImageElement(`data:image/png;base64,${payload.mask_b64}`);
             if (requestId !== state.previewRequestId) return;
             state.previewMask = img;
             state.previewMaskKey = `${requestId}:${state.positivePoints.length}p${state.negativePoints.length}n`;
-            setPreviewPill("ready", "SAM3 preview");
+            setPreviewPill("ready", L.pillReady);
             requestRedraw();
         } catch (error) {
             if (requestId !== state.previewRequestId) return;
-            setPreviewPill("error", error?.message || "Preview failed");
+            setPreviewPill("error", error?.message || L.pillPreviewFailed);
         }
     }
 
@@ -595,7 +663,7 @@ export function setupSamMediaLoader(node) {
             const response = await api.fetchApi(`${ROUTE_BASE}/sam3_status`);
             const status = await response.json().catch(() => ({}));
             if (status?.loading) {
-                setPreviewPill("loading", status?.message || "Loading SAM3 model...");
+                setPreviewPill("loading", status?.message || L.pillLoadingModel);
             }
         } catch {
             // Best-effort; the pill just stays as is until the next call.
@@ -835,7 +903,7 @@ export function setupSamMediaLoader(node) {
             fileInput.click();
         } catch (error) {
             console.error("[TS SAM Media Loader] fileInput.click failed:", error);
-            setStatus(`Failed to open file picker: ${error?.message || error}`, "error");
+            setStatus(L.statusFilePicker(error?.message || error), "error");
         }
     });
 
@@ -851,7 +919,7 @@ export function setupSamMediaLoader(node) {
         state.lastRequestSignature = "";
         persistPoints();
         requestRedraw();
-        setStatus("Cleared all points.", "info");
+        setStatus(L.statusCleared, "info");
     });
 
     fileInput.addEventListener("change", async () => {
@@ -997,8 +1065,8 @@ export function setupSamMediaLoader(node) {
         if (!file) return;
         if (state.isUploading) return;
         state.isUploading = true;
-        setOverlay(true, "Uploading...");
-        setStatus(`Uploading ${file.name}...`, "info");
+        setOverlay(true, L.uploading);
+        setStatus(L.statusUploadingFile(file.name), "info");
         updateMeta();
         try {
             const form = new FormData();
@@ -1009,7 +1077,7 @@ export function setupSamMediaLoader(node) {
             });
             const payload = await response.json().catch(() => ({}));
             if (!response.ok || !payload?.ok) {
-                throw new Error(payload?.error || "Upload failed.");
+                throw new Error(payload?.error || L.statusUploadFailed);
             }
             // Drop previous points — they were tied to the old image dimensions.
             state.positivePoints = [];
@@ -1020,10 +1088,10 @@ export function setupSamMediaLoader(node) {
             await applyFirstFrame(payload.first_frame_b64);
             const sizeTag = formatBytes(payload.size_bytes || 0);
             const sizeNote = sizeTag ? ` (${sizeTag})` : "";
-            const noun = state.mediaType === "video" ? "video" : "image";
-            setStatus(`Loaded ${noun}${sizeNote}. Left-click — positive, Shift / right-click — negative.`, "success");
+            const noun = state.mediaType === "video" ? L.nounVideo : L.nounImage;
+            setStatus(L.statusLoaded(noun, sizeNote), "success");
         } catch (error) {
-            setStatus(error?.message || "Upload failed.", "error");
+            setStatus(error?.message || L.statusUploadFailed, "error");
         } finally {
             state.isUploading = false;
             setOverlay(false);
@@ -1044,14 +1112,14 @@ export function setupSamMediaLoader(node) {
             });
             const payload = await response.json().catch(() => ({}));
             if (!response.ok || !payload?.ok) {
-                setStatus(payload?.error || "Could not restore previous media.", "error");
+                setStatus(payload?.error || L.statusRestoreFailed, "error");
                 return;
             }
             applyPreviewPayload(payload);
             await applyFirstFrame(payload.first_frame_b64);
-            setStatus("Restored media from workflow.", "info");
+            setStatus(L.statusRestored, "info");
         } catch (error) {
-            setStatus(error?.message || "Could not restore previous media.", "error");
+            setStatus(error?.message || L.statusRestoreFailed, "error");
         } finally {
             state.pendingProbe = false;
         }
@@ -1137,7 +1205,7 @@ export function setupSamMediaLoader(node) {
     refreshCheckpointDetection();
     setPreviewPill(
         state.checkpointName ? "idle" : "disconnected",
-        state.checkpointName ? "Add points to preview" : "Connect SAM3 model",
+        state.checkpointName ? L.pillAddPoints : L.pillConnect,
     );
     requestRedraw();
 

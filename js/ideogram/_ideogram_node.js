@@ -266,10 +266,13 @@ export function setupIdeogramNode(node) {
         const styleObj = (state.presets.styles || []).find((s) => s.id === state.design.style?.preset_id);
         const styleName = styleObj ? localizedName(styleObj, lang) : (state.design.style?.preset_id || "—");
         setOpenInterfaceLabel(editBtn, undefined, t("tip_edit_design", getUiLanguage()));
-        canvas.title = t("tip_node_canvas", lang);
+        // Tooltips are chrome, not document content — they follow the UI
+        // locale like the launcher (the summary counts keep the design's
+        // own language: they describe the document).
+        canvas.title = t("tip_node_canvas", getUiLanguage());
         const dims = dimsFromAspectMp(state.design.aspect_ratio, state.design.megapixels);
         aspectPill.textContent = `${dims.w}×${dims.h}`;
-        aspectPill.title = t("tip_dims_pill", lang);
+        aspectPill.title = t("tip_dims_pill", getUiLanguage());
         summary.innerHTML = "";
         const main = document.createElement("span");
         main.style.cssText = "min-width:0;overflow:hidden;text-overflow:ellipsis";

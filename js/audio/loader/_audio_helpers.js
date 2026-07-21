@@ -6,7 +6,7 @@
 import { app } from "/scripts/app.js";
 import { api } from "/scripts/api.js";
 
-import { TS_UI_CLASS, ensureThemeStyles, getThemeColors } from "../../_theme.js";
+import { TS_UI_CLASS, ensureThemeStyles, getThemeColors, pickLocaleStrings } from "../../_theme.js";
 
 export const LOADER_NODE_NAME = "TS_AudioLoader";
 export const PREVIEW_NODE_NAME = "TS_AudioPreview";
@@ -36,6 +36,87 @@ const MEDIA_UPLOAD_ACCEPT = [
     ".mp3", ".mp4", ".mpeg", ".mpg", ".mts", ".ogg", ".opus", ".ts", ".wav", ".webm", ".wma",
     "audio/*", "video/*",
 ].join(",");
+
+// User-visible strings. Resolved per setup call via pickLocaleStrings so the
+// active ComfyUI locale is honoured; console.* messages stay English.
+const STRINGS = {
+    en: {
+        statusPreviewIdle: "Connect audio and queue once to preview.",
+        statusChooseFile: "Choose file to upload or record from microphone.",
+        loadAudio: "Load Audio",
+        startRecord: "Start Record",
+        stopRecord: "Stop Record",
+        resetCrop: "Reset Crop",
+        zoomOutTitle: "Zoom out (Ctrl+Wheel down)",
+        zoomInTitle: "Zoom in (Ctrl+Wheel up)",
+        fit: "Fit",
+        fitTitle: "Reset zoom and pan to full waveform",
+        noFile: "No file selected",
+        loopTitle: "Loop playback",
+        cropFull: "Crop: full",
+        cropRange: (from, to, length) => `Crop: ${from} -> ${to} | Length: ${length}`,
+        loadingWaveform: "Loading waveform...",
+        statsAudio: "audio",
+        statsVideoAudio: "video audio",
+        statsHz: (value) => `${value} Hz`,
+        statsCh: (value) => `${value} ch`,
+        dragHint: "Drag on waveform to crop. Double-click resets full range.",
+        mediaLoaded: "Media loaded.",
+        incomingAudio: "Incoming audio",
+        metadataFailed: "Failed to load media metadata.",
+        mediaFailed: "Failed to load media.",
+        uploadingMedia: "Uploading media...",
+        uploadFailed: "Upload failed.",
+        uploadMediaFailed: "Failed to upload media.",
+        processingRecording: "Processing recording...",
+        micRecordingName: "Microphone Recording.wav",
+        recordingSaved: "Recording saved. Loading waveform...",
+        recordingUploadFailed: "Failed to upload recording.",
+        recording: "Recording from microphone...",
+        micDenied: "Microphone access denied.",
+        recordingSaveFailed: "Failed to save recording.",
+        autoplayBlocked: "Browser blocked autoplay. Press play again.",
+        codecUnavailable: "Browser preview is unavailable for this codec, but ffmpeg loading still works.",
+    },
+    ru: {
+        statusPreviewIdle: "Подключите аудио и запустите очередь один раз для предпросмотра.",
+        statusChooseFile: "Выберите файл или запишите с микрофона.",
+        loadAudio: "Загрузить аудио",
+        startRecord: "Записать",
+        stopRecord: "Остановить запись",
+        resetCrop: "Сбросить обрезку",
+        zoomOutTitle: "Отдалить (Ctrl+колесо вниз)",
+        zoomInTitle: "Приблизить (Ctrl+колесо вверх)",
+        fit: "Вписать",
+        fitTitle: "Сбросить масштаб и показать всю волну",
+        noFile: "Файл не выбран",
+        loopTitle: "Зациклить воспроизведение",
+        cropFull: "Обрезка: весь файл",
+        cropRange: (from, to, length) => `Обрезка: ${from} -> ${to} | Длина: ${length}`,
+        loadingWaveform: "Загрузка волны...",
+        statsAudio: "аудио",
+        statsVideoAudio: "аудио из видео",
+        statsHz: (value) => `${value} Гц`,
+        statsCh: (value) => `${value} кан.`,
+        dragHint: "Тяните по волне, чтобы обрезать. Двойной клик — весь диапазон.",
+        mediaLoaded: "Медиа загружено.",
+        incomingAudio: "Входящее аудио",
+        metadataFailed: "Не удалось загрузить метаданные медиа.",
+        mediaFailed: "Не удалось загрузить медиа.",
+        uploadingMedia: "Загрузка медиа...",
+        uploadFailed: "Ошибка загрузки.",
+        uploadMediaFailed: "Не удалось загрузить медиа.",
+        processingRecording: "Обработка записи...",
+        micRecordingName: "Запись с микрофона.wav",
+        recordingSaved: "Запись сохранена. Загрузка волны...",
+        recordingUploadFailed: "Не удалось загрузить запись.",
+        recording: "Идёт запись с микрофона...",
+        micDenied: "Нет доступа к микрофону.",
+        recordingSaveFailed: "Не удалось сохранить запись.",
+        autoplayBlocked: "Браузер заблокировал автовоспроизведение. Нажмите play ещё раз.",
+        codecUnavailable: "Браузер не может воспроизвести этот кодек, но загрузка через ffmpeg работает.",
+    },
+};
 function makeCursor(svg, fallback = "ew-resize") {
     return `url("data:image/svg+xml;utf8,${encodeURIComponent(svg)}") 12 12, ${fallback}`;
 }
@@ -179,6 +260,7 @@ function isMediaPlaying(media) {
 
 export function setupAudioLoader(node) {
     if (!node || typeof node.addDOMWidget !== "function") return;
+    const L = pickLocaleStrings(STRINGS);
     const nodeName = node.type || node.comfyClass || "";
     const isPreviewNode = nodeName === PREVIEW_NODE_NAME;
     if (typeof node._tsAudioLoaderCleanup === "function") node._tsAudioLoaderCleanup();
@@ -206,7 +288,7 @@ export function setupAudioLoader(node) {
         cropEnd: readPersistedNumber(node, INPUT_CROP_END, -1),
         isLooping: Boolean(node.properties?.ts_audio_loader_loop ?? false),
         duration: 0, sampleRate: 0, channels: 0, mediaType: "audio", peaks: [], filename: "",
-        status: isPreviewNode ? "Connect audio and queue once to preview." : "Choose file to upload or record from microphone.",
+        status: isPreviewNode ? L.statusPreviewIdle : L.statusChooseFile,
         isLoading: false, isRecording: false, recordingObjectUrl: null,
         dragMode: null, dragAnchorSeconds: 0, dragStartLeft: 0, dragStartRight: 0, rafId: 0, mediaReady: false,
         zoom: clamp(Number(node.properties?.[PROP_ZOOM]) || 1, MIN_ZOOM, MAX_ZOOM),
@@ -224,15 +306,15 @@ export function setupAudioLoader(node) {
     if (!isPreviewNode) {
         loadButton = document.createElement("button");
         loadButton.className = "ts-audio-loader__button is-primary";
-        loadButton.textContent = "Load Audio";
+        loadButton.textContent = L.loadAudio;
         recordButton = document.createElement("button");
         recordButton.className = "ts-audio-loader__button";
-        recordButton.textContent = "Start Record";
+        recordButton.textContent = L.startRecord;
         actions.append(loadButton, recordButton);
     }
     const resetCropButton = document.createElement("button");
     resetCropButton.className = "ts-audio-loader__button";
-    resetCropButton.textContent = "Reset Crop";
+    resetCropButton.textContent = L.resetCrop;
     actions.append(resetCropButton);
 
     const zoomGroup = document.createElement("div");
@@ -241,7 +323,7 @@ export function setupAudioLoader(node) {
     zoomOutButton.type = "button";
     zoomOutButton.className = "ts-audio-loader__zoom-btn";
     zoomOutButton.textContent = "−"; // U+2212 MINUS SIGN
-    zoomOutButton.title = "Zoom out (Ctrl+Wheel down)";
+    zoomOutButton.title = L.zoomOutTitle;
     const zoomLabel = document.createElement("span");
     zoomLabel.className = "ts-audio-loader__zoom-label";
     zoomLabel.textContent = "1.0×"; // U+00D7 MULTIPLICATION SIGN
@@ -249,12 +331,12 @@ export function setupAudioLoader(node) {
     zoomInButton.type = "button";
     zoomInButton.className = "ts-audio-loader__zoom-btn";
     zoomInButton.textContent = "+";
-    zoomInButton.title = "Zoom in (Ctrl+Wheel up)";
+    zoomInButton.title = L.zoomInTitle;
     const zoomFitButton = document.createElement("button");
     zoomFitButton.type = "button";
     zoomFitButton.className = "ts-audio-loader__zoom-btn";
-    zoomFitButton.textContent = "Fit";
-    zoomFitButton.title = "Reset zoom and pan to full waveform";
+    zoomFitButton.textContent = L.fit;
+    zoomFitButton.title = L.fitTitle;
     zoomGroup.append(zoomOutButton, zoomLabel, zoomInButton, zoomFitButton);
     actions.append(zoomGroup);
     topbar.append(actions);
@@ -263,7 +345,7 @@ export function setupAudioLoader(node) {
     meta.className = "ts-audio-loader__meta";
     const fileLabel = document.createElement("div");
     fileLabel.className = "ts-audio-loader__file";
-    fileLabel.textContent = "No file selected";
+    fileLabel.textContent = L.noFile;
     const stats = document.createElement("div");
     stats.className = "ts-audio-loader__stats";
     const statusLabel = document.createElement("div");
@@ -310,14 +392,14 @@ export function setupAudioLoader(node) {
     const loopButton = document.createElement("button");
     loopButton.className = "ts-audio-loader__play";
     loopButton.innerHTML = loopIcon();
-    loopButton.title = "Loop playback";
+    loopButton.title = L.loopTitle;
     const timelineLabel = document.createElement("div");
     timelineLabel.className = "ts-audio-loader__timeline";
     timelineLabel.textContent = "00:00.00 / 00:00.00";
     transport.append(playButton, loopButton, timelineLabel);
     const cropLabel = document.createElement("div");
     cropLabel.className = "ts-audio-loader__crop";
-    cropLabel.textContent = "Crop: full";
+    cropLabel.textContent = L.cropFull;
     bottom.append(transport, document.createElement("div"), cropLabel);
     container.append(topbar, meta, waveWrap, scrollbar, bottom);
 
@@ -463,7 +545,7 @@ export function setupAudioLoader(node) {
     function updateModeButtons() {
         if (!recordButton) return;
         recordButton.classList.toggle("is-danger", state.isRecording);
-        recordButton.textContent = state.isRecording ? "Stop Record" : "Start Record";
+        recordButton.textContent = state.isRecording ? L.stopRecord : L.startRecord;
     }
     function updateCanvasCursor(pointerSeconds = null) {
         if (state.dragMode === "left" || state.dragMode === "right") {
@@ -477,22 +559,22 @@ export function setupAudioLoader(node) {
         canvas.style.cursor = DEFAULT_WAVE_CURSOR;
     }
     function updateText() {
-        fileLabel.textContent = state.filename || "No file selected";
+        fileLabel.textContent = state.filename || L.noFile;
         statusLabel.textContent = state.status;
-        empty.textContent = state.isLoading ? "Loading waveform..." : state.status;
+        empty.textContent = state.isLoading ? L.loadingWaveform : state.status;
         empty.style.display = state.peaks.length > 0 ? "none" : "flex";
         const activeMedia = getActiveMedia();
         timelineLabel.textContent = `${formatSeconds(activeMedia?.currentTime || 0)} / ${formatSeconds(state.duration)}`;
         const bounds = getSelectionBounds();
         const cropDuration = Math.max(0, bounds.right - bounds.left);
         cropLabel.textContent = state.duration > 0
-            ? `Crop: ${formatSeconds(bounds.left)} -> ${formatSeconds(bounds.right)} | Length: ${formatSeconds(cropDuration)}`
-            : "Crop: full";
+            ? L.cropRange(formatSeconds(bounds.left), formatSeconds(bounds.right), formatSeconds(cropDuration))
+            : L.cropFull;
         stats.innerHTML = "";
         const items = [];
-        if (state.mediaType) items.push(state.mediaType === "video" ? "video audio" : "audio");
-        if (state.sampleRate) items.push(`${state.sampleRate} Hz`);
-        if (state.channels) items.push(`${state.channels} ch`);
+        if (state.mediaType) items.push(state.mediaType === "video" ? L.statsVideoAudio : L.statsAudio);
+        if (state.sampleRate) items.push(L.statsHz(state.sampleRate));
+        if (state.channels) items.push(L.statsCh(state.channels));
         if (state.duration) items.push(formatSeconds(state.duration));
         items.forEach((item) => {
             const span = document.createElement("span");
@@ -532,9 +614,9 @@ export function setupAudioLoader(node) {
         state.sampleRate = Number(payload?.sample_rate || 0);
         state.channels = Number(payload?.channels || 0);
         state.peaks = Array.isArray(payload?.peaks) ? payload.peaks : [];
-        state.filename = payload?.filename || (mediaPath ? mediaPath.split("/").pop() : "") || "Incoming audio";
+        state.filename = payload?.filename || (mediaPath ? mediaPath.split("/").pop() : "") || L.incomingAudio;
         state.mediaType = payload?.media_type || "audio";
-        state.status = state.peaks.length > 0 ? "Drag on waveform to crop. Double-click resets full range." : "Media loaded.";
+        state.status = state.peaks.length > 0 ? L.dragHint : L.mediaLoaded;
         state.mediaReady = Boolean(mediaPath);
         if (!mediaPath) {
             audioEl.removeAttribute("src");
@@ -716,7 +798,7 @@ export function setupAudioLoader(node) {
             state.sampleRate = 0;
             state.channels = 0;
             state.filename = "";
-            state.status = isPreviewNode ? "Connect audio and queue once to preview." : "Choose file to upload or record from microphone.";
+            state.status = isPreviewNode ? L.statusPreviewIdle : L.statusChooseFile;
             state.mediaType = "audio";
             state.mediaReady = false;
             audioEl.removeAttribute("src");
@@ -730,12 +812,12 @@ export function setupAudioLoader(node) {
             return;
         }
         state.isLoading = true;
-        state.status = "Loading waveform...";
+        state.status = L.loadingWaveform;
         updateText();
         try {
             const response = await api.fetchApi(`${ROUTE_BASE}/metadata?filepath=${encodeURIComponent(filepath)}`);
             const payload = await response.json();
-            if (!response.ok) throw new Error(payload?.error || "Failed to load media metadata.");
+            if (!response.ok) throw new Error(payload?.error || L.metadataFailed);
             applyMediaPayload(payload, { persist: false });
         } catch (error) {
             state.peaks = [];
@@ -743,7 +825,7 @@ export function setupAudioLoader(node) {
             state.sampleRate = 0;
             state.channels = 0;
             state.filename = filepath.split("/").pop() || filepath;
-            state.status = error?.message || "Failed to load media.";
+            state.status = error?.message || L.mediaFailed;
         } finally {
             state.isLoading = false;
             updateZoomControls();
@@ -765,18 +847,18 @@ export function setupAudioLoader(node) {
         form.append("type", "input");
         const response = await api.fetchApi("/upload/image", { method: "POST", body: form });
         const payload = await response.json();
-        if (!response.ok) throw new Error(payload?.error || payload?.message || "Upload failed.");
+        if (!response.ok) throw new Error(payload?.error || payload?.message || L.uploadFailed);
         return buildAnnotatedPath(payload);
     }
     async function chooseSourceFile(file) {
         if (!fileInput) return;
         if (!file) return;
         state.isLoading = true;
-        state.status = "Uploading media...";
+        state.status = L.uploadingMedia;
         updateText();
         try {
             const uploadedPath = await uploadSelectedSource(file);
-            if (!uploadedPath) throw new Error("Upload failed.");
+            if (!uploadedPath) throw new Error(L.uploadFailed);
             state.mode = "load";
             state.sourcePath = uploadedPath;
             state.recordedPath = "";
@@ -788,7 +870,7 @@ export function setupAudioLoader(node) {
             syncWidgets();
             await fetchMetadata(state.sourcePath);
         } catch (error) {
-            state.status = error?.message || "Failed to upload media.";
+            state.status = error?.message || L.uploadMediaFailed;
             updateText();
         } finally {
             fileInput.value = "";
@@ -883,7 +965,7 @@ export function setupAudioLoader(node) {
         state.recordingObjectUrl = objectUrl;
         state.mediaType = "audio";
         state.filename = filename;
-        state.status = "Processing recording...";
+        state.status = L.processingRecording;
         state.mediaReady = true;
         audioEl.src = objectUrl;
         audioEl.load();
@@ -895,7 +977,7 @@ export function setupAudioLoader(node) {
             state.sampleRate = Number(decodedBuffer.sampleRate || 0);
             state.channels = Number(decodedBuffer.numberOfChannels || 0);
             state.peaks = buildPeaksFromAudioBuffer(decodedBuffer);
-            state.status = "Drag on waveform to crop. Double-click resets full range.";
+            state.status = L.dragHint;
             state.cropStart = 0;
             state.cropEnd = -1;
             state.zoom = MIN_ZOOM;
@@ -906,7 +988,7 @@ export function setupAudioLoader(node) {
             updateText();
             drawWaveform();
         } catch {
-            state.status = "Recording saved. Loading waveform...";
+            state.status = L.recordingSaved;
             updateText();
         }
     }
@@ -924,7 +1006,7 @@ export function setupAudioLoader(node) {
         form.append("audio", blob, filename);
         const response = await api.fetchApi(`${ROUTE_BASE}/upload_recording`, { method: "POST", body: form });
         const payload = await response.json();
-        if (!response.ok) throw new Error(payload?.error || "Failed to upload recording.");
+        if (!response.ok) throw new Error(payload?.error || L.recordingUploadFailed);
         return payload?.path || "";
     }
     async function toggleRecording() {
@@ -945,7 +1027,7 @@ export function setupAudioLoader(node) {
                         decodedBuffer = await decodeAudioBlob(blob);
                         uploadBlob = audioBufferToWavBlob(decodedBuffer);
                     } catch {}
-                    await previewRecording(uploadBlob, "Microphone Recording.wav", decodedBuffer);
+                    await previewRecording(uploadBlob, L.micRecordingName, decodedBuffer);
                     const savedPath = await uploadRecording(uploadBlob, "recording.wav");
                     if (savedPath) {
                         state.mode = "record";
@@ -957,17 +1039,17 @@ export function setupAudioLoader(node) {
                         await fetchMetadata(savedPath);
                     }
                 } catch (error) {
-                    state.status = error?.message || "Failed to save recording.";
+                    state.status = error?.message || L.recordingSaveFailed;
                     updateText();
                 }
             });
             mediaRecorder.start();
             state.isRecording = true;
-            state.status = "Recording from microphone...";
+            state.status = L.recording;
             updateText();
         } catch (error) {
             state.isRecording = false;
-            state.status = error?.message || "Microphone access denied.";
+            state.status = error?.message || L.micDenied;
             updateText();
         }
     }
@@ -985,7 +1067,7 @@ export function setupAudioLoader(node) {
             pauseAllMedia();
         } else {
             if (media.currentTime < bounds.left || media.currentTime > bounds.right) media.currentTime = bounds.left;
-            try { await media.play(); scheduleDrawLoop(); } catch { state.status = "Browser blocked autoplay. Press play again."; }
+            try { await media.play(); scheduleDrawLoop(); } catch { state.status = L.autoplayBlocked; }
         }
         updateText();
     }
@@ -1185,7 +1267,7 @@ export function setupAudioLoader(node) {
             media.currentTime = bounds.left;
             media.play().catch(() => {});
         });
-        media.addEventListener("error", () => { state.status = "Browser preview is unavailable for this codec, but ffmpeg loading still works."; updateText(); });
+        media.addEventListener("error", () => { state.status = L.codecUnavailable; updateText(); });
     });
     const previousOnResize = node.onResize;
     node.onResize = function onResize() {

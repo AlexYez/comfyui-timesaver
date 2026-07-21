@@ -1,13 +1,28 @@
 import { app } from "/scripts/app.js";
 import { api } from "/scripts/api.js";
 
-import { TS_UI_CLASS, ensureThemeStyles } from "../_theme.js";
+import { TS_UI_CLASS, ensureThemeStyles, pickLocaleStrings } from "../_theme.js";
 
 // --- Constants & Identity ---
 const EXTENSION_ID = "ts.animationpreview";
 const NODE_NAME = "TS_Animation_Preview";
 const UI_KEY = "ts_animation_preview";
 const STYLE_ID = "ts-animation-preview-styles";
+
+const STRINGS = {
+    en: {
+        noMedia: "No Media",
+        errorLoading: "Error Loading Media",
+        playPause: "Play/Pause",
+        muteUnmute: "Mute/Unmute",
+    },
+    ru: {
+        noMedia: "Нет медиа",
+        errorLoading: "Ошибка загрузки медиа",
+        playPause: "Воспроизведение/пауза",
+        muteUnmute: "Звук вкл/выкл",
+    },
+};
 
 // Layout Configuration
 const MIN_NODE_WIDTH = 300;
@@ -174,6 +189,7 @@ function setupAnimationPreview(node) {
     if (!node || node._tsAnimPreviewInit) return;
     node._tsAnimPreviewInit = true;
 
+    const L = pickLocaleStrings(STRINGS);
     ensureStyles();
 
     // Node configuration
@@ -199,7 +215,7 @@ function setupAnimationPreview(node) {
     // Placeholder
     const placeholder = document.createElement("div");
     placeholder.className = "ts-anim-preview__placeholder";
-    placeholder.textContent = "No Media";
+    placeholder.textContent = L.noMedia;
 
     // -- Custom Controls --
     const controls = document.createElement("div");
@@ -209,7 +225,7 @@ function setupAnimationPreview(node) {
     const playBtn = document.createElement("button");
     playBtn.className = "ts-anim-preview__btn";
     playBtn.innerHTML = ICONS.pause; // Default is playing -> show pause icon
-    playBtn.title = "Play/Pause";
+    playBtn.title = L.playPause;
 
     // Seek Bar
     const seekSlider = document.createElement("input");
@@ -224,7 +240,7 @@ function setupAnimationPreview(node) {
     const volBtn = document.createElement("button");
     volBtn.className = "ts-anim-preview__btn";
     volBtn.innerHTML = ICONS.volumeOff; // Default is muted -> show mute icon
-    volBtn.title = "Mute/Unmute";
+    volBtn.title = L.muteUnmute;
 
     // Assemble
     controls.appendChild(playBtn);
@@ -346,7 +362,7 @@ function setupAnimationPreview(node) {
     video.addEventListener("error", () => {
         video.hidden = true;
         placeholder.hidden = false;
-        placeholder.textContent = "Error Loading Media";
+        placeholder.textContent = L.errorLoading;
         controls.style.display = "none";
     });
 
@@ -401,7 +417,7 @@ function setupAnimationPreview(node) {
             video.load();
             video.hidden = true;
             placeholder.hidden = false;
-            placeholder.textContent = "No Media";
+            placeholder.textContent = L.noMedia;
             controls.style.display = "none";
             return;
         }

@@ -13,7 +13,7 @@
 import { app } from "/scripts/app.js";
 import { api } from "/scripts/api.js";
 
-import { TS_UI_CLASS, ensureThemeStyles } from "../_theme.js";
+import { TS_UI_CLASS, ensureThemeStyles, pickLocaleStrings } from "../_theme.js";
 
 const EXTENSION_ID = "ts.superPrompt";
 const NODE_NAME = "TS_SuperPrompt";
@@ -134,6 +134,120 @@ const STYLE_TEXT = `
 const SVG_ICON_MIC = `<svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 19v3"/></svg>`;
 const SVG_ICON_STOP = `<svg viewBox="0 0 24 24"><rect x="7" y="7" width="10" height="10" rx="1.5" fill="currentColor" stroke="none"/></svg>`;
 const SVG_ICON_IMAGE = `<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="11" r="1.6" fill="currentColor" stroke="none"/><path d="M3 17l5-5 4 4 3-3 6 6"/></svg>`;
+
+// User-visible strings (en is the base; ru overrides per key). Backend-sent
+// messages (WS event ``text`` payloads, server ``error`` fields) are shown
+// as received and are NOT in this table.
+const STRINGS = {
+    en: {
+        attachTitle: "Attach image (drop / paste / click)",
+        attachClearTitle: "Remove image",
+        attachedTitle: (name) => `Attached: ${name} (click × to remove)`,
+        hqTitle: "High Quality voice: Whisper turbo (large-v3 turbo). Off: fast base model.",
+        recordTitle: "Record from the microphone. Click again while recording to stop and transcribe.",
+        aiTitle: "Enhances the text via Huihui-Qwen3.5-2B-abliterated. If an image is attached, it is used as a reference.",
+        presetTitle: "System preset for prompt enhancement.",
+        placeholder: "Prompt. Use the microphone, attach an image and press AI prompt to enhance.",
+        ready: "Ready",
+        stopAndTranscribe: "Stop recording and transcribe",
+        stopModelLoading: "Stop recording (model still loading)",
+        working: "Working...",
+        missingDependency: (dep) => `Missing dependency: ${dep}`,
+        recordIdle: "Record from the microphone",
+        recordModelLoading: "Record (model still loading)",
+        recordModelWillLoad: "Record (model loads on stop)",
+        aiBusyTitle: "AI working...",
+        aiIdleTitle: "Enhance the prompt via AI",
+        voiceModelProgress: (percent) => `Voice model ${percent}%`,
+        workingStatus: "Working",
+        voiceModelReady: "Voice model ready",
+        voiceError: (text) => `Voice error: ${text}`,
+        failed: "failed",
+        aiProgressFallback: "AI Prompt",
+        aiReady: "AI prompt ready",
+        aiError: (text) => `AI error: ${text}`,
+        voiceUnavailable: "Voice unavailable",
+        missingShort: (dep) => `Missing ${dep}`,
+        downloadingModel: (model) => `Downloading ${model}...`,
+        preloadFailed: "preload failed",
+        recognizing: "Recognizing speech...",
+        noSpeech: "No speech detected",
+        speechInserted: "Speech inserted",
+        micUnsupported: "Microphone unsupported",
+        openingMic: "Opening microphone...",
+        recording: "Recording...",
+        micError: (message) => `Mic error: ${message}`,
+        noAudio: "No audio captured",
+        waitingModel: "Waiting for voice model...",
+        modelNotReady: "Voice model not ready",
+        preparingAudio: "Preparing audio...",
+        noPromptOrImage: "No prompt text or image",
+        startingAi: "Starting AI prompt...",
+        enhanceFailed: "enhance failed",
+        imageSuffix: " (image)",
+        emptyAiResult: "Empty AI result",
+        notImageFile: "Not an image file",
+        uploadingImage: "Uploading image...",
+        imageAttached: "Image attached",
+        uploadError: (message) => `Upload error: ${message}`,
+        imageRemoved: "Image removed",
+        finishRecordingHq: "Finish recording before switching HQ",
+    },
+    ru: {
+        attachTitle: "Прикрепить изображение (drop / paste / клик)",
+        attachClearTitle: "Убрать изображение",
+        attachedTitle: (name) => `Прикреплено: ${name} (нажмите ×, чтобы убрать)`,
+        hqTitle: "Качество распознавания: вкл — Whisper turbo (large-v3), выкл — быстрая базовая модель.",
+        recordTitle: "Запись с микрофона. Нажмите ещё раз во время записи, чтобы остановить и распознать.",
+        aiTitle: "Улучшает текст через Huihui-Qwen3.5-2B-abliterated. Если прикреплена картинка — она используется как референс.",
+        presetTitle: "Системный пресет для улучшения промпта.",
+        placeholder: "Промпт. Используйте микрофон, прикрепите картинку и нажмите AI prompt для улучшения.",
+        ready: "Готово",
+        stopAndTranscribe: "Остановить запись и распознать",
+        stopModelLoading: "Остановить запись (модель догружается)",
+        working: "Работаю...",
+        missingDependency: (dep) => `Не хватает зависимости: ${dep}`,
+        recordIdle: "Запись с микрофона",
+        recordModelLoading: "Запись (модель ещё догружается)",
+        recordModelWillLoad: "Запись (модель загрузится при остановке)",
+        aiBusyTitle: "AI работает...",
+        aiIdleTitle: "Улучшить промпт через AI",
+        voiceModelProgress: (percent) => `Голосовая модель ${percent}%`,
+        workingStatus: "Работаю",
+        voiceModelReady: "Голосовая модель готова",
+        voiceError: (text) => `Ошибка голоса: ${text}`,
+        failed: "сбой",
+        aiProgressFallback: "AI промпт",
+        aiReady: "AI промпт готов",
+        aiError: (text) => `Ошибка AI: ${text}`,
+        voiceUnavailable: "Голос недоступен",
+        missingShort: (dep) => `Не хватает ${dep}`,
+        downloadingModel: (model) => `Загрузка ${model}...`,
+        preloadFailed: "сбой загрузки модели",
+        recognizing: "Распознавание речи...",
+        noSpeech: "Речь не распознана",
+        speechInserted: "Текст добавлен",
+        micUnsupported: "Микрофон не поддерживается",
+        openingMic: "Открытие микрофона...",
+        recording: "Запись...",
+        micError: (message) => `Ошибка микрофона: ${message}`,
+        noAudio: "Звук не записан",
+        waitingModel: "Ожидание голосовой модели...",
+        modelNotReady: "Голосовая модель не готова",
+        preparingAudio: "Подготовка аудио...",
+        noPromptOrImage: "Нет текста промпта или изображения",
+        startingAi: "Запуск AI промпта...",
+        enhanceFailed: "сбой улучшения",
+        imageSuffix: " (изображение)",
+        emptyAiResult: "Пустой результат AI",
+        notImageFile: "Файл не является изображением",
+        uploadingImage: "Загрузка изображения...",
+        imageAttached: "Изображение прикреплено",
+        uploadError: (message) => `Ошибка загрузки: ${message}`,
+        imageRemoved: "Изображение убрано",
+        finishRecordingHq: "Завершите запись перед сменой HQ",
+    },
+};
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -285,6 +399,8 @@ function setupSuperPrompt(node) {
         node._tsSuperPromptCleanup();
     }
 
+    const L = pickLocaleStrings(STRINGS);
+
     // Hide every native widget — the DOM widget renders all controls.
     for (const widgetName of [TEXT_WIDGET, HIGH_QUALITY_WIDGET, SYSTEM_PRESET_WIDGET, ATTACHED_IMAGE_WIDGET]) {
         hideNativeWidget(getWidget(node, widgetName));
@@ -305,7 +421,7 @@ function setupSuperPrompt(node) {
     const attachBtn = doc.createElement("button");
     attachBtn.type = "button";
     attachBtn.className = "ts-sp__attach";
-    attachBtn.title = "Прикрепить изображение (drop / paste / click)";
+    attachBtn.title = L.attachTitle;
     const attachIcon = doc.createElement("span");
     attachIcon.className = "ts-sp__attach-icon";
     attachIcon.innerHTML = SVG_ICON_IMAGE;
@@ -315,7 +431,7 @@ function setupSuperPrompt(node) {
     attachClear.type = "button";
     attachClear.className = "ts-sp__attach-clear";
     attachClear.textContent = "×";
-    attachClear.title = "Убрать изображение";
+    attachClear.title = L.attachClearTitle;
     attachBtn.append(attachIcon, attachThumb, attachClear);
 
     // ---- Voice group: HQ toggle + record button (both speak to Whisper). ----
@@ -325,15 +441,13 @@ function setupSuperPrompt(node) {
     const hqToggle = doc.createElement("button");
     hqToggle.type = "button";
     hqToggle.className = "ts-sp__pill ts-sp__pill--toggle";
-    hqToggle.title =
-        "High Quality voice: Whisper turbo (large-v3 turbo). Off: быстрая base.";
+    hqToggle.title = L.hqTitle;
     hqToggle.textContent = "HQ";
 
     const recordBtn = doc.createElement("button");
     recordBtn.type = "button";
     recordBtn.className = "ts-sp__btn ts-sp__btn--record";
-    recordBtn.title =
-        "Запись с микрофона. Нажмите ещё раз во время записи, чтобы остановить и распознать.";
+    recordBtn.title = L.recordTitle;
     recordBtn.innerHTML = SVG_ICON_MIC;
 
     // Mic first (primary action), HQ flag right next to it.
@@ -343,14 +457,13 @@ function setupSuperPrompt(node) {
     const aiBtn = doc.createElement("button");
     aiBtn.type = "button";
     aiBtn.className = "ts-sp__pill ts-sp__pill--ai";
-    aiBtn.title =
-        "Улучшает текст через Huihui-Qwen3.5-2B-abliterated. Если прикреплена картинка — она используется как референс.";
+    aiBtn.title = L.aiTitle;
     aiBtn.textContent = "AI";
 
     // ---- Preset select (fills remaining toolbar space). ----
     const presetSelect = doc.createElement("select");
     presetSelect.className = "ts-sp__select";
-    presetSelect.title = "Системный пресет для улучшения промпта.";
+    presetSelect.title = L.presetTitle;
     for (const opt of getPresetOptions(node)) {
         const option = doc.createElement("option");
         option.value = String(opt);
@@ -367,8 +480,7 @@ function setupSuperPrompt(node) {
     // -------- Textarea (main surface) --------
     const textarea = doc.createElement("textarea");
     textarea.className = "ts-sp__textarea";
-    textarea.placeholder =
-        "Промпт. Используйте микрофон, прикрепите картинку и нажмите Ai prompt для улучшения.";
+    textarea.placeholder = L.placeholder;
     textarea.spellcheck = false;
 
     // -------- Status row --------
@@ -376,7 +488,7 @@ function setupSuperPrompt(node) {
     statusRow.className = "ts-sp__status";
     const statusText = doc.createElement("span");
     statusText.className = "ts-sp__status-text";
-    statusText.textContent = "Ready";
+    statusText.textContent = L.ready;
     const progress = doc.createElement("div");
     progress.className = "ts-sp__progress";
     const progressFill = doc.createElement("div");
@@ -500,7 +612,7 @@ function setupSuperPrompt(node) {
         if (resetMs > 0) {
             statusResetTimer = window.setTimeout(() => {
                 if (disposed) return;
-                statusText.textContent = "Ready";
+                statusText.textContent = L.ready;
                 statusRow.classList.remove("is-error");
             }, resetMs);
         }
@@ -512,21 +624,19 @@ function setupSuperPrompt(node) {
             recordBtn.classList.add("is-recording");
             recordBtn.innerHTML = SVG_ICON_STOP;
             recordBtn.disabled = false;
-            recordBtn.title = state.modelReady
-                ? "Остановить запись и распознать"
-                : "Остановить запись (модель догружается)";
+            recordBtn.title = state.modelReady ? L.stopAndTranscribe : L.stopModelLoading;
             return;
         }
         recordBtn.classList.remove("is-recording");
         recordBtn.innerHTML = SVG_ICON_MIC;
         if (state.isVoiceBusy) {
             recordBtn.disabled = true;
-            recordBtn.title = "Работаю...";
+            recordBtn.title = L.working;
             return;
         }
         if (state.missingDependencies.length > 0) {
             recordBtn.disabled = true;
-            recordBtn.title = `Не хватает зависимости: ${state.missingDependencies[0]}`;
+            recordBtn.title = L.missingDependency(state.missingDependencies[0]);
             return;
         }
         // Model loading in the background does NOT disable the button —
@@ -534,21 +644,21 @@ function setupSuperPrompt(node) {
         // for the download to finish before transcription.
         recordBtn.disabled = state.isAiBusy;
         if (state.modelReady) {
-            recordBtn.title = "Запись с микрофона";
+            recordBtn.title = L.recordIdle;
         } else if (state.isModelLoading) {
-            recordBtn.title = "Запись (модель ещё догружается)";
+            recordBtn.title = L.recordModelLoading;
         } else {
-            recordBtn.title = "Запись (модель загрузится при остановке)";
+            recordBtn.title = L.recordModelWillLoad;
         }
     }
     function refreshAiButton() {
         if (state.isAiBusy) {
             aiBtn.disabled = true;
-            aiBtn.title = "AI работает...";
+            aiBtn.title = L.aiBusyTitle;
             return;
         }
         aiBtn.disabled = state.isRecording || state.isVoiceBusy;
-        aiBtn.title = "Улучшить промпт через AI";
+        aiBtn.title = L.aiIdleTitle;
     }
 
     function renderAttached() {
@@ -560,11 +670,11 @@ function setupSuperPrompt(node) {
             const match = annotated.match(/^(.+?)\s*\[/);
             const path = match ? match[1] : annotated;
             const segments = path.split("/");
-            attachBtn.title = `Прикреплено: ${segments[segments.length - 1]} (нажмите ×, чтобы убрать)`;
+            attachBtn.title = L.attachedTitle(segments[segments.length - 1]);
         } else {
             attachBtn.classList.remove("has-image");
             attachThumb.style.backgroundImage = "";
-            attachBtn.title = "Прикрепить изображение (drop / paste / click)";
+            attachBtn.title = L.attachTitle;
         }
     }
 
@@ -593,7 +703,7 @@ function setupSuperPrompt(node) {
     function onVoiceProgress(event) {
         if (!matchesActiveModel(event.detail)) return;
         const percent = Number(event.detail?.percent || 0);
-        setStatus(`Voice model ${Math.round(percent)}%`);
+        setStatus(L.voiceModelProgress(Math.round(percent)));
         setProgress({ percent, active: true });
     }
     function onVoiceStatus(event) {
@@ -603,7 +713,7 @@ function setupSuperPrompt(node) {
         if (state.isRecording) return;
         // Only show server progress while a voice action is in flight.
         if (!state.isVoiceBusy && !state.isModelLoading) return;
-        const text = String(event.detail?.text || "Working");
+        const text = String(event.detail?.text || L.workingStatus);
         const percent = clampPercent(event.detail?.percent);
         setStatus(text);
         setProgress({ percent, active: true, indeterminate: percent === null });
@@ -615,7 +725,7 @@ function setupSuperPrompt(node) {
         // and transcribe) — leave them alone here. Just update the UI if
         // nothing else is using the status bar.
         if (!state.isRecording && !state.isVoiceBusy) {
-            setStatus("Voice model ready", "info", STATUS_RESET_DELAY_MS);
+            setStatus(L.voiceModelReady, "info", STATUS_RESET_DELAY_MS);
             setProgress({ percent: 100, active: false });
         }
         refreshRecordButton();
@@ -629,7 +739,7 @@ function setupSuperPrompt(node) {
         // would just disappear once the local "Recording..." status
         // refreshes).
         if (!state.isRecording) {
-            setStatus(`Voice error: ${event.detail?.text || "failed"}`, "error", STATUS_RESET_DELAY_MS);
+            setStatus(L.voiceError(event.detail?.text || L.failed), "error", STATUS_RESET_DELAY_MS);
             setProgress({ active: false, error: true });
         }
         refreshRecordButton();
@@ -637,19 +747,19 @@ function setupSuperPrompt(node) {
     }
     function onAiProgress(event) {
         if (!matchesActiveAiOperation(event.detail)) return;
-        const text = String(event.detail?.text || "AI Prompt");
+        const text = String(event.detail?.text || L.aiProgressFallback);
         const percent = clampPercent(event.detail?.percent);
         setStatus(text);
         setProgress({ percent, active: true, indeterminate: percent === null });
     }
     function onAiDone(event) {
         if (!matchesActiveAiOperation(event.detail)) return;
-        setStatus(String(event.detail?.text || "AI prompt ready"), "info", STATUS_RESET_DELAY_MS);
+        setStatus(String(event.detail?.text || L.aiReady), "info", STATUS_RESET_DELAY_MS);
         setProgress({ percent: 100, active: false });
     }
     function onAiError(event) {
         if (!matchesActiveAiOperation(event.detail)) return;
-        setStatus(`AI error: ${event.detail?.text || "failed"}`, "error", STATUS_RESET_DELAY_MS);
+        setStatus(L.aiError(event.detail?.text || L.failed), "error", STATUS_RESET_DELAY_MS);
         setProgress({ active: false, error: true });
     }
 
@@ -731,12 +841,12 @@ function setupSuperPrompt(node) {
             state.missingDependencies = Array.isArray(info.missing_dependencies)
                 ? info.missing_dependencies
                 : [];
-            setStatus("Ready");
+            setStatus(L.ready);
             setProgress({ active: false });
         } catch {
             state.modelReady = false;
             state.missingDependencies = [];
-            setStatus("Voice unavailable", "error", STATUS_RESET_DELAY_MS);
+            setStatus(L.voiceUnavailable, "error", STATUS_RESET_DELAY_MS);
             setProgress({ active: false, error: true });
         }
         refreshRecordButton();
@@ -746,7 +856,7 @@ function setupSuperPrompt(node) {
     function downloadVoiceModel(force = false) {
         syncActiveVoiceModel();
         if (state.missingDependencies.length > 0) {
-            setStatus(`Missing ${state.missingDependencies[0]}`, "error");
+            setStatus(L.missingShort(state.missingDependencies[0]), "error");
             refreshRecordButton();
             return Promise.reject(new Error(`Missing ${state.missingDependencies[0]}`));
         }
@@ -761,7 +871,7 @@ function setupSuperPrompt(node) {
         // triggered as a side-effect of starting a recording. Only show
         // the download status if the user is not actively recording.
         if (!state.isRecording) {
-            setStatus(`Downloading ${state.activeModelName}...`);
+            setStatus(L.downloadingModel(state.activeModelName));
             setProgress({ active: true, indeterminate: true });
         }
         refreshRecordButton();
@@ -777,17 +887,17 @@ function setupSuperPrompt(node) {
                         force,
                     }),
                 });
-                if (!data.ok) throw new Error(data.error || "preload failed");
+                if (!data.ok) throw new Error(data.error || L.preloadFailed);
                 state.modelReady = true;
                 // Only surface "ready" UI if nothing else is using the
                 // status bar — recording/transcribe own the bar otherwise.
                 if (!state.isRecording && !state.isVoiceBusy) {
-                    setStatus("Voice model ready", "info", STATUS_RESET_DELAY_MS);
+                    setStatus(L.voiceModelReady, "info", STATUS_RESET_DELAY_MS);
                     setProgress({ percent: 100, active: false });
                 }
             } catch (error) {
                 if (!state.isRecording && !state.isVoiceBusy) {
-                    setStatus(`Voice error: ${error.message}`, "error", STATUS_RESET_DELAY_MS);
+                    setStatus(L.voiceError(error.message), "error", STATUS_RESET_DELAY_MS);
                     setProgress({ active: false, error: true });
                 }
                 throw error;
@@ -811,7 +921,7 @@ function setupSuperPrompt(node) {
         form.append("model", state.activeModelName);
         form.append("high_quality", isHighQualityEnabled() ? "true" : "false");
         form.append("audio", blob, "recording.webm");
-        setStatus("Recognizing speech...");
+        setStatus(L.recognizing);
         setProgress({ active: true, indeterminate: true });
         try {
             const data = await fetchJson(`${VOICE_ROUTE_BASE}/transcribe`, {
@@ -820,15 +930,15 @@ function setupSuperPrompt(node) {
             });
             state.isVoiceBusy = false;
             if (!insertRecognizedText(data.text)) {
-                setStatus("No speech detected", "info", STATUS_RESET_DELAY_MS);
+                setStatus(L.noSpeech, "info", STATUS_RESET_DELAY_MS);
                 setProgress({ active: false });
             } else {
-                setStatus("Speech inserted", "info", STATUS_RESET_DELAY_MS);
+                setStatus(L.speechInserted, "info", STATUS_RESET_DELAY_MS);
                 setProgress({ percent: 100, active: false });
             }
         } catch (error) {
             state.isVoiceBusy = false;
-            setStatus(`Voice error: ${error.message}`, "error", STATUS_RESET_DELAY_MS);
+            setStatus(L.voiceError(error.message), "error", STATUS_RESET_DELAY_MS);
             setProgress({ active: false, error: true });
         }
         refreshRecordButton();
@@ -837,11 +947,11 @@ function setupSuperPrompt(node) {
 
     async function startRecording() {
         if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
-            setStatus("Microphone unsupported", "error", STATUS_RESET_DELAY_MS);
+            setStatus(L.micUnsupported, "error", STATUS_RESET_DELAY_MS);
             return;
         }
         rememberCursor();
-        setStatus("Opening microphone...");
+        setStatus(L.openingMic);
         try {
             mediaStream = await navigator.mediaDevices.getUserMedia({
                 audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
@@ -861,7 +971,7 @@ function setupSuperPrompt(node) {
                 const blob = new Blob(chunks, { type: mimeType || "audio/webm" });
                 if (blob.size <= 0) {
                     state.isVoiceBusy = false;
-                    setStatus("No audio captured", "info", STATUS_RESET_DELAY_MS);
+                    setStatus(L.noAudio, "info", STATUS_RESET_DELAY_MS);
                     setProgress({ active: false });
                     refreshRecordButton();
                     refreshAiButton();
@@ -872,14 +982,14 @@ function setupSuperPrompt(node) {
                 // it's ready. This is the cost the user pays for being
                 // able to record on the very first click.
                 if (!state.modelReady && state.modelReadyPromise) {
-                    setStatus("Waiting for voice model...");
+                    setStatus(L.waitingModel);
                     setProgress({ active: true, indeterminate: true });
                     refreshRecordButton();
                     try {
                         await state.modelReadyPromise;
                     } catch (error) {
                         state.isVoiceBusy = false;
-                        setStatus(`Voice error: ${error.message}`, "error", STATUS_RESET_DELAY_MS);
+                        setStatus(L.voiceError(error.message), "error", STATUS_RESET_DELAY_MS);
                         setProgress({ active: false, error: true });
                         refreshRecordButton();
                         refreshAiButton();
@@ -888,7 +998,7 @@ function setupSuperPrompt(node) {
                 }
                 if (!state.modelReady) {
                     state.isVoiceBusy = false;
-                    setStatus("Voice model not ready", "error", STATUS_RESET_DELAY_MS);
+                    setStatus(L.modelNotReady, "error", STATUS_RESET_DELAY_MS);
                     setProgress({ active: false, error: true });
                     refreshRecordButton();
                     refreshAiButton();
@@ -898,14 +1008,14 @@ function setupSuperPrompt(node) {
             };
             mediaRecorder.start();
             state.isRecording = true;
-            setStatus("Recording...");
+            setStatus(L.recording);
             setProgress({ active: true, indeterminate: true });
             refreshRecordButton();
             refreshAiButton();
         } catch (error) {
             state.isRecording = false;
             state.isVoiceBusy = false;
-            setStatus(`Mic error: ${error.message}`, "error", STATUS_RESET_DELAY_MS);
+            setStatus(L.micError(error.message), "error", STATUS_RESET_DELAY_MS);
             setProgress({ active: false, error: true });
             refreshRecordButton();
         }
@@ -915,14 +1025,14 @@ function setupSuperPrompt(node) {
         if (!mediaRecorder || !state.isRecording) return;
         state.isRecording = false;
         state.isVoiceBusy = true;
-        setStatus("Preparing audio...");
+        setStatus(L.preparingAudio);
         setProgress({ active: true, indeterminate: true });
         refreshRecordButton();
         try {
             mediaRecorder.stop();
         } catch (error) {
             state.isVoiceBusy = false;
-            setStatus(`Voice error: ${error.message}`, "error", STATUS_RESET_DELAY_MS);
+            setStatus(L.voiceError(error.message), "error", STATUS_RESET_DELAY_MS);
             setProgress({ active: false, error: true });
             refreshRecordButton();
         }
@@ -965,13 +1075,13 @@ function setupSuperPrompt(node) {
         syncPresetFromUi();
         const payload = buildAiPayload();
         if (!payload.text.trim() && !payload.attached_image) {
-            setStatus("No prompt text or image", "info", STATUS_RESET_DELAY_MS);
+            setStatus(L.noPromptOrImage, "info", STATUS_RESET_DELAY_MS);
             return;
         }
         state.isAiBusy = true;
         state.activeAiOperationId = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`;
         payload.operation_id = state.activeAiOperationId;
-        setStatus("Starting AI prompt...");
+        setStatus(L.startingAi);
         setProgress({ active: true, indeterminate: true });
         refreshAiButton();
         refreshRecordButton();
@@ -981,16 +1091,16 @@ function setupSuperPrompt(node) {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(payload),
             });
-            if (!data.ok) throw new Error(data.error || "enhance failed");
+            if (!data.ok) throw new Error(data.error || L.enhanceFailed);
             if (replaceText(data.text)) {
-                const ref = data.used_image ? " (image)" : "";
-                setStatus(`AI prompt ready${ref}`, "info", STATUS_RESET_DELAY_MS);
+                const ref = data.used_image ? L.imageSuffix : "";
+                setStatus(`${L.aiReady}${ref}`, "info", STATUS_RESET_DELAY_MS);
             } else {
-                setStatus("Empty AI result", "info", STATUS_RESET_DELAY_MS);
+                setStatus(L.emptyAiResult, "info", STATUS_RESET_DELAY_MS);
             }
             setProgress({ percent: 100, active: false });
         } catch (error) {
-            setStatus(`AI error: ${error.message}`, "error", STATUS_RESET_DELAY_MS);
+            setStatus(L.aiError(error.message), "error", STATUS_RESET_DELAY_MS);
             setProgress({ active: false, error: true });
         } finally {
             state.isAiBusy = false;
@@ -1007,10 +1117,10 @@ function setupSuperPrompt(node) {
     async function uploadImageFile(file) {
         if (!file) return "";
         if (!file.type.startsWith("image/") && !fileExtensionOk(file.name)) {
-            setStatus("Not an image file", "error", STATUS_RESET_DELAY_MS);
+            setStatus(L.notImageFile, "error", STATUS_RESET_DELAY_MS);
             return "";
         }
-        setStatus("Uploading image...");
+        setStatus(L.uploadingImage);
         setProgress({ active: true, indeterminate: true });
         try {
             const form = new FormData();
@@ -1023,11 +1133,11 @@ function setupSuperPrompt(node) {
             const annotated = buildAnnotatedPath(payload);
             if (!annotated) throw new Error("Upload returned no filename");
             setAttachedImage(annotated);
-            setStatus("Image attached", "info", STATUS_RESET_DELAY_MS);
+            setStatus(L.imageAttached, "info", STATUS_RESET_DELAY_MS);
             setProgress({ percent: 100, active: false });
             return annotated;
         } catch (error) {
-            setStatus(`Upload error: ${error.message}`, "error", STATUS_RESET_DELAY_MS);
+            setStatus(L.uploadError(error.message), "error", STATUS_RESET_DELAY_MS);
             setProgress({ active: false, error: true });
             return "";
         }
@@ -1050,7 +1160,7 @@ function setupSuperPrompt(node) {
     attachClear.addEventListener("click", (event) => {
         event.stopPropagation();
         setAttachedImage("");
-        setStatus("Image removed", "info", STATUS_RESET_DELAY_MS);
+        setStatus(L.imageRemoved, "info", STATUS_RESET_DELAY_MS);
     });
 
     function dragHasImage(event) {
@@ -1113,7 +1223,7 @@ function setupSuperPrompt(node) {
         // Switching models mid-recording/transcription resets modelReady and
         // desyncs the model the recording will be transcribed with.
         if (state.isRecording || state.isVoiceBusy) {
-            setStatus("Finish recording before switching HQ", "info", STATUS_RESET_DELAY_MS);
+            setStatus(L.finishRecordingHq, "info", STATUS_RESET_DELAY_MS);
             return;
         }
         hqToggle.classList.toggle("is-on");
