@@ -1,5 +1,7 @@
 import { app } from "/scripts/app.js";
 
+import { TS_UI_CLASS, ensureThemeStyles } from "../_theme.js";
+
 const EXTENSION_ID = "ts.resolutionselector";
 const NODE_NAME = "TS_ResolutionSelector";
 const INPUT_RATIO = "aspect_ratio";
@@ -22,6 +24,9 @@ const RATIO_PRESETS = [
 ];
 
 function ensureStyles() {
+    // Colours come from the shared --ts-* tokens (js/_theme.js); keep this
+    // stylesheet to layout only.
+    ensureThemeStyles();
     if (document.getElementById(STYLE_ID)) {
         return;
     }
@@ -37,8 +42,8 @@ function ensureStyles() {
     overflow: hidden;
     min-height: 0;
     height: 100%;
-    color: #e6e7ea;
-    font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+    color: var(--ts-text);
+    font-family: var(--ts-font);
     pointer-events: auto;
 }
 .ts-reso-grid {
@@ -56,9 +61,9 @@ function ensureStyles() {
     --ts-reso-cell: ${GRID_CELL_SIZE}px;
 }
 .ts-reso-card {
-    border: 1px solid #2d343f;
-    border-radius: 8px;
-    background: #14171c;
+    border: 1px solid var(--ts-border-soft);
+    border-radius: var(--ts-radius);
+    background: var(--ts-surface);
     padding: 4px 3px 5px;
     display: flex;
     flex-direction: column;
@@ -71,13 +76,13 @@ function ensureStyles() {
     height: 100%;
 }
 .ts-reso-card:hover {
-    border-color: #465267;
-    box-shadow: 0 0 0 1px rgba(80, 110, 170, 0.18);
+    border-color: var(--ts-border-strong);
+    background: var(--ts-surface-hover);
 }
 .ts-reso-card.is-selected {
-    border-color: #27d8b2;
-    box-shadow: 0 0 0 1px rgba(39, 216, 178, 0.4);
-    background: #152424;
+    border-color: var(--ts-accent);
+    box-shadow: 0 0 0 1px var(--ts-accent-line);
+    background: var(--ts-accent-soft);
 }
 .ts-reso-icon-wrap {
     width: 78%;
@@ -92,14 +97,13 @@ function ensureStyles() {
     width: auto;
     max-width: 100%;
     border-radius: 4px;
-    border: 1px solid #848c9d;
-    background: linear-gradient(135deg, #2c3442 0%, #1b2028 100%);
-    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+    border: 1px solid var(--ts-muted);
+    background: var(--ts-elevated);
 }
 .ts-reso-label {
     font-size: clamp(8px, 1.2vh, 10px);
     letter-spacing: 0.02em;
-    color: #d6dae2;
+    color: var(--ts-muted);
 }
 `;
     document.head.appendChild(style);
@@ -162,7 +166,7 @@ function setupResolutionSelector(node) {
     }
 
     const container = document.createElement("div");
-    container.className = "ts-reso-selector";
+    container.className = `${TS_UI_CLASS} ts-reso-selector`;
     const isV2 = isNodesV2();
     const widgetHeight = FIXED_WIDGET_HEIGHT;
     let domWidgetEl = null;

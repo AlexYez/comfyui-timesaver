@@ -1,6 +1,8 @@
 import { app } from "/scripts/app.js";
 import { api } from "/scripts/api.js";
 
+import { TS_UI_CLASS, ensureThemeStyles } from "../_theme.js";
+
 const TS_PROMPT_BUILDER_EXTENSION_ID = "ts.prompt_builder";
 const TS_PROMPT_BUILDER_NODE_NAME = "TS_PromptBuilder";
 const TS_PROMPT_BUILDER_CONFIG_INPUT = "config_json";
@@ -10,6 +12,9 @@ const TS_PROMPT_BUILDER_NODE_HEIGHT = 340;
 const TS_PROMPT_BUILDER_WIDGET_HEIGHT = 260;
 
 function tsEnsureStyles() {
+    // Colours come from the shared --ts-* tokens (js/_theme.js); keep this
+    // stylesheet to layout only.
+    ensureThemeStyles();
     if (document.getElementById(TS_PROMPT_BUILDER_STYLE_ID)) {
         return;
     }
@@ -25,8 +30,8 @@ function tsEnsureStyles() {
     height: 100%;
     min-height: 0;
     width: 100%;
-    color: #e6e7ea;
-    font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+    color: var(--ts-text);
+    font-family: var(--ts-font);
     pointer-events: auto;
 }
 .ts-prompt-list {
@@ -43,9 +48,9 @@ function tsEnsureStyles() {
     align-items: center;
     gap: 6px;
     padding: 4px 6px;
-    border: 1px solid #2d343f;
-    border-radius: 6px;
-    background: #14171c;
+    border: 1px solid var(--ts-border-soft);
+    border-radius: var(--ts-radius-sm);
+    background: var(--ts-surface);
     cursor: pointer;
     user-select: none;
     transition: border-color 0.15s ease, background 0.15s ease, opacity 0.15s ease;
@@ -54,8 +59,8 @@ function tsEnsureStyles() {
     opacity: 0.45;
 }
 .ts-prompt-item.is-drop-target {
-    border-color: #4da3ff;
-    box-shadow: 0 0 0 1px rgba(77, 163, 255, 0.35);
+    border-color: var(--ts-accent);
+    box-shadow: 0 0 0 1px var(--ts-accent-line);
 }
 .ts-prompt-handle {
     display: inline-flex;
@@ -64,17 +69,17 @@ function tsEnsureStyles() {
     width: 18px;
     height: 18px;
     border-radius: 4px;
-    border: 1px solid #2c3442;
-    background: #0f1318;
-    color: #9aa2ad;
-    font-size: 10px;
+    border: 1px solid var(--ts-border-soft);
+    background: var(--ts-sunken);
+    color: var(--ts-muted);
+    font-size: var(--ts-fs-xs);
     line-height: 1;
     cursor: grab;
 }
 .ts-prompt-label {
     flex: 1 1 auto;
-    font-size: 12px;
-    color: #e6e7ea;
+    font-size: var(--ts-fs);
+    color: var(--ts-text);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -83,20 +88,20 @@ function tsEnsureStyles() {
     width: 10px;
     height: 10px;
     border-radius: 999px;
-    border: 1px solid #4a4f57;
-    background: #1b1f26;
+    border: 1px solid var(--ts-border);
+    background: var(--ts-sunken);
 }
 .ts-prompt-item.is-enabled .ts-prompt-toggle {
-    background: #27d8b2;
-    border-color: #27d8b2;
+    background: var(--ts-accent);
+    border-color: var(--ts-accent);
 }
 .ts-prompt-hint {
-    font-size: 10px;
-    color: #8a9099;
+    font-size: var(--ts-fs-xs);
+    color: var(--ts-muted);
 }
 .ts-prompt-empty {
-    font-size: 11px;
-    color: #9a9a9a;
+    font-size: var(--ts-fs-sm);
+    color: var(--ts-muted);
     padding: 2px 0;
 }
 `;
@@ -193,7 +198,7 @@ function tsSetupPromptBuilder(tsNode) {
     tsNode.max_size = [TS_PROMPT_BUILDER_NODE_WIDTH, TS_PROMPT_BUILDER_NODE_HEIGHT];
 
     const tsContainer = document.createElement("div");
-    tsContainer.className = "ts-prompt-builder";
+    tsContainer.className = `${TS_UI_CLASS} ts-prompt-builder`;
 
     const tsList = document.createElement("div");
     tsList.className = "ts-prompt-list";

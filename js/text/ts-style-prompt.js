@@ -1,6 +1,8 @@
 import { app } from "/scripts/app.js";
 import { api } from "/scripts/api.js";
 
+import { TS_UI_CLASS, ensureThemeStyles } from "../_theme.js";
+
 const EXTENSION_ID = "ts_suite.style_prompt_selector";
 const NODE_NAME = "TS_StylePromptSelector";
 const STYLE_INPUT = "style_id";
@@ -18,6 +20,9 @@ const WIDGET_CHROME_HEIGHT = 56;
 const GRID_GAP = 4;
 
 function ensureStyles() {
+    // Colours come from the shared --ts-* tokens (js/_theme.js); keep this
+    // stylesheet to layout only.
+    ensureThemeStyles();
     if (document.getElementById(STYLE_CSS_ID)) {
         return;
     }
@@ -35,23 +40,23 @@ function ensureStyles() {
     height: 100%;
     min-height: 0;
     width: 100%;
-    color: #e6e7ea;
-    font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+    color: var(--ts-text);
+    font-family: var(--ts-font);
     pointer-events: auto;
 }
 .ts-style-search {
     width: 100%;
     box-sizing: border-box;
     padding: 4px 6px;
-    background: #141414;
-    border: 1px solid #333;
-    border-radius: 6px;
-    color: #e8e8e8;
+    background: var(--ts-sunken);
+    border: 1px solid var(--ts-border-soft);
+    border-radius: var(--ts-radius-sm);
+    color: var(--ts-text);
     outline: none;
-    font-size: 11px;
+    font-size: var(--ts-fs-sm);
 }
 .ts-style-search::placeholder {
-    color: #8a8a8a;
+    color: var(--ts-faint);
 }
 .ts-style-grid {
     display: grid;
@@ -73,9 +78,9 @@ function ensureStyles() {
     position: relative;
     width: 100%;
     height: var(--ts-card-size, 64px);
-    border: 1px solid #2d343f;
-    border-radius: 6px;
-    background: #14171c;
+    border: 1px solid var(--ts-border-soft);
+    border-radius: var(--ts-radius-sm);
+    background: var(--ts-surface);
     padding: 0;
     cursor: pointer;
     overflow: hidden;
@@ -87,8 +92,8 @@ function ensureStyles() {
     display: block;
 }
 .ts-style-card.is-selected {
-    border-color: #4da3ff;
-    box-shadow: 0 0 0 1px rgba(77, 163, 255, 0.4);
+    border-color: var(--ts-accent);
+    box-shadow: 0 0 0 1px var(--ts-accent-line);
 }
 .ts-style-label {
     position: absolute;
@@ -98,8 +103,8 @@ function ensureStyles() {
     padding: 3px 4px;
     font-size: 9px;
     text-align: center;
-    background: rgba(0, 0, 0, 0.55);
-    color: #f0f0f0;
+    background: rgba(0, 0, 0, 0.58);
+    color: #f2f2f2;
     box-sizing: border-box;
     white-space: nowrap;
     overflow: hidden;
@@ -117,8 +122,8 @@ function ensureStyles() {
     background: transparent;
 }
 .ts-style-empty {
-    font-size: 11px;
-    color: #9a9a9a;
+    font-size: var(--ts-fs-sm);
+    color: var(--ts-muted);
     padding: 4px 2px;
 }
 `;
@@ -220,7 +225,7 @@ function setupStyleSelector(node) {
     }
 
     const container = document.createElement("div");
-    container.className = "ts-style-selector";
+    container.className = `${TS_UI_CLASS} ts-style-selector`;
 
     const search = document.createElement("input");
     search.type = "text";

@@ -1,6 +1,8 @@
 import { app } from "/scripts/app.js";
 import { api } from "/scripts/api.js";
 
+import { TS_UI_CLASS, ensureThemeStyles } from "../_theme.js";
+
 // --- Constants & Identity ---
 const EXTENSION_ID = "ts.animationpreview";
 const NODE_NAME = "TS_Animation_Preview";
@@ -29,6 +31,10 @@ const ICONS = {
  * Injects CSS styles.
  */
 function ensureStyles() {
+    // Colours come from the shared --ts-* tokens (js/_theme.js). The video
+    // letterbox and the control bar stay dark in every theme on purpose:
+    // they sit over video content, like any player chrome.
+    ensureThemeStyles();
     if (document.getElementById(STYLE_ID)) return;
     const style = document.createElement("style");
     style.id = STYLE_ID;
@@ -39,7 +45,7 @@ function ensureStyles() {
             display: flex;
             flex-direction: column;
             background: #000;
-            border-radius: 4px;
+            border-radius: var(--ts-radius);
             overflow: hidden;
             position: relative;
             box-sizing: border-box;
@@ -60,9 +66,9 @@ function ensureStyles() {
             position: absolute;
             top: 50%; left: 50%;
             transform: translate(-50%, -50%);
-            color: #666;
-            font-size: 14px;
-            font-family: sans-serif;
+            color: var(--ts-muted);
+            font-size: var(--ts-fs-lg);
+            font-family: var(--ts-font);
             pointer-events: none;
             text-align: center;
             width: 100%;
@@ -76,7 +82,7 @@ function ensureStyles() {
             left: 0;
             width: 100%;
             height: 32px;
-            background: rgba(15, 15, 15, 0.85);
+            background: var(--ts-scrim);
             backdrop-filter: blur(4px);
             display: flex;
             align-items: center;
@@ -95,7 +101,7 @@ function ensureStyles() {
         .ts-anim-preview__btn {
             background: none;
             border: none;
-            color: #ccc;
+            color: #dcdcdc;
             width: 28px;
             height: 28px;
             padding: 5px;
@@ -121,26 +127,26 @@ function ensureStyles() {
             margin: 0 8px;
             height: 4px;
             -webkit-appearance: none;
-            background: #444;
+            background: rgba(255, 255, 255, 0.26);
             border-radius: 2px;
             cursor: pointer;
             outline: none;
         }
         .ts-anim-preview__seek::-webkit-slider-thumb {
             -webkit-appearance: none;
-            width: 10px;
-            height: 10px;
+            width: 11px;
+            height: 11px;
             border-radius: 50%;
-            background: #fff;
+            background: var(--ts-accent);
             cursor: pointer;
             box-shadow: 0 0 2px rgba(0,0,0,0.5);
             border: none;
         }
         .ts-anim-preview__seek::-moz-range-thumb {
-            width: 10px;
-            height: 10px;
+            width: 11px;
+            height: 11px;
             border-radius: 50%;
-            background: #fff;
+            background: var(--ts-accent);
             cursor: pointer;
             border: none;
         }
@@ -178,7 +184,7 @@ function setupAnimationPreview(node) {
 
     // -- DOM Structure --
     const container = document.createElement("div");
-    container.className = "ts-anim-preview";
+    container.className = `${TS_UI_CLASS} ts-anim-preview`;
 
     // Video Element
     const video = document.createElement("video");
