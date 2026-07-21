@@ -44,9 +44,12 @@ const TS_ACCENT_CONTRAST = "#15121d";
 function themeCss() {
     return `
 /* ── Tokens ──────────────────────────────────────────────────────────────
-   Surfaces and text defer to ComfyUI's own theme variables so a user theme
-   switch carries through; the literals are the stock dark-theme values and
-   act as fallbacks on older frontends. */
+   Only four values are read from ComfyUI: background, surface, text and
+   border. Everything else is MIXED FROM THEM rather than hard-coded, which is
+   what makes a light palette work: a hover state is "a step from the surface
+   TOWARDS the text colour", and that step goes lighter on a dark theme and
+   darker on a light one automatically. The literals below are the stock dark
+   values and only apply on browsers without color-mix(). */
 :root,.${TS_UI_CLASS}{
   --ts-accent:${TS_ACCENT};
   --ts-accent-strong:${TS_ACCENT_STRONG};
@@ -61,8 +64,9 @@ function themeCss() {
   --ts-surface-active:#37373a;
   --ts-elevated:#232325;
   --ts-sunken:#141415;
+  /* A dimming scrim stays dark in both themes — that is what "dimmed" means. */
   --ts-scrim:rgba(12,12,13,.72);
-  --ts-modal-bg:#161617;
+  --ts-modal-bg:var(--comfy-menu-bg,#171718);
 
   --ts-text:var(--input-text,#ddd);
   --ts-muted:var(--descrip-text,#999);
@@ -86,13 +90,19 @@ function themeCss() {
   --ts-fs:12px;
   --ts-fs-lg:13px;
 
-  --ts-shadow:0 10px 28px rgba(0,0,0,.45);
-  --ts-shadow-sm:0 4px 12px rgba(0,0,0,.35);
+  --ts-shadow-tint:rgba(0,0,0,.34);
+  --ts-shadow:0 6px 18px var(--ts-shadow-tint);
+  --ts-shadow-sm:0 3px 9px var(--ts-shadow-tint);
   /* Neutral transparency checkerboard — shared by every image/media surface. */
   --ts-checker:repeating-conic-gradient(#242426 0% 25%,#1b1b1c 0% 50%) 50%/20px 20px;
 }
-/* Derived accents: one knob (--ts-accent) drives the whole ramp wherever
-   color-mix() is available. */
+/* Derived values. Two families:
+     • accents — one knob (--ts-accent) drives the whole ramp;
+     • neutrals and semantics — mixed against --ts-text / --ts-bg so they
+       invert with the user's ComfyUI palette instead of assuming a dark one.
+   Custom properties never fall back on their own (an unsupported color-mix
+   would compute to garbage at use time, not revert), hence the @supports
+   guard: the statics above stand until the browser proves it can do better. */
 @supports (color:color-mix(in srgb,red,blue)){
   :root,.${TS_UI_CLASS}{
     --ts-accent-strong:color-mix(in srgb,var(--ts-accent) 84%,#000);
@@ -100,6 +110,27 @@ function themeCss() {
     --ts-accent-soft:color-mix(in srgb,var(--ts-accent) 17%,transparent);
     --ts-accent-line:color-mix(in srgb,var(--ts-accent) 45%,transparent);
     --ts-accent-contrast:color-mix(in srgb,var(--ts-accent) 14%,#000);
+
+    /* Toward the text colour = away from the background, in either theme. */
+    --ts-surface-hover:color-mix(in srgb,var(--ts-surface) 88%,var(--ts-text));
+    --ts-surface-active:color-mix(in srgb,var(--ts-surface) 78%,var(--ts-text));
+    --ts-elevated:color-mix(in srgb,var(--ts-bg) 93%,var(--ts-text));
+    /* Recessed wells follow ComfyUI's own input background. */
+    --ts-sunken:color-mix(in srgb,var(--ts-surface) 94%,var(--ts-bg));
+    --ts-faint:color-mix(in srgb,var(--ts-muted) 72%,var(--ts-bg));
+    --ts-border-soft:color-mix(in srgb,var(--ts-border) 55%,var(--ts-bg));
+    --ts-border-strong:color-mix(in srgb,var(--ts-border) 72%,var(--ts-text));
+    --ts-checker:repeating-conic-gradient(
+      color-mix(in srgb,var(--ts-bg) 93%,var(--ts-text)) 0% 25%,
+      color-mix(in srgb,var(--ts-bg) 98%,var(--ts-text)) 0% 50%) 50%/20px 20px;
+    /* Semantic hues are pulled toward the text colour so they stay legible on
+       a light background too (where the dark-tuned pastels would wash out). */
+    /* Blending the shadow toward the page background keeps it a heavy drop on
+       a dark theme and a soft card lift on a light one. */
+    --ts-shadow-tint:color-mix(in srgb,color-mix(in srgb,#000 80%,var(--ts-bg)) 30%,transparent);
+    --ts-danger:color-mix(in srgb,#d0625c 74%,var(--ts-text));
+    --ts-success:color-mix(in srgb,#5aa87a 74%,var(--ts-text));
+    --ts-warning:color-mix(in srgb,#c99446 74%,var(--ts-text));
   }
 }
 
