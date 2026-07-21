@@ -30,7 +30,11 @@ const INPUT_FRAME_STRIDE = "frame_stride";
 const DEFAULT_NODE_SIZE = [560, 480];
 const MIN_NODE_WIDTH = 420;
 const MIN_NODE_HEIGHT = 300;
+// Fallback padding above the image, used until the toolbar has been laid out.
 const IMAGE_PAD_TOP = 50;
+// Distance of the toolbar from the top edge, and the gap it keeps from the image.
+const TOOLBAR_TOP_INSET = 8;
+const TOOLBAR_IMAGE_GAP = 4;
 const IMAGE_PAD_BOTTOM = 38;
 const IMAGE_PAD_SIDE = 8;
 // Image-space pixel distance under which a click on an existing point removes
@@ -78,8 +82,8 @@ function ensureStyles() {
 .ts-sml__overlay.is-active{display:flex}
 .ts-sml__spinner{width:28px;height:28px;border-radius:999px;border:3px solid var(--ts-border-soft);border-top-color:var(--tsm-accent);animation:tsm-spin .9s linear infinite}
 @keyframes tsm-spin{to{transform:rotate(360deg)}}
-.ts-sml__toolbar{position:absolute;top:8px;left:8px;right:8px;display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:var(--ts-radius-lg);background:var(--tsm-toolbar);border:1px solid var(--tsm-toolbar-border);backdrop-filter:blur(8px);z-index:6}
-.ts-sml__group{display:flex;align-items:center;gap:6px;min-width:0}
+.ts-sml__toolbar{position:absolute;top:8px;left:8px;right:8px;display:flex;flex-wrap:wrap;align-items:center;gap:8px;row-gap:6px;padding:6px 8px;border-radius:var(--ts-radius-lg);background:var(--tsm-toolbar);border:1px solid var(--tsm-toolbar-border);backdrop-filter:blur(8px);z-index:6}
+.ts-sml__group{display:flex;flex-wrap:wrap;align-items:center;gap:6px;row-gap:6px}
 .ts-sml__btn{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--ts-border);background:var(--ts-surface);color:var(--tsm-text);border-radius:8px;padding:6px 11px;font-size:var(--ts-fs-sm);cursor:pointer;font-weight:600;letter-spacing:.02em;white-space:nowrap}
 .ts-sml__btn:hover{background:var(--ts-surface-hover)}
 .ts-sml__btn[disabled]{opacity:.4;cursor:not-allowed}
@@ -598,6 +602,16 @@ export function setupSamMediaLoader(node) {
         }
     }
 
+    // The toolbar wraps to a second row on a narrow node, so the space it
+    // reserves is measured instead of assumed. IMAGE_PAD_TOP stays the
+    // fallback for the frames before layout has run (offsetHeight is 0 then).
+    function imagePadTop() {
+        const toolbarHeight = toolbar.offsetHeight || 0;
+        return toolbarHeight > 0
+            ? TOOLBAR_TOP_INSET + toolbarHeight + TOOLBAR_IMAGE_GAP
+            : IMAGE_PAD_TOP;
+    }
+
     function resizeCanvas() {
         const rect = canvas.getBoundingClientRect();
         const dpr = window.devicePixelRatio || 1;
@@ -616,13 +630,15 @@ export function setupSamMediaLoader(node) {
             // refilled on the next animation frame.
             requestRedraw();
         }
+        const padTop = imagePadTop();
+        empty.style.top = `${padTop}px`;
         if (state.imageWidth > 0 && state.imageHeight > 0 && rect.width > 0 && rect.height > 0) {
             const usableWidth = Math.max(1, rect.width - IMAGE_PAD_SIDE * 2);
-            const usableHeight = Math.max(1, rect.height - IMAGE_PAD_TOP - IMAGE_PAD_BOTTOM);
+            const usableHeight = Math.max(1, rect.height - padTop - IMAGE_PAD_BOTTOM);
             const scale = Math.min(usableWidth / state.imageWidth, usableHeight / state.imageHeight);
             state.scale = scale;
             state.offsetX = IMAGE_PAD_SIDE + (usableWidth - state.imageWidth * scale) / 2;
-            state.offsetY = IMAGE_PAD_TOP + (usableHeight - state.imageHeight * scale) / 2;
+            state.offsetY = padTop + (usableHeight - state.imageHeight * scale) / 2;
         }
         return { rectWidth: rect.width, rectHeight: rect.height, dpr };
     }
