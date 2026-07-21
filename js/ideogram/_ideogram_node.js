@@ -1,8 +1,8 @@
 // In-node preview widget for TS_IdeogramDesigner.
 //
 // Renders a fluid, aspect-correct preview of the current design (reference
-// underlay + block rectangles + labels), an "Edit" button that opens the
-// full-screen modal editor, and a one-line summary. Fluid sizing + Nodes 1.0 /
+// underlay + block rectangles + labels), the shared "Open Interface" launcher
+// that opens the full-screen modal editor, and a one-line summary. Fluid sizing + Nodes 1.0 /
 // Nodes 2.0 (Vue) compatibility follow the verified sam_media_loader patterns:
 // addDOMWidget with getMinHeight/getMaxHeight (no widget.computeSize), DPR
 // canvas, ResizeObserver, syncDomSize, cleanup on removal.
@@ -213,7 +213,9 @@ export function setupIdeogramNode(node) {
     // No explicit language: the launcher follows the ComfyUI UI locale in every
     // node, so two TS nodes side by side never disagree on its wording. The rest
     // of this panel still follows the design document's own language.
-    const editBtn = createOpenInterfaceButton(() => openEditor());
+    const editBtn = createOpenInterfaceButton(() => openEditor(), {
+        description: t("tip_edit_design", DEFAULT_LANG),
+    });
     // Retained as a stable query hook (e2e test, user CSS); the look comes
     // from the shared launcher classes.
     editBtn.classList.add("ts-ideo-node__btn");
@@ -261,7 +263,7 @@ export function setupIdeogramNode(node) {
         const lang = state.design.language || DEFAULT_LANG;
         const styleObj = (state.presets.styles || []).find((s) => s.id === state.design.style?.preset_id);
         const styleName = styleObj ? localizedName(styleObj, lang) : (state.design.style?.preset_id || "—");
-        setOpenInterfaceLabel(editBtn);
+        setOpenInterfaceLabel(editBtn, undefined, t("tip_edit_design", lang));
         canvas.title = t("tip_node_canvas", lang);
         const dims = dimsFromAspectMp(state.design.aspect_ratio, state.design.megapixels);
         aspectPill.textContent = `${dims.w}×${dims.h}`;

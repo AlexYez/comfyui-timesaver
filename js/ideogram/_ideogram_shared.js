@@ -7,6 +7,8 @@
 
 import { api } from "/scripts/api.js";
 
+import { getOpenInterfaceLabel } from "../_theme.js";
+
 export const NODE_NAME = "TS_IdeogramDesigner";
 export const DESIGN_INPUT = "design_json";
 export const ROUTE_BASE = "/ts_ideogram";
@@ -1300,7 +1302,9 @@ const I18N = {
         export_btn: "⬇ Export", import_btn: "⬆ Import",
         import_done: "Imported: {n}", import_empty: "No valid presets in the file",
         custom_tag: "custom",
-        empty_hint: "Open the interface to start", edit_btn: "✎ Edit design",
+        // Mirrors the shared launcher so the pack never carries two names for
+        // the same control (js/_theme.js owns the wording).
+        empty_hint: "Open the interface to start", edit_btn: getOpenInterfaceLabel("en"),
         badge_text: "Text", badge_obj: "Object", bbox_label: "bbox [y,x,y,x]",
         tip_add_text: "Drops a new text block on the canvas — type the words you want printed on the image.",
         tip_add_obj: "Adds an object block — describe a thing to place in the scene, like a product or icon.",
@@ -1399,7 +1403,7 @@ const I18N = {
         export_btn: "⬇ Экспорт", import_btn: "⬆ Импорт",
         import_done: "Импортировано: {n}", import_empty: "В файле нет валидных пресетов",
         custom_tag: "свой",
-        empty_hint: "Откройте интерфейс, чтобы начать", edit_btn: "✎ Редактировать",
+        empty_hint: "Откройте интерфейс, чтобы начать", edit_btn: getOpenInterfaceLabel("ru"),
         badge_text: "Текст", badge_obj: "Объект", bbox_label: "рамка [y,x,y,x]",
         tip_add_text: "Добавляет на холст новый текстовый блок — впишите слова, которые должны быть на картинке.",
         tip_add_obj: "Добавляет блок-объект — опишите предмет для сцены, например товар или иконку.",

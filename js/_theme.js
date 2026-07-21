@@ -302,7 +302,9 @@ function launchIconSvg() {
 /**
  * Build the standard "open the fullscreen editor" button.
  * @param {(event: MouseEvent) => void} onOpen
- * @param {{lang?: string, icon?: boolean}} [options]
+ * @param {{lang?: string, icon?: boolean, description?: string}} [options]
+ *   description — optional tooltip explaining what THIS node's editor does.
+ *   The label is shared; what the editor is for legitimately differs per node.
  * @returns {HTMLButtonElement}
  */
 export function createOpenInterfaceButton(onOpen, options = {}) {
@@ -313,7 +315,8 @@ export function createOpenInterfaceButton(onOpen, options = {}) {
     const label = document.createElement("span");
     label.textContent = getOpenInterfaceLabel(options.lang);
     button.appendChild(label);
-    button.title = label.textContent;
+    if (options.description) button._tsTitleOverride = options.description;
+    button.title = button._tsTitleOverride || label.textContent;
     // Nodes relabel on locale change by writing to this span.
     button._tsLabelEl = label;
     if (typeof onOpen === "function") {
@@ -325,12 +328,16 @@ export function createOpenInterfaceButton(onOpen, options = {}) {
     return button;
 }
 
-/** Update an existing launcher's wording (locale or document language change). */
-export function setOpenInterfaceLabel(button, lang) {
+/**
+ * Update an existing launcher's wording (locale or document language change).
+ * Pass `description` to refresh a localised tooltip alongside it.
+ */
+export function setOpenInterfaceLabel(button, lang, description) {
     const label = button?._tsLabelEl;
     if (!label) return;
     label.textContent = getOpenInterfaceLabel(lang);
-    button.title = label.textContent;
+    if (description !== undefined) button._tsTitleOverride = description;
+    button.title = button._tsTitleOverride || label.textContent;
 }
 
 /** Inject the shared stylesheet once per document. Safe to call repeatedly. */
