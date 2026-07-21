@@ -70,6 +70,10 @@ function ensureStyles() {
     align-content: start;
     overflow-y: auto;
     overflow-x: hidden;
+    /* Reserve the gutter so the scrollbar never sits on top of the right-hand
+       column of thumbnails, and keep it always visible: an auto-hiding
+       scrollbar makes a scrollable list of styles look like a static one. */
+    scrollbar-gutter: stable;
     padding-right: 2px;
     padding-bottom: 15px;
     box-sizing: border-box;

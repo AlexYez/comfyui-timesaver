@@ -63,7 +63,7 @@ function ensureStyles() {
 .ts-ideo-node{position:relative;width:100%;height:100%;min-height:0;box-sizing:border-box;color:var(--ts-text);font-family:var(--ts-font);background:var(--ts-checker);border:1px solid var(--ts-border-soft);border-radius:var(--ts-radius-lg);overflow:hidden;user-select:none}
 .ts-ideo-node__canvas{position:absolute;inset:0;display:block;width:100%;height:100%}
 .ts-ideo-node__toolbar{position:absolute;top:6px;left:6px;right:6px;height:${TOOLBAR_H - 8}px;display:flex;align-items:center;justify-content:center;gap:6px;z-index:3}
-.ts-ideo-node__pill{position:absolute;right:0;top:50%;transform:translateY(-50%);font-size:var(--ts-fs-xs);color:var(--ts-muted);background:var(--ts-elevated);border:1px solid var(--ts-border-soft);border-radius:8px;padding:4px 8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:55%}
+.ts-ideo-node__pill{margin-left:auto;flex:0 0 auto;font-size:var(--ts-fs-xs);color:var(--ts-faint);white-space:nowrap;font-variant-numeric:tabular-nums}
 .ts-ideo-node__summary{position:absolute;left:6px;right:6px;bottom:6px;height:${SUMMARY_H - 6}px;display:flex;align-items:center;gap:8px;font-size:var(--ts-fs-sm);color:var(--ts-muted);background:var(--ts-elevated);border:1px solid var(--ts-border-soft);border-radius:8px;padding:0 8px;z-index:3;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden}
 .ts-ideo-node__warn{color:var(--ts-warning)}
 `;
@@ -207,14 +207,17 @@ export function setupIdeogramNode(node) {
 
     const toolbar = document.createElement("div");
     toolbar.className = "ts-ideo-node__toolbar";
-    const editBtn = createOpenInterfaceButton(() => openEditor(), { lang: DEFAULT_LANG });
+    // No explicit language: the launcher follows the ComfyUI UI locale in every
+    // node, so two TS nodes side by side never disagree on its wording. The rest
+    // of this panel still follows the design document's own language.
+    const editBtn = createOpenInterfaceButton(() => openEditor());
     // Retained as a stable query hook (e2e test, user CSS); the look comes
     // from the shared launcher classes.
     editBtn.classList.add("ts-ideo-node__btn");
-    const aspectPill = document.createElement("div");
+    const aspectPill = document.createElement("span");
     aspectPill.className = "ts-ideo-node__pill";
     aspectPill.textContent = "16x9";
-    toolbar.append(editBtn, aspectPill);
+    toolbar.append(editBtn);
 
     const summary = document.createElement("div");
     summary.className = "ts-ideo-node__summary";
@@ -255,17 +258,18 @@ export function setupIdeogramNode(node) {
         const lang = state.design.language || DEFAULT_LANG;
         const styleObj = (state.presets.styles || []).find((s) => s.id === state.design.style?.preset_id);
         const styleName = styleObj ? localizedName(styleObj, lang) : (state.design.style?.preset_id || "—");
-        setOpenInterfaceLabel(editBtn, lang);
+        setOpenInterfaceLabel(editBtn);
         canvas.title = t("tip_node_canvas", lang);
         const dims = dimsFromAspectMp(state.design.aspect_ratio, state.design.megapixels);
         aspectPill.textContent = `${dims.w}×${dims.h}`;
         aspectPill.title = t("tip_dims_pill", lang);
         summary.innerHTML = "";
         const main = document.createElement("span");
+        main.style.cssText = "min-width:0;overflow:hidden;text-overflow:ellipsis";
         const txtWord = lang === "en" ? "text" : "текст";
         const objWord = lang === "en" ? "obj" : "об.";
         main.textContent = `${texts} ${txtWord} · ${objs} ${objWord}${placeholders ? ` · ${placeholders}↳` : ""} · ${styleName}`;
-        summary.appendChild(main);
+        summary.append(main, aspectPill);
     }
 
     function ensureRefImage() {

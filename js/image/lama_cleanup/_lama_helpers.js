@@ -4,12 +4,7 @@
 import { app } from "/scripts/app.js";
 import { api } from "/scripts/api.js";
 
-import {
-    TS_UI_CLASS,
-    createOpenInterfaceButton,
-    ensureThemeStyles,
-    getOpenInterfaceLabel,
-} from "../../_theme.js";
+import { TS_UI_CLASS, createOpenInterfaceButton, ensureThemeStyles } from "../../_theme.js";
 
 export const NODE_NAME = "TS_LamaCleanup";
 const ROUTE_BASE = "/ts_lama_cleanup";
@@ -571,7 +566,10 @@ export function setupLamaCleanup(node) {
     shellImage.style.display = "none";
     const shellPlaceholder = document.createElement("div");
     shellPlaceholder.className = "ts-lama-shell__placeholder";
-    shellPlaceholder.textContent = `No image yet — click “${getOpenInterfaceLabel()}”, or drop / paste one here.`;
+    // No button label quoted here: the launcher right below already carries
+    // the wording, and it is localised — embedding it produced a mixed-language
+    // sentence.
+    shellPlaceholder.textContent = "No image yet — drop or paste one here.";
     shellPreview.append(shellImage, shellPlaceholder);
 
     const shellRow = document.createElement("div");
@@ -1805,7 +1803,7 @@ export function setupLamaCleanup(node) {
         } else if (state.sourcePath) {
             await seedWorkingFile();
         } else {
-            setStatus(`Click “${getOpenInterfaceLabel()}” to begin.`, "info");
+            setStatus("Ready — open the interface to load an image.", "info");
         }
     });
 }
