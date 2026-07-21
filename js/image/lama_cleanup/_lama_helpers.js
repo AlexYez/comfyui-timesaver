@@ -16,9 +16,12 @@ const INPUT_FEATHER = "feather";
 const INPUT_SESSION_ID = "session_id";
 const INPUT_WORKING_PATH = "working_path";
 const PROPERTY_SESSION_ID = "ts_lama_cleanup_session_id";
-const DEFAULT_NODE_SIZE = [640, 520];
-const MIN_NODE_WIDTH = 460;
-const MIN_NODE_HEIGHT = 320;
+// The node body is now a compact shell (preview + "Edit Image"); the painting
+// UI lives in a fullscreen overlay, so the node no longer needs to be large.
+// Existing workflows keep their serialised size (we only clamp upward to MIN).
+const DEFAULT_NODE_SIZE = [320, 300];
+const MIN_NODE_WIDTH = 240;
+const MIN_NODE_HEIGHT = 160;
 const TITLE_BAR_HEIGHT = 30;
 const STATUS_POLL_INTERVAL_MS = 1500;
 const SOURCE_POLL_INTERVAL_MS = 300;
@@ -56,7 +59,26 @@ function ensureStyles() {
     const style = document.createElement("style");
     style.id = STYLE_ID;
     style.textContent = `
-.ts-lama{--tslc-bg:#0e1218;--tslc-text:#e9eef6;--tslc-muted:#9aa6b8;--tslc-accent:#7aa2ff;--tslc-accent-strong:#3a72ff;--tslc-danger:#ef6f6c;--tslc-success:#82d6a8;--tslc-toolbar:rgba(12,16,22,.72);--tslc-toolbar-border:rgba(255,255,255,.08);position:relative;width:100%;height:100%;min-height:0;box-sizing:border-box;color:var(--tslc-text);font-family:"Segoe UI",Tahoma,Geneva,Verdana,sans-serif;background:repeating-conic-gradient(#1a2030 0% 25%,#0f141a 0% 50%) 50%/24px 24px;border:1px solid #28303c;border-radius:10px;overflow:hidden;user-select:none}
+/* Palette is shared by the in-node shell and the fullscreen editor. The
+   .ts-lama__btn / __statusbar rules below read these vars, so every host that
+   renders those elements must declare them. */
+.ts-lama,.ts-lama-shell,.ts-lama-modal{--tslc-bg:#0e1218;--tslc-text:#e9eef6;--tslc-muted:#9aa6b8;--tslc-accent:#7aa2ff;--tslc-accent-strong:#3a72ff;--tslc-danger:#ef6f6c;--tslc-success:#82d6a8;--tslc-toolbar:rgba(12,16,22,.72);--tslc-toolbar-border:rgba(255,255,255,.08)}
+.ts-lama{position:relative;width:100%;height:100%;min-height:0;box-sizing:border-box;color:var(--tslc-text);font-family:"Segoe UI",Tahoma,Geneva,Verdana,sans-serif;background:repeating-conic-gradient(#1a2030 0% 25%,#0f141a 0% 50%) 50%/24px 24px;border:1px solid #28303c;border-radius:10px;overflow:hidden;user-select:none}
+/* ---- Fullscreen editor host ---- */
+.ts-lama-modal{position:fixed;inset:0;z-index:11000;display:flex;background:rgba(6,9,13,.94);color:var(--tslc-text);font-family:"Segoe UI",Tahoma,Geneva,Verdana,sans-serif}
+.ts-lama-modal .ts-lama{border:none;border-radius:0}
+.ts-lama-modal__keyanchor{position:fixed;left:-9999px;top:-9999px;width:1px;height:1px;opacity:0;pointer-events:none;resize:none}
+/* ---- Compact in-node shell ---- */
+.ts-lama-shell{position:relative;width:100%;height:100%;min-height:0;box-sizing:border-box;display:flex;flex-direction:column;gap:6px;padding:6px;color:var(--tslc-text);font-family:"Segoe UI",Tahoma,Geneva,Verdana,sans-serif;background:var(--tslc-bg);border:1px solid #28303c;border-radius:10px;overflow:hidden;user-select:none}
+.ts-lama-shell__preview{position:relative;flex:1 1 auto;min-height:0;display:flex;align-items:center;justify-content:center;border-radius:8px;overflow:hidden;cursor:pointer;background:repeating-conic-gradient(#1a2030 0% 25%,#0f141a 0% 50%) 50%/16px 16px}
+.ts-lama-shell__preview img{max-width:100%;max-height:100%;object-fit:contain;display:block}
+.ts-lama-shell__placeholder{padding:10px;text-align:center;font-size:11px;color:var(--tslc-muted);pointer-events:none}
+.ts-lama-shell__row{display:flex;align-items:center;gap:6px;flex:0 0 auto}
+.ts-lama-shell__row .ts-lama__btn{flex:0 0 auto}
+.ts-lama-shell__status{flex:1 1 auto;min-width:0;font-size:10px;color:var(--tslc-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:right}
+.ts-lama-shell__status.is-error{color:var(--tslc-danger)}
+.ts-lama-shell__status.is-success{color:var(--tslc-success)}
+.ts-lama-shell.is-drag-over{outline:2px dashed var(--tslc-accent);outline-offset:-3px}
 .ts-lama__canvas{position:absolute;inset:0;display:block;width:100%;height:100%;cursor:default;touch-action:none}
 .ts-lama__canvas.has-image{cursor:none}
 .ts-lama__empty{position:absolute;left:8px;right:8px;top:56px;bottom:44px;display:flex;align-items:center;justify-content:center;text-align:center;padding:16px;color:#cdd6e6;font-size:12px;pointer-events:none;background:linear-gradient(180deg,rgba(0,0,0,.45),rgba(0,0,0,.7));border-radius:6px}
@@ -242,6 +264,11 @@ function redoIconSvg() {
     return `<svg viewBox="0 0 24 24"><path d="M18.4 10.6C16.55 8.99 14.15 8 11.5 8c-4.65 0-8.58 3.03-9.96 7.22L3.9 16c1.05-3.19 4.05-5.5 7.6-5.5 1.95 0 3.73.72 5.12 1.88L13 16h9V7l-3.6 3.6z"/></svg>`;
 }
 
+function closeIconSvg() {
+    // Material Design "close" icon.
+    return `<svg viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>`;
+}
+
 function makeSlider({ min, max, step, value, onInput, className }) {
     const slider = document.createElement("input");
     slider.type = "range";
@@ -329,6 +356,12 @@ export function setupLamaCleanup(node) {
         lastDrawImageY: 0,
         sourcePollHandle: null,
         settingsOpen: false,
+        // Fullscreen editor visibility. While false the painting container is
+        // detached from the DOM, so redraws are skipped (zero-size rects).
+        editorOpen: false,
+        // Tracks whether the mouse is over the node shell, so clipboard paste
+        // can be routed to the right node when several exist on the graph.
+        pointerOverShell: false,
         // Edit history for Undo/Redo. Each entry is a working_path string;
         // backend creates a fresh file per inpaint/seed so old steps survive.
         history: [],
@@ -448,7 +481,11 @@ export function setupLamaCleanup(node) {
     settingsButton.className = "ts-lama__btn ts-lama__btn--icon";
     settingsButton.title = "Advanced settings";
     settingsButton.innerHTML = gearIconSvg();
-    rightGroup.append(settingsButton);
+    const closeButton = document.createElement("button");
+    closeButton.className = "ts-lama__btn ts-lama__btn--icon";
+    closeButton.title = "Close editor (Esc)";
+    closeButton.innerHTML = closeIconSvg();
+    rightGroup.append(settingsButton, closeButton);
 
     toolbar.append(leftGroup, brushGroup, zoomGroup, rightGroup);
 
@@ -523,6 +560,44 @@ export function setupLamaCleanup(node) {
 
     container.append(canvas, empty, overlay, toolbar, settings, statusBar, fileInput, cursorElement, dropHint);
 
+    // ---------- Compact in-node shell ----------
+    // The node body only hosts a preview plus an "Edit Image" button; the
+    // painting UI (container above) is mounted into a fullscreen overlay on
+    // demand. Keeping the container in a variable (detached while closed)
+    // preserves all canvas/mask/history state across open→close→open.
+    const shell = document.createElement("div");
+    shell.className = "ts-lama-shell";
+
+    const shellPreview = document.createElement("div");
+    shellPreview.className = "ts-lama-shell__preview";
+    shellPreview.title = "Open the fullscreen editor";
+    const shellImage = document.createElement("img");
+    shellImage.alt = "";
+    shellImage.style.display = "none";
+    const shellPlaceholder = document.createElement("div");
+    shellPlaceholder.className = "ts-lama-shell__placeholder";
+    shellPlaceholder.textContent = "No image yet — click “Edit Image”, or drop / paste one here.";
+    shellPreview.append(shellImage, shellPlaceholder);
+
+    const shellRow = document.createElement("div");
+    shellRow.className = "ts-lama-shell__row";
+    const shellEditButton = document.createElement("button");
+    shellEditButton.className = "ts-lama__btn ts-lama__btn--primary";
+    shellEditButton.textContent = "Edit Image";
+    shellEditButton.title = "Open the fullscreen cleanup editor.";
+    const shellStatus = document.createElement("div");
+    shellStatus.className = "ts-lama-shell__status";
+    shellRow.append(shellEditButton, shellStatus);
+
+    shell.append(shellPreview, shellRow);
+    // Pointer traffic over the shell must not reach LiteGraph (node drag on
+    // button press, graph zoom on wheel) — same guard the container gets.
+    stopPropagation(shell, [
+        "pointerdown", "pointerup", "pointermove",
+        "mousedown", "mouseup", "mousemove",
+        "wheel", "click", "dblclick", "contextmenu",
+    ]);
+
     // "wheel" is stopped at the container level so wheel events fired over
     // the toolbar / brush slider / settings popover (children of container,
     // not children of canvas) do not bubble out to LiteGraph and zoom the
@@ -545,11 +620,11 @@ export function setupLamaCleanup(node) {
     const widgetOptions = {
         serialize: false,
         hideOnZoom: false,
-        getMinHeight: () => 220,
+        getMinHeight: () => 110,
         getMaxHeight: () => 8192,
         afterResize: () => { requestRedraw(); },
     };
-    const domWidget = node.addDOMWidget(DOM_WIDGET_NAME, "div", container, widgetOptions);
+    const domWidget = node.addDOMWidget(DOM_WIDGET_NAME, "div", shell, widgetOptions);
     const domWidgetEl = domWidget?.element || domWidget?.el || domWidget?.container;
 
     function syncDomSize() {
@@ -561,9 +636,9 @@ export function setupLamaCleanup(node) {
             domWidgetEl.style.minHeight = "0";
             domWidgetEl.style.overflow = "hidden";
         }
-        container.style.width = "100%";
-        container.style.height = "100%";
-        container.style.minHeight = "0";
+        shell.style.width = "100%";
+        shell.style.height = "100%";
+        shell.style.minHeight = "0";
     }
 
     function setStatus(message, kind = "info") {
@@ -572,11 +647,42 @@ export function setupLamaCleanup(node) {
         statusText.textContent = message || "";
         statusBar.classList.toggle("is-error", kind === "error");
         statusBar.classList.toggle("is-success", kind === "success");
+        // Mirror into the node shell so progress/errors stay visible after the
+        // fullscreen editor is closed (uploads and inpaints can finish there).
+        shellStatus.textContent = message || "";
+        shellStatus.title = message || "";
+        shellStatus.classList.toggle("is-error", kind === "error");
+        shellStatus.classList.toggle("is-success", kind === "success");
     }
 
     function setOverlay(active, label = "Processing...") {
         overlay.classList.toggle("is-active", Boolean(active));
         overlayLabel.textContent = label;
+    }
+
+    // Node-shell preview. Keyed on the file path (the backend writes a fresh
+    // versioned file per edit) so updateMeta — which runs on every pan/zoom
+    // frame — never re-triggers a network fetch for an unchanged image.
+    let shellPreviewPath = null;
+    function updateShellPreview() {
+        const path = state.workingPath || state.sourcePath || "";
+        if (path === shellPreviewPath) return;
+        shellPreviewPath = path;
+        if (!path) {
+            shellImage.removeAttribute("src");
+            shellImage.style.display = "none";
+            shellPlaceholder.style.display = "";
+            return;
+        }
+        shellImage.onload = () => {
+            shellImage.style.display = "block";
+            shellPlaceholder.style.display = "none";
+        };
+        shellImage.onerror = () => {
+            shellImage.style.display = "none";
+            shellPlaceholder.style.display = "";
+        };
+        shellImage.src = imageUrlForPath(path);
     }
 
     function updateMeta() {
@@ -601,6 +707,8 @@ export function setupLamaCleanup(node) {
         settingsButton.disabled = state.isProcessing;
         undoButton.disabled = state.isProcessing || state.historyIndex <= 0;
         redoButton.disabled = state.isProcessing || state.historyIndex >= state.history.length - 1;
+        shellEditButton.disabled = state.isProcessing;
+        updateShellPreview();
     }
 
     function pushHistory(path) {
@@ -918,6 +1026,10 @@ export function setupLamaCleanup(node) {
 
     let redrawScheduled = false;
     function requestRedraw() {
+        // While the editor is closed the container is detached: every rect is
+        // 0×0, so a redraw would only burn frames (and spin the
+        // pendingLayoutAttempts retry). openEditor() repaints on mount.
+        if (!state.editorOpen) return;
         if (redrawScheduled) return;
         redrawScheduled = true;
         requestAnimationFrame(() => {
@@ -1203,6 +1315,118 @@ export function setupLamaCleanup(node) {
         await seedWorkingFile();
     }
 
+    // ---------- Fullscreen editor ----------
+    // The overlay is created on open and destroyed on close; `container` (with
+    // its canvas, mask bitmaps and history) is merely re-parented, so closing
+    // and reopening never loses the in-progress edit.
+    let modal = null;
+    let keyAnchor = null;
+
+    function parkFocus() {
+        if (!state.editorOpen || !keyAnchor || !modal) return;
+        const active = document.activeElement;
+        if (!active || active === document.body || !modal.contains(active)) {
+            keyAnchor.focus();
+        }
+    }
+
+    function onModalFocusIn(event) {
+        const target = event.target;
+        if (target === keyAnchor) return;
+        const tag = target?.tagName;
+        // Real fields inside the editor (the sliders) keep focus; buttons don't
+        // need it, and letting them hold it would re-arm ComfyUI's hotkeys.
+        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target?.isContentEditable) return;
+        keyAnchor?.focus();
+    }
+
+    function onModalPointerUp() {
+        const active = document.activeElement;
+        const tag = active?.tagName;
+        if (active === keyAnchor || tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || active?.isContentEditable) return;
+        keyAnchor?.focus();
+    }
+
+    function setBrushSize(nextPx) {
+        const brushPx = clamp(Math.round(nextPx), BRUSH_MIN_PX, BRUSH_MAX_PX);
+        state.brushSize = brushPx;
+        brushSlider.value = String(brushToSliderValue(brushPx));
+        brushValueLabel.textContent = String(brushPx);
+        setWidgetValue(node, INPUT_BRUSH_SIZE, brushPx);
+        updateCursorElement();
+    }
+
+    // ComfyUI's hotkey service listens on window in the CAPTURE phase and was
+    // registered before us, so event order cannot be won — Ctrl+Z would reach
+    // the graph's ChangeTracker and undo the node-add, deleting the node under
+    // the open editor. Parking focus on the hidden read-only textarea makes the
+    // service skip our events (it ignores text-field targets); this handler
+    // then implements the editor-scoped shortcuts. See CLAUDE.md §12.5 /
+    // project_memory/reference_modal_hotkeys.md.
+    function onEditorKey(event) {
+        if (!state.editorOpen) return;
+        const stop = () => { event.preventDefault(); event.stopPropagation(); };
+        if (event.key === "Escape") { stop(); closeEditor(); return; }
+        const active = document.activeElement;
+        const tag = active?.tagName;
+        if ((tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") && active !== keyAnchor) return;
+        // Brush size on [ / ] — e.code is the physical key, so it also works on
+        // a Cyrillic layout.
+        if (event.code === "BracketLeft") { stop(); setBrushSize(state.brushSize / 1.2); return; }
+        if (event.code === "BracketRight") { stop(); setBrushSize(state.brushSize * 1.2); return; }
+        const mod = event.ctrlKey || event.metaKey;
+        if (!mod) return;
+        if (event.code === "KeyZ") { stop(); if (event.shiftKey) doRedo(); else doUndo(); }
+        else if (event.code === "KeyY") { stop(); doRedo(); }
+    }
+
+    function openEditor() {
+        if (state.editorOpen) return;
+        modal = document.createElement("div");
+        modal.className = "ts-lama-modal";
+        modal.append(container);
+        keyAnchor = document.createElement("textarea");
+        keyAnchor.className = "ts-lama-modal__keyanchor";
+        keyAnchor.readOnly = true;
+        keyAnchor.tabIndex = -1;
+        keyAnchor.setAttribute("aria-hidden", "true");
+        modal.append(keyAnchor);
+        modal.addEventListener("focusin", onModalFocusIn);
+        modal.addEventListener("pointerup", onModalPointerUp);
+        document.body.appendChild(modal);
+        state.editorOpen = true;
+        window.addEventListener("keydown", onEditorKey, true);
+        resizeObserver.observe(container);
+        keyAnchor.focus();
+        // The container was detached (zero-size rects) while closed, so every
+        // cached layout value is stale.
+        imageCacheValid = false;
+        updateMeta();
+        requestRedraw();
+    }
+
+    function closeEditor() {
+        if (!state.editorOpen) return;
+        state.editorOpen = false;
+        window.removeEventListener("keydown", onEditorKey, true);
+        toggleSettings(false);
+        state.isDrawing = false;
+        state.isPanning = false;
+        state.cursorVisible = false;
+        updateCursorElement();
+        try { resizeObserver.unobserve(container); } catch { /* observer may be gone */ }
+        modal?.removeEventListener("focusin", onModalFocusIn);
+        modal?.removeEventListener("pointerup", onModalPointerUp);
+        // Detach the container rather than destroy it: canvas bitmaps, mask and
+        // undo history all live inside this closure and survive for reopening.
+        container.remove();
+        modal?.remove();
+        modal = null;
+        keyAnchor = null;
+        updateMeta();
+        scheduleCanvasDirty();
+    }
+
     function toggleSettings(open) {
         state.settingsOpen = open !== undefined ? Boolean(open) : !state.settingsOpen;
         settings.classList.toggle("is-open", state.settingsOpen);
@@ -1420,6 +1644,11 @@ export function setupLamaCleanup(node) {
             requestRedraw();
         }
     });
+    closeButton.addEventListener("click", (event) => { event.stopPropagation(); closeEditor(); });
+    shellEditButton.addEventListener("click", (event) => { event.stopPropagation(); openEditor(); });
+    shellPreview.addEventListener("click", (event) => { event.stopPropagation(); openEditor(); });
+    shell.addEventListener("pointerenter", () => { state.pointerOverShell = true; });
+    shell.addEventListener("pointerleave", () => { state.pointerOverShell = false; });
     undoButton.addEventListener("click", (event) => { event.stopPropagation(); doUndo(); });
     redoButton.addEventListener("click", (event) => { event.stopPropagation(); doRedo(); });
     settingsButton.addEventListener("click", (event) => {
@@ -1454,12 +1683,17 @@ export function setupLamaCleanup(node) {
         const files = event?.dataTransfer?.files;
         return Boolean(files && files.length > 0);
     }
+    // Drop targets: the fullscreen editor AND the compact node shell, so an
+    // image can be loaded without opening the editor first.
+    function dropHost(event) {
+        return event.currentTarget === shell ? shell : container;
+    }
     function onContainerDragEnter(event) {
         if (state.isProcessing) return;
         if (!dragHasImage(event)) return;
         event.preventDefault();
         event.stopPropagation();
-        container.classList.add("is-drag-over");
+        dropHost(event).classList.add("is-drag-over");
     }
     function onContainerDragOver(event) {
         if (state.isProcessing) return;
@@ -1469,44 +1703,43 @@ export function setupLamaCleanup(node) {
         if (event.dataTransfer) {
             event.dataTransfer.dropEffect = "copy";
         }
-        container.classList.add("is-drag-over");
+        dropHost(event).classList.add("is-drag-over");
     }
     function onContainerDragLeave(event) {
-        // Only clear when actually leaving the container (not when crossing
-        // between children, which fires dragleave on the child).
-        if (event.relatedTarget && container.contains(event.relatedTarget)) return;
-        container.classList.remove("is-drag-over");
+        // Only clear when actually leaving the host (not when crossing between
+        // children, which fires dragleave on the child).
+        const host = dropHost(event);
+        if (event.relatedTarget && host.contains(event.relatedTarget)) return;
+        host.classList.remove("is-drag-over");
     }
     async function onContainerDrop(event) {
         event.preventDefault();
         event.stopPropagation();
-        container.classList.remove("is-drag-over");
+        dropHost(event).classList.remove("is-drag-over");
         if (state.isProcessing) return;
         const files = Array.from(event.dataTransfer?.files || []);
         const file = files.find((f) => !f.type || f.type.startsWith("image/")) || files[0];
         if (!file) return;
         await chooseSourceFile(file);
     }
-    container.addEventListener("dragenter", onContainerDragEnter);
-    container.addEventListener("dragover", onContainerDragOver);
-    container.addEventListener("dragleave", onContainerDragLeave);
-    container.addEventListener("drop", onContainerDrop);
+    for (const host of [container, shell]) {
+        host.addEventListener("dragenter", onContainerDragEnter);
+        host.addEventListener("dragover", onContainerDragOver);
+        host.addEventListener("dragleave", onContainerDragLeave);
+        host.addEventListener("drop", onContainerDrop);
+    }
 
     // ---------- Paste image from clipboard ----------
-    function pointerOverContainer() {
-        const rect = container.getBoundingClientRect();
-        return (
-            state.cursorClientX >= rect.left
-            && state.cursorClientX <= rect.right
-            && state.cursorClientY >= rect.top
-            && state.cursorClientY <= rect.bottom
-        );
+    function pasteTargetsThisNode() {
+        // Multiple Lama nodes can exist on the graph. With the editor open it
+        // covers the viewport and owns the clipboard; otherwise the paste goes
+        // to whichever node's shell the mouse is hovering.
+        if (state.editorOpen) return true;
+        return state.pointerOverShell;
     }
     async function onDocumentPaste(event) {
         if (state.isProcessing) return;
-        // Multiple Lama nodes could exist on the graph; only handle paste if
-        // the user's mouse is currently hovering over THIS node's container.
-        if (!pointerOverContainer()) return;
+        if (!pasteTargetsThisNode()) return;
         const items = Array.from(event.clipboardData?.items || []);
         const imageItem = items.find((item) => item?.type && item.type.startsWith("image/"));
         const file = imageItem?.getAsFile?.();
@@ -1524,8 +1757,9 @@ export function setupLamaCleanup(node) {
         return result;
     };
 
+    // Only observed while the fullscreen editor is mounted (openEditor /
+    // closeEditor); the detached container never resizes.
     const resizeObserver = new ResizeObserver(() => requestRedraw());
-    resizeObserver.observe(container);
 
     state.sourcePollHandle = window.setInterval(async () => {
         const nextSource = String(getWidgetValue(node, INPUT_SOURCE_PATH, "") || "");
@@ -1546,6 +1780,9 @@ export function setupLamaCleanup(node) {
     }, SOURCE_POLL_INTERVAL_MS);
 
     node._tsLamaCleanupCleanup = () => {
+        // The overlay lives on document.body, so it would survive node removal
+        // or a workflow-tab switch unless we tear it down explicitly.
+        closeEditor();
         resizeObserver.disconnect();
         if (state.sourcePollHandle) window.clearInterval(state.sourcePollHandle);
         if (state.modelStatusPollHandle) window.clearInterval(state.modelStatusPollHandle);
@@ -1577,7 +1814,7 @@ export function setupLamaCleanup(node) {
         } else if (state.sourcePath) {
             await seedWorkingFile();
         } else {
-            setStatus("Click “Load Image” to begin.", "info");
+            setStatus("Click “Edit Image” to begin.", "info");
         }
     });
 }
