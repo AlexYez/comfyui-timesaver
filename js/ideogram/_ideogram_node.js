@@ -40,6 +40,7 @@ import {
     createOpenInterfaceButton,
     ensureThemeStyles,
     getThemeColors,
+    getUiLanguage,
     setOpenInterfaceLabel,
 } from "../_theme.js";
 
@@ -210,11 +211,12 @@ export function setupIdeogramNode(node) {
 
     const toolbar = document.createElement("div");
     toolbar.className = "ts-ideo-node__toolbar";
-    // No explicit language: the launcher follows the ComfyUI UI locale in every
-    // node, so two TS nodes side by side never disagree on its wording. The rest
-    // of this panel still follows the design document's own language.
+    // The launcher is chrome, so both its label and its tooltip follow the
+    // ComfyUI UI locale via getUiLanguage(). Two TS nodes side by side never
+    // disagree on the wording, and it never drifts into the design document's
+    // language (which still drives the rest of this panel).
     const editBtn = createOpenInterfaceButton(() => openEditor(), {
-        description: t("tip_edit_design", DEFAULT_LANG),
+        description: t("tip_edit_design", getUiLanguage()),
     });
     // Retained as a stable query hook (e2e test, user CSS); the look comes
     // from the shared launcher classes.
@@ -263,7 +265,7 @@ export function setupIdeogramNode(node) {
         const lang = state.design.language || DEFAULT_LANG;
         const styleObj = (state.presets.styles || []).find((s) => s.id === state.design.style?.preset_id);
         const styleName = styleObj ? localizedName(styleObj, lang) : (state.design.style?.preset_id || "—");
-        setOpenInterfaceLabel(editBtn, undefined, t("tip_edit_design", lang));
+        setOpenInterfaceLabel(editBtn, undefined, t("tip_edit_design", getUiLanguage()));
         canvas.title = t("tip_node_canvas", lang);
         const dims = dimsFromAspectMp(state.design.aspect_ratio, state.design.megapixels);
         aspectPill.textContent = `${dims.w}×${dims.h}`;
