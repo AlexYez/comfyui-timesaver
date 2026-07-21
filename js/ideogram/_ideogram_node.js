@@ -452,7 +452,8 @@ export function setupIdeogramNode(node) {
         });
     }
 
-    editBtn.addEventListener("click", (e) => { e.stopPropagation(); openEditor(); });
+    // The launcher factory already wires the click (and stops propagation);
+    // a second listener here opened the editor twice, stacking two overlays.
     canvas.addEventListener("dblclick", (e) => { e.stopPropagation(); openEditor(); });
 
     const prevOnResize = node.onResize;
