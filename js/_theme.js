@@ -80,6 +80,11 @@ function themeCss() {
   --ts-success:#8fbf9f;
   --ts-warning:#d4b483;
 
+  /* Scrollbars need real contrast against the panel — a thumb tinted like a
+     border reads as "no scrollbar at all" on a dark surface. */
+  --ts-scrollbar:#5c5c60;
+  --ts-scrollbar-hover:#7b7b80;
+
   --ts-radius-sm:5px;
   --ts-radius:7px;
   --ts-radius-lg:10px;
@@ -128,6 +133,8 @@ function themeCss() {
     /* Blending the shadow toward the page background keeps it a heavy drop on
        a dark theme and a soft card lift on a light one. */
     --ts-shadow-tint:color-mix(in srgb,color-mix(in srgb,#000 80%,var(--ts-bg)) 30%,transparent);
+    --ts-scrollbar:color-mix(in srgb,var(--ts-text) 36%,var(--ts-bg));
+    --ts-scrollbar-hover:color-mix(in srgb,var(--ts-text) 58%,var(--ts-bg));
     --ts-danger:color-mix(in srgb,#d0625c 74%,var(--ts-text));
     --ts-success:color-mix(in srgb,#5aa87a 74%,var(--ts-text));
     --ts-warning:color-mix(in srgb,#c99446 74%,var(--ts-text));
@@ -224,13 +231,106 @@ function themeCss() {
 .is-drag-over>.ts-ui-drop{display:flex}
 .is-drag-over{outline:2px dashed var(--ts-accent-line);outline-offset:-3px}
 
-/* ── Scrollbars inside TS surfaces ───────────────────────────────────── */
-.${TS_UI_CLASS} ::-webkit-scrollbar{width:10px;height:10px}
-.${TS_UI_CLASS} ::-webkit-scrollbar-track{background:transparent}
-.${TS_UI_CLASS} ::-webkit-scrollbar-thumb{background:var(--ts-border-soft);border-radius:999px;
-  border:2px solid transparent;background-clip:content-box}
-.${TS_UI_CLASS} ::-webkit-scrollbar-thumb:hover{background:var(--ts-border);background-clip:content-box}
+/* ── Launcher: the one way to open a node's fullscreen editor ─────────
+   Same label, same look, horizontally centred in every node that has one,
+   so the control is found in the same place across the pack. */
+.ts-ui-launchbar{display:flex;align-items:center;justify-content:center;gap:8px;
+  width:100%;flex:0 0 auto}
+.ts-ui-launch{padding:7px 16px;font-size:var(--ts-fs);letter-spacing:.01em}
+.ts-ui-launch svg{width:15px;height:15px;fill:currentColor;pointer-events:none}
+
+/* ── Scrollbars inside TS surfaces ─────────────────────────────────────
+   Standard properties are authoritative in Chromium 121+, Firefox and
+   Safari 18.2+. Chromium IGNORES the -webkit- pseudo-elements as soon as
+   scrollbar-width/-color is set, so the legacy block is fenced behind
+   @supports instead of sitting alongside them. */
+.${TS_UI_CLASS},.${TS_UI_CLASS} *{scrollbar-width:thin;
+  scrollbar-color:var(--ts-scrollbar) transparent}
+@supports not (scrollbar-color: auto){
+  .${TS_UI_CLASS} ::-webkit-scrollbar,.${TS_UI_CLASS}::-webkit-scrollbar{width:10px;height:10px}
+  .${TS_UI_CLASS} ::-webkit-scrollbar-track,.${TS_UI_CLASS}::-webkit-scrollbar-track{background:transparent}
+  .${TS_UI_CLASS} ::-webkit-scrollbar-thumb,.${TS_UI_CLASS}::-webkit-scrollbar-thumb{
+    background:var(--ts-scrollbar);border-radius:999px;border:2px solid transparent;
+    background-clip:content-box}
+  .${TS_UI_CLASS} ::-webkit-scrollbar-thumb:hover,.${TS_UI_CLASS}::-webkit-scrollbar-thumb:hover{
+    background:var(--ts-scrollbar-hover);background-clip:content-box}
+}
 `;
+}
+
+// ---------------------------------------------------------------------------
+// Unified editor launcher
+// ---------------------------------------------------------------------------
+// Nodes whose real UI lives in a fullscreen editor all open it the same way:
+// one centred button, worded identically. Keeping the label and the factory
+// here means a future node cannot invent its own ("Edit Image", "Редактировать"
+// and friends were the previous state of affairs).
+
+const OPEN_INTERFACE_LABELS = {
+    en: "Open Interface",
+    ru: "Открыть интерфейс",
+};
+
+/** Two-letter UI language: ComfyUI's own setting first, then the browser. */
+export function getUiLanguage() {
+    try {
+        const app = window.comfyAPI?.app?.app || window.app;
+        const locale = app?.extensionManager?.setting?.get?.("Comfy.Locale");
+        if (typeof locale === "string" && locale) return locale.slice(0, 2).toLowerCase();
+    } catch {
+        // Setting store not ready (or not present on older frontends).
+    }
+    return String(navigator?.language || "en").slice(0, 2).toLowerCase();
+}
+
+/**
+ * Label for the launcher button.
+ * @param {string} [lang] Force a language (nodes that localise their whole
+ *   panel from document data pass their own, so the button matches its
+ *   surroundings instead of the global UI locale).
+ */
+export function getOpenInterfaceLabel(lang) {
+    const key = String(lang || getUiLanguage()).slice(0, 2).toLowerCase();
+    return OPEN_INTERFACE_LABELS[key] || OPEN_INTERFACE_LABELS.en;
+}
+
+function launchIconSvg() {
+    // Material Design "open_in_full".
+    return `<svg viewBox="0 0 24 24"><path d="M21 11V3h-8l3.29 3.29-10 10L3 13v8h8l-3.29-3.29 10-10z"/></svg>`;
+}
+
+/**
+ * Build the standard "open the fullscreen editor" button.
+ * @param {(event: MouseEvent) => void} onOpen
+ * @param {{lang?: string, icon?: boolean}} [options]
+ * @returns {HTMLButtonElement}
+ */
+export function createOpenInterfaceButton(onOpen, options = {}) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "ts-ui-btn ts-ui-btn--primary ts-ui-launch";
+    if (options.icon !== false) button.innerHTML = launchIconSvg();
+    const label = document.createElement("span");
+    label.textContent = getOpenInterfaceLabel(options.lang);
+    button.appendChild(label);
+    button.title = label.textContent;
+    // Nodes relabel on locale change by writing to this span.
+    button._tsLabelEl = label;
+    if (typeof onOpen === "function") {
+        button.addEventListener("click", (event) => {
+            event.stopPropagation();
+            onOpen(event);
+        });
+    }
+    return button;
+}
+
+/** Update an existing launcher's wording (locale or document language change). */
+export function setOpenInterfaceLabel(button, lang) {
+    const label = button?._tsLabelEl;
+    if (!label) return;
+    label.textContent = getOpenInterfaceLabel(lang);
+    button.title = label.textContent;
 }
 
 /** Inject the shared stylesheet once per document. Safe to call repeatedly. */

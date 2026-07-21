@@ -4,7 +4,12 @@
 import { app } from "/scripts/app.js";
 import { api } from "/scripts/api.js";
 
-import { TS_UI_CLASS, ensureThemeStyles } from "../../_theme.js";
+import {
+    TS_UI_CLASS,
+    createOpenInterfaceButton,
+    ensureThemeStyles,
+    getOpenInterfaceLabel,
+} from "../../_theme.js";
 
 export const NODE_NAME = "TS_LamaCleanup";
 const ROUTE_BASE = "/ts_lama_cleanup";
@@ -18,7 +23,7 @@ const INPUT_FEATHER = "feather";
 const INPUT_SESSION_ID = "session_id";
 const INPUT_WORKING_PATH = "working_path";
 const PROPERTY_SESSION_ID = "ts_lama_cleanup_session_id";
-// The node body is now a compact shell (preview + "Edit Image"); the painting
+// The node body is now a compact shell (preview + the launcher button); the painting
 // UI lives in a fullscreen overlay, so the node no longer needs to be large.
 // Existing workflows keep their serialised size (we only clamp upward to MIN).
 const DEFAULT_NODE_SIZE = [320, 300];
@@ -88,8 +93,8 @@ function ensureStyles() {
 .ts-lama-shell__placeholder{padding:10px;text-align:center;font-size:var(--ts-fs-sm);
   color:var(--ts-muted);pointer-events:none}
 .ts-lama-shell__row{display:flex;align-items:center;gap:6px;flex:0 0 auto}
-.ts-lama-shell__status{flex:1 1 auto;min-width:0;font-size:var(--ts-fs-xs);color:var(--ts-muted);
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:right}
+.ts-lama-shell__status{flex:0 0 auto;width:100%;min-width:0;font-size:var(--ts-fs-xs);
+  color:var(--ts-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:center}
 /* ---- Editor canvas + floating chrome ---- */
 .ts-lama__canvas{position:absolute;inset:0;display:block;width:100%;height:100%;cursor:default;touch-action:none}
 .ts-lama__canvas.has-image{cursor:none}
@@ -551,7 +556,7 @@ export function setupLamaCleanup(node) {
     container.append(canvas, empty, overlay, toolbar, settings, statusBar, fileInput, cursorElement, dropHint);
 
     // ---------- Compact in-node shell ----------
-    // The node body only hosts a preview plus an "Edit Image" button; the
+    // The node body only hosts a preview plus the shared launcher button; the
     // painting UI (container above) is mounted into a fullscreen overlay on
     // demand. Keeping the container in a variable (detached while closed)
     // preserves all canvas/mask/history state across open→close→open.
@@ -566,20 +571,17 @@ export function setupLamaCleanup(node) {
     shellImage.style.display = "none";
     const shellPlaceholder = document.createElement("div");
     shellPlaceholder.className = "ts-lama-shell__placeholder";
-    shellPlaceholder.textContent = "No image yet — click “Edit Image”, or drop / paste one here.";
+    shellPlaceholder.textContent = `No image yet — click “${getOpenInterfaceLabel()}”, or drop / paste one here.`;
     shellPreview.append(shellImage, shellPlaceholder);
 
     const shellRow = document.createElement("div");
-    shellRow.className = "ts-lama-shell__row";
-    const shellEditButton = document.createElement("button");
-    shellEditButton.className = "ts-ui-btn ts-ui-btn--primary";
-    shellEditButton.textContent = "Edit Image";
-    shellEditButton.title = "Open the fullscreen cleanup editor.";
+    shellRow.className = "ts-ui-launchbar ts-lama-shell__row";
+    const shellEditButton = createOpenInterfaceButton(() => openEditor());
     const shellStatus = document.createElement("div");
     shellStatus.className = "ts-ui-status ts-lama-shell__status";
-    shellRow.append(shellEditButton, shellStatus);
+    shellRow.append(shellEditButton);
 
-    shell.append(shellPreview, shellRow);
+    shell.append(shellPreview, shellRow, shellStatus);
     // Pointer traffic over the shell must not reach LiteGraph (node drag on
     // button press, graph zoom on wheel) — same guard the container gets.
     stopPropagation(shell, [
@@ -1635,7 +1637,6 @@ export function setupLamaCleanup(node) {
         }
     });
     closeButton.addEventListener("click", (event) => { event.stopPropagation(); closeEditor(); });
-    shellEditButton.addEventListener("click", (event) => { event.stopPropagation(); openEditor(); });
     shellPreview.addEventListener("click", (event) => { event.stopPropagation(); openEditor(); });
     shell.addEventListener("pointerenter", () => { state.pointerOverShell = true; });
     shell.addEventListener("pointerleave", () => { state.pointerOverShell = false; });
@@ -1804,7 +1805,7 @@ export function setupLamaCleanup(node) {
         } else if (state.sourcePath) {
             await seedWorkingFile();
         } else {
-            setStatus("Click “Edit Image” to begin.", "info");
+            setStatus(`Click “${getOpenInterfaceLabel()}” to begin.`, "info");
         }
     });
 }
