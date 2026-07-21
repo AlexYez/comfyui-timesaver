@@ -4,6 +4,8 @@
 import { app } from "/scripts/app.js";
 import { api } from "/scripts/api.js";
 
+import { TS_UI_CLASS, ensureThemeStyles } from "../../_theme.js";
+
 export const NODE_NAME = "TS_LamaCleanup";
 const ROUTE_BASE = "/ts_lama_cleanup";
 const STYLE_ID = "ts-lama-cleanup-styles";
@@ -52,76 +54,64 @@ const BRUSH_LOG_MAX = Math.log(BRUSH_MAX_PX);
 // and their backing temp files are removed via /cleanup_paths so disk usage
 // stays bounded.
 const MAX_HISTORY = 30;
+// Painted-mask tint used for on-screen feedback only (the mask sent to the
+// backend is pure white). A desaturated accent-family violet reads clearly as
+// "selected region" over arbitrary imagery without the blue cast the old
+// #080c12 tint gave. Kept as a literal because it is drawn to a canvas, where
+// CSS variables cannot be used.
+const MASK_TINT = "rgba(84, 74, 112, 1)";
 const MEDIA_UPLOAD_ACCEPT = ["image/*", ".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tif", ".tiff"].join(",");
 
 function ensureStyles() {
+    // Shared tokens and component classes (buttons, sliders, panels, modal
+    // shell) come from js/_theme.js; the rules below only add layout that is
+    // specific to this node. Never hard-code colours here — use --ts-* tokens.
+    ensureThemeStyles();
     if (document.getElementById(STYLE_ID)) return;
     const style = document.createElement("style");
     style.id = STYLE_ID;
     style.textContent = `
-/* Palette is shared by the in-node shell and the fullscreen editor. The
-   .ts-lama__btn / __statusbar rules below read these vars, so every host that
-   renders those elements must declare them. */
-.ts-lama,.ts-lama-shell,.ts-lama-modal{--tslc-bg:#0e1218;--tslc-text:#e9eef6;--tslc-muted:#9aa6b8;--tslc-accent:#7aa2ff;--tslc-accent-strong:#3a72ff;--tslc-danger:#ef6f6c;--tslc-success:#82d6a8;--tslc-toolbar:rgba(12,16,22,.72);--tslc-toolbar-border:rgba(255,255,255,.08)}
-.ts-lama{position:relative;width:100%;height:100%;min-height:0;box-sizing:border-box;color:var(--tslc-text);font-family:"Segoe UI",Tahoma,Geneva,Verdana,sans-serif;background:repeating-conic-gradient(#1a2030 0% 25%,#0f141a 0% 50%) 50%/24px 24px;border:1px solid #28303c;border-radius:10px;overflow:hidden;user-select:none}
-/* ---- Fullscreen editor host ---- */
-.ts-lama-modal{position:fixed;inset:0;z-index:11000;display:flex;background:rgba(6,9,13,.94);color:var(--tslc-text);font-family:"Segoe UI",Tahoma,Geneva,Verdana,sans-serif}
+/* Layout only — every colour comes from the shared --ts-* tokens in
+   js/_theme.js. Component look (buttons, sliders, panels, status bar, modal,
+   spinner, drop target) comes from the ts-ui-* classes applied in JS. */
+.ts-lama{position:relative;width:100%;height:100%;min-height:0;background:var(--ts-checker);
+  border:1px solid var(--ts-border-soft);border-radius:var(--ts-radius-lg);overflow:hidden;user-select:none}
 .ts-lama-modal .ts-lama{border:none;border-radius:0}
-.ts-lama-modal__keyanchor{position:fixed;left:-9999px;top:-9999px;width:1px;height:1px;opacity:0;pointer-events:none;resize:none}
 /* ---- Compact in-node shell ---- */
-.ts-lama-shell{position:relative;width:100%;height:100%;min-height:0;box-sizing:border-box;display:flex;flex-direction:column;gap:6px;padding:6px;color:var(--tslc-text);font-family:"Segoe UI",Tahoma,Geneva,Verdana,sans-serif;background:var(--tslc-bg);border:1px solid #28303c;border-radius:10px;overflow:hidden;user-select:none}
-.ts-lama-shell__preview{position:relative;flex:1 1 auto;min-height:0;display:flex;align-items:center;justify-content:center;border-radius:8px;overflow:hidden;cursor:pointer;background:repeating-conic-gradient(#1a2030 0% 25%,#0f141a 0% 50%) 50%/16px 16px}
+.ts-lama-shell{position:relative;width:100%;height:100%;min-height:0;display:flex;flex-direction:column;
+  gap:6px;padding:6px;background:var(--ts-bg);border:1px solid var(--ts-border-soft);
+  border-radius:var(--ts-radius-lg);overflow:hidden;user-select:none}
+.ts-lama-shell__preview{position:relative;flex:1 1 auto;min-height:0;display:flex;align-items:center;
+  justify-content:center;border-radius:var(--ts-radius);overflow:hidden;cursor:pointer;
+  background:var(--ts-checker);border:1px solid var(--ts-border-soft)}
 .ts-lama-shell__preview img{max-width:100%;max-height:100%;object-fit:contain;display:block}
-.ts-lama-shell__placeholder{padding:10px;text-align:center;font-size:11px;color:var(--tslc-muted);pointer-events:none}
+.ts-lama-shell__placeholder{padding:10px;text-align:center;font-size:var(--ts-fs-sm);
+  color:var(--ts-muted);pointer-events:none}
 .ts-lama-shell__row{display:flex;align-items:center;gap:6px;flex:0 0 auto}
-.ts-lama-shell__row .ts-lama__btn{flex:0 0 auto}
-.ts-lama-shell__status{flex:1 1 auto;min-width:0;font-size:10px;color:var(--tslc-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:right}
-.ts-lama-shell__status.is-error{color:var(--tslc-danger)}
-.ts-lama-shell__status.is-success{color:var(--tslc-success)}
-.ts-lama-shell.is-drag-over{outline:2px dashed var(--tslc-accent);outline-offset:-3px}
+.ts-lama-shell__status{flex:1 1 auto;min-width:0;font-size:var(--ts-fs-xs);color:var(--ts-muted);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:right}
+/* ---- Editor canvas + floating chrome ---- */
 .ts-lama__canvas{position:absolute;inset:0;display:block;width:100%;height:100%;cursor:default;touch-action:none}
 .ts-lama__canvas.has-image{cursor:none}
-.ts-lama__empty{position:absolute;left:8px;right:8px;top:56px;bottom:44px;display:flex;align-items:center;justify-content:center;text-align:center;padding:16px;color:#cdd6e6;font-size:12px;pointer-events:none;background:linear-gradient(180deg,rgba(0,0,0,.45),rgba(0,0,0,.7));border-radius:6px}
-.ts-lama__overlay{position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:rgba(8,12,18,.6);backdrop-filter:blur(2px);color:var(--tslc-text);font-size:12px;pointer-events:none;flex-direction:column;gap:10px;z-index:5}
-.ts-lama__overlay.is-active{display:flex}
-.ts-lama__spinner{width:28px;height:28px;border-radius:999px;border:3px solid rgba(255,255,255,.14);border-top-color:var(--tslc-accent);animation:tslc-spin .9s linear infinite}
-@keyframes tslc-spin{to{transform:rotate(360deg)}}
-.ts-lama__toolbar{position:absolute;top:8px;left:8px;right:8px;display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:10px;background:var(--tslc-toolbar);border:1px solid var(--tslc-toolbar-border);backdrop-filter:blur(8px);z-index:6}
-.ts-lama__group{display:flex;align-items:center;gap:6px}
+.ts-lama__empty{position:absolute;left:8px;right:8px;top:56px;bottom:44px;display:flex;align-items:center;
+  justify-content:center;text-align:center;padding:16px;color:var(--ts-muted);font-size:var(--ts-fs);
+  pointer-events:none;background:var(--ts-scrim);border-radius:var(--ts-radius)}
+.ts-lama__overlay{z-index:22}
+.ts-lama__toolbar{position:absolute;top:8px;left:8px;right:8px;z-index:6}
 .ts-lama__group--brush{flex:1 1 auto;min-width:0;justify-content:flex-start}
-.ts-lama__btn{display:inline-flex;align-items:center;gap:5px;border:1px solid rgba(255,255,255,.12);background:rgba(20,26,36,.85);color:var(--tslc-text);border-radius:8px;padding:6px 11px;font-size:11px;cursor:pointer;font-weight:600;letter-spacing:.02em;white-space:nowrap}
-.ts-lama__btn:hover{background:rgba(40,54,76,.95)}
-.ts-lama__btn[disabled]{opacity:.4;cursor:not-allowed}
-.ts-lama__btn--primary{background:linear-gradient(180deg,#7aa2ff,#3a72ff);border-color:#3a72ff;color:#0b1530}
-.ts-lama__btn--primary:hover{background:linear-gradient(180deg,#90b6ff,#5180ff)}
-.ts-lama__btn--icon{padding:6px 8px;width:30px;height:30px;justify-content:center}
-.ts-lama__btn--icon svg{width:14px;height:14px;fill:currentColor;pointer-events:none}
-.ts-lama__brush-label{font-size:10px;color:var(--tslc-muted);text-transform:uppercase;letter-spacing:.06em;white-space:nowrap}
-.ts-lama__brush-slider{flex:1 1 auto;min-width:60px;max-width:200px;-webkit-appearance:none;appearance:none;height:4px;border-radius:999px;background:rgba(255,255,255,.18);outline:none;cursor:pointer}
-.ts-lama__brush-slider::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:14px;height:14px;border-radius:999px;background:var(--tslc-accent);border:2px solid #fff;cursor:pointer}
-.ts-lama__brush-slider::-moz-range-thumb{width:14px;height:14px;border-radius:999px;background:var(--tslc-accent);border:2px solid #fff;cursor:pointer}
-.ts-lama__brush-value{font-size:11px;color:var(--tslc-text);font-variant-numeric:tabular-nums;min-width:28px;text-align:right;font-weight:600}
-.ts-lama__settings{position:absolute;top:50px;right:8px;width:240px;padding:10px;border-radius:10px;background:var(--tslc-toolbar);border:1px solid var(--tslc-toolbar-border);backdrop-filter:blur(8px);z-index:7;display:none;flex-direction:column;gap:10px;box-shadow:0 12px 32px rgba(0,0,0,.45)}
+.ts-lama__brush-slider{flex:1 1 auto;min-width:60px;max-width:200px}
+.ts-lama__brush-value{font-size:var(--ts-fs-sm);color:var(--ts-text);font-variant-numeric:tabular-nums;
+  min-width:28px;text-align:right;font-weight:600}
+.ts-lama__settings{position:absolute;top:50px;right:8px;width:240px;z-index:7;display:none;
+  flex-direction:column;gap:10px}
 .ts-lama__settings.is-open{display:flex}
-.ts-lama__settings-title{font-size:10px;color:var(--tslc-muted);text-transform:uppercase;letter-spacing:.06em;font-weight:700;margin-bottom:2px}
-.ts-lama__field{display:flex;flex-direction:column;gap:4px}
-.ts-lama__field-row{display:flex;align-items:center;justify-content:space-between;gap:6px;font-size:11px;color:var(--tslc-text)}
-.ts-lama__field-name{color:var(--tslc-muted);font-size:10px;text-transform:uppercase;letter-spacing:.04em;font-weight:600}
-.ts-lama__field-value{font-variant-numeric:tabular-nums;font-weight:600;font-size:11px}
-.ts-lama__field-slider{-webkit-appearance:none;appearance:none;width:100%;height:4px;border-radius:999px;background:rgba(255,255,255,.18);outline:none;cursor:pointer}
-.ts-lama__field-slider::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:12px;height:12px;border-radius:999px;background:var(--tslc-accent);border:2px solid #fff;cursor:pointer}
-.ts-lama__field-slider::-moz-range-thumb{width:12px;height:12px;border-radius:999px;background:var(--tslc-accent);border:2px solid #fff;cursor:pointer}
-.ts-lama__statusbar{position:absolute;left:8px;right:8px;bottom:8px;padding:6px 10px;font-size:11px;color:var(--tslc-muted);background:var(--tslc-toolbar);border:1px solid var(--tslc-toolbar-border);border-radius:8px;backdrop-filter:blur(6px);display:flex;justify-content:space-between;gap:10px;align-items:center;pointer-events:none;z-index:4}
-.ts-lama__statusbar.is-error{color:var(--tslc-danger)}
-.ts-lama__statusbar.is-success{color:var(--tslc-success)}
-.ts-lama__statusbar-text{flex:1 1 auto;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.ts-lama__statusbar-meta{font-variant-numeric:tabular-nums;color:var(--tslc-muted);font-size:10px;white-space:nowrap}
-.ts-lama__hidden-input{position:fixed;left:-9999px;top:-9999px;width:1px;height:1px;opacity:0;pointer-events:none}
-.ts-lama__cursor{position:absolute;margin:0;padding:0;border-radius:50%;border:1.5px solid rgba(255,255,255,0.95);box-shadow:0 0 0 1px rgba(0,0,0,0.65);box-sizing:border-box;pointer-events:none;will-change:left,top,width,height;display:none;z-index:3}
+.ts-lama__statusbar{position:absolute;left:8px;right:8px;bottom:8px;pointer-events:none;z-index:4}
+/* Brush ring: deliberately achromatic — it sits over arbitrary imagery, so it
+   uses a white stroke with a dark halo for contrast rather than the accent. */
+.ts-lama__cursor{position:absolute;margin:0;padding:0;border-radius:50%;
+  border:1.5px solid rgba(255,255,255,.95);box-shadow:0 0 0 1px rgba(0,0,0,.65);box-sizing:border-box;
+  pointer-events:none;will-change:left,top,width,height;display:none;z-index:3}
 .ts-lama__cursor.is-visible{display:block}
-.ts-lama.is-drag-over{outline:2px dashed var(--tslc-accent);outline-offset:-4px;outline-style:dashed}
-.ts-lama__drop-hint{position:absolute;inset:8px;display:none;align-items:center;justify-content:center;border:2px dashed var(--tslc-accent);border-radius:10px;background:rgba(122,162,255,.08);color:var(--tslc-text);font-size:13px;font-weight:600;pointer-events:none;z-index:8;text-shadow:0 1px 2px rgba(0,0,0,.6)}
-.ts-lama.is-drag-over .ts-lama__drop-hint{display:flex}
 `;
     document.head.appendChild(style);
 }
@@ -389,7 +379,7 @@ export function setupLamaCleanup(node) {
     let imageCacheValid = false;
 
     const container = document.createElement("div");
-    container.className = "ts-lama";
+    container.className = `${TS_UI_CLASS} ts-lama`;
 
     const canvas = document.createElement("canvas");
     canvas.className = "ts-lama__canvas";
@@ -399,46 +389,46 @@ export function setupLamaCleanup(node) {
     empty.textContent = "Click “Load Image” to begin.";
 
     const overlay = document.createElement("div");
-    overlay.className = "ts-lama__overlay";
+    overlay.className = "ts-ui-scrim ts-lama__overlay";
     const spinner = document.createElement("div");
-    spinner.className = "ts-lama__spinner";
+    spinner.className = "ts-ui-spinner";
     const overlayLabel = document.createElement("div");
     overlayLabel.textContent = "Processing...";
     overlay.append(spinner, overlayLabel);
 
     // Toolbar
     const toolbar = document.createElement("div");
-    toolbar.className = "ts-lama__toolbar";
+    toolbar.className = "ts-ui-toolbar ts-lama__toolbar";
 
     const leftGroup = document.createElement("div");
-    leftGroup.className = "ts-lama__group";
+    leftGroup.className = "ts-ui-group";
     const loadButton = document.createElement("button");
-    loadButton.className = "ts-lama__btn ts-lama__btn--primary";
+    loadButton.className = "ts-ui-btn ts-ui-btn--primary";
     loadButton.textContent = "Load Image";
     const saveButton = document.createElement("button");
-    saveButton.className = "ts-lama__btn";
+    saveButton.className = "ts-ui-btn";
     saveButton.textContent = "Save Image";
     saveButton.title = "Save the current cleaned image into the ComfyUI output folder.";
     const resetButton = document.createElement("button");
-    resetButton.className = "ts-lama__btn";
+    resetButton.className = "ts-ui-btn";
     resetButton.textContent = "Reset";
     resetButton.title = "Discard local edits and restart from the loaded image.";
     const undoButton = document.createElement("button");
-    undoButton.className = "ts-lama__btn ts-lama__btn--icon";
+    undoButton.className = "ts-ui-btn ts-ui-btn--icon";
     undoButton.title = "Undo last edit";
     undoButton.innerHTML = undoIconSvg();
     undoButton.disabled = true;
     const redoButton = document.createElement("button");
-    redoButton.className = "ts-lama__btn ts-lama__btn--icon";
+    redoButton.className = "ts-ui-btn ts-ui-btn--icon";
     redoButton.title = "Redo edit";
     redoButton.innerHTML = redoIconSvg();
     redoButton.disabled = true;
     leftGroup.append(loadButton, saveButton, resetButton, undoButton, redoButton);
 
     const brushGroup = document.createElement("div");
-    brushGroup.className = "ts-lama__group ts-lama__group--brush";
+    brushGroup.className = "ts-ui-group ts-lama__group--brush";
     const brushLabel = document.createElement("div");
-    brushLabel.className = "ts-lama__brush-label";
+    brushLabel.className = "ts-ui-label";
     brushLabel.textContent = "Brush";
     // Brush slider uses a log scale (1 → 400 px in image-pixels) so small,
     // detail brushes get half the slider range instead of being squeezed into
@@ -449,7 +439,7 @@ export function setupLamaCleanup(node) {
         max: BRUSH_SLIDER_STEPS,
         step: 1,
         value: brushToSliderValue(state.brushSize),
-        className: "ts-lama__brush-slider",
+        className: "ts-ui-slider ts-lama__brush-slider",
         onInput: (sliderValue) => {
             const brushPx = sliderValueToBrush(sliderValue);
             state.brushSize = brushPx;
@@ -464,25 +454,25 @@ export function setupLamaCleanup(node) {
     brushGroup.append(brushLabel, brushSlider, brushValueLabel);
 
     const zoomGroup = document.createElement("div");
-    zoomGroup.className = "ts-lama__group";
+    zoomGroup.className = "ts-ui-group";
     const fitButton = document.createElement("button");
-    fitButton.className = "ts-lama__btn";
+    fitButton.className = "ts-ui-btn";
     fitButton.textContent = "Fit";
     fitButton.title = "Fit image to view (resets zoom and pan).";
     const oneToOneButton = document.createElement("button");
-    oneToOneButton.className = "ts-lama__btn";
+    oneToOneButton.className = "ts-ui-btn";
     oneToOneButton.textContent = "1:1";
     oneToOneButton.title = "Show image at 1:1 (one image pixel per screen pixel).";
     zoomGroup.append(fitButton, oneToOneButton);
 
     const rightGroup = document.createElement("div");
-    rightGroup.className = "ts-lama__group";
+    rightGroup.className = "ts-ui-group";
     const settingsButton = document.createElement("button");
-    settingsButton.className = "ts-lama__btn ts-lama__btn--icon";
+    settingsButton.className = "ts-ui-btn ts-ui-btn--icon";
     settingsButton.title = "Advanced settings";
     settingsButton.innerHTML = gearIconSvg();
     const closeButton = document.createElement("button");
-    closeButton.className = "ts-lama__btn ts-lama__btn--icon";
+    closeButton.className = "ts-ui-btn ts-ui-btn--icon";
     closeButton.title = "Close editor (Esc)";
     closeButton.innerHTML = closeIconSvg();
     rightGroup.append(settingsButton, closeButton);
@@ -491,23 +481,23 @@ export function setupLamaCleanup(node) {
 
     // Settings popover
     const settings = document.createElement("div");
-    settings.className = "ts-lama__settings";
+    settings.className = "ts-ui-panel ts-lama__settings";
 
     const settingsTitle = document.createElement("div");
-    settingsTitle.className = "ts-lama__settings-title";
+    settingsTitle.className = "ts-ui-title";
     settingsTitle.textContent = "Advanced";
     settings.append(settingsTitle);
 
     function buildField(name, options, getter, setter, widgetKey) {
         const field = document.createElement("div");
-        field.className = "ts-lama__field";
+        field.className = "ts-ui-field";
         const row = document.createElement("div");
-        row.className = "ts-lama__field-row";
+        row.className = "ts-ui-field__row";
         const nameEl = document.createElement("div");
-        nameEl.className = "ts-lama__field-name";
+        nameEl.className = "ts-ui-field__name";
         nameEl.textContent = name;
         const valueEl = document.createElement("div");
-        valueEl.className = "ts-lama__field-value";
+        valueEl.className = "ts-ui-field__value";
         valueEl.textContent = String(Math.round(getter()));
         row.append(nameEl, valueEl);
         const slider = makeSlider({
@@ -515,7 +505,7 @@ export function setupLamaCleanup(node) {
             max: options.max,
             step: options.step,
             value: getter(),
-            className: "ts-lama__field-slider",
+            className: "ts-ui-slider",
             onInput: (next) => {
                 setter(next);
                 valueEl.textContent = String(Math.round(next));
@@ -534,17 +524,17 @@ export function setupLamaCleanup(node) {
 
     // Status bar
     const statusBar = document.createElement("div");
-    statusBar.className = "ts-lama__statusbar";
+    statusBar.className = "ts-ui-statusbar ts-lama__statusbar";
     const statusText = document.createElement("div");
-    statusText.className = "ts-lama__statusbar-text";
+    statusText.className = "ts-ui-ellipsis";
     statusText.textContent = "Click “Load Image” to begin.";
     const statusMeta = document.createElement("div");
-    statusMeta.className = "ts-lama__statusbar-meta";
+    statusMeta.className = "ts-ui-meta";
     statusBar.append(statusText, statusMeta);
 
     // Hidden file input for Load Image
     const fileInput = document.createElement("input");
-    fileInput.className = "ts-lama__hidden-input";
+    fileInput.className = "ts-ui-file";
     fileInput.type = "file";
     fileInput.accept = MEDIA_UPLOAD_ACCEPT;
 
@@ -555,7 +545,7 @@ export function setupLamaCleanup(node) {
 
     // Visual hint shown while dragging an image file over the node.
     const dropHint = document.createElement("div");
-    dropHint.className = "ts-lama__drop-hint";
+    dropHint.className = "ts-ui-drop";
     dropHint.textContent = "Drop image to load";
 
     container.append(canvas, empty, overlay, toolbar, settings, statusBar, fileInput, cursorElement, dropHint);
@@ -566,7 +556,7 @@ export function setupLamaCleanup(node) {
     // demand. Keeping the container in a variable (detached while closed)
     // preserves all canvas/mask/history state across open→close→open.
     const shell = document.createElement("div");
-    shell.className = "ts-lama-shell";
+    shell.className = `${TS_UI_CLASS} ts-lama-shell`;
 
     const shellPreview = document.createElement("div");
     shellPreview.className = "ts-lama-shell__preview";
@@ -582,11 +572,11 @@ export function setupLamaCleanup(node) {
     const shellRow = document.createElement("div");
     shellRow.className = "ts-lama-shell__row";
     const shellEditButton = document.createElement("button");
-    shellEditButton.className = "ts-lama__btn ts-lama__btn--primary";
+    shellEditButton.className = "ts-ui-btn ts-ui-btn--primary";
     shellEditButton.textContent = "Edit Image";
     shellEditButton.title = "Open the fullscreen cleanup editor.";
     const shellStatus = document.createElement("div");
-    shellStatus.className = "ts-lama-shell__status";
+    shellStatus.className = "ts-ui-status ts-lama-shell__status";
     shellRow.append(shellEditButton, shellStatus);
 
     shell.append(shellPreview, shellRow);
@@ -818,7 +808,7 @@ export function setupLamaCleanup(node) {
             maskCtx.fill();
         }
         if (tintedMaskCtx) {
-            tintedMaskCtx.fillStyle = "rgba(8,12,18,1)";
+            tintedMaskCtx.fillStyle = MASK_TINT;
             tintedMaskCtx.beginPath();
             tintedMaskCtx.arc(imageX, imageY, radius, 0, Math.PI * 2);
             tintedMaskCtx.fill();
@@ -839,7 +829,7 @@ export function setupLamaCleanup(node) {
             maskCtx.stroke();
         }
         if (tintedMaskCtx) {
-            tintedMaskCtx.strokeStyle = "rgba(8,12,18,1)";
+            tintedMaskCtx.strokeStyle = MASK_TINT;
             tintedMaskCtx.lineWidth = radius * 2;
             tintedMaskCtx.lineCap = "round";
             tintedMaskCtx.lineJoin = "round";
@@ -1383,10 +1373,10 @@ export function setupLamaCleanup(node) {
     function openEditor() {
         if (state.editorOpen) return;
         modal = document.createElement("div");
-        modal.className = "ts-lama-modal";
+        modal.className = `${TS_UI_CLASS} ts-ui-modal`;
         modal.append(container);
         keyAnchor = document.createElement("textarea");
-        keyAnchor.className = "ts-lama-modal__keyanchor";
+        keyAnchor.className = "ts-ui-keyanchor";
         keyAnchor.readOnly = true;
         keyAnchor.tabIndex = -1;
         keyAnchor.setAttribute("aria-hidden", "true");
