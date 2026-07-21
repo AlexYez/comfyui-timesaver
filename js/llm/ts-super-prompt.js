@@ -13,6 +13,8 @@
 import { app } from "/scripts/app.js";
 import { api } from "/scripts/api.js";
 
+import { TS_UI_CLASS, ensureThemeStyles } from "../_theme.js";
+
 const EXTENSION_ID = "ts.superPrompt";
 const NODE_NAME = "TS_SuperPrompt";
 const DOM_WIDGET_NAME = "ts_super_prompt_ui";
@@ -46,74 +48,80 @@ const MIME_CANDIDATES = [
 const STYLE_ID = "ts-super-prompt-style";
 const STYLE_TEXT = `
 .ts-sp{position:absolute;inset:0;display:flex;flex-direction:column;gap:4px;padding:4px;
-    background:rgba(20,24,32,.55);border:1px solid rgba(255,255,255,.06);border-radius:8px;
-    color:#e6e9ef;font-family:inherit;font-size:11px;line-height:1.3;box-sizing:border-box;
+    background:var(--ts-bg);border:1px solid var(--ts-border-soft);border-radius:8px;
+    color:var(--ts-text);font-family:var(--ts-font);font-size:var(--ts-fs-sm);line-height:1.3;box-sizing:border-box;
     backdrop-filter:blur(4px);}
-.ts-sp.is-drag-over{outline:2px dashed #7aa2ff;outline-offset:-3px}
+.ts-sp.is-drag-over{outline:2px dashed var(--ts-accent-line);outline-offset:-3px}
 .ts-sp__bar{display:flex;align-items:center;gap:6px;height:26px;flex:0 0 auto}
 .ts-sp__group{display:inline-flex;align-items:center;gap:2px;flex:0 0 auto}
 .ts-sp__textarea{flex:1 1 auto;min-height:0;width:100%;resize:none;box-sizing:border-box;
-    padding:6px 8px;border-radius:6px;border:1px solid rgba(255,255,255,.08);
-    background:rgba(0,0,0,.25);color:#e6e9ef;font-family:inherit;font-size:12px;line-height:1.4;
+    padding:6px 8px;border-radius:6px;border:1px solid var(--ts-border-soft);
+    background:var(--ts-sunken);color:var(--ts-text);font-family:inherit;font-size:var(--ts-fs);line-height:1.4;
     outline:none;transition:border-color .15s,background .15s}
-.ts-sp__textarea:focus{border-color:rgba(122,162,255,.55);background:rgba(0,0,0,.32)}
-.ts-sp__textarea::placeholder{color:rgba(230,233,239,.4)}
+.ts-sp__textarea:focus{border-color:var(--ts-accent-line);background:var(--ts-sunken)}
+.ts-sp__textarea::placeholder{color:var(--ts-faint)}
 .ts-sp__btn{display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;
-    width:26px;height:26px;padding:0;border-radius:6px;border:1px solid rgba(255,255,255,.1);
-    background:rgba(255,255,255,.04);color:#e6e9ef;cursor:pointer;
+    width:26px;height:26px;padding:0;border-radius:6px;border:1px solid var(--ts-border);
+    background:var(--ts-surface);color:var(--ts-text);cursor:pointer;
     transition:background .15s,border-color .15s,color .15s,transform .08s;user-select:none}
-.ts-sp__btn:hover:not(:disabled){background:rgba(122,162,255,.18);border-color:rgba(122,162,255,.45)}
+.ts-sp__btn:hover:not(:disabled){background:var(--ts-accent-soft);border-color:var(--ts-accent-line)}
 .ts-sp__btn:active:not(:disabled){transform:translateY(1px)}
 .ts-sp__btn:disabled{opacity:.5;cursor:not-allowed}
 .ts-sp__btn svg{width:14px;height:14px;display:block;fill:none;stroke:currentColor;
     stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-.ts-sp__btn--record.is-recording{background:#b3262e;border-color:#ff5a64;color:#fff;
-    box-shadow:0 0 0 3px rgba(255,90,100,.18)}
-.ts-sp__btn--record.is-recording:hover{background:#c63040}
+/* Red here is semantic (mic is live), so it stays red — but routed through the
+   pack's muted --ts-danger instead of a raw neon red. */
+.ts-sp__btn--record.is-recording{background:var(--ts-danger);border-color:var(--ts-danger);color:var(--ts-bg);
+    box-shadow:0 0 0 3px color-mix(in srgb,var(--ts-danger) 22%,transparent)}
+.ts-sp__btn--record.is-recording:hover{background:color-mix(in srgb,var(--ts-danger) 84%,#000)}
 .ts-sp__pill{display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;
-    height:26px;padding:0 9px;border-radius:6px;border:1px solid rgba(255,255,255,.1);
-    background:rgba(255,255,255,.04);color:rgba(230,233,239,.75);font-size:10px;font-weight:700;
+    height:26px;padding:0 9px;border-radius:6px;border:1px solid var(--ts-border);
+    background:var(--ts-surface);color:var(--ts-muted);font-size:var(--ts-fs-xs);font-weight:700;
     letter-spacing:.4px;cursor:pointer;transition:background .15s,border-color .15s,color .15s,transform .08s;
     user-select:none;font-family:inherit}
-.ts-sp__pill:hover:not(:disabled){background:rgba(122,162,255,.18);border-color:rgba(122,162,255,.45);color:#e6e9ef}
+.ts-sp__pill:hover:not(:disabled){background:var(--ts-accent-soft);border-color:var(--ts-accent-line);color:var(--ts-text)}
 .ts-sp__pill:active:not(:disabled){transform:translateY(1px)}
 .ts-sp__pill:disabled{opacity:.5;cursor:not-allowed}
-.ts-sp__pill--toggle.is-on{background:rgba(122,162,255,.32);border-color:rgba(122,162,255,.6);color:#fff}
+.ts-sp__pill--toggle.is-on{background:var(--ts-accent);border-color:var(--ts-accent-strong);color:var(--ts-accent-contrast)}
 .ts-sp__pill--ai{letter-spacing:.6px}
 .ts-sp__attach{position:relative;flex:0 0 auto;width:26px;height:26px;border-radius:6px;
-    overflow:hidden;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04);
-    color:#e6e9ef;cursor:pointer;transition:background .15s,border-color .15s;padding:0;
+    overflow:hidden;border:1px solid var(--ts-border);background:var(--ts-surface);
+    color:var(--ts-text);cursor:pointer;transition:background .15s,border-color .15s;padding:0;
     display:inline-flex;align-items:center;justify-content:center}
-.ts-sp__attach:hover{background:rgba(122,162,255,.18);border-color:rgba(122,162,255,.45)}
+.ts-sp__attach:hover{background:var(--ts-accent-soft);border-color:var(--ts-accent-line)}
 .ts-sp__attach svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2;
     stroke-linecap:round;stroke-linejoin:round}
-.ts-sp__attach.has-image{border-color:rgba(122,162,255,.65)}
+.ts-sp__attach.has-image{border-color:var(--ts-accent)}
 .ts-sp__attach-thumb{position:absolute;inset:0;background-position:center;background-size:cover;
     background-repeat:no-repeat;display:none}
 .ts-sp__attach.has-image .ts-sp__attach-thumb{display:block}
 .ts-sp__attach.has-image .ts-sp__attach-icon{display:none}
+/* Deliberate exception: this badge floats ON TOP of the attached thumbnail, so
+   it needs a fixed dark chip + white glyph to stay legible over any image. */
 .ts-sp__attach-clear{position:absolute;top:-3px;right:-3px;width:14px;height:14px;border-radius:50%;
-    border:1px solid rgba(255,255,255,.15);background:#0a0d12;color:#fff;font-size:10px;line-height:1;
+    border:1px solid rgba(255,255,255,.15);background:#0a0d12;color:#fff;font-size:var(--ts-fs-xs);line-height:1;
     cursor:pointer;display:none;align-items:center;justify-content:center;padding:0;
     box-shadow:0 1px 2px rgba(0,0,0,.5)}
 .ts-sp__attach.has-image .ts-sp__attach-clear{display:flex}
-.ts-sp__attach-clear:hover{background:#b3262e;border-color:#ff5a64}
+.ts-sp__attach-clear:hover{background:var(--ts-danger);border-color:var(--ts-danger)}
 .ts-sp__select{flex:1 1 auto;min-width:0;height:26px;padding:0 6px;border-radius:6px;
-    border:1px solid rgba(255,255,255,.1);background:rgba(0,0,0,.25);color:#e6e9ef;
-    font-size:11px;font-family:inherit;cursor:pointer;outline:none;
+    border:1px solid var(--ts-border);background:var(--ts-sunken);color:var(--ts-text);
+    font-size:var(--ts-fs-sm);font-family:inherit;cursor:pointer;outline:none;
     -webkit-appearance:none;-moz-appearance:none;appearance:none;
+    /* Deliberate exception: a data: URI cannot read CSS custom properties, so
+       the chevron fill stays a literal. */
     background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='%23e6e9ef' d='M0 0l5 6 5-6z'/%3E%3C/svg%3E");
     background-repeat:no-repeat;background-position:right 6px center;padding-right:18px}
-.ts-sp__select:focus{border-color:rgba(122,162,255,.55)}
-.ts-sp__select option{background:#1a1f29;color:#e6e9ef}
+.ts-sp__select:focus{border-color:var(--ts-accent-line)}
+.ts-sp__select option{background:var(--ts-surface);color:var(--ts-text)}
 .ts-sp__status{display:flex;align-items:center;gap:6px;min-height:14px;flex:0 0 auto;
-    font-size:10px;color:rgba(230,233,239,.65)}
+    font-size:var(--ts-fs-xs);color:var(--ts-muted)}
 .ts-sp__status-text{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.ts-sp__status.is-error .ts-sp__status-text{color:#ff6b6b}
-.ts-sp__progress{flex:0 0 70px;height:3px;border-radius:2px;background:rgba(255,255,255,.08);
+.ts-sp__status.is-error .ts-sp__status-text{color:var(--ts-danger)}
+.ts-sp__progress{flex:0 0 70px;height:3px;border-radius:2px;background:var(--ts-border-soft);
     overflow:hidden;display:none;position:relative}
 .ts-sp__progress.is-active{display:block}
-.ts-sp__progress-fill{height:100%;background:linear-gradient(90deg,#7aa2ff,#a8b8ff);width:0%;
+.ts-sp__progress-fill{height:100%;background:linear-gradient(90deg,var(--ts-accent-strong),var(--ts-accent));width:0%;
     transition:width .2s ease-out}
 .ts-sp__progress.is-indeterminate .ts-sp__progress-fill{
     width:35%;animation:ts-sp-indeterminate 1.1s linear infinite}
@@ -132,6 +140,9 @@ const SVG_ICON_IMAGE = `<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" he
 // ---------------------------------------------------------------------------
 
 function ensureStylesInjected(doc) {
+    // Colours come from the shared --ts-* tokens in js/_theme.js; the
+    // stylesheet below is layout only.
+    ensureThemeStyles();
     if (!doc || doc.getElementById(STYLE_ID)) return;
     const styleEl = doc.createElement("style");
     styleEl.id = STYLE_ID;
@@ -283,7 +294,7 @@ function setupSuperPrompt(node) {
     ensureStylesInjected(doc);
 
     const container = doc.createElement("div");
-    container.className = "ts-sp";
+    container.className = `${TS_UI_CLASS} ts-sp`;
     container.setAttribute("data-ts-super-prompt", "1");
 
     // -------- Toolbar --------

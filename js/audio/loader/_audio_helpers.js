@@ -6,6 +6,8 @@
 import { app } from "/scripts/app.js";
 import { api } from "/scripts/api.js";
 
+import { TS_UI_CLASS, ensureThemeStyles, getThemeColors } from "../../_theme.js";
+
 export const LOADER_NODE_NAME = "TS_AudioLoader";
 export const PREVIEW_NODE_NAME = "TS_AudioPreview";
 const ROUTE_BASE = "/ts_audio_loader";
@@ -37,60 +39,70 @@ const MEDIA_UPLOAD_ACCEPT = [
 function makeCursor(svg, fallback = "ew-resize") {
     return `url("data:image/svg+xml;utf8,${encodeURIComponent(svg)}") 12 12, ${fallback}`;
 }
+// Crop-handle cursors are baked into data: URIs at module load, so they cannot
+// read --ts-* tokens or getThemeColors (no document yet). They are also drawn
+// OVER the waveform, which is the deliberate "over media" exception: an
+// achromatic light grey / white pair reads on any waveform colour, the same way
+// the LaMa brush ring stays white rather than taking the accent.
 const HANDLE_CURSOR = makeCursor(
     `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
-        <rect x="4" y="4" width="2" height="16" rx="1" fill="#b9fff1"/>
-        <rect x="18" y="4" width="2" height="16" rx="1" fill="#b9fff1"/>
-        <path d="M9 12h6" stroke="#b9fff1" stroke-width="1.8" stroke-linecap="round"/>
+        <rect x="4" y="4" width="2" height="16" rx="1" fill="#d8d8dc"/>
+        <rect x="18" y="4" width="2" height="16" rx="1" fill="#d8d8dc"/>
+        <path d="M9 12h6" stroke="#d8d8dc" stroke-width="1.8" stroke-linecap="round"/>
     </svg>`,
 );
 const HANDLE_ACTIVE_CURSOR = makeCursor(
     `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
-        <rect x="4" y="3" width="2" height="18" rx="1" fill="#d3fff6"/>
-        <rect x="18" y="3" width="2" height="18" rx="1" fill="#d3fff6"/>
-        <path d="M9 12h6" stroke="#d3fff6" stroke-width="2" stroke-linecap="round"/>
+        <rect x="4" y="3" width="2" height="18" rx="1" fill="#ffffff"/>
+        <rect x="18" y="3" width="2" height="18" rx="1" fill="#ffffff"/>
+        <path d="M9 12h6" stroke="#ffffff" stroke-width="2" stroke-linecap="round"/>
     </svg>`,
 );
 const DEFAULT_WAVE_CURSOR = "crosshair";
 
 function ensureStyles() {
+    // Colours come from the shared --ts-* tokens in js/_theme.js; this
+    // stylesheet is layout only. Never hard-code a colour below.
+    ensureThemeStyles();
     if (document.getElementById(STYLE_ID)) return;
     const style = document.createElement("style");
     style.id = STYLE_ID;
     style.textContent = `
-.ts-audio-loader{--tsal-bg:#12161c;--tsal-panel:#171d25;--tsal-panel-alt:#0f141a;--tsal-border:#28303c;--tsal-text:#e9eef6;--tsal-muted:#91a0b4;--tsal-accent:#29c7a3;--tsal-danger:#ef6f6c;width:100%;height:100%;min-height:0;box-sizing:border-box;padding:8px;display:flex;flex-direction:column;gap:8px;color:var(--tsal-text);font-family:"Segoe UI",Tahoma,Geneva,Verdana,sans-serif;background:radial-gradient(circle at top right,rgba(41,199,163,.15),transparent 32%),linear-gradient(180deg,rgba(255,255,255,.03),rgba(255,255,255,.01)),var(--tsal-bg);border:1px solid var(--tsal-border);border-radius:12px;overflow:hidden}
+.ts-audio-loader{width:100%;height:100%;min-height:0;box-sizing:border-box;padding:8px;display:flex;flex-direction:column;gap:8px;color:var(--ts-text);font-family:var(--ts-font);background:radial-gradient(circle at top right,var(--ts-accent-soft),transparent 32%),var(--ts-bg);border:1px solid var(--ts-border-soft);border-radius:12px;overflow:hidden}
 .ts-audio-loader__topbar{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap}
 .ts-audio-loader__actions{display:flex;gap:6px;flex-wrap:wrap}
-.ts-audio-loader__button{border:1px solid var(--tsal-border);background:linear-gradient(180deg,#1f2732,#151b23);color:var(--tsal-text);border-radius:8px;padding:6px 12px;font-size:11px;cursor:pointer}
-.ts-audio-loader__button.is-primary{background:linear-gradient(180deg,#31d9b1,#1ea98a);border-color:#1ea98a;color:#062018;font-weight:700}
-.ts-audio-loader__button.is-danger{background:linear-gradient(180deg,#f07d79,#cf5f5c);border-color:#cf5f5c}
+.ts-audio-loader__button{border:1px solid var(--ts-border);background:var(--ts-surface);color:var(--ts-text);border-radius:8px;padding:6px 12px;font-size:var(--ts-fs-sm);cursor:pointer}
+.ts-audio-loader__button:hover{background:var(--ts-surface-hover);border-color:var(--ts-border-strong)}
+.ts-audio-loader__button.is-primary{background:var(--ts-accent);border-color:var(--ts-accent-strong);color:var(--ts-accent-contrast);font-weight:700}
+.ts-audio-loader__button.is-danger{background:var(--ts-danger);border-color:var(--ts-danger);color:var(--ts-bg)}
 .ts-audio-loader__meta{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 8px;align-items:center}
-.ts-audio-loader__file{min-width:0;font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.ts-audio-loader__status,.ts-audio-loader__stats,.ts-audio-loader__timeline,.ts-audio-loader__crop{font-size:11px;color:var(--tsal-muted)}
+.ts-audio-loader__file{min-width:0;font-size:var(--ts-fs);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ts-audio-loader__status,.ts-audio-loader__stats,.ts-audio-loader__timeline,.ts-audio-loader__crop{font-size:var(--ts-fs-sm);color:var(--ts-muted)}
 .ts-audio-loader__stats{display:inline-flex;gap:10px;flex-wrap:wrap;justify-content:flex-end}
-.ts-audio-loader__wave-wrap{position:relative;flex:1 1 auto;min-height:110px;border-radius:12px;overflow:hidden;border:1px solid var(--tsal-border);background:linear-gradient(180deg,rgba(255,255,255,.03),rgba(255,255,255,0)),repeating-linear-gradient(90deg,rgba(255,255,255,.035) 0 1px,transparent 1px 80px),linear-gradient(180deg,var(--tsal-panel),var(--tsal-panel-alt))}
+.ts-audio-loader__wave-wrap{position:relative;flex:1 1 auto;min-height:110px;border-radius:12px;overflow:hidden;border:1px solid var(--ts-border-soft);background:repeating-linear-gradient(90deg,var(--ts-border-soft) 0 1px,transparent 1px 80px),var(--ts-sunken)}
 .ts-audio-loader__canvas{width:100%;height:100%;display:block;cursor:crosshair}
-.ts-audio-loader__empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:16px;color:var(--tsal-muted);font-size:12px;pointer-events:none}
+.ts-audio-loader__empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:16px;color:var(--ts-muted);font-size:var(--ts-fs);pointer-events:none}
 .ts-audio-loader__bottom{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:8px;align-items:center}
 .ts-audio-loader__transport{display:flex;align-items:center;gap:6px}
-.ts-audio-loader__play{width:34px;height:34px;border-radius:999px;border:1px solid var(--tsal-border);background:linear-gradient(180deg,#1f2732,#151b23);color:var(--tsal-text);cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
-.ts-audio-loader__play.is-active{background:linear-gradient(180deg,#31d9b1,#1ea98a);border-color:#1ea98a;color:#062018}
+.ts-audio-loader__play{width:34px;height:34px;border-radius:999px;border:1px solid var(--ts-border);background:var(--ts-surface);color:var(--ts-text);cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
+.ts-audio-loader__play:hover{background:var(--ts-surface-hover);border-color:var(--ts-border-strong)}
+.ts-audio-loader__play.is-active{background:var(--ts-accent);border-color:var(--ts-accent-strong);color:var(--ts-accent-contrast)}
 .ts-audio-loader__play svg{width:14px;height:14px;fill:currentColor;pointer-events:none}
 .ts-audio-loader__play svg *{pointer-events:none}
 .ts-audio-loader__hidden-media{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
 /* File inputs are parked off-screen instead of collapsed to 1x1: some browsers
    refuse a programmatic .click() on a collapsed input (CLAUDE.md 12.5.11). */
 .ts-audio-loader__hidden-input{position:fixed;left:-9999px;top:-9999px;opacity:0;pointer-events:none}
-.ts-audio-loader__zoom-group{display:inline-flex;align-items:stretch;border:1px solid var(--tsal-border);border-radius:8px;overflow:hidden;background:linear-gradient(180deg,#1f2732,#151b23)}
-.ts-audio-loader__zoom-btn{border:none;background:transparent;color:var(--tsal-text);padding:6px 10px;font-size:12px;line-height:1;cursor:pointer;border-radius:0;min-width:32px}
-.ts-audio-loader__zoom-btn+.ts-audio-loader__zoom-btn{border-left:1px solid var(--tsal-border)}
-.ts-audio-loader__zoom-btn:hover{background:rgba(255,255,255,.06)}
+.ts-audio-loader__zoom-group{display:inline-flex;align-items:stretch;border:1px solid var(--ts-border);border-radius:8px;overflow:hidden;background:var(--ts-surface)}
+.ts-audio-loader__zoom-btn{border:none;background:transparent;color:var(--ts-text);padding:6px 10px;font-size:var(--ts-fs);line-height:1;cursor:pointer;border-radius:0;min-width:32px}
+.ts-audio-loader__zoom-btn+.ts-audio-loader__zoom-btn{border-left:1px solid var(--ts-border)}
+.ts-audio-loader__zoom-btn:hover{background:var(--ts-surface-hover)}
 .ts-audio-loader__zoom-btn:disabled{opacity:.35;cursor:not-allowed}
-.ts-audio-loader__zoom-label{display:inline-flex;align-items:center;justify-content:center;padding:0 8px;font-size:11px;color:var(--tsal-muted);min-width:48px}
-.ts-audio-loader__scrollbar{display:none;height:14px;flex:0 0 14px;background:#0f141a;border:1px solid var(--tsal-border);border-radius:6px;overflow:hidden;position:relative;user-select:none;touch-action:none}
+.ts-audio-loader__zoom-label{display:inline-flex;align-items:center;justify-content:center;padding:0 8px;font-size:var(--ts-fs-sm);color:var(--ts-muted);min-width:48px}
+.ts-audio-loader__scrollbar{display:none;height:14px;flex:0 0 14px;background:var(--ts-sunken);border:1px solid var(--ts-border-soft);border-radius:6px;overflow:hidden;position:relative;user-select:none;touch-action:none}
 .ts-audio-loader__scrollbar.is-active{display:block}
-.ts-audio-loader__scrollbar-thumb{position:absolute;top:0;bottom:0;background:linear-gradient(180deg,#3a4858,#28303c);border:1px solid #4a5868;border-radius:5px;min-width:32px;cursor:grab;box-sizing:border-box}
-.ts-audio-loader__scrollbar-thumb:active{cursor:grabbing;background:linear-gradient(180deg,#4a5868,#3a4858)}`;
+.ts-audio-loader__scrollbar-thumb{position:absolute;top:0;bottom:0;background:var(--ts-border-soft);border:1px solid var(--ts-border);border-radius:5px;min-width:32px;cursor:grab;box-sizing:border-box}
+.ts-audio-loader__scrollbar-thumb:active{cursor:grabbing;background:var(--ts-border)}`;
     document.head.appendChild(style);
 }
 
@@ -202,7 +214,7 @@ export function setupAudioLoader(node) {
     };
 
     const container = document.createElement("div");
-    container.className = "ts-audio-loader";
+    container.className = `${TS_UI_CLASS} ts-audio-loader`;
     const topbar = document.createElement("div");
     topbar.className = "ts-audio-loader__topbar";
     const actions = document.createElement("div");
@@ -589,15 +601,19 @@ export function setupAudioLoader(node) {
         const { width, height, dpr } = resizeCanvas();
         const ctx = canvas.getContext("2d");
         if (!ctx) return;
+        // Canvas cannot read CSS variables, so the shared palette is resolved
+        // to concrete colours here. getThemeColors caches internally, so
+        // calling it once per frame is cheap.
+        const colors = getThemeColors();
         ctx.setTransform(1, 0, 0, 1, 0, 0);
         ctx.clearRect(0, 0, width, height);
         ctx.scale(dpr, dpr);
         const drawWidth = width / dpr;
         const drawHeight = height / dpr;
         const midY = drawHeight / 2;
-        ctx.fillStyle = "#121821";
+        ctx.fillStyle = colors.sunken;
         ctx.fillRect(0, 0, drawWidth, drawHeight);
-        ctx.strokeStyle = "rgba(255,255,255,0.06)";
+        ctx.strokeStyle = colors.faint;
         ctx.lineWidth = 1;
         ctx.beginPath();
         ctx.moveTo(0, midY);
@@ -616,6 +632,9 @@ export function setupAudioLoader(node) {
         const selectionEndX = secondsToX(bounds.right, drawWidth);
         const dimStartX = clamp(selectionStartX, 0, drawWidth);
         const dimEndX = clamp(selectionEndX, 0, drawWidth);
+        // Deliberate literal: this is the dimming scrim over the un-selected
+        // audio. "Dimmed" means dark in both themes, so it must not follow the
+        // palette (see js/_theme.js --ts-scrim, same reasoning).
         ctx.fillStyle = "rgba(0, 0, 0, 0.28)";
         if (dimStartX > 0) ctx.fillRect(0, 0, dimStartX, drawHeight);
         if (dimEndX < drawWidth) ctx.fillRect(dimEndX, 0, drawWidth - dimEndX, drawHeight);
@@ -635,18 +654,30 @@ export function setupAudioLoader(node) {
                 const barWidth = Math.max(1, (x1 - x0) - barInsetPx);
                 const barHeight = Math.max(2, peak * (drawHeight * 0.46));
                 const insideSelection = peakEndSec >= bounds.left && peakStartSec <= bounds.right;
-                ctx.fillStyle = insideSelection ? "#29c7a3" : "rgba(145, 160, 180, 0.38)";
+                // getThemeColors resolves opaque colours, but unselected peaks
+                // were previously drawn at ~0.38 alpha. Painting them solid
+                // would flatten the contrast that tells the user which part of
+                // the clip is selected, so the fade is reapplied here.
+                ctx.globalAlpha = insideSelection ? 1 : 0.42;
+                ctx.fillStyle = insideSelection ? colors.accent : colors.muted;
                 ctx.fillRect(x0, midY - barHeight, barWidth, barHeight * 2);
             }
+            ctx.globalAlpha = 1;
         }
 
         const selectionWidth = Math.max(0, dimEndX - dimStartX);
         if (selectionWidth > 0) {
-            ctx.fillStyle = "rgba(41, 199, 163, 0.14)";
+            // getThemeColors resolves opaque colours only, so the selection
+            // wash keeps its original 0.14 strength via globalAlpha instead of
+            // a baked rgba() literal (same approach as the LaMa mask overlay).
+            ctx.save();
+            ctx.globalAlpha = 0.14;
+            ctx.fillStyle = colors.accent;
             ctx.fillRect(dimStartX, 0, selectionWidth, drawHeight);
+            ctx.restore();
         }
 
-        ctx.strokeStyle = "#b9fff1";
+        ctx.strokeStyle = colors.accent;
         ctx.lineWidth = 2;
         ctx.beginPath();
         const leftInView = bounds.left >= viewStart && bounds.left <= viewEnd;
@@ -654,14 +685,14 @@ export function setupAudioLoader(node) {
         if (leftInView) { ctx.moveTo(selectionStartX, 0); ctx.lineTo(selectionStartX, drawHeight); }
         if (rightInView) { ctx.moveTo(selectionEndX, 0); ctx.lineTo(selectionEndX, drawHeight); }
         ctx.stroke();
-        ctx.fillStyle = "#d3fff6";
+        ctx.fillStyle = colors.accentStrong;
         if (leftInView) ctx.fillRect(selectionStartX - 2, 12, 4, drawHeight - 24);
         if (rightInView) ctx.fillRect(selectionEndX - 2, 12, 4, drawHeight - 24);
 
         const playheadSec = getActiveMedia()?.currentTime || 0;
         if (playheadSec >= viewStart && playheadSec <= viewEnd) {
             const playheadX = secondsToX(playheadSec, drawWidth);
-            ctx.strokeStyle = "#f4fff9";
+            ctx.strokeStyle = colors.text;
             ctx.lineWidth = 2;
             ctx.beginPath();
             ctx.moveTo(playheadX, 0); ctx.lineTo(playheadX, drawHeight);

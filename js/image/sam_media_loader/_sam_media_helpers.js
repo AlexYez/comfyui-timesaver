@@ -11,6 +11,8 @@
 import { app } from "/scripts/app.js";
 import { api } from "/scripts/api.js";
 
+import { TS_UI_CLASS, ensureThemeStyles } from "../../_theme.js";
+
 export const NODE_NAME = "TS_SAM_MediaLoader";
 const ROUTE_BASE = "/ts_sam_media_loader";
 const STYLE_ID = "ts-sam-media-loader-styles";
@@ -58,48 +60,60 @@ const MEDIA_UPLOAD_ACCEPT = [
 ].join(",");
 
 function ensureStyles() {
+    // Shared tokens come from js/_theme.js; the rules below are layout only.
+    // Never hard-code colours here — use the --ts-* tokens.
+    ensureThemeStyles();
     if (document.getElementById(STYLE_ID)) return;
     const style = document.createElement("style");
     style.id = STYLE_ID;
     style.textContent = `
-.ts-sml{--tsm-bg:#0e1218;--tsm-text:#e9eef6;--tsm-muted:#9aa6b8;--tsm-accent:#7aa2ff;--tsm-accent-strong:#3a72ff;--tsm-danger:#ef6f6c;--tsm-success:#82d6a8;--tsm-toolbar:rgba(12,16,22,.72);--tsm-toolbar-border:rgba(255,255,255,.08);position:relative;width:100%;height:100%;min-height:0;box-sizing:border-box;color:var(--tsm-text);font-family:"Segoe UI",Tahoma,Geneva,Verdana,sans-serif;background:repeating-conic-gradient(#1a2030 0% 25%,#0f141a 0% 50%) 50%/24px 24px;border:1px solid #28303c;border-radius:10px;overflow:hidden;user-select:none}
+/* Layout only — every colour comes from the shared --ts-* tokens in
+   js/_theme.js. The local --tsm-* aliases are kept so existing selectors read
+   unchanged; they now just forward to the pack tokens. */
+.ts-sml{--tsm-bg:var(--ts-bg);--tsm-text:var(--ts-text);--tsm-muted:var(--ts-muted);--tsm-accent:var(--ts-accent);--tsm-accent-strong:var(--ts-accent-strong);--tsm-danger:var(--ts-danger);--tsm-success:var(--ts-success);--tsm-toolbar:var(--ts-bg);--tsm-toolbar-border:var(--ts-border-soft);position:relative;width:100%;height:100%;min-height:0;box-sizing:border-box;color:var(--tsm-text);font-family:var(--ts-font);background:var(--ts-checker);border:1px solid var(--ts-border-soft);border-radius:var(--ts-radius-lg);overflow:hidden;user-select:none}
 .ts-sml__canvas{position:absolute;inset:0;display:block;width:100%;height:100%;cursor:default;touch-action:none}
 .ts-sml__canvas.has-image{cursor:crosshair}
-.ts-sml__empty{position:absolute;left:8px;right:8px;top:50px;bottom:38px;display:flex;align-items:center;justify-content:center;text-align:center;padding:16px;color:#cdd6e6;font-size:12px;pointer-events:none;background:linear-gradient(180deg,rgba(0,0,0,.45),rgba(0,0,0,.7));border-radius:6px;line-height:1.6}
-.ts-sml__overlay{position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:rgba(8,12,18,.6);backdrop-filter:blur(2px);color:var(--tsm-text);font-size:12px;pointer-events:none;flex-direction:column;gap:10px;z-index:5}
+.ts-sml__empty{position:absolute;left:8px;right:8px;top:50px;bottom:38px;display:flex;align-items:center;justify-content:center;text-align:center;padding:16px;color:var(--ts-text);font-size:var(--ts-fs);pointer-events:none;background:var(--ts-scrim);border-radius:6px;line-height:1.6}
+.ts-sml__overlay{position:absolute;inset:0;display:none;align-items:center;justify-content:center;background:var(--ts-scrim);backdrop-filter:blur(2px);color:var(--tsm-text);font-size:var(--ts-fs);pointer-events:none;flex-direction:column;gap:10px;z-index:5}
 .ts-sml__overlay.is-active{display:flex}
-.ts-sml__spinner{width:28px;height:28px;border-radius:999px;border:3px solid rgba(255,255,255,.14);border-top-color:var(--tsm-accent);animation:tsm-spin .9s linear infinite}
+.ts-sml__spinner{width:28px;height:28px;border-radius:999px;border:3px solid var(--ts-border-soft);border-top-color:var(--tsm-accent);animation:tsm-spin .9s linear infinite}
 @keyframes tsm-spin{to{transform:rotate(360deg)}}
-.ts-sml__toolbar{position:absolute;top:8px;left:8px;right:8px;display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:10px;background:var(--tsm-toolbar);border:1px solid var(--tsm-toolbar-border);backdrop-filter:blur(8px);z-index:6}
+.ts-sml__toolbar{position:absolute;top:8px;left:8px;right:8px;display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:var(--ts-radius-lg);background:var(--tsm-toolbar);border:1px solid var(--tsm-toolbar-border);backdrop-filter:blur(8px);z-index:6}
 .ts-sml__group{display:flex;align-items:center;gap:6px;min-width:0}
-.ts-sml__btn{display:inline-flex;align-items:center;gap:5px;border:1px solid rgba(255,255,255,.12);background:rgba(20,26,36,.85);color:var(--tsm-text);border-radius:8px;padding:6px 11px;font-size:11px;cursor:pointer;font-weight:600;letter-spacing:.02em;white-space:nowrap}
-.ts-sml__btn:hover{background:rgba(40,54,76,.95)}
+.ts-sml__btn{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--ts-border);background:var(--ts-surface);color:var(--tsm-text);border-radius:8px;padding:6px 11px;font-size:var(--ts-fs-sm);cursor:pointer;font-weight:600;letter-spacing:.02em;white-space:nowrap}
+.ts-sml__btn:hover{background:var(--ts-surface-hover)}
 .ts-sml__btn[disabled]{opacity:.4;cursor:not-allowed}
-.ts-sml__btn--primary{background:linear-gradient(180deg,#7aa2ff,#3a72ff);border-color:#3a72ff;color:#0b1530}
-.ts-sml__btn--primary:hover{background:linear-gradient(180deg,#90b6ff,#5180ff)}
-.ts-sml__btn--danger{background:rgba(70,30,30,.85);border-color:rgba(239,111,108,.45);color:#ffb4b1}
-.ts-sml__btn--danger:hover{background:rgba(99,40,40,.95)}
-.ts-sml__counter{display:inline-flex;align-items:center;gap:8px;font-size:11px;color:var(--tsm-text);background:rgba(20,26,36,.85);border:1px solid rgba(255,255,255,.12);border-radius:8px;padding:5px 10px;font-variant-numeric:tabular-nums}
+.ts-sml__btn--primary{background:var(--ts-accent);border-color:var(--ts-accent-strong);color:var(--ts-accent-contrast)}
+.ts-sml__btn--primary:hover{background:var(--ts-accent-strong)}
+.ts-sml__btn--danger{background:var(--ts-surface);border-color:var(--ts-danger);color:var(--ts-danger)}
+.ts-sml__btn--danger:hover{background:var(--ts-surface-hover)}
+.ts-sml__counter{display:inline-flex;align-items:center;gap:8px;font-size:var(--ts-fs-sm);color:var(--tsm-text);background:var(--ts-surface);border:1px solid var(--ts-border);border-radius:8px;padding:5px 10px;font-variant-numeric:tabular-nums}
 .ts-sml__counter-dot{display:inline-block;width:8px;height:8px;border-radius:50%;flex:0 0 auto}
+/* Deliberate exception: these two dots are the legend for the point markers
+   drawn ON the canvas over user media (drawPoints paints the same literal
+   green/red). They must keep matching those fixed marker colours in every
+   theme, so they stay hard-coded rather than following the semantic tokens. */
 .ts-sml__counter-dot--pos{background:#42d77c;box-shadow:0 0 0 1px rgba(0,0,0,.4)}
 .ts-sml__counter-dot--neg{background:#ef6f6c;box-shadow:0 0 0 1px rgba(0,0,0,.4)}
-.ts-sml__statusbar{position:absolute;left:8px;right:8px;bottom:8px;padding:6px 10px;font-size:11px;color:var(--tsm-muted);background:var(--tsm-toolbar);border:1px solid var(--tsm-toolbar-border);border-radius:8px;backdrop-filter:blur(6px);display:flex;justify-content:space-between;gap:10px;align-items:center;pointer-events:none;z-index:4}
+.ts-sml__statusbar{position:absolute;left:8px;right:8px;bottom:8px;padding:6px 10px;font-size:var(--ts-fs-sm);color:var(--tsm-muted);background:var(--tsm-toolbar);border:1px solid var(--tsm-toolbar-border);border-radius:8px;backdrop-filter:blur(6px);display:flex;justify-content:space-between;gap:10px;align-items:center;pointer-events:none;z-index:4}
 .ts-sml__statusbar.is-error{color:var(--tsm-danger)}
 .ts-sml__statusbar.is-success{color:var(--tsm-success)}
 .ts-sml__statusbar-text{flex:1 1 auto;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.ts-sml__statusbar-meta{font-variant-numeric:tabular-nums;color:var(--tsm-muted);font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:65%;flex:0 1 auto}
+.ts-sml__statusbar-meta{font-variant-numeric:tabular-nums;color:var(--tsm-muted);font-size:var(--ts-fs-xs);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:65%;flex:0 1 auto}
 .ts-sml__hidden-input{position:fixed;left:-9999px;top:-9999px;width:1px;height:1px;opacity:0;pointer-events:none}
 .ts-sml.is-drag-over{outline:2px dashed var(--tsm-accent);outline-offset:-4px;outline-style:dashed}
-.ts-sml__drop-hint{position:absolute;inset:8px;display:none;align-items:center;justify-content:center;border:2px dashed var(--tsm-accent);border-radius:10px;background:rgba(122,162,255,.08);color:var(--tsm-text);font-size:13px;font-weight:600;pointer-events:none;z-index:8;text-shadow:0 1px 2px rgba(0,0,0,.6)}
+/* text-shadow stays a hard-coded dark halo: the hint is drawn over arbitrary
+   user media, so it must remain legible regardless of theme. */
+.ts-sml__drop-hint{position:absolute;inset:8px;display:none;align-items:center;justify-content:center;border:2px dashed var(--ts-accent-line);border-radius:var(--ts-radius-lg);background:var(--ts-accent-soft);color:var(--tsm-text);font-size:var(--ts-fs-lg);font-weight:600;pointer-events:none;z-index:8;text-shadow:0 1px 2px rgba(0,0,0,.6)}
 .ts-sml.is-drag-over .ts-sml__drop-hint{display:flex}
-.ts-sml__preview-pill{display:inline-flex;align-items:center;gap:6px;font-size:10px;color:var(--tsm-muted);background:rgba(20,26,36,.85);border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:4px 8px;white-space:nowrap}
-.ts-sml__preview-pill.is-loading{color:#cbd5ff;border-color:rgba(122,162,255,.55)}
-.ts-sml__preview-pill.is-ready{color:#9fe3c2;border-color:rgba(130,214,168,.55)}
-.ts-sml__preview-pill.is-error{color:#ffb4b1;border-color:rgba(239,111,108,.55)}
-.ts-sml__preview-dot{width:6px;height:6px;border-radius:50%;background:#9aa6b8;flex:0 0 auto}
-.ts-sml__preview-pill.is-loading .ts-sml__preview-dot{background:#7aa2ff;animation:tsm-blink 1s infinite}
-.ts-sml__preview-pill.is-ready .ts-sml__preview-dot{background:#82d6a8}
-.ts-sml__preview-pill.is-error .ts-sml__preview-dot{background:#ef6f6c}
+.ts-sml__preview-pill{display:inline-flex;align-items:center;gap:6px;font-size:var(--ts-fs-xs);color:var(--tsm-muted);background:var(--ts-surface);border:1px solid var(--ts-border-soft);border-radius:8px;padding:4px 8px;white-space:nowrap}
+.ts-sml__preview-pill.is-loading{color:var(--ts-accent);border-color:var(--ts-accent-line)}
+.ts-sml__preview-pill.is-ready{color:var(--ts-success);border-color:var(--ts-success)}
+.ts-sml__preview-pill.is-error{color:var(--ts-danger);border-color:var(--ts-danger)}
+.ts-sml__preview-dot{width:6px;height:6px;border-radius:50%;background:var(--ts-muted);flex:0 0 auto}
+.ts-sml__preview-pill.is-loading .ts-sml__preview-dot{background:var(--ts-accent);animation:tsm-blink 1s infinite}
+.ts-sml__preview-pill.is-ready .ts-sml__preview-dot{background:var(--ts-success)}
+.ts-sml__preview-pill.is-error .ts-sml__preview-dot{background:var(--ts-danger)}
 @keyframes tsm-blink{0%,100%{opacity:1}50%{opacity:.3}}
 `;
     document.head.appendChild(style);
@@ -265,7 +279,7 @@ export function setupSamMediaLoader(node) {
     };
 
     const container = document.createElement("div");
-    container.className = "ts-sml";
+    container.className = `${TS_UI_CLASS} ts-sml`;
 
     const canvas = document.createElement("canvas");
     canvas.className = "ts-sml__canvas";
@@ -275,8 +289,8 @@ export function setupSamMediaLoader(node) {
     empty.innerHTML = `
         <div>
             <div style="font-weight:600;font-size:13px;margin-bottom:8px;">Click "Load Image/Video"</div>
-            <div style="color:#9aa6b8;">Left-click — positive point (green) · Shift / Right-click — negative point (red)</div>
-            <div style="color:#9aa6b8;margin-top:4px;">Click on an existing point to remove it.</div>
+            <div style="color:var(--ts-muted);">Left-click — positive point (green) · Shift / Right-click — negative point (red)</div>
+            <div style="color:var(--ts-muted);margin-top:4px;">Click on an existing point to remove it.</div>
         </div>
     `;
 
@@ -314,7 +328,7 @@ export function setupSamMediaLoader(node) {
     const counterPos = document.createElement("span");
     counterPos.textContent = "0";
     const counterSep = document.createElement("span");
-    counterSep.style.color = "#48526a";
+    counterSep.style.color = "var(--ts-faint)";
     counterSep.textContent = "|";
     const counterNegDot = document.createElement("span");
     counterNegDot.className = "ts-sml__counter-dot ts-sml__counter-dot--neg";
