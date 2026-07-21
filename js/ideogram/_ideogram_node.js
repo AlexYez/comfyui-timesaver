@@ -35,6 +35,8 @@ import {
 
 import { openIdeogramEditor } from "./_ideogram_editor.js";
 
+import { TS_UI_CLASS, ensureThemeStyles, getThemeColors } from "../_theme.js";
+
 const STYLE_ID = "ts-ideogram-node-styles";
 const DOM_WIDGET_NAME = "ts_ideogram_node";
 const DEFAULT_NODE_SIZE = [320, 300];
@@ -45,18 +47,21 @@ const TOOLBAR_H = 34;
 const SUMMARY_H = 22;
 
 function ensureStyles() {
+    // Colours come from the shared --ts-* tokens in js/_theme.js; this
+    // stylesheet is layout only. Never hard-code chrome colours here.
+    ensureThemeStyles();
     if (document.getElementById(STYLE_ID)) return;
     const style = document.createElement("style");
     style.id = STYLE_ID;
     style.textContent = `
-.ts-ideo-node{--tsi-bg:#0e1218;--tsi-text:#e9eef6;--tsi-muted:#9aa6b8;--tsi-accent:#7aa2ff;--tsi-accent2:#3a72ff;position:relative;width:100%;height:100%;min-height:0;box-sizing:border-box;color:var(--tsi-text);font-family:"Segoe UI",Tahoma,sans-serif;background:repeating-conic-gradient(#171c26 0% 25%,#11151c 0% 50%) 50%/22px 22px;border:1px solid #28303c;border-radius:10px;overflow:hidden;user-select:none}
+.ts-ideo-node{position:relative;width:100%;height:100%;min-height:0;box-sizing:border-box;color:var(--ts-text);font-family:var(--ts-font);background:var(--ts-checker);border:1px solid var(--ts-border-soft);border-radius:var(--ts-radius-lg);overflow:hidden;user-select:none}
 .ts-ideo-node__canvas{position:absolute;inset:0;display:block;width:100%;height:100%}
 .ts-ideo-node__toolbar{position:absolute;top:6px;left:6px;right:6px;height:${TOOLBAR_H - 8}px;display:flex;align-items:center;gap:6px;z-index:3}
-.ts-ideo-node__btn{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--tsi-accent2);background:linear-gradient(180deg,#7aa2ff,#3a72ff);color:#0b1530;border-radius:8px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;letter-spacing:.02em}
-.ts-ideo-node__btn:hover{background:linear-gradient(180deg,#90b6ff,#5180ff)}
-.ts-ideo-node__pill{margin-left:auto;font-size:10px;color:var(--tsi-muted);background:rgba(20,26,36,.85);border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:4px 8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:55%}
-.ts-ideo-node__summary{position:absolute;left:6px;right:6px;bottom:6px;height:${SUMMARY_H - 6}px;display:flex;align-items:center;gap:8px;font-size:11px;color:var(--tsi-muted);background:rgba(12,16,22,.7);border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:0 8px;z-index:3;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden}
-.ts-ideo-node__warn{color:#ffcf6b}
+.ts-ideo-node__btn{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--ts-accent-strong);background:var(--ts-accent);color:var(--ts-accent-contrast);border-radius:8px;padding:6px 12px;font-size:var(--ts-fs);font-weight:700;cursor:pointer;letter-spacing:.02em}
+.ts-ideo-node__btn:hover{background:var(--ts-accent-strong)}
+.ts-ideo-node__pill{margin-left:auto;font-size:var(--ts-fs-xs);color:var(--ts-muted);background:var(--ts-elevated);border:1px solid var(--ts-border-soft);border-radius:8px;padding:4px 8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:55%}
+.ts-ideo-node__summary{position:absolute;left:6px;right:6px;bottom:6px;height:${SUMMARY_H - 6}px;display:flex;align-items:center;gap:8px;font-size:var(--ts-fs-sm);color:var(--ts-muted);background:var(--ts-elevated);border:1px solid var(--ts-border-soft);border-radius:8px;padding:0 8px;z-index:3;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden}
+.ts-ideo-node__warn{color:var(--ts-warning)}
 `;
     document.head.appendChild(style);
 }
@@ -191,7 +196,7 @@ export function setupIdeogramNode(node) {
     };
 
     const container = document.createElement("div");
-    container.className = "ts-ideo-node";
+    container.className = `${TS_UI_CLASS} ts-ideo-node`;
 
     const canvas = document.createElement("canvas");
     canvas.className = "ts-ideo-node__canvas";
@@ -306,7 +311,10 @@ export function setupIdeogramNode(node) {
         // Artboard background: a reference underlay wins, else the style palette
         // mesh gradient (matches the editor artboard).
         const stylePal = state.design.style?.color_palette || [];
-        ctx.fillStyle = "#0a0d12";
+        // Canvas cannot read CSS variables, so the preview pulls resolved
+        // theme colours instead (cached inside getThemeColors).
+        const tsColors = getThemeColors();
+        ctx.fillStyle = tsColors.sunken;
         ctx.fillRect(ax, ay, box.w, box.h);
         if (state.refImg) {
             ctx.save();
@@ -316,7 +324,7 @@ export function setupIdeogramNode(node) {
         } else {
             paintPaletteRect(ctx, stylePal, ax, ay, box.w, box.h, { alpha: 1, mesh: true });
         }
-        ctx.strokeStyle = "#3a4658";
+        ctx.strokeStyle = tsColors.border;
         ctx.lineWidth = 1;
         ctx.strokeRect(ax + 0.5, ay + 0.5, box.w - 1, box.h - 1);
 
@@ -330,7 +338,7 @@ export function setupIdeogramNode(node) {
             const bh = Math.max(2, r.h * box.h);
             const isText = block.type === "text";
             const visualOnly = isText && block.visual_only;
-            const accent = visualOnly ? "#9aa6b8" : isText ? "#7aa2ff" : "#82d6a8";
+            const accent = visualOnly ? tsColors.muted : isText ? tsColors.accent : tsColors.success;
             ctx.save();
             // A block's own palette tints its rectangle; else a faint type accent.
             if (!paintPaletteRect(ctx, block.color_palette, bx, by, bw, bh, { alpha: 0.5, mesh: false })) {
@@ -383,7 +391,7 @@ export function setupIdeogramNode(node) {
         }
 
         if (!(state.design.blocks || []).length) {
-            ctx.fillStyle = "#6b7688";
+            ctx.fillStyle = tsColors.faint;
             ctx.font = "12px 'Segoe UI', sans-serif";
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";

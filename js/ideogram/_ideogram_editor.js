@@ -60,129 +60,156 @@ import {
     weightToCss,
 } from "./_ideogram_shared.js";
 
+import { TS_UI_CLASS, ensureThemeStyles } from "../_theme.js";
+
 const STYLE_ID = "ts-ideogram-editor-styles";
 
 function ensureStyles() {
+    // Colours come from the shared --ts-* tokens in js/_theme.js; this
+    // stylesheet is layout only. Never hard-code chrome colours here.
+    ensureThemeStyles();
     if (document.getElementById(STYLE_ID)) return;
     const style = document.createElement("style");
     style.id = STYLE_ID;
     style.textContent = `
-.ts-ideoe-overlay{position:fixed;inset:0;z-index:11000;display:flex;flex-direction:column;background:rgba(6,9,13,.86);backdrop-filter:blur(3px);color:#e9eef6;font-family:"Segoe UI",Tahoma,sans-serif;font-size:13px}
-.ts-ideoe-shell{position:absolute;inset:24px;display:flex;flex-direction:column;background:#0e1218;border:1px solid #283040;border-radius:14px;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,.6)}
-.ts-ideoe-header{display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid #1c2430;background:#10151d;flex:0 0 auto;flex-wrap:wrap}
+.ts-ideoe-overlay{position:fixed;inset:0;z-index:11000;display:flex;flex-direction:column;background:var(--ts-scrim);backdrop-filter:blur(3px);color:var(--ts-text);font-family:var(--ts-font);font-size:var(--ts-fs-lg)}
+.ts-ideoe-shell{position:absolute;inset:24px;display:flex;flex-direction:column;background:var(--ts-bg);border:1px solid var(--ts-border-soft);border-radius:14px;overflow:hidden;box-shadow:0 24px 80px var(--ts-shadow-tint)}
+.ts-ideoe-header{display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--ts-border-soft);background:var(--ts-elevated);flex:0 0 auto;flex-wrap:wrap}
+/* 14px has no --ts-fs-* token; kept literal so the title keeps out-ranking the
+   13px body size. Sizing is unchanged by this migration. */
 .ts-ideoe-title{font-weight:700;font-size:14px;letter-spacing:.02em}
-.ts-ideoe-title small{color:#8a93a3;font-weight:400;margin-left:8px}
+.ts-ideoe-title small{color:var(--ts-muted);font-weight:400;margin-left:8px}
 .ts-ideoe-spacer{flex:1 1 auto}
 .ts-ideoe-body{flex:1 1 auto;display:flex;min-height:0}
-.ts-ideoe-stagewrap{flex:1 1 auto;position:relative;display:flex;align-items:center;justify-content:center;min-width:0;background:repeating-conic-gradient(#141a24 0% 25%,#0e131b 0% 50%) 50%/26px 26px;overflow:hidden}
+.ts-ideoe-stagewrap{flex:1 1 auto;position:relative;display:flex;align-items:center;justify-content:center;min-width:0;background:var(--ts-checker);overflow:hidden}
 .ts-ideoe-stage{position:relative;outline:none}
-.ts-ideoe-artboard{position:absolute;left:0;top:0;background:#0a0d12;box-shadow:0 0 0 1px #38445a, 0 10px 40px rgba(0,0,0,.5);overflow:hidden}
+/* ARTBOARD = the user's artwork, not chrome. The background literal is only the
+   fallback for "no palette yet" (JS overwrites it inline from the design's own
+   palette), so it must stay a neutral dark canvas rather than follow the UI
+   theme — a light UI theme must not repaint the user's poster. */
+.ts-ideoe-artboard{position:absolute;left:0;top:0;background:#0a0d12;box-shadow:0 0 0 1px var(--ts-border-strong), 0 10px 40px var(--ts-shadow-tint);overflow:hidden}
+/* Alignment grid is drawn OVER the artwork: achromatic white at 5% so it reads
+   on any user background. Deliberately not themed. */
 .ts-ideoe-artboard .grid{position:absolute;inset:0;background-image:linear-gradient(rgba(255,255,255,.05) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.05) 1px,transparent 1px);background-size:10% 10%;pointer-events:none}
 .ts-ideoe-ref{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;pointer-events:none}
-.ts-ideoe-block{position:absolute;box-sizing:border-box;border:1.5px solid #7aa2ff;background:rgba(122,162,255,.14);cursor:move;overflow:hidden;border-radius:2px}
-.ts-ideoe-block.is-obj{border-color:#82d6a8;background:rgba(130,214,168,.16)}
-.ts-ideoe-block.is-visual{border-style:dashed;border-color:#9aa6b8;background:rgba(154,166,184,.12)}
-.ts-ideoe-block.is-selected{box-shadow:0 0 0 2px #ffd500, 0 0 0 4px rgba(255,213,0,.25)}
-.ts-ideoe-block__label{position:absolute;left:0;top:0;max-width:100%;padding:1px 5px;font-size:11px;font-weight:600;color:#0b0e13;background:rgba(255,255,255,.82);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none;border-bottom-right-radius:4px}
+.ts-ideoe-block{position:absolute;box-sizing:border-box;border:1.5px solid var(--ts-accent);background:var(--ts-accent-soft);cursor:move;overflow:hidden;border-radius:2px}
+/* Type-distinguishing tints: hue comes from the semantic tokens, the soft fill
+   is mixed from them (declaration is simply dropped on browsers without
+   color-mix, leaving the block readable via its border). */
+.ts-ideoe-block.is-obj{border-color:var(--ts-success);background:color-mix(in srgb,var(--ts-success) 16%,transparent)}
+.ts-ideoe-block.is-visual{border-style:dashed;border-color:var(--ts-muted);background:color-mix(in srgb,var(--ts-muted) 12%,transparent)}
+.ts-ideoe-block.is-selected{box-shadow:0 0 0 2px var(--ts-accent), 0 0 0 4px var(--ts-accent-line)}
+/* Block label/text/object caption sit ON TOP of the user's artwork — kept
+   achromatic (dark-on-white chip, white text with a dark shadow) so they stay
+   legible over arbitrary artwork instead of over UI chrome. */
+.ts-ideoe-block__label{position:absolute;left:0;top:0;max-width:100%;padding:1px 5px;font-size:var(--ts-fs-sm);font-weight:600;color:#0b0e13;background:rgba(255,255,255,.82);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none;border-bottom-right-radius:4px}
 .ts-ideoe-block__text{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:6px;font-weight:800;line-height:1.05;text-shadow:0 1px 2px rgba(0,0,0,.7);white-space:pre-wrap;overflow:hidden;pointer-events:none}
-.ts-ideoe-block__obj{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:8px;font-size:12px;font-weight:600;color:rgba(255,255,255,.85);overflow:hidden;pointer-events:none}
-.ts-ideoe-handle{position:absolute;width:11px;height:11px;background:#ffd500;border:1px solid #1c1c1c;border-radius:2px;z-index:6}
+.ts-ideoe-block__obj{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:8px;font-size:var(--ts-fs);font-weight:600;color:rgba(255,255,255,.85);overflow:hidden;pointer-events:none}
+.ts-ideoe-handle{position:absolute;width:11px;height:11px;background:var(--ts-accent);border:1px solid var(--ts-accent-contrast);border-radius:2px;z-index:6}
 .ts-ideoe-handle.nw{left:-6px;top:-6px;cursor:nwse-resize}.ts-ideoe-handle.ne{right:-6px;top:-6px;cursor:nesw-resize}
 .ts-ideoe-handle.sw{left:-6px;bottom:-6px;cursor:nesw-resize}.ts-ideoe-handle.se{right:-6px;bottom:-6px;cursor:nwse-resize}
 .ts-ideoe-handle.n{left:50%;top:-6px;transform:translateX(-50%);cursor:ns-resize}.ts-ideoe-handle.s{left:50%;bottom:-6px;transform:translateX(-50%);cursor:ns-resize}
 .ts-ideoe-handle.w{left:-6px;top:50%;transform:translateY(-50%);cursor:ew-resize}.ts-ideoe-handle.e{right:-6px;top:50%;transform:translateY(-50%);cursor:ew-resize}
-.ts-ideoe textarea.ts-ideoe-inline{position:absolute;z-index:500;width:auto;box-sizing:border-box;border:2px solid #ffd500;border-radius:3px;background:#0c1016;color:#fff;caret-color:#ffd500;font:700 14px/1.2 "Segoe UI",sans-serif;padding:6px 8px;resize:none;outline:none;text-align:center;box-shadow:0 4px 18px rgba(0,0,0,.6)}
-.ts-ideoe-inspector{flex:0 0 340px;display:flex;flex-direction:column;background:#0c1118;min-height:0;min-width:0}
-.ts-ideoe-inspector__head{display:flex;align-items:center;padding:9px 12px;border-bottom:1px solid #1c2430;background:#10151d;flex:0 0 auto}
-.ts-ideoe-inspector__title{font-weight:700;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#cdd6e6}
+.ts-ideoe textarea.ts-ideoe-inline{position:absolute;z-index:500;width:auto;box-sizing:border-box;border:2px solid var(--ts-accent);border-radius:3px;background:var(--ts-elevated);color:var(--ts-text);caret-color:var(--ts-accent);font:700 14px/1.2 var(--ts-font);padding:6px 8px;resize:none;outline:none;text-align:center;box-shadow:var(--ts-shadow)}
+.ts-ideoe-inspector{flex:0 0 340px;display:flex;flex-direction:column;background:var(--ts-bg);min-height:0;min-width:0}
+.ts-ideoe-inspector__head{display:flex;align-items:center;padding:9px 12px;border-bottom:1px solid var(--ts-border-soft);background:var(--ts-elevated);flex:0 0 auto}
+.ts-ideoe-inspector__title{font-weight:700;font-size:var(--ts-fs-sm);letter-spacing:.06em;text-transform:uppercase;color:var(--ts-text)}
 .ts-ideoe-inspector__scroll{flex:1 1 auto;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:12px}
-.ts-ideoe-card{border:1px solid #1f2937;border-radius:10px;background:#0f151d;padding:10px;display:flex;flex-direction:column;gap:8px}
-.ts-ideoe-card h3{margin:0;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#8a93a3}
+.ts-ideoe-card{border:1px solid var(--ts-border-soft);border-radius:10px;background:var(--ts-elevated);padding:10px;display:flex;flex-direction:column;gap:8px}
+.ts-ideoe-card h3{margin:0;font-size:var(--ts-fs-sm);text-transform:uppercase;letter-spacing:.06em;color:var(--ts-muted)}
 .ts-ideoe-row{display:flex;flex-direction:column;gap:4px}
-.ts-ideoe-row label{font-size:11px;color:#9aa6b8}
-.ts-ideoe-hint{font-size:11px;color:#8a93a3;line-height:1.4;margin:2px 0 0}
-.ts-ideoe input[type=text],.ts-ideoe textarea,.ts-ideoe-inspector input[type=text],.ts-ideoe-inspector textarea,.ts-ideoe-inspector select{width:100%;box-sizing:border-box;background:#0a0e14;border:1px solid #28323f;border-radius:6px;color:#e9eef6;padding:6px 8px;font-size:12px;font-family:inherit;outline:none}
+.ts-ideoe-row label{font-size:var(--ts-fs-sm);color:var(--ts-muted)}
+.ts-ideoe-hint{font-size:var(--ts-fs-sm);color:var(--ts-muted);line-height:1.4;margin:2px 0 0}
+.ts-ideoe input[type=text],.ts-ideoe textarea,.ts-ideoe-inspector input[type=text],.ts-ideoe-inspector textarea,.ts-ideoe-inspector select{width:100%;box-sizing:border-box;background:var(--ts-sunken);border:1px solid var(--ts-border-soft);border-radius:6px;color:var(--ts-text);padding:6px 8px;font-size:var(--ts-fs);font-family:inherit;outline:none}
 .ts-ideoe-inspector textarea{resize:vertical;min-height:46px}
-.ts-ideoe-inspector input:focus,.ts-ideoe-inspector textarea:focus,.ts-ideoe-inspector select:focus{border-color:#4da3ff}
-.ts-ideoe-seg{display:flex;border:1px solid #28323f;border-radius:6px;overflow:hidden}
-.ts-ideoe-seg button{flex:1 1 auto;background:#0a0e14;color:#9aa6b8;border:0;border-right:1px solid #1b232e;padding:5px 4px;font-size:11px;cursor:pointer}
+.ts-ideoe-inspector input:focus,.ts-ideoe-inspector textarea:focus,.ts-ideoe-inspector select:focus{border-color:var(--ts-accent-line)}
+.ts-ideoe-seg{display:flex;border:1px solid var(--ts-border-soft);border-radius:6px;overflow:hidden}
+.ts-ideoe-seg button{flex:1 1 auto;background:var(--ts-sunken);color:var(--ts-muted);border:0;border-right:1px solid var(--ts-border-soft);padding:5px 4px;font-size:var(--ts-fs-sm);cursor:pointer}
 .ts-ideoe-seg button:last-child{border-right:0}
-.ts-ideoe-seg button.is-on{background:linear-gradient(180deg,#7aa2ff,#3a72ff);color:#0b1530;font-weight:700}
-.ts-ideoe-langseg{display:inline-flex;border:1px solid #28323f;border-radius:8px;overflow:hidden}
-.ts-ideoe-langseg button{background:#0a0e14;color:#9aa6b8;border:0;border-right:1px solid #1b232e;padding:6px 11px;font-size:12px;font-weight:700;cursor:pointer}
+.ts-ideoe-seg button.is-on{background:var(--ts-accent);color:var(--ts-accent-contrast);font-weight:700}
+.ts-ideoe-langseg{display:inline-flex;border:1px solid var(--ts-border-soft);border-radius:8px;overflow:hidden}
+.ts-ideoe-langseg button{background:var(--ts-sunken);color:var(--ts-muted);border:0;border-right:1px solid var(--ts-border-soft);padding:6px 11px;font-size:var(--ts-fs);font-weight:700;cursor:pointer}
 .ts-ideoe-langseg button:last-child{border-right:0}
-.ts-ideoe-langseg button.is-on{background:linear-gradient(180deg,#7aa2ff,#3a72ff);color:#0b1530}
+.ts-ideoe-langseg button.is-on{background:var(--ts-accent);color:var(--ts-accent-contrast)}
 .ts-ideoe-checks{display:flex;flex-wrap:wrap;gap:8px}
-.ts-ideoe-check{display:flex;align-items:center;gap:5px;font-size:11px;color:#cdd6e6;cursor:pointer}
+.ts-ideoe-check{display:flex;align-items:center;gap:5px;font-size:var(--ts-fs-sm);color:var(--ts-text);cursor:pointer}
 .ts-ideoe-pal{display:flex;flex-wrap:wrap;gap:5px;align-items:center}
+/* Swatch ring and its hover "×" sit ON a user-chosen colour, so they stay
+   achromatic white/black rather than following the UI theme. */
 .ts-ideoe-sw{width:20px;height:20px;border-radius:4px;border:1px solid rgba(255,255,255,.25);position:relative;cursor:pointer}
-.ts-ideoe-sw:hover::after{content:"×";position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;background:rgba(0,0,0,.45);border-radius:4px}
-.ts-ideoe-paladd{position:relative;overflow:hidden;display:inline-flex;align-items:center;gap:4px;height:20px;padding:0 9px;border:1px dashed #4a5568;border-radius:5px;background:#0f151d;color:#9fb0c8;font-size:11px;cursor:pointer;white-space:nowrap}
-.ts-ideoe-paladd:hover{border-color:#7aa2ff;color:#cfe0ff}
+.ts-ideoe-sw:hover::after{content:"×";position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#fff;font-size:var(--ts-fs);background:rgba(0,0,0,.45);border-radius:4px}
+.ts-ideoe-paladd{position:relative;overflow:hidden;display:inline-flex;align-items:center;gap:4px;height:20px;padding:0 9px;border:1px dashed var(--ts-border);border-radius:5px;background:var(--ts-elevated);color:var(--ts-muted);font-size:var(--ts-fs-sm);cursor:pointer;white-space:nowrap}
+.ts-ideoe-paladd:hover{border-color:var(--ts-accent);color:var(--ts-text)}
 .ts-ideoe-palinput{position:absolute;inset:0;width:100%;height:100%;margin:0;padding:0;border:0;opacity:0;cursor:pointer}
-.ts-ideoe-descprev{font-size:11px;color:#9fe3c2;background:#08120d;border:1px solid #1c3a2c;border-radius:6px;padding:6px 8px;white-space:pre-wrap;word-break:break-word}
-.ts-ideoe-prompt{width:100%;box-sizing:border-box;margin-top:5px;font:inherit;font-size:11px;line-height:1.4;color:#cfe9dc;background:#0c1612;border:1px solid #244638;border-radius:6px;padding:5px 7px;resize:vertical;min-height:38px}
-.ts-ideoe-prompt:focus{outline:none;border-color:#46d39a}
-.ts-ideoe-bbox{font-size:10px;color:#7d899b;font-variant-numeric:tabular-nums}
-.ts-ideoe-btn{display:inline-flex;align-items:center;gap:5px;border:1px solid #28323f;background:#161d27;color:#e9eef6;border-radius:8px;padding:6px 11px;font-size:12px;cursor:pointer;font-weight:600;white-space:nowrap}
-.ts-ideoe-btn:hover{background:#1f2937}
-.ts-ideoe-btn.primary{background:linear-gradient(180deg,#46d39a,#1fa97a);border-color:#1fa97a;color:#04130d}
-.ts-ideoe-btn.primary:hover{background:linear-gradient(180deg,#5ee3ab,#27c08c)}
-.ts-ideoe-btn.danger{background:#3a1d1d;border-color:#6b2f2f;color:#ffb4b1}
+.ts-ideoe-descprev{font-size:var(--ts-fs-sm);color:var(--ts-success);background:var(--ts-sunken);border:1px solid var(--ts-border-soft);border-radius:6px;padding:6px 8px;white-space:pre-wrap;word-break:break-word}
+.ts-ideoe-prompt{width:100%;box-sizing:border-box;margin-top:5px;font:inherit;font-size:var(--ts-fs-sm);line-height:1.4;color:var(--ts-text);background:var(--ts-sunken);border:1px solid var(--ts-border-soft);border-radius:6px;padding:5px 7px;resize:vertical;min-height:38px}
+.ts-ideoe-prompt:focus{outline:none;border-color:var(--ts-accent-line)}
+.ts-ideoe-bbox{font-size:var(--ts-fs-xs);color:var(--ts-faint);font-variant-numeric:tabular-nums}
+.ts-ideoe-btn{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--ts-border);background:var(--ts-surface);color:var(--ts-text);border-radius:8px;padding:6px 11px;font-size:var(--ts-fs);cursor:pointer;font-weight:600;white-space:nowrap}
+.ts-ideoe-btn:hover{background:var(--ts-surface-hover)}
+.ts-ideoe-btn.primary{background:var(--ts-accent);border-color:var(--ts-accent-strong);color:var(--ts-accent-contrast)}
+.ts-ideoe-btn.primary:hover{background:var(--ts-accent-strong)}
+.ts-ideoe-btn.danger{background:var(--ts-surface);border-color:var(--ts-danger);color:var(--ts-danger)}
 .ts-ideoe-btn.ghost{background:transparent}
-.ts-ideoe-btn.small{padding:5px 9px;font-size:11px}
+.ts-ideoe-btn.small{padding:5px 9px;font-size:var(--ts-fs-sm)}
 .ts-ideoe-btn:disabled{opacity:.35;cursor:default;pointer-events:none}
 .ts-ideoe-keyanchor{position:fixed;left:-9999px;top:-9999px;width:2px;height:2px;opacity:0;pointer-events:none;resize:none}
-.ts-ideoe-select{background:#0a0e14;border:1px solid #28323f;border-radius:6px;color:#e9eef6;padding:6px 8px;font-size:12px}
-.ts-ideoe-mp{display:inline-flex;align-items:center;gap:6px;border:1px solid #28323f;border-radius:8px;padding:3px 8px;background:#0a0e14}
-.ts-ideoe-mplabel{font-size:11px;color:#9aa6b8}
-.ts-ideoe-mpinput{width:54px;background:#10151d;border:1px solid #28323f;border-radius:5px;color:#e9eef6;padding:4px 6px;font-size:12px;text-align:center}
-.ts-ideoe-dims{font-size:11px;color:#7aa2ff;font-variant-numeric:tabular-nums;min-width:74px;text-align:right}
-.ts-ideoe-mprange{-webkit-appearance:none;appearance:none;width:92px;height:4px;border-radius:3px;background:#28323f;outline:none;cursor:pointer}
-.ts-ideoe-mprange::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:14px;height:14px;border-radius:50%;background:linear-gradient(180deg,#7aa2ff,#3a72ff);border:1px solid #2a4a8f;cursor:pointer}
-.ts-ideoe-mprange::-moz-range-thumb{width:13px;height:13px;border:1px solid #2a4a8f;border-radius:50%;background:#5180ff;cursor:pointer}
-.ts-ideoe-mpval{font-size:11px;color:#cdd6e6;font-variant-numeric:tabular-nums;min-width:24px;text-align:center}
+.ts-ideoe-select{background:var(--ts-sunken);border:1px solid var(--ts-border-soft);border-radius:6px;color:var(--ts-text);padding:6px 8px;font-size:var(--ts-fs)}
+.ts-ideoe-mp{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--ts-border-soft);border-radius:8px;padding:3px 8px;background:var(--ts-sunken)}
+.ts-ideoe-mplabel{font-size:var(--ts-fs-sm);color:var(--ts-muted)}
+.ts-ideoe-mpinput{width:54px;background:var(--ts-elevated);border:1px solid var(--ts-border-soft);border-radius:5px;color:var(--ts-text);padding:4px 6px;font-size:var(--ts-fs);text-align:center}
+.ts-ideoe-dims{font-size:var(--ts-fs-sm);color:var(--ts-accent);font-variant-numeric:tabular-nums;min-width:74px;text-align:right}
+.ts-ideoe-mprange{-webkit-appearance:none;appearance:none;width:92px;height:4px;border-radius:3px;background:var(--ts-border-soft);outline:none;cursor:pointer}
+.ts-ideoe-mprange::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:14px;height:14px;border-radius:50%;background:var(--ts-accent);border:1px solid var(--ts-accent-strong);cursor:pointer}
+.ts-ideoe-mprange::-moz-range-thumb{width:13px;height:13px;border:1px solid var(--ts-accent-strong);border-radius:50%;background:var(--ts-accent);cursor:pointer}
+.ts-ideoe-mpval{font-size:var(--ts-fs-sm);color:var(--ts-text);font-variant-numeric:tabular-nums;min-width:24px;text-align:center}
 .ts-ideoe-btnrow{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
-.ts-ideoe-tip{position:fixed;z-index:12000;max-width:300px;background:#0b1119;color:#e9eef6;border:1px solid #2a3950;border-radius:8px;padding:7px 10px;font-size:12px;line-height:1.45;box-shadow:0 8px 26px rgba(0,0,0,.6);pointer-events:none;opacity:0;transition:opacity .12s ease;white-space:normal}
-.ts-ideoe-empty{color:#6b7688;font-size:12px;text-align:center;padding:24px 8px}
-.ts-ideoe-layers{flex:0 0 252px;display:flex;flex-direction:column;background:#0c1118;min-height:0;min-width:0}
+.ts-ideoe-tip{position:fixed;z-index:12000;max-width:300px;background:var(--ts-elevated);color:var(--ts-text);border:1px solid var(--ts-border);border-radius:8px;padding:7px 10px;font-size:var(--ts-fs);line-height:1.45;box-shadow:var(--ts-shadow);pointer-events:none;opacity:0;transition:opacity .12s ease;white-space:normal}
+.ts-ideoe-empty{color:var(--ts-faint);font-size:var(--ts-fs);text-align:center;padding:24px 8px}
+.ts-ideoe-layers{flex:0 0 252px;display:flex;flex-direction:column;background:var(--ts-bg);min-height:0;min-width:0}
 .ts-ideoe-blockpanel{flex:1 1 auto;min-height:0;overflow-y:auto;padding:10px;display:flex;flex-direction:column;gap:10px}
 .ts-ideoe-resizer{flex:0 0 6px;cursor:col-resize;background:transparent;position:relative;z-index:6;align-self:stretch}
-.ts-ideoe-resizer::after{content:"";position:absolute;left:2px;top:0;bottom:0;width:2px;background:#1c2430;transition:background .1s}
-.ts-ideoe-resizer:hover::after,.ts-ideoe-resizer.is-drag::after{background:#4da3ff}
+.ts-ideoe-resizer::after{content:"";position:absolute;left:2px;top:0;bottom:0;width:2px;background:var(--ts-border-soft);transition:background .1s}
+.ts-ideoe-resizer:hover::after,.ts-ideoe-resizer.is-drag::after{background:var(--ts-accent)}
 .ts-ideoe-vresizer{flex:0 0 7px;cursor:row-resize;background:transparent;position:relative}
-.ts-ideoe-vresizer::after{content:"";position:absolute;top:2px;left:6px;right:6px;height:3px;border-radius:2px;background:#2b3850;transition:background .1s}
-.ts-ideoe-vresizer:hover::after,.ts-ideoe-vresizer.is-drag::after{background:#4da3ff}
+.ts-ideoe-vresizer::after{content:"";position:absolute;top:2px;left:6px;right:6px;height:3px;border-radius:2px;background:var(--ts-border);transition:background .1s}
+.ts-ideoe-vresizer:hover::after,.ts-ideoe-vresizer.is-drag::after{background:var(--ts-accent)}
 .ts-ideoe-jsonhead{display:flex;align-items:center;justify-content:space-between;gap:8px}
-.ts-ideoe-json{margin:0;max-height:300px;overflow:auto;background:#080c12;border:1px solid #1c2733;border-radius:6px;padding:8px 10px;font-family:Consolas,'SF Mono','Courier New',monospace;font-size:11px;line-height:1.5;color:#8893a7;white-space:pre;tab-size:2}
+/* Monospace stack is intentional (code block) — there is no --ts-* mono token. */
+.ts-ideoe-json{margin:0;max-height:300px;overflow:auto;background:var(--ts-sunken);border:1px solid var(--ts-border-soft);border-radius:6px;padding:8px 10px;font-family:Consolas,'SF Mono','Courier New',monospace;font-size:var(--ts-fs-sm);line-height:1.5;color:var(--ts-muted);white-space:pre;tab-size:2}
+/* Syntax-highlight palette: five mutually distinguishable hues that carry
+   meaning (key/string/number/bool/null). Deliberately not themed — the token
+   set has one accent plus semantics, which cannot encode five token classes. */
 .ts-ideoe-json .tsj-key{color:#7dd3fc}
 .ts-ideoe-json .tsj-str{color:#a6e3a1}
 .ts-ideoe-json .tsj-num{color:#fab387}
 .ts-ideoe-json .tsj-bool{color:#cba6f7}
 .ts-ideoe-json .tsj-null{color:#6b7688}
-.ts-ideoe-copybtn{padding:4px 10px;font-size:11px}
-.ts-ideoe-copybtn.ok{background:#1f7a4d;border-color:#1f7a4d;color:#eafff3}
-.ts-ideoe-layers__head{display:flex;align-items:center;gap:7px;padding:9px 11px;border-bottom:1px solid #1c2430;background:#10151d;flex:0 0 auto}
-.ts-ideoe-layers__title{font-weight:700;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#cdd6e6}
-.ts-ideoe-layers__count{font-size:10px;color:#7d899b;background:rgba(255,255,255,.06);border-radius:8px;padding:1px 7px;font-variant-numeric:tabular-nums}
+.ts-ideoe-copybtn{padding:4px 10px;font-size:var(--ts-fs-sm)}
+.ts-ideoe-copybtn.ok{background:var(--ts-success);border-color:var(--ts-success);color:var(--ts-bg)}
+.ts-ideoe-layers__head{display:flex;align-items:center;gap:7px;padding:9px 11px;border-bottom:1px solid var(--ts-border-soft);background:var(--ts-elevated);flex:0 0 auto}
+.ts-ideoe-layers__title{font-weight:700;font-size:var(--ts-fs-sm);letter-spacing:.06em;text-transform:uppercase;color:var(--ts-text)}
+.ts-ideoe-layers__count{font-size:var(--ts-fs-xs);color:var(--ts-faint);background:var(--ts-surface);border-radius:8px;padding:1px 7px;font-variant-numeric:tabular-nums}
 .ts-ideoe-layers__list{flex:0 0 auto;min-height:56px;overflow-y:auto;padding:6px;display:flex;flex-direction:column;gap:4px}
-.ts-ideoe-layers__foot{flex:0 0 auto;display:grid;grid-template-columns:1fr 1fr;gap:5px;padding:8px;border-top:1px solid #1c2430;background:#0c1016}
+.ts-ideoe-layers__foot{flex:0 0 auto;display:grid;grid-template-columns:1fr 1fr;gap:5px;padding:8px;border-top:1px solid var(--ts-border-soft);background:var(--ts-elevated)}
 .ts-ideoe-layers__foot .ts-ideoe-btn{justify-content:center;padding:6px 4px}
-.ts-ideoe-lrow{display:flex;align-items:center;gap:7px;padding:5px 6px;border:1px solid #1d2532;border-radius:8px;background:#0f151d;cursor:grab;position:relative;touch-action:none}
-.ts-ideoe-lrow:hover{border-color:#2b3850;background:#121a24}
-.ts-ideoe-lrow.is-selected{border-color:#ffd500;background:#171a16;box-shadow:0 0 0 1px rgba(255,213,0,.35)}
-.ts-ideoe-lrow.is-placeholder{opacity:.45;background:#0a0e14;border-style:dashed;border-color:#4da3ff}
+.ts-ideoe-lrow{display:flex;align-items:center;gap:7px;padding:5px 6px;border:1px solid var(--ts-border-soft);border-radius:8px;background:var(--ts-elevated);cursor:grab;position:relative;touch-action:none}
+.ts-ideoe-lrow:hover{border-color:var(--ts-border);background:var(--ts-surface-hover)}
+.ts-ideoe-lrow.is-selected{border-color:var(--ts-accent);background:var(--ts-accent-soft);box-shadow:0 0 0 1px var(--ts-accent-line)}
+.ts-ideoe-lrow.is-placeholder{opacity:.45;background:var(--ts-sunken);border-style:dashed;border-color:var(--ts-accent-line)}
 .ts-ideoe-lrow.is-placeholder>*{visibility:hidden}
-.ts-ideoe-ldrag{position:fixed;z-index:13000;pointer-events:none;margin:0;border-color:#4da3ff;background:#17304d;box-shadow:0 12px 30px rgba(0,0,0,.6);transform:scale(1.04);opacity:.97;cursor:grabbing}
-.ts-ideoe-lchip{flex:0 0 auto;width:24px;height:24px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;color:#0b0e13;box-shadow:inset 0 0 0 1px rgba(0,0,0,.2)}
+.ts-ideoe-ldrag{position:fixed;z-index:13000;pointer-events:none;margin:0;border-color:var(--ts-accent);background:var(--ts-surface-active);box-shadow:var(--ts-shadow);transform:scale(1.04);opacity:.97;cursor:grabbing}
+/* Chip background is painted inline by JS from the block's own colour, so the
+   glyph on top stays a fixed dark ink rather than a theme token. */
+.ts-ideoe-lchip{flex:0 0 auto;width:24px;height:24px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:var(--ts-fs);font-weight:800;color:#0b0e13;box-shadow:inset 0 0 0 1px rgba(0,0,0,.2)}
 .ts-ideoe-lbody{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:1px;pointer-events:none}
-.ts-ideoe-lname{font-size:12px;color:#e9eef6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600;line-height:1.25}
-.ts-ideoe-lmeta{font-size:10px;color:#7d899b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.2}
-.ts-ideoe-lacts{position:absolute;right:3px;top:50%;transform:translateY(-50%);display:flex;gap:1px;opacity:0;transition:opacity .1s ease;background:rgba(10,14,20,.92);border:1px solid #232d3b;border-radius:6px;padding:2px;pointer-events:none}
+.ts-ideoe-lname{font-size:var(--ts-fs);color:var(--ts-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600;line-height:1.25}
+.ts-ideoe-lmeta{font-size:var(--ts-fs-xs);color:var(--ts-faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.2}
+.ts-ideoe-lacts{position:absolute;right:3px;top:50%;transform:translateY(-50%);display:flex;gap:1px;opacity:0;transition:opacity .1s ease;background:var(--ts-elevated);border:1px solid var(--ts-border-soft);border-radius:6px;padding:2px;pointer-events:none}
 .ts-ideoe-lrow:hover .ts-ideoe-lacts,.ts-ideoe-lrow.is-selected .ts-ideoe-lacts{opacity:1;pointer-events:auto}
-.ts-ideoe-lact{width:19px;height:19px;display:flex;align-items:center;justify-content:center;border:0;background:transparent;color:#9aa6b8;border-radius:4px;cursor:pointer;font-size:10px;line-height:1;padding:0}
-.ts-ideoe-lact:hover{background:#26303f;color:#fff}
-.ts-ideoe-lact.danger:hover{background:#5a2626;color:#ffb4b1}
+.ts-ideoe-lact{width:19px;height:19px;display:flex;align-items:center;justify-content:center;border:0;background:transparent;color:var(--ts-muted);border-radius:4px;cursor:pointer;font-size:var(--ts-fs-xs);line-height:1;padding:0}
+.ts-ideoe-lact:hover{background:var(--ts-surface-hover);color:var(--ts-text)}
+.ts-ideoe-lact.danger:hover{background:var(--ts-surface-hover);color:var(--ts-danger)}
 `;
     document.head.appendChild(style);
 }
@@ -324,7 +351,7 @@ export function openIdeogramEditor(node, { design, presets, onSave, graphRef }) 
     // Set by close(): stops the layout retry loop and in-flight JSON refreshes.
     let closed = false;
 
-    const overlay = el("div", "ts-ideoe-overlay ts-ideoe");
+    const overlay = el("div", `${TS_UI_CLASS} ts-ideoe-overlay ts-ideoe`);
     const shell = el("div", "ts-ideoe-shell");
 
     // ── Header ──────────────────────────────────────────────────────────── //
@@ -951,9 +978,12 @@ export function openIdeogramEditor(node, { design, presets, onSave, graphRef }) 
     }
     function layerChip(block) {
         const chip = el("div", "ts-ideoe-lchip");
-        if (block.type === "obj") { chip.textContent = "▦"; chip.style.background = "#82d6a8"; }
-        else if (block.visual_only) { chip.textContent = "↳"; chip.style.background = "#9aa6b8"; }
-        else { chip.textContent = "T"; chip.style.background = "#7aa2ff"; }
+        // Layer-type chips are editor chrome (not artwork), so they follow the
+        // theme. CSS variables resolve here because the chip lives inside the
+        // token-scoped overlay.
+        if (block.type === "obj") { chip.textContent = "▦"; chip.style.background = "var(--ts-success)"; }
+        else if (block.visual_only) { chip.textContent = "↳"; chip.style.background = "var(--ts-muted)"; }
+        else { chip.textContent = "T"; chip.style.background = "var(--ts-accent)"; }
         return chip;
     }
 
