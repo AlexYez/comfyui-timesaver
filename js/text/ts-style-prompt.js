@@ -1,7 +1,7 @@
 import { app } from "/scripts/app.js";
 import { api } from "/scripts/api.js";
 
-import { TS_UI_CLASS, ensureThemeStyles, pickLocaleStrings } from "../_theme.js";
+import { TS_UI_CLASS, ensureThemeStyles, getUiLanguage, pickLocaleStrings } from "../_theme.js";
 
 const EXTENSION_ID = "ts_suite.style_prompt_selector";
 const NODE_NAME = "TS_StylePromptSelector";
@@ -369,6 +369,20 @@ function setupStyleSelector(node) {
 
     const styleValue = (style) => (style.name || style.id || "").trim();
 
+    // The library ships both an English and a Russian name per style; show the
+    // one matching the ComfyUI locale, English being the fallback. Descriptions
+    // exist in Russian only, so the English tooltip falls back to the prompt,
+    // which is the more useful text there anyway.
+    const isRu = getUiLanguage() === "ru";
+    const styleLabel = (style) =>
+        (isRu ? style.name_ru || style.name : style.name) || style.id || "";
+    const styleTooltip = (style) => {
+        const parts = isRu
+            ? [style.description, style.prompt]
+            : [style.prompt, style.description];
+        return parts.filter(Boolean)[0] || styleLabel(style);
+    };
+
     const matchesSelection = (style, value) => {
         if (!value) {
             return false;
@@ -433,11 +447,11 @@ function setupStyleSelector(node) {
             if (matchesSelection(style, state.selectedValue)) {
                 card.classList.add("is-selected");
             }
-            card.title = style.description || style.prompt || style.name || style.id || "";
+            card.title = styleTooltip(style);
 
             if (style.preview) {
                 const img = document.createElement("img");
-                img.alt = style.name || style.id || "style";
+                img.alt = styleLabel(style) || "style";
                 img.src = makePreviewUrl(style.preview);
                 img.onerror = () => {
                     img.remove();
@@ -447,7 +461,7 @@ function setupStyleSelector(node) {
 
             const label = document.createElement("div");
             label.className = "ts-style-label";
-            label.textContent = style.name || style.id || "";
+            label.textContent = styleLabel(style);
             card.appendChild(label);
 
             card.addEventListener("click", (event) => {
@@ -469,7 +483,8 @@ function setupStyleSelector(node) {
             state.filtered = state.styles.slice();
         } else {
             state.filtered = state.styles.filter((style) => {
-                const haystack = [style.id, style.name, style.description, style.prompt]
+                const haystack = [style.id, style.name, style.name_ru, style.category,
+                    style.description, style.prompt]
                     .filter(Boolean)
                     .join(" ")
                     .toLowerCase();
