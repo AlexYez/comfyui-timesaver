@@ -16,11 +16,19 @@ class TS_BatchPromptLoader(IO.ComfyNode):
                     default="Prompt 1: cat\n\nPrompt 2: dog\n\nPrompt 3: bird",
                     multiline=True,
                     dynamic_prompts=False,
+                    tooltip="Multiple prompts separated by one or more blank lines. Each block becomes one prompt in the output list.",
                 ),
             ],
             outputs=[
-                IO.String.Output(display_name="prompt", is_output_list=True),
-                IO.Int.Output(display_name="prompts_count"),
+                IO.String.Output(
+                    display_name="prompt",
+                    is_output_list=True,
+                    tooltip="List of prompts, one per blank-line-separated block.",
+                ),
+                IO.Int.Output(
+                    display_name="prompts_count",
+                    tooltip="Number of prompts found in the text.",
+                ),
             ],
         )
 

@@ -106,7 +106,12 @@ class TS_SileroStress(IO.ComfyNode):
                     tooltip="Comma or newline separated words that should be skipped completely.",
                 ),
             ],
-            outputs=[IO.String.Output(display_name="text")],
+            outputs=[
+                IO.String.Output(
+                    display_name="text",
+                    tooltip="Input text with stress marks and yo restored.",
+                )
+            ],
             search_aliases=["silero stress", "stress", "yo", "accentor", "homograph"],
         )
 

@@ -36,13 +36,43 @@ class TS_ResolutionSelector(IO.ComfyNode):
             display_name="TS Resolution Selector",
             category="TS/Image",
             inputs=[
-                IO.Combo.Input("aspect_ratio", options=_ASPECT_OPTIONS, default="1:1"),
-                IO.Float.Input("resolution", default=1.5, min=0.5, max=4.0, step=0.1, display_mode=IO.NumberDisplay.slider),
-                IO.String.Input("custom_ratio", default="0:0"),
-                IO.Boolean.Input("original_aspect", default=False),
-                IO.Image.Input("image", optional=True),
+                IO.Combo.Input(
+                    "aspect_ratio",
+                    options=_ASPECT_OPTIONS,
+                    default="1:1",
+                    tooltip="Aspect-ratio preset for the output resolution.",
+                ),
+                IO.Float.Input(
+                    "resolution",
+                    default=1.5,
+                    min=0.5,
+                    max=4.0,
+                    step=0.1,
+                    display_mode=IO.NumberDisplay.slider,
+                    tooltip="Target size in megapixels; width and height are derived from it and the aspect ratio.",
+                ),
+                IO.String.Input(
+                    "custom_ratio",
+                    default="0:0",
+                    tooltip="Custom aspect ratio as 'W:H'. Overrides the preset unless left at '0:0'.",
+                ),
+                IO.Boolean.Input(
+                    "original_aspect",
+                    default=False,
+                    tooltip="Use the connected image's aspect ratio instead of the preset.",
+                ),
+                IO.Image.Input(
+                    "image",
+                    optional=True,
+                    tooltip="Optional image fitted onto the computed canvas (letterboxed).",
+                ),
             ],
-            outputs=[IO.Image.Output(display_name="img")],
+            outputs=[
+                IO.Image.Output(
+                    display_name="img",
+                    tooltip="Blank or image-filled canvas at the computed resolution.",
+                )
+            ],
         )
 
     @classmethod

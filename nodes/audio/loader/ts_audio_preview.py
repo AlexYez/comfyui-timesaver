@@ -25,7 +25,7 @@ class TS_AudioPreview(IO.ComfyNode):
             category="TS/Audio",
             description="Preview a standard ComfyUI audio input with waveform playback and looped auditioning.",
             inputs=[
-                IO.Audio.Input("audio"),
+                IO.Audio.Input("audio", tooltip="Audio input to preview and audition."),
                 IO.Float.Input("crop_start_seconds", default=0.0, min=0.0, step=0.01, tooltip="Crop start time in seconds.", socketless=True, advanced=True),
                 IO.Float.Input("crop_end_seconds", default=-1.0, step=0.01, tooltip="Crop end time in seconds. Use -1 for full length.", socketless=True, advanced=True),
                 IO.String.Input("preview_state_json", default="", socketless=True, advanced=True, tooltip="Persistent preview UI state."),

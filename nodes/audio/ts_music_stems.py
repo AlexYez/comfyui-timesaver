@@ -85,19 +85,19 @@ class TS_MusicStems(IO.ComfyNode):
             display_name="TS Music Stems",
             category="TS/Audio",
             inputs=[
-                IO.Audio.Input("audio"),
-                IO.Combo.Input("model_name", options=["htdemucs", "htdemucs_ft", "hdemucs_mmi"], default="htdemucs_ft"),
-                IO.Combo.Input("device", options=["cuda", "cpu", "auto"], default="auto"),
+                IO.Audio.Input("audio", tooltip="Audio track to split into stems."),
+                IO.Combo.Input("model_name", options=["htdemucs", "htdemucs_ft", "hdemucs_mmi"], default="htdemucs_ft", tooltip="Demucs separation model. htdemucs_ft is fine-tuned for best quality but slower."),
+                IO.Combo.Input("device", options=["cuda", "cpu", "auto"], default="auto", tooltip="Compute device. auto picks GPU when available, otherwise CPU."),
                 IO.Int.Input("shifts", default=2, min=0, max=10, tooltip="TTA passes. 2 = high quality, 4 = very slow."),
                 IO.Float.Input("overlap", default=0.5, min=0.0, max=0.9, tooltip="Chunk overlap for smoother stitching."),
                 IO.Int.Input("jobs", default=0, min=0, max=16, tooltip="CPU workers for pre-processing. 0 = auto."),
             ],
             outputs=[
-                IO.Audio.Output(display_name="vocal"),
-                IO.Audio.Output(display_name="bass"),
-                IO.Audio.Output(display_name="drums"),
-                IO.Audio.Output(display_name="others"),
-                IO.Audio.Output(display_name="instrumental"),
+                IO.Audio.Output(display_name="vocal", tooltip="Isolated vocals stem."),
+                IO.Audio.Output(display_name="bass", tooltip="Isolated bass stem."),
+                IO.Audio.Output(display_name="drums", tooltip="Isolated drums stem."),
+                IO.Audio.Output(display_name="others", tooltip="Remaining instruments not in the other stems."),
+                IO.Audio.Output(display_name="instrumental", tooltip="Full mix minus vocals (drums + bass + others)."),
             ],
         )
 

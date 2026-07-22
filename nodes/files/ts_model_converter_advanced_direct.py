@@ -18,12 +18,12 @@ class TS_ModelConverterAdvancedDirectNode(TS_ModelConverterAdvancedNode):
             display_name="TS Model Converter Advanced Direct",
             category="TS/Files",
             inputs=[
-                IO.Model.Input("model"),
-                IO.Combo.Input("fp8_mode", options=["e4m3fn", "e5m2"], default="e5m2"),
-                IO.Combo.Input("conversion_preset", options=["WAN", "Flux2"], default="WAN"),
-                IO.String.Input("final_filename", default="converted_model_fp8.safetensors", multiline=False),
+                IO.Model.Input("model", tooltip="In-graph MODEL to convert directly to FP8 and save to disk."),
+                IO.Combo.Input("fp8_mode", options=["e4m3fn", "e5m2"], default="e5m2", tooltip="Target FP8 format. e4m3fn has more precision, e5m2 a wider range. Pick what your target pipeline expects."),
+                IO.Combo.Input("conversion_preset", options=["WAN", "Flux2"], default="WAN", tooltip="Per-architecture rule set deciding which tensors are cast to FP8. Choose the preset matching the model family."),
+                IO.String.Input("final_filename", default="converted_model_fp8.safetensors", multiline=False, tooltip="Output safetensors filename, written into ComfyUI's output directory. Path segments are stripped for safety."),
             ],
-            outputs=[IO.String.Output(display_name="log")],
+            outputs=[IO.String.Output(display_name="log", tooltip="Conversion log: target format, preset, counts of converted vs kept tensors, and the output path.")],
         )
 
     @classmethod

@@ -104,7 +104,7 @@ class TS_SileroTTS(IO.ComfyNode):
                     tooltip="Add stress marks for homographs with yo.",
                 ),
             ],
-            outputs=[IO.Audio.Output(display_name="audio")],
+            outputs=[IO.Audio.Output(display_name="audio", tooltip="Synthesized speech audio.")],
             search_aliases=["silero", "tts", "russian speech"],
         )
 

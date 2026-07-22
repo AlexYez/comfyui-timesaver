@@ -27,15 +27,46 @@ class TS_ImageTileSplitter(IO.ComfyNode):
             display_name="TS Image Tile Splitter",
             category="TS/Image",
             inputs=[
-                IO.Image.Input("image"),
-                IO.Int.Input("tile_width", default=1024, min=64, max=8192, step=8),
-                IO.Int.Input("tile_height", default=1024, min=64, max=8192, step=8),
-                IO.Int.Input("overlap", default=128, min=0, max=512, step=8),
-                IO.Float.Input("feather", default=0.1, min=0.0, max=0.5, step=0.01),
+                IO.Image.Input("image", tooltip="Image to split into overlapping tiles."),
+                IO.Int.Input(
+                    "tile_width",
+                    default=1024,
+                    min=64,
+                    max=8192,
+                    step=8,
+                    tooltip="Tile width in pixels.",
+                ),
+                IO.Int.Input(
+                    "tile_height",
+                    default=1024,
+                    min=64,
+                    max=8192,
+                    step=8,
+                    tooltip="Tile height in pixels.",
+                ),
+                IO.Int.Input(
+                    "overlap",
+                    default=128,
+                    min=0,
+                    max=512,
+                    step=8,
+                    tooltip="Overlap between neighboring tiles in pixels.",
+                ),
+                IO.Float.Input(
+                    "feather",
+                    default=0.1,
+                    min=0.0,
+                    max=0.5,
+                    step=0.01,
+                    tooltip="Edge feather as a fraction of tile size, used when merging tiles back.",
+                ),
             ],
             outputs=[
-                IO.Image.Output(display_name="tiles"),
-                _TileInfo.Output(display_name="tile_data"),
+                IO.Image.Output(display_name="tiles", tooltip="Batch of tiles in row-major order."),
+                _TileInfo.Output(
+                    display_name="tile_data",
+                    tooltip="TILE_INFO metadata to feed into TS Image Tile Merger.",
+                ),
             ],
         )
 

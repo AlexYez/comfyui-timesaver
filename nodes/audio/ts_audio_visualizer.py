@@ -104,7 +104,7 @@ class TS_AudioVisualizer(IO.ComfyNode):
                 "audio-reactive abstract background. Outputs IMAGE + MASK."
             ),
             inputs=[
-                IO.Audio.Input("audio"),
+                IO.Audio.Input("audio", tooltip="Audio clip to visualize as a waveform image."),
                 IO.Int.Input("width", default=1280, min=64, max=8192, step=8, tooltip="Output image width in pixels."),
                 IO.Int.Input("height", default=320, min=32, max=8192, step=8, tooltip="Output image height in pixels."),
                 IO.Combo.Input("style", options=_STYLE_OPTIONS, default="mirror",
@@ -135,8 +135,8 @@ class TS_AudioVisualizer(IO.ComfyNode):
                 IO.Boolean.Input("rounded_caps", default=True, tooltip="Rounded bar ends (SoundCloud look) vs. flat rectangles."),
             ],
             outputs=[
-                IO.Image.Output(display_name="IMAGE"),
-                IO.Mask.Output(display_name="MASK"),
+                IO.Image.Output(display_name="IMAGE", tooltip="Rendered waveform visualization."),
+                IO.Mask.Output(display_name="MASK", tooltip="Alpha of bars plus their glow (background excluded), for compositing."),
             ],
             search_aliases=[
                 "audio visualizer", "waveform", "soundcloud", "audio to image",

@@ -24,10 +24,23 @@ class TS_ImagePromptInjector(IO.ComfyNode):
             display_name="TS Image Prompt Injector",
             category="TS/Image",
             inputs=[
-                IO.Image.Input("image"),
-                IO.String.Input("prompt", default="", multiline=True),
+                IO.Image.Input(
+                    "image",
+                    tooltip="Image passed through unchanged; only its saved workflow metadata is edited.",
+                ),
+                IO.String.Input(
+                    "prompt",
+                    default="",
+                    multiline=True,
+                    tooltip="Text written into the positive text-encoder nodes of the saved workflow metadata.",
+                ),
             ],
-            outputs=[IO.Image.Output(display_name="image")],
+            outputs=[
+                IO.Image.Output(
+                    display_name="image",
+                    tooltip="The input image, passed through unchanged.",
+                )
+            ],
             hidden=[IO.Hidden.prompt],
         )
 

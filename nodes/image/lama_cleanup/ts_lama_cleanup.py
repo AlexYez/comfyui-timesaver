@@ -95,7 +95,12 @@ class TS_LamaCleanup(IO.ComfyNode):
                     socketless=True,
                 ),
             ],
-            outputs=[IO.Image.Output(display_name="image")],
+            outputs=[
+                IO.Image.Output(
+                    display_name="image",
+                    tooltip="Current cleaned-up image from the in-node editor.",
+                )
+            ],
             search_aliases=["lama", "inpaint", "cleanup", "remove tool", "spot heal"],
         )
 

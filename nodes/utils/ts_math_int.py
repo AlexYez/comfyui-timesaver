@@ -39,11 +39,34 @@ class TS_Math_Int(IO.ComfyNode):
             category="TS/Utils",
             description="Integer math operations",
             inputs=[
-                IO.Int.Input("a", default=0, min=-2147483648, max=2147483647, step=1),
-                IO.Int.Input("b", default=0, min=-2147483648, max=2147483647, step=1),
-                IO.Combo.Input("operation", options=_OPERATIONS),
+                IO.Int.Input(
+                    "a",
+                    default=0,
+                    min=-2147483648,
+                    max=2147483647,
+                    step=1,
+                    tooltip="First integer operand.",
+                ),
+                IO.Int.Input(
+                    "b",
+                    default=0,
+                    min=-2147483648,
+                    max=2147483647,
+                    step=1,
+                    tooltip="Second integer operand.",
+                ),
+                IO.Combo.Input(
+                    "operation",
+                    options=_OPERATIONS,
+                    tooltip="Arithmetic operation applied as 'a op b'. Division, modulo and negative powers of zero raise an error instead of a silent result.",
+                ),
             ],
-            outputs=[IO.Int.Output(display_name="result")],
+            outputs=[
+                IO.Int.Output(
+                    display_name="result",
+                    tooltip="Integer result of the operation.",
+                )
+            ],
         )
 
     @classmethod

@@ -39,12 +39,12 @@ class TS_FilePathLoader(IO.ComfyNode):
             display_name="TS File Path Loader",
             category="TS/Files",
             inputs=[
-                IO.String.Input("folder_path", default="", multiline=False),
-                IO.Int.Input("index", default=0, min=0, step=1),
+                IO.String.Input("folder_path", default="", multiline=False, tooltip="Absolute path to a folder. Supported files inside are listed sorted by name; media/model extensions plus .mp4 and .mov are matched."),
+                IO.Int.Input("index", default=0, min=0, step=1, tooltip="Which file to pick from the sorted list. Wraps around (modulo) when it exceeds the file count."),
             ],
             outputs=[
-                IO.String.Output(display_name="file_path"),
-                IO.String.Output(display_name="file_name"),
+                IO.String.Output(display_name="file_path", tooltip="Absolute path of the selected file."),
+                IO.String.Output(display_name="file_name", tooltip="Selected file's name without its extension."),
             ],
         )
 

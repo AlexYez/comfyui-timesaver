@@ -16,8 +16,8 @@ class TS_EquirectangularToCubemapFacesNode(IO.ComfyNode):
             display_name="TS Equirectangular to Cube",
             category="TS/Image",
             inputs=[
-                IO.Image.Input("image"),
-                IO.Int.Input("cube_size", default=512, min=64, max=4096, step=64),
+                IO.Image.Input("image", tooltip="Equirectangular (360x180) panorama to split into six cube faces."),
+                IO.Int.Input("cube_size", default=512, min=64, max=4096, step=64, tooltip="Pixel size of each square cube face. Higher values keep more detail but cost more memory."),
             ],
             outputs=[
                 IO.Image.Output(display_name="front"),

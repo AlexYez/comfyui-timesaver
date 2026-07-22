@@ -40,8 +40,18 @@ class TS_QwenSafeResize(IO.ComfyNode):
             node_id="TS_QwenSafeResize",
             display_name="TS Qwen Safe Resize",
             category="TS/Image",
-            inputs=[IO.Image.Input("image")],
-            outputs=[IO.Image.Output(display_name="IMAGE")],
+            inputs=[
+                IO.Image.Input(
+                    "image",
+                    tooltip="Image to fit to the nearest Qwen-supported resolution (resize + center crop).",
+                )
+            ],
+            outputs=[
+                IO.Image.Output(
+                    display_name="IMAGE",
+                    tooltip="Image resized and cropped to a Qwen-friendly resolution.",
+                )
+            ],
         )
 
     @classmethod

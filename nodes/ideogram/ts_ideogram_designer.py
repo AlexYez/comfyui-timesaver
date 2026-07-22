@@ -54,14 +54,28 @@ class TS_IdeogramDesigner(IO.ComfyNode):
                 IO.Image.Input(
                     "image",
                     optional=True,
-                    tooltip="Опциональный референс-подложка: первый кадр кэшируется для трассировки текста в редакторе. На капшен не влияет.",
+                    tooltip="Optional reference underlay: its first frame is cached so the editor can trace text over it. Does not affect the caption.",
                 ),
-                IO.String.Input("design_json", default="", multiline=False),
+                IO.String.Input(
+                    "design_json",
+                    default="",
+                    multiline=False,
+                    tooltip="Serialized editor state, managed by the node UI. Converted into the Ideogram 4 caption on execution.",
+                ),
             ],
             outputs=[
-                IO.String.Output(display_name="json_prompt"),
-                IO.Int.Output(display_name="width"),
-                IO.Int.Output(display_name="height"),
+                IO.String.Output(
+                    display_name="json_prompt",
+                    tooltip="Ideogram 4 caption built from the design.",
+                ),
+                IO.Int.Output(
+                    display_name="width",
+                    tooltip="Output width in pixels, derived from the design's aspect ratio and megapixels.",
+                ),
+                IO.Int.Output(
+                    display_name="height",
+                    tooltip="Output height in pixels, derived from the design's aspect ratio and megapixels.",
+                ),
             ],
             hidden=[IO.Hidden.unique_id],
         )

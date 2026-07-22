@@ -25,9 +25,15 @@ class TS_FloatSlider(IO.ComfyNode):
                     step=0.1,
                     round=0.01,
                     display_mode=IO.NumberDisplay.slider,
+                    tooltip="Float value emitted by the slider.",
                 ),
             ],
-            outputs=[IO.Float.Output(display_name="float_value")],
+            outputs=[
+                IO.Float.Output(
+                    display_name="float_value",
+                    tooltip="The slider's float value.",
+                )
+            ],
         )
 
     @classmethod

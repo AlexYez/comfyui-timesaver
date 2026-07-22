@@ -276,9 +276,18 @@ class TS_PromptBuilder(IO.ComfyNode):
                     control_after_generate=True,
                     tooltip="0 = auto-random each run, >0 = deterministic per seed",
                 ),
-                IO.String.Input("config_json", default=""),
+                IO.String.Input(
+                    "config_json",
+                    default="",
+                    tooltip="Block config (order and enabled flags) managed by the node UI. Selects which prompt files contribute lines.",
+                ),
             ],
-            outputs=[IO.String.Output(display_name="prompt")],
+            outputs=[
+                IO.String.Output(
+                    display_name="prompt",
+                    tooltip="Assembled prompt: one random line from each enabled block, comma-joined.",
+                )
+            ],
         )
 
     @classmethod

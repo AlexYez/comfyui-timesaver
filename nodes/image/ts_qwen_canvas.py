@@ -36,7 +36,12 @@ class TS_QwenCanvas(IO.ComfyNode):
             display_name="TS Qwen Canvas",
             category="TS/Image",
             inputs=[
-                IO.Combo.Input("resolution", options=ASPECT_OPTIONS, default="1:1"),
+                IO.Combo.Input(
+                    "resolution",
+                    options=ASPECT_OPTIONS,
+                    default="1:1",
+                    tooltip="Canvas aspect-ratio / resolution preset for the output.",
+                ),
                 IO.Image.Input(
                     "image",
                     optional=True,
@@ -49,9 +54,9 @@ class TS_QwenCanvas(IO.ComfyNode):
                 ),
             ],
             outputs=[
-                IO.Image.Output(display_name="canvas_image"),
-                IO.Int.Output(display_name="width"),
-                IO.Int.Output(display_name="height"),
+                IO.Image.Output(display_name="canvas_image", tooltip="Generated canvas with the optional image placed on it."),
+                IO.Int.Output(display_name="width", tooltip="Canvas width in pixels."),
+                IO.Int.Output(display_name="height", tooltip="Canvas height in pixels."),
             ],
         )
 

@@ -22,8 +22,19 @@ class TS_ImageBatchToImageList(IO.ComfyNode):
             node_id="TS_ImageBatchToImageList",
             display_name="TS Image Batch to Image List",
             category="TS/Image",
-            inputs=[IO.Image.Input("image")],
-            outputs=[IO.Image.Output(display_name="images", is_output_list=True)],
+            inputs=[
+                IO.Image.Input(
+                    "image",
+                    tooltip="Image batch [B,H,W,C] to split into a list of single-frame images.",
+                )
+            ],
+            outputs=[
+                IO.Image.Output(
+                    display_name="images",
+                    is_output_list=True,
+                    tooltip="List of single-frame images, one per batch item.",
+                )
+            ],
         )
 
     @staticmethod

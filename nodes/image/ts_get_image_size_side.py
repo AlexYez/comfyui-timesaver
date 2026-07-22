@@ -23,15 +23,16 @@ class TS_GetImageSizeSide(IO.ComfyNode):
             display_name="TS Get Image Size",
             category="TS/Image",
             inputs=[
-                IO.Image.Input("image"),
+                IO.Image.Input("image", tooltip="Image whose dimensions are measured."),
                 IO.Boolean.Input(
                     "large_side",
                     default=True,
                     label_on="Large Side",
                     label_off="Small Side",
+                    tooltip="If enabled, returns the longer side; otherwise the shorter side.",
                 ),
             ],
-            outputs=[IO.Int.Output(display_name="size")],
+            outputs=[IO.Int.Output(display_name="size", tooltip="Length in pixels of the selected side (larger or smaller).")],
         )
 
     @staticmethod

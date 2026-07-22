@@ -390,35 +390,35 @@ class TS_SuperPrompt(IO.ComfyNode):
                     multiline=True,
                     default="",
                     tooltip=(
-                        "Поле промпта: сюда попадает распознанная речь, "
-                        "а кнопка Ai prompt заменяет текст улучшенным промптом."
+                        "Prompt field: recognized speech lands here, and the Ai prompt "
+                        "button replaces the text with an enhanced prompt."
                     ),
                 ),
                 IO.Boolean.Input(
                     "high_quality",
                     default=False,
                     tooltip=(
-                        "Включите, чтобы распознавать речь моделью Whisper turbo (large-v3 turbo). "
-                        "Выключено: используется быстрая base."
+                        "Enable to transcribe speech with Whisper turbo (large-v3 turbo). "
+                        "Off: uses the fast base model."
                     ),
                 ),
                 IO.Combo.Input(
                     "system_preset",
                     options=options,
                     default=default_preset(options),
-                    tooltip="Выберите системный пресет из qwen_3_vl_presets.json для улучшения промпта.",
+                    tooltip="System preset from qwen_3_vl_presets.json used to enhance the prompt.",
                 ),
                 IO.String.Input(
                     "attached_image",
                     default="",
                     tooltip=(
-                        "Внутреннее поле: аннотированный путь приложенного изображения "
-                        "(заполняется кнопкой Attach в самой ноде)."
+                        "Internal field: annotated path of the attached image "
+                        "(filled by the Attach button in the node)."
                     ),
                     socketless=True,
                 ),
             ],
-            outputs=[IO.String.Output(display_name="text")],
+            outputs=[IO.String.Output(display_name="text", tooltip="Prompt text (enhanced when enhancement runs).")],
             search_aliases=[
                 "super prompt",
                 "ai prompt",

@@ -38,9 +38,23 @@ class TS_Animation_Preview(IO.ComfyNode):
             description="Create a looping H.265 preview video from an image batch.",
             is_output_node=True,
             inputs=[
-                IO.Image.Input("images"),
-                IO.Float.Input("fps", default=25.0, min=1.0, max=120.0, step=1.0),
-                IO.Audio.Input("audio", optional=True),
+                IO.Image.Input(
+                    "images",
+                    tooltip="Image batch [B,H,W,C] rendered into the looping H.265 preview video.",
+                ),
+                IO.Float.Input(
+                    "fps",
+                    default=25.0,
+                    min=1.0,
+                    max=120.0,
+                    step=1.0,
+                    tooltip="Playback frame rate of the generated preview video.",
+                ),
+                IO.Audio.Input(
+                    "audio",
+                    optional=True,
+                    tooltip="Optional audio track muxed into the preview. Trimmed or padded to match the video duration.",
+                ),
             ],
             outputs=[],
         )

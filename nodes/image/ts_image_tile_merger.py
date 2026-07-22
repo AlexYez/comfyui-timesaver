@@ -26,10 +26,21 @@ class TS_ImageTileMerger(IO.ComfyNode):
             display_name="TS Image Tile Merger",
             category="TS/Image",
             inputs=[
-                IO.Image.Input("images"),
-                _TileInfo.Input("tile_data"),
+                IO.Image.Input(
+                    "images",
+                    tooltip="Batch of tiles produced by TS Image Tile Splitter.",
+                ),
+                _TileInfo.Input(
+                    "tile_data",
+                    tooltip="TILE_INFO metadata from the splitter describing tile positions, overlap and feather.",
+                ),
             ],
-            outputs=[IO.Image.Output(display_name="image")],
+            outputs=[
+                IO.Image.Output(
+                    display_name="image",
+                    tooltip="Reassembled full image blended from the tiles.",
+                )
+            ],
         )
 
     @staticmethod

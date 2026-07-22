@@ -30,18 +30,53 @@ class TS_RTX_Upscaler(IO.ComfyNode):
             display_name="TS RTX Upscaler",
             category="TS/Video",
             inputs=[
-                IO.Image.Input("images"),
+                IO.Image.Input(
+                    "images",
+                    tooltip="Image batch [B,H,W,C] to upscale with the NVIDIA RTX VSR model.",
+                ),
                 IO.Combo.Input(
                     "resize_type",
                     options=[TS_UpscaleType.SCALE_BY.value, TS_UpscaleType.TARGET_DIMENSIONS.value],
                     default=TS_UpscaleType.SCALE_BY.value,
+                    tooltip="Scale by a multiplier, or upscale to explicit target dimensions.",
                 ),
-                IO.Float.Input("scale", default=2.0, min=1.0, max=4.0, step=0.01),
-                IO.Int.Input("width", default=1920, min=64, max=8192, step=8),
-                IO.Int.Input("height", default=1080, min=64, max=8192, step=8),
-                IO.Combo.Input("quality", options=["LOW", "MEDIUM", "HIGH", "ULTRA"], default="ULTRA"),
+                IO.Float.Input(
+                    "scale",
+                    default=2.0,
+                    min=1.0,
+                    max=4.0,
+                    step=0.01,
+                    tooltip="Upscale multiplier. Used when resize_type is 'scale by multiplier'.",
+                ),
+                IO.Int.Input(
+                    "width",
+                    default=1920,
+                    min=64,
+                    max=8192,
+                    step=8,
+                    tooltip="Target width in pixels. Used when resize_type is 'target dimensions'.",
+                ),
+                IO.Int.Input(
+                    "height",
+                    default=1080,
+                    min=64,
+                    max=8192,
+                    step=8,
+                    tooltip="Target height in pixels. Used when resize_type is 'target dimensions'.",
+                ),
+                IO.Combo.Input(
+                    "quality",
+                    options=["LOW", "MEDIUM", "HIGH", "ULTRA"],
+                    default="ULTRA",
+                    tooltip="RTX VSR quality level. Higher levels look sharper but cost more VRAM and time.",
+                ),
             ],
-            outputs=[IO.Image.Output(display_name="upscaled_images")],
+            outputs=[
+                IO.Image.Output(
+                    display_name="upscaled_images",
+                    tooltip="Upscaled image batch at the resolved output size.",
+                )
+            ],
         )
 
     @classmethod

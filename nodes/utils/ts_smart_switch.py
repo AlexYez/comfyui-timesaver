@@ -72,17 +72,35 @@ class TS_Smart_Switch(IO.ComfyNode):
             category="TS/Utils",
             description="Smart switch for ANY data. Auto-failover if one input is missing.",
             inputs=[
-                IO.Combo.Input("data_type", options=_DATA_TYPES),
+                IO.Combo.Input(
+                    "data_type",
+                    options=_DATA_TYPES,
+                    tooltip="Type of data being routed. Each input is validated against it; mismatched inputs are ignored.",
+                ),
                 IO.Boolean.Input(
                     "switch",
                     default=True,
                     label_on="Input 1",
                     label_off="Input 2",
+                    tooltip="On selects Input 1, off selects Input 2. If only one input is valid, it is passed through regardless (auto-failover).",
                 ),
-                IO.AnyType.Input("input_1", optional=True),
-                IO.AnyType.Input("input_2", optional=True),
+                IO.AnyType.Input(
+                    "input_1",
+                    optional=True,
+                    tooltip="First input branch.",
+                ),
+                IO.AnyType.Input(
+                    "input_2",
+                    optional=True,
+                    tooltip="Second input branch.",
+                ),
             ],
-            outputs=[IO.AnyType.Output(display_name="output")],
+            outputs=[
+                IO.AnyType.Output(
+                    display_name="output",
+                    tooltip="The selected input.",
+                )
+            ],
         )
 
     @classmethod

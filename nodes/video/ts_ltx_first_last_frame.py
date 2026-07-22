@@ -25,19 +25,62 @@ class TS_LTX_FirstLastFrame(IO.ComfyNode):
             display_name="TS LTX First/Last Frame",
             category="TS/Video",
             inputs=[
-                IO.Conditioning.Input("positive"),
-                IO.Conditioning.Input("negative"),
-                IO.Vae.Input("vae"),
-                IO.Latent.Input("latent"),
-                IO.Float.Input("first_strength", default=0.7, min=0.0, max=1.0, step=0.01),
-                IO.Float.Input("last_strength", default=0.7, min=0.0, max=1.0, step=0.01),
-                IO.Image.Input("first_image", optional=True),
-                IO.Image.Input("last_image", optional=True),
+                IO.Conditioning.Input(
+                    "positive",
+                    tooltip="Positive conditioning that receives the LTX guide for the supplied frames.",
+                ),
+                IO.Conditioning.Input(
+                    "negative",
+                    tooltip="Negative conditioning that receives the LTX guide for the supplied frames.",
+                ),
+                IO.Vae.Input(
+                    "vae",
+                    tooltip="VAE used to encode the guide frames into the video latent.",
+                ),
+                IO.Latent.Input(
+                    "latent",
+                    tooltip="Video latent to guide. Passed through and returned with the frame guides applied.",
+                ),
+                IO.Float.Input(
+                    "first_strength",
+                    default=0.7,
+                    min=0.0,
+                    max=1.0,
+                    step=0.01,
+                    tooltip="Guide strength for the first frame. 0 disables the first-frame guide.",
+                ),
+                IO.Float.Input(
+                    "last_strength",
+                    default=0.7,
+                    min=0.0,
+                    max=1.0,
+                    step=0.01,
+                    tooltip="Guide strength for the last frame. 0 disables the last-frame guide.",
+                ),
+                IO.Image.Input(
+                    "first_image",
+                    optional=True,
+                    tooltip="Optional image pinned to the first frame (frame index 0).",
+                ),
+                IO.Image.Input(
+                    "last_image",
+                    optional=True,
+                    tooltip="Optional image pinned to the last frame (frame index -1).",
+                ),
             ],
             outputs=[
-                IO.Conditioning.Output(display_name="positive"),
-                IO.Conditioning.Output(display_name="negative"),
-                IO.Latent.Output(display_name="latent"),
+                IO.Conditioning.Output(
+                    display_name="positive",
+                    tooltip="Positive conditioning with the frame guides applied.",
+                ),
+                IO.Conditioning.Output(
+                    display_name="negative",
+                    tooltip="Negative conditioning with the frame guides applied.",
+                ),
+                IO.Latent.Output(
+                    display_name="latent",
+                    tooltip="Video latent with the first/last frame guides applied.",
+                ),
             ],
         )
 

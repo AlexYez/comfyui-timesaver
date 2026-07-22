@@ -712,12 +712,12 @@ class TSSmartInpaint(IO.ComfyNode):
             display_name="TS Smart Inpaint",
             category="TS/Image",
             inputs=[
-                IO.Model.Input("model"),
-                IO.Vae.Input("vae"),
-                IO.Conditioning.Input("positive"),
-                IO.Conditioning.Input("negative"),
-                IO.Image.Input("image"),
-                IO.Mask.Input("mask"),
+                IO.Model.Input("model", tooltip="Diffusion model used to regenerate the masked region."),
+                IO.Vae.Input("vae", tooltip="VAE used to encode the crop to latent and decode the result."),
+                IO.Conditioning.Input("positive", tooltip="Positive conditioning describing what to generate inside the mask."),
+                IO.Conditioning.Input("negative", tooltip="Negative conditioning describing what to avoid."),
+                IO.Image.Input("image", tooltip="Full source image to inpaint."),
+                IO.Mask.Input("mask", tooltip="Mask marking the region to inpaint (white = regenerate)."),
                 IO.Boolean.Input(
                     "replace",
                     default=True,
@@ -730,8 +730,8 @@ class TSSmartInpaint(IO.ComfyNode):
                     "denoise of the existing content at the Denoise value (no "
                     "reference).",
                 ),
-                IO.Float.Input("denoise", default=1.0, min=0.0, max=1.0, step=0.01),
-                IO.Float.Input("megapixels", default=1.5, min=0.1, max=8.0, step=0.1),
+                IO.Float.Input("denoise", default=1.0, min=0.0, max=1.0, step=0.01, tooltip="Refine mode only: how much of the existing content is redrawn (1.0 = fully). Ignored in Replace mode (locked to 1.0)."),
+                IO.Float.Input("megapixels", default=1.5, min=0.1, max=8.0, step=0.1, tooltip="Processing budget for the masked crop. Small crops upscale toward it; oversized crops downscale to it to bound VAE/sampler cost. Raise for more detail."),
                 IO.Float.Input(
                     "context_pct", default=8.0, min=0.0, max=50.0, step=0.5,
                     tooltip="Context band around the mask the model sees during "
@@ -748,12 +748,12 @@ class TSSmartInpaint(IO.ComfyNode):
                     "strokes), a big mask a wider blend. Clamped to a small px "
                     "floor. ~3% is a sensible default; 0 = hard edge.",
                 ),
-                IO.Combo.Input("resize_method", options=_FINE_UPSCALE_RESIZE_METHODS, default="lanczos"),
-                IO.Int.Input("seed", default=0, min=0, max=0xFFFFFFFFFFFFFFFF),
-                IO.Int.Input("steps", default=4, min=1, max=100),
-                IO.Float.Input("cfg", default=1.0, min=0.0, max=30.0, step=0.1),
-                IO.Combo.Input("sampler_name", options=comfy.samplers.KSampler.SAMPLERS, default="euler"),
-                IO.Combo.Input("scheduler", options=comfy.samplers.KSampler.SCHEDULERS, default="simple"),
+                IO.Combo.Input("resize_method", options=_FINE_UPSCALE_RESIZE_METHODS, default="lanczos", tooltip="Interpolation used to up/downscale the image crop. lanczos and bicubic keep the most detail."),
+                IO.Int.Input("seed", default=0, min=0, max=0xFFFFFFFFFFFFFFFF, tooltip="Noise seed for the sampler. Change for a different variation of the inpainted region."),
+                IO.Int.Input("steps", default=4, min=1, max=100, tooltip="Number of sampling steps. More steps trade speed for quality."),
+                IO.Float.Input("cfg", default=1.0, min=0.0, max=30.0, step=0.1, tooltip="Classifier-free guidance scale. Higher values follow the prompt more strongly."),
+                IO.Combo.Input("sampler_name", options=comfy.samplers.KSampler.SAMPLERS, default="euler", tooltip="Sampling algorithm used to denoise the region."),
+                IO.Combo.Input("scheduler", options=comfy.samplers.KSampler.SCHEDULERS, default="simple", tooltip="Noise schedule that controls how sigma decreases across steps."),
                 # Optional "fill with THIS picture" image (Replace mode only) —
                 # chained as a 2nd Kontext reference. Absent → plain Smart Inpaint.
                 IO.Image.Input(

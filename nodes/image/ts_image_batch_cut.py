@@ -23,11 +23,11 @@ class TS_ImageBatchCut(IO.ComfyNode):
             display_name="TS Image Batch Cut",
             category="TS/Image",
             inputs=[
-                IO.Image.Input("image"),
-                IO.Int.Input("first_cut", default=0, min=0, max=4096),
-                IO.Int.Input("last_cut", default=0, min=0, max=4096),
+                IO.Image.Input("image", tooltip="Image batch (e.g. video frames) to trim."),
+                IO.Int.Input("first_cut", default=0, min=0, max=4096, tooltip="Number of frames to drop from the start of the batch."),
+                IO.Int.Input("last_cut", default=0, min=0, max=4096, tooltip="Number of frames to drop from the end of the batch."),
             ],
-            outputs=[IO.Image.Output(display_name="image")],
+            outputs=[IO.Image.Output(display_name="image", tooltip="Trimmed image batch. Empty if the cuts remove every frame.")],
         )
 
     @staticmethod

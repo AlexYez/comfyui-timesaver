@@ -75,12 +75,12 @@ class TSRestoreFromCrop(IO.ComfyNode):
             display_name="TS Restore From Crop",
             category="TS/Image",
             inputs=[
-                IO.Image.Input("original_images"),
-                IO.Image.Input("cropped_images"),
-                _CropData.Input("crop_data"),
-                IO.Int.Input("blur", default=64, min=0, max=256, step=1),
-                IO.Combo.Input("blur_type", options=["Gaussian", "Box"], default="Gaussian"),
-                IO.Boolean.Input("force_gpu", default=True),
+                IO.Image.Input("original_images", tooltip="Full-size source frames to paste the processed crop back into."),
+                IO.Image.Input("cropped_images", tooltip="Processed crop to paste back, from TS Crop To Mask."),
+                _CropData.Input("crop_data", tooltip="Crop geometry from TS Crop To Mask that tells the node where to paste."),
+                IO.Int.Input("blur", default=64, min=0, max=256, step=1, tooltip="Feather width in pixels for blending the pasted crop edges into the original. 0 = hard edge."),
+                IO.Combo.Input("blur_type", options=["Gaussian", "Box"], default="Gaussian", tooltip="Edge-blend kernel: Gaussian is smoother, Box is faster and harder."),
+                IO.Boolean.Input("force_gpu", default=True, tooltip="Run the paste on GPU when CUDA is available; otherwise falls back to CPU."),
             ],
             outputs=[IO.Image.Output(display_name="IMAGE")],
         )

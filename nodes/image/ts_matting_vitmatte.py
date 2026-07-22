@@ -617,9 +617,9 @@ class TS_Matting_ViTMatte(IO.ComfyNode):
                 ),
             ],
             outputs=[
-                IO.Image.Output(display_name="IMAGE"),
-                IO.Mask.Output(display_name="MASK"),
-                IO.Image.Output(display_name="MASK_IMAGE"),
+                IO.Image.Output(display_name="IMAGE", tooltip="Cutout image (RGBA or composited on the chosen background)."),
+                IO.Mask.Output(display_name="MASK", tooltip="Refined alpha matte."),
+                IO.Image.Output(display_name="MASK_IMAGE", tooltip="Alpha matte as a grayscale image for preview."),
             ],
             search_aliases=[
                 "vitmatte",

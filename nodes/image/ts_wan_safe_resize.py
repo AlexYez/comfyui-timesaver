@@ -56,15 +56,24 @@ class TS_WAN_SafeResize(IO.ComfyNode):
             display_name="TS WAN Safe Resize",
             category="TS/Image",
             inputs=[
-                IO.Image.Input("image"),
-                IO.Combo.Input("quality", options=["Fast quality", "Standard quality", "High quality"], default="Standard quality"),
-                IO.String.Input("interconnection_in", optional=True),
+                IO.Image.Input("image", tooltip="Image to fit to a WAN-friendly resolution."),
+                IO.Combo.Input(
+                    "quality",
+                    options=["Fast quality", "Standard quality", "High quality"],
+                    default="Standard quality",
+                    tooltip="Resolution preset tier. Higher quality picks a larger target resolution.",
+                ),
+                IO.String.Input(
+                    "interconnection_in",
+                    optional=True,
+                    tooltip="Optional quality override from another TS WAN Safe Resize, used to keep several nodes in sync.",
+                ),
             ],
             outputs=[
-                IO.Image.Output(display_name="image"),
-                IO.Int.Output(display_name="width"),
-                IO.Int.Output(display_name="height"),
-                IO.String.Output(display_name="interconnection_out"),
+                IO.Image.Output(display_name="image", tooltip="Image resized and cropped to the WAN target resolution."),
+                IO.Int.Output(display_name="width", tooltip="Target width in pixels."),
+                IO.Int.Output(display_name="height", tooltip="Target height in pixels."),
+                IO.String.Output(display_name="interconnection_out", tooltip="Resolved quality tier, to chain into another TS WAN Safe Resize."),
             ],
         )
 

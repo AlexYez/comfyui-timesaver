@@ -606,10 +606,22 @@ class TS_MultiReference(IO.ComfyNode):
                 ),
             ],
             outputs=[
-                IO.Image.Output(display_name="image_1"),
-                IO.Image.Output(display_name="image_2"),
-                IO.Image.Output(display_name="image_3"),
-                IO.Conditioning.Output(display_name="conditioning"),
+                IO.Image.Output(
+                    display_name="image_1",
+                    tooltip="Resized version of image_1 (ExecutionBlocker or None when the slot is empty).",
+                ),
+                IO.Image.Output(
+                    display_name="image_2",
+                    tooltip="Resized version of image_2 (ExecutionBlocker or None when the slot is empty).",
+                ),
+                IO.Image.Output(
+                    display_name="image_3",
+                    tooltip="Resized version of image_3 (ExecutionBlocker or None when the slot is empty).",
+                ),
+                IO.Conditioning.Output(
+                    display_name="conditioning",
+                    tooltip="Input conditioning with one reference_latent appended per connected image.",
+                ),
             ],
             search_aliases=[
                 "TS Multi Reference",

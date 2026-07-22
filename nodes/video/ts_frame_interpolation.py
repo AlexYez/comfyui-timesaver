@@ -465,7 +465,10 @@ class TS_Frame_Interpolation(IO.ComfyNode):
             display_name="TS Frame Interpolation",
             category="TS/Video",
             inputs=[
-                IO.Image.Input("images"),
+                IO.Image.Input(
+                    "images",
+                    tooltip="Input frame sequence to interpolate. At least 2 frames are required.",
+                ),
                 IO.Combo.Input(
                     "model_name",
                     options=_SUPPORTED_MODEL_NAMES,
@@ -513,7 +516,12 @@ class TS_Frame_Interpolation(IO.ComfyNode):
                     tooltip="Blend overlap between tiles. Higher values reduce seams but use more compute.",
                 ),
             ],
-            outputs=[IO.Image.Output(display_name="images")],
+            outputs=[
+                IO.Image.Output(
+                    display_name="images",
+                    tooltip="Interpolated frame sequence with the requested cadence.",
+                )
+            ],
         )
 
     @classmethod

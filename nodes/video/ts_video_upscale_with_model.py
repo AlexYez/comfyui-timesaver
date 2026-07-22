@@ -39,13 +39,44 @@ class TS_Video_Upscale_With_Model(IO.ComfyNode):
             display_name="TS Video Upscale With Model",
             category="TS/Video",
             inputs=[
-                IO.Combo.Input("model_name", options=folder_paths.get_filename_list("upscale_models")),
-                IO.Image.Input("images"),
-                IO.Combo.Input("upscale_method", options=_UPSCALE_METHODS),
-                IO.Float.Input("factor", default=2.0, min=0.1, max=8.0, step=0.1),
-                IO.Combo.Input("device_strategy", options=["auto", "load_unload_each_frame", "keep_loaded", "cpu_only"], default="auto"),
+                IO.Combo.Input(
+                    "model_name",
+                    options=folder_paths.get_filename_list("upscale_models"),
+                    tooltip="Upscale model from ComfyUI/models/upscale_models, loaded with Spandrel (e.g. ESRGAN).",
+                ),
+                IO.Image.Input(
+                    "images",
+                    tooltip="Frame sequence to upscale one frame at a time.",
+                ),
+                IO.Combo.Input(
+                    "upscale_method",
+                    options=_UPSCALE_METHODS,
+                    tooltip="Resampling method used to resize each upscaled frame to the final size.",
+                ),
+                IO.Float.Input(
+                    "factor",
+                    default=2.0,
+                    min=0.1,
+                    max=8.0,
+                    step=0.1,
+                    tooltip="Output scale factor relative to the input resolution.",
+                ),
+                IO.Combo.Input(
+                    "device_strategy",
+                    options=["auto", "load_unload_each_frame", "keep_loaded", "cpu_only"],
+                    default="auto",
+                    tooltip=(
+                        "How the model moves between GPU and CPU. auto picks keep_loaded or "
+                        "load_unload_each_frame from free VRAM; cpu_only forces CPU."
+                    ),
+                ),
             ],
-            outputs=[IO.Image.Output(display_name="IMAGE")],
+            outputs=[
+                IO.Image.Output(
+                    display_name="IMAGE",
+                    tooltip="Upscaled frame sequence.",
+                )
+            ],
         )
 
     @classmethod

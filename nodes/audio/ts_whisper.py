@@ -188,23 +188,23 @@ class TSWhisper(IO.ComfyNode):
             folder_paths.get_output_directory() if hasattr(folder_paths, "get_output_directory") else ""
         )
         tt = {
-            "audio": "Входной аудиотензор ComfyUI (waveform + sample_rate).",
-            "model": "Модель Whisper: large-v3 (Whisper 3, лучшее качество) или turbo (Whisper 3 Turbo, быстрее). Веса и кэш общие с TS Super Prompt.",
-            "task": "transcribe = распознавание на исходном языке; translate_to_english = перевод в английский (turbo не умеет переводить — будет транскрипция).",
-            "source_language": "Язык входного аудио. auto = автоопределение. Для русского — ru.",
-            "timestamps": "segment = таймкоды по сегментам; word = по словам; none = без таймкодов (SRT/TTML отключаются).",
-            "precision": "fp16 быстрее на GPU; fp32 стабильнее. На CPU всегда fp32.",
-            "beam_size": "Beam search (используется при temperature=0). 1 = greedy. Больше = точнее/медленнее.",
-            "temperature": "Температура декодирования. 0 = детерминированно.",
-            "temperature_fallbacks": "Лестница температур через запятую (напр. 0.0,0.2,0.4,0.6,0.8,1.0). Перекрывает temperature.",
-            "condition_on_previous_text": "Контекст из предыдущих сегментов (связнее, но иногда усиливает дрейф).",
-            "compression_ratio_threshold": "Порог zlib-сжатия для детектора галлюцинаций (whisper default 2.4).",
-            "logprob_threshold": "Порог среднего лог-проба (whisper default -1.0).",
-            "no_speech_threshold": "Порог отсутствия речи (whisper default 0.6).",
-            "initial_prompt": "Начальная подсказка (лексика/имена/стиль).",
-            "save_srt_file": "Сохранять SRT/TTML в папку output/subtitles.",
-            "output_filename_prefix": "Префикс имени файла для SRT/TTML.",
-            "output_dir": "Папка вывода для SRT/TTML. Пусто = стандартная output.",
+            "audio": "ComfyUI audio input (waveform + sample_rate).",
+            "model": "Whisper model: large-v3 (best quality) or turbo (faster). Weights and cache are shared with TS Super Prompt.",
+            "task": "transcribe = recognize in the source language; translate_to_english = translate to English (turbo cannot translate and falls back to transcription).",
+            "source_language": "Language of the input audio. auto = auto-detect. Use ru for Russian.",
+            "timestamps": "segment = per-segment timecodes; word = per-word; none = no timecodes (SRT/TTML disabled).",
+            "precision": "fp16 is faster on GPU; fp32 is more stable. CPU always uses fp32.",
+            "beam_size": "Beam search width (used when temperature=0). 1 = greedy. Higher = more accurate but slower.",
+            "temperature": "Decoding temperature. 0 = deterministic.",
+            "temperature_fallbacks": "Comma-separated temperature ladder (e.g. 0.0,0.2,0.4,0.6,0.8,1.0). Overrides temperature.",
+            "condition_on_previous_text": "Feed context from previous segments (more coherent, but can amplify drift).",
+            "compression_ratio_threshold": "zlib compression threshold for the hallucination detector (whisper default 2.4).",
+            "logprob_threshold": "Average log-probability threshold (whisper default -1.0).",
+            "no_speech_threshold": "No-speech probability threshold (whisper default 0.6).",
+            "initial_prompt": "Initial prompt to bias vocabulary, names, and style.",
+            "save_srt_file": "Save SRT/TTML files to the output/subtitles folder.",
+            "output_filename_prefix": "Filename prefix for SRT/TTML.",
+            "output_dir": "Output folder for SRT/TTML. Empty = default output directory.",
         }
         languages = ["auto", "en", "ru", "fr", "de", "es", "it", "ja", "ko", "zh", "uk", "pl"]
         return IO.Schema(
@@ -231,9 +231,9 @@ class TSWhisper(IO.ComfyNode):
                 IO.String.Input("output_dir", default=default_output_dir, multiline=False, optional=True, tooltip=tt["output_dir"]),
             ],
             outputs=[
-                IO.String.Output(display_name="srt_content"),
-                IO.String.Output(display_name="text_content"),
-                IO.String.Output(display_name="ttml_content"),
+                IO.String.Output(display_name="srt_content", tooltip="Subtitles in SRT format (empty when timestamps=none)."),
+                IO.String.Output(display_name="text_content", tooltip="Full transcription as plain text."),
+                IO.String.Output(display_name="ttml_content", tooltip="Subtitles in TTML format (empty when timestamps=none)."),
             ],
         )
 

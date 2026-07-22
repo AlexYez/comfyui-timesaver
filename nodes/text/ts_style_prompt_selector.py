@@ -137,9 +137,18 @@ class TS_StylePromptSelector(IO.ComfyNode):
             display_name="TS Style Prompt Selector",
             category="TS/Text",
             inputs=[
-                IO.String.Input("style_id", default=""),
+                IO.String.Input(
+                    "style_id",
+                    default="",
+                    tooltip="Id or name of the style to load. The prompt text itself comes from styles.json.",
+                ),
             ],
-            outputs=[IO.String.Output(display_name="prompt")],
+            outputs=[
+                IO.String.Output(
+                    display_name="prompt",
+                    tooltip="Prompt text of the selected style, or a blank space when no style is chosen.",
+                )
+            ],
         )
 
     @classmethod

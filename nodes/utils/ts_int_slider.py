@@ -24,9 +24,15 @@ class TS_Int_Slider(IO.ComfyNode):
                     max=2147483647,
                     step=8,
                     display_mode=IO.NumberDisplay.slider,
+                    tooltip="Integer value emitted by the slider.",
                 ),
             ],
-            outputs=[IO.Int.Output(display_name="int_value")],
+            outputs=[
+                IO.Int.Output(
+                    display_name="int_value",
+                    tooltip="The slider's integer value.",
+                )
+            ],
         )
 
     @classmethod

@@ -37,17 +37,18 @@ class TS_ModelScanner(IO.ComfyNode):
             display_name="TS Model Scanner",
             category="TS/Files",
             inputs=[
-                IO.Combo.Input("model_name", options=_build_model_choices()),
-                IO.Model.Input("model", optional=True),
+                IO.Combo.Input("model_name", options=_build_model_choices(), tooltip="Safetensors file from the diffusion_models folder to scan. Ignored when a MODEL is connected to the 'model' input."),
+                IO.Model.Input("model", optional=True, tooltip="Optional in-graph MODEL to scan directly. When connected, it takes priority over 'model_name'."),
                 IO.Boolean.Input(
                     "summary_only",
                     default=False,
                     label_on="Summary Only",
                     label_off="Full Detail",
                     optional=True,
+                    tooltip="On: report only per-dtype totals and parameter count. Off: also list every tensor with its shape, dtype, and device.",
                 ),
             ],
-            outputs=[IO.String.Output(display_name="model_info")],
+            outputs=[IO.String.Output(display_name="model_info", tooltip="Text report of the model: tensor listing (unless summary only) plus per-dtype parameter counts and totals.")],
         )
 
     @classmethod

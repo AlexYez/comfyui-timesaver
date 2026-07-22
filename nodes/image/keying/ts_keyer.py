@@ -141,9 +141,9 @@ class TS_Keyer(IO.ComfyNode):
                 ),
             ],
             outputs=[
-                IO.Image.Output(display_name="foreground"),
-                IO.Mask.Output(display_name="alpha"),
-                IO.Image.Output(display_name="despilled_rgb"),
+                IO.Image.Output(display_name="foreground", tooltip="RGBA foreground with the keyed alpha applied."),
+                IO.Mask.Output(display_name="alpha", tooltip="Keyed matte as a MASK output."),
+                IO.Image.Output(display_name="despilled_rgb", tooltip="Despilled RGB image without alpha applied."),
             ],
             search_aliases=[
                 "chroma key",

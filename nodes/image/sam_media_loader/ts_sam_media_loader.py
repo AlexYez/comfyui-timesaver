@@ -184,12 +184,12 @@ class TS_SAM_MediaLoader(IO.ComfyNode):
                 ),
             ],
             outputs=[
-                IO.Image.Output(display_name="images"),
-                IO.String.Output(display_name="positive_coords"),
-                IO.String.Output(display_name="negative_coords"),
-                IO.Float.Output(display_name="fps"),
-                IO.Audio.Output(display_name="audio"),
-                IO.Mask.Output(display_name="initial_mask"),
+                IO.Image.Output(display_name="images", tooltip="Loaded frames as an image batch (N frames for video)."),
+                IO.String.Output(display_name="positive_coords", tooltip="Positive point prompts as a SAM3 JSON string."),
+                IO.String.Output(display_name="negative_coords", tooltip="Negative point prompts as a SAM3 JSON string."),
+                IO.Float.Output(display_name="fps", tooltip="Frame rate of the loaded video (0 for images)."),
+                IO.Audio.Output(display_name="audio", tooltip="Audio track extracted from the video (empty for images)."),
+                IO.Mask.Output(display_name="initial_mask", tooltip="First-frame SAM3 mask, when a model and points are provided."),
             ],
             search_aliases=[
                 "sam",

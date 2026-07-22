@@ -16,12 +16,12 @@ class TSAutoTileSize(IO.ComfyNode):
             display_name="TS Auto Tile Size",
             category="TS/Image",
             inputs=[
-                IO.Combo.Input("tile_count", options=[4, 8, 16]),
-                IO.Int.Input("padding", default=64, min=0, max=512, step=8),
-                IO.Int.Input("divide_by", default=8, min=1, max=512, step=1),
-                IO.Image.Input("image", optional=True),
-                IO.Int.Input("width", default=512, min=64, max=8192, step=8, optional=True),
-                IO.Int.Input("height", default=512, min=64, max=8192, step=8, optional=True),
+                IO.Combo.Input("tile_count", options=[4, 8, 16], tooltip="Total number of tiles to split the image into. The grid is chosen to best match the image aspect ratio."),
+                IO.Int.Input("padding", default=64, min=0, max=512, step=8, tooltip="Overlap in pixels added between neighbouring tiles to hide seams."),
+                IO.Int.Input("divide_by", default=8, min=1, max=512, step=1, tooltip="Rounds each tile dimension to a multiple of this value (e.g. 8 for VAE-friendly sizes)."),
+                IO.Image.Input("image", optional=True, tooltip="Optional image; its dimensions drive the tile size. Overrides width/height when connected."),
+                IO.Int.Input("width", default=512, min=64, max=8192, step=8, optional=True, tooltip="Fallback image width, used when no image is connected."),
+                IO.Int.Input("height", default=512, min=64, max=8192, step=8, optional=True, tooltip="Fallback image height, used when no image is connected."),
             ],
             outputs=[
                 IO.Int.Output(display_name="tile_width"),
