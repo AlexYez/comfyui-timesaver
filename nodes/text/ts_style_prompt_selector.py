@@ -102,6 +102,11 @@ def _load_styles():
             item = {
                 "id": _as_text(style.get("id")).strip(),
                 "name": _as_text(style.get("name")).strip(),
+                # Russian name and the category pair drive the frontend's
+                # locale-aware labels and the category filter.
+                "name_ru": _as_text(style.get("name_ru")).strip(),
+                "category": _as_text(style.get("category")).strip(),
+                "category_ru": _as_text(style.get("category_ru")).strip(),
                 "prompt": _as_text(style.get("prompt")),
                 "description": _as_text(style.get("description")),
                 "preview": _as_text(style.get("preview")).strip(),

@@ -1,3 +1,16 @@
+// TS Style Prompt Selector — searchable, categorised grid of style thumbnails.
+//
+// Layout is pure CSS (flex column + auto-fill grid + aspect-ratio cards).
+// Deliberately NO JavaScript geometry: the previous implementation measured
+// getBoundingClientRect() (viewport pixels, post-zoom-transform) and wrote the
+// result into style.height (local pixels, pre-transform), so at any graph zoom
+// other than 1 the grid height came out wrong — the classic coordinate-space
+// pitfall from CLAUDE.md §12.5.3. CSS flex sizing is immune to the transform.
+//
+// The card grid is built ONCE per library load; search and the category filter
+// only toggle the `hidden` attribute, so the scroll position survives typing
+// and thumbnails are never re-fetched.
+
 import { app } from "/scripts/app.js";
 import { api } from "/scripts/api.js";
 
@@ -10,24 +23,27 @@ const STYLE_CSS_ID = "ts-style-selector-styles";
 const DOM_WIDGET_NAME = "ts_style_selector";
 
 const DEFAULT_NODE_WIDTH = 250;
-const DEFAULT_NODE_HEIGHT = 300;
+const DEFAULT_NODE_HEIGHT = 340;
 const MIN_NODE_WIDTH = 240;
 const MIN_NODE_HEIGHT = 280;
-const MAX_NODE_WIDTH = 520;
-const MAX_NODE_HEIGHT = 900;
 const MIN_WIDGET_HEIGHT = 180;
+// Legacy (pre-DOMWidgetImpl frontends) only: node title bar + the search and
+// category rows that live inside the widget's own chrome.
 const WIDGET_CHROME_HEIGHT = 56;
-const GRID_GAP = 4;
+const ALL_CATEGORIES = "__all__";
+const SEARCH_DEBOUNCE_MS = 100;
 
 const STRINGS = {
     en: {
         searchPlaceholder: "Search styles...",
+        allCategories: "All categories",
         loading: "Loading styles...",
         noStyles: "No styles found.",
         loadFailed: "Failed to load styles.",
     },
     ru: {
         searchPlaceholder: "Поиск стилей...",
+        allCategories: "Все категории",
         loading: "Загрузка стилей...",
         noStyles: "Стили не найдены.",
         loadFailed: "Не удалось загрузить стили.",
@@ -47,7 +63,7 @@ function ensureStyles() {
 .ts-style-selector {
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 5px;
     padding: 6px;
     box-sizing: border-box;
     contain: layout paint;
@@ -60,6 +76,7 @@ function ensureStyles() {
     pointer-events: auto;
 }
 .ts-style-search {
+    flex: 0 0 auto;
     width: 100%;
     box-sizing: border-box;
     padding: 4px 6px;
@@ -70,39 +87,67 @@ function ensureStyles() {
     outline: none;
     font-size: var(--ts-fs-sm);
 }
+.ts-style-search:focus {
+    border-color: var(--ts-accent-line);
+}
 .ts-style-search::placeholder {
     color: var(--ts-faint);
 }
+.ts-style-cat {
+    flex: 0 0 auto;
+    width: 100%;
+    padding: 3px 6px;
+    font-size: var(--ts-fs-sm);
+}
 .ts-style-grid {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    grid-auto-rows: var(--ts-card-size, 64px);
-    gap: 4px;
     flex: 1 1 auto;
     min-height: 0;
-    width: 100%;
-    align-items: start;
+    position: relative;
+    display: grid;
+    /* Column count adapts to node width; cards keep a square shape via
+       aspect-ratio, so no JS ever needs to compute their size. */
+    grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+    gap: 4px;
     align-content: start;
     overflow-y: auto;
     overflow-x: hidden;
-    /* Reserve the gutter so the scrollbar never sits on top of the right-hand
-       column of thumbnails, and keep it always visible: an auto-hiding
-       scrollbar makes a scrollable list of styles look like a static one. */
+    /* Reserve the gutter so the scrollbar never overlays the last column and
+       the columns don't shift when content stops overflowing. */
     scrollbar-gutter: stable;
     padding-right: 2px;
-    padding-bottom: 15px;
+    padding-bottom: 6px;
     box-sizing: border-box;
+}
+.ts-style-header {
+    grid-column: 1 / -1;
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    padding: 4px 2px 3px;
+    font-size: var(--ts-fs-xs);
+    font-weight: 700;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: var(--ts-muted);
+    background: var(--ts-bg);
+    border-bottom: 1px solid var(--ts-border-soft);
+}
+.ts-style-header[hidden] {
+    display: none;
 }
 .ts-style-card {
     position: relative;
     width: 100%;
-    height: var(--ts-card-size, 64px);
+    aspect-ratio: 1 / 1;
     border: 1px solid var(--ts-border-soft);
     border-radius: var(--ts-radius-sm);
     background: var(--ts-surface);
     padding: 0;
     cursor: pointer;
     overflow: hidden;
+}
+.ts-style-card[hidden] {
+    display: none;
 }
 .ts-style-card img {
     width: 100%;
@@ -122,6 +167,8 @@ function ensureStyles() {
     padding: 3px 4px;
     font-size: 9px;
     text-align: center;
+    /* Deliberate hard-coded colours: the plate sits over an arbitrary
+       thumbnail and must stay readable in any theme. */
     background: rgba(0, 0, 0, 0.58);
     color: #f2f2f2;
     box-sizing: border-box;
@@ -141,6 +188,7 @@ function ensureStyles() {
     background: transparent;
 }
 .ts-style-empty {
+    flex: 0 0 auto;
     font-size: var(--ts-fs-sm);
     color: var(--ts-muted);
     padding: 4px 2px;
@@ -172,20 +220,17 @@ function isNodesV2() {
     return Boolean(window.comfyAPI?.domWidget?.DOMWidgetImpl);
 }
 
-function clamp(value, min, max) {
-    return Math.max(min, Math.min(max, value));
-}
-
+// Only a lower bound: the auto-fill grid rewards wide nodes with more columns,
+// so the old 520px width cap is gone.
 function sanitizeNodeSize(node) {
-    const width = clamp(Number(node?.size?.[0]) || DEFAULT_NODE_WIDTH, MIN_NODE_WIDTH, MAX_NODE_WIDTH);
-    const height = clamp(Number(node?.size?.[1]) || DEFAULT_NODE_HEIGHT, MIN_NODE_HEIGHT, MAX_NODE_HEIGHT);
+    const width = Math.max(Number(node?.size?.[0]) || DEFAULT_NODE_WIDTH, MIN_NODE_WIDTH);
+    const height = Math.max(Number(node?.size?.[1]) || DEFAULT_NODE_HEIGHT, MIN_NODE_HEIGHT);
     node.size = [width, height];
     node.min_size = [MIN_NODE_WIDTH, MIN_NODE_HEIGHT];
-    node.max_size = [MAX_NODE_WIDTH, MAX_NODE_HEIGHT];
 }
 
 function getWidgetHeight(node) {
-    const safeHeight = clamp(Number(node?.size?.[1]) || DEFAULT_NODE_HEIGHT, MIN_NODE_HEIGHT, MAX_NODE_HEIGHT);
+    const safeHeight = Math.max(Number(node?.size?.[1]) || DEFAULT_NODE_HEIGHT, MIN_NODE_HEIGHT);
     return Math.max(MIN_WIDGET_HEIGHT, safeHeight - WIDGET_CHROME_HEIGHT);
 }
 
@@ -248,9 +293,12 @@ function setupStyleSelector(node) {
     container.className = `${TS_UI_CLASS} ts-style-selector`;
 
     const search = document.createElement("input");
-    search.type = "text";
+    search.type = "search";
     search.className = "ts-style-search";
     search.placeholder = L.searchPlaceholder;
+
+    const categorySelect = document.createElement("select");
+    categorySelect.className = "ts-ui-select ts-style-cat";
 
     const grid = document.createElement("div");
     grid.className = "ts-style-grid";
@@ -260,25 +308,23 @@ function setupStyleSelector(node) {
     empty.textContent = L.loading;
 
     container.appendChild(search);
+    container.appendChild(categorySelect);
     container.appendChild(grid);
     container.appendChild(empty);
 
     const isV2 = isNodesV2();
     const widgetOptions = {
         serialize: false,
-        hideOnZoom: true,
+        // Keep the grid visible at any graph zoom — hiding it while zoomed out
+        // read as "the node lost its content".
+        hideOnZoom: false,
     };
     if (isV2) {
+        // Height is distributed by the frontend's own layout between
+        // getMinHeight/getMaxHeight (CLAUDE.md §12.5.1); the CSS flex column
+        // absorbs whatever it receives, so no getHeight/afterResize hooks.
         widgetOptions.getMinHeight = () => MIN_WIDGET_HEIGHT;
-        widgetOptions.getMaxHeight = () => Math.max(MIN_WIDGET_HEIGHT, MAX_NODE_HEIGHT - WIDGET_CHROME_HEIGHT);
-        widgetOptions.getHeight = () => {
-            const targetHeight = getWidgetHeight(node);
-            return Math.max(MIN_WIDGET_HEIGHT, Math.min(targetHeight, MAX_NODE_HEIGHT - WIDGET_CHROME_HEIGHT));
-        };
-        widgetOptions.afterResize = () => {
-            sanitizeNodeSize(node);
-            scheduleLayout();
-        };
+        widgetOptions.getMaxHeight = () => 4096;
     }
 
     const domWidget = node.addDOMWidget(DOM_WIDGET_NAME, "div", container, widgetOptions);
@@ -288,84 +334,39 @@ function setupStyleSelector(node) {
         domWidgetEl.style.width = "100%";
     }
 
-    const state = {
-        styles: [],
-        filtered: [],
-        selectedValue: "",
-        loading: true,
-    };
-
-    let layoutRaf = null;
-    let resizeObserver = null;
-
-    const computeCardSize = (availableWidth) => {
-        const w = Math.max(0, availableWidth - GRID_GAP * 2);
-        return Math.max(24, Math.floor(w / 3));
-    };
-
-    const syncLayout = () => {
-        sanitizeNodeSize(node);
-        const widgetHeight = getWidgetHeight(node);
-
+    // Pre-DOMWidgetImpl frontends size DOM widgets through computeSize and
+    // leave the element height to us. node.size is in graph units — identical
+    // to layout pixels regardless of canvas zoom, so this stays correct where
+    // rect-based math was not.
+    const syncLegacyHeight = () => {
         if (isV2) {
-            // V2: don't force inline heights on domWidgetEl/container —
-            // Vue controls sizing via getHeight/getMinHeight/getMaxHeight.
-            // Read actual rendered size from the DOM for grid computation.
-            const containerRect = container.getBoundingClientRect();
-            const domWidgetRect = domWidgetEl?.getBoundingClientRect();
-            const actualHeight = containerRect.height > 10
-                ? containerRect.height
-                : (domWidgetRect?.height > 10 ? domWidgetRect.height : widgetHeight);
-
-            const searchHeight = search.getBoundingClientRect().height || 0;
-            const gridHeight = Math.max(0, actualHeight - searchHeight - 6);
-            grid.style.height = `${gridHeight}px`;
-            grid.style.minHeight = `${gridHeight}px`;
-
-            const gridWidth = grid.clientWidth || node.size?.[0] || DEFAULT_NODE_WIDTH;
-            const card = computeCardSize(gridWidth);
-            grid.style.setProperty("--ts-card-size", `${card}px`);
-        } else {
-            // Legacy: force all heights via inline styles (original behavior)
-            if (domWidgetEl) {
-                domWidgetEl.style.height = `${widgetHeight}px`;
-                domWidgetEl.style.minHeight = `${widgetHeight}px`;
-                domWidgetEl.style.maxHeight = `${widgetHeight}px`;
-            }
-            container.style.height = `${widgetHeight}px`;
-            container.style.minHeight = `${widgetHeight}px`;
-            container.style.maxHeight = `${widgetHeight}px`;
-
-            const searchHeight = search.getBoundingClientRect().height || 0;
-            const gridHeight = Math.max(0, widgetHeight - searchHeight - 6);
-            grid.style.height = `${gridHeight}px`;
-            grid.style.minHeight = `${gridHeight}px`;
-
-            const gridWidth = grid.clientWidth || node.size?.[0] || DEFAULT_NODE_WIDTH;
-            const card = computeCardSize(gridWidth);
-            grid.style.setProperty("--ts-card-size", `${card}px`);
-        }
-    };
-
-    const scheduleLayout = () => {
-        if (layoutRaf) {
             return;
         }
-        layoutRaf = requestAnimationFrame(() => {
-            layoutRaf = null;
-            syncLayout();
-        });
+        const height = getWidgetHeight(node);
+        if (domWidgetEl) {
+            domWidgetEl.style.height = `${height}px`;
+        }
+        container.style.height = `${height}px`;
     };
-
-    // V1 (LiteGraph) only — V2 sizes DOM widgets via getMinHeight/getMaxHeight
-    // (set in widgetOptions); assigning computeSize there would force the
-    // legacy fixed branch of computeLayoutSize() (CLAUDE.md §12.5.1).
     if (!isV2) {
         domWidget.computeSize = function (width) {
-            const safeWidth = clamp(Number(width) || node.size?.[0] || DEFAULT_NODE_WIDTH, MIN_NODE_WIDTH, MAX_NODE_WIDTH);
+            const safeWidth = Math.max(Number(width) || node.size?.[0] || DEFAULT_NODE_WIDTH, MIN_NODE_WIDTH);
             return [safeWidth, getWidgetHeight(node)];
         };
     }
+
+    const state = {
+        styles: [],
+        selectedValue: "",
+        category: ALL_CATEGORIES,
+        loading: true,
+    };
+
+    // One record per card, built once per library load. Filtering toggles the
+    // `hidden` attribute so scroll position and loaded thumbnails survive.
+    const cardRecords = [];
+    const headerRecords = [];
+    let searchTimer = null;
 
     const styleValue = (style) => (style.name || style.id || "").trim();
 
@@ -376,6 +377,8 @@ function setupStyleSelector(node) {
     const isRu = getUiLanguage() === "ru";
     const styleLabel = (style) =>
         (isRu ? style.name_ru || style.name : style.name) || style.id || "";
+    const categoryLabel = (style) =>
+        (isRu ? style.category_ru || style.category : style.category) || "";
     const styleTooltip = (style) => {
         const parts = isRu
             ? [style.description, style.prompt]
@@ -395,9 +398,11 @@ function setupStyleSelector(node) {
         const changed = nextValue !== state.selectedValue;
         state.selectedValue = nextValue;
         grid.classList.toggle("has-selection", Boolean(state.selectedValue));
-        grid.querySelectorAll(".ts-style-card").forEach((card) => {
-            const isSelected = card.dataset.value === state.selectedValue;
-            card.classList.toggle("is-selected", isSelected);
+        cardRecords.forEach((record) => {
+            record.el.classList.toggle(
+                "is-selected",
+                record.value === state.selectedValue || matchesSelection(record.style, state.selectedValue),
+            );
         });
 
         if (styleWidget && trigger && changed) {
@@ -416,42 +421,65 @@ function setupStyleSelector(node) {
         }
     };
 
-    const renderGrid = () => {
+    const rebuildCategorySelect = () => {
+        categorySelect.innerHTML = "";
+        const counts = new Map(); // canonical (en) category -> {label, count}
+        state.styles.forEach((style) => {
+            const key = style.category || "";
+            if (!key) {
+                return;
+            }
+            const entry = counts.get(key) || { label: categoryLabel(style), count: 0 };
+            entry.count += 1;
+            counts.set(key, entry);
+        });
+
+        const allOption = document.createElement("option");
+        allOption.value = ALL_CATEGORIES;
+        allOption.textContent = `${L.allCategories} (${state.styles.length})`;
+        categorySelect.appendChild(allOption);
+
+        counts.forEach((entry, key) => {
+            const option = document.createElement("option");
+            option.value = key;
+            option.textContent = `${entry.label} (${entry.count})`;
+            categorySelect.appendChild(option);
+        });
+        categorySelect.value = state.category;
+    };
+
+    const buildGrid = () => {
         grid.innerHTML = "";
+        cardRecords.length = 0;
+        headerRecords.length = 0;
 
-        if (state.loading) {
-            empty.textContent = L.loading;
-            empty.style.display = "block";
-            return;
-        }
-
-        if (!state.filtered.length) {
-            empty.textContent = L.noStyles;
-            empty.style.display = "block";
-            return;
-        }
-
-        empty.style.display = "none";
-        grid.classList.toggle("has-selection", Boolean(state.selectedValue));
-
-        state.filtered.forEach((style) => {
+        let lastCategory = null;
+        state.styles.forEach((style) => {
             const value = styleValue(style);
             if (!value) {
                 return;
+            }
+
+            const category = style.category || "";
+            if (category && category !== lastCategory) {
+                lastCategory = category;
+                const header = document.createElement("div");
+                header.className = "ts-style-header";
+                header.textContent = categoryLabel(style);
+                grid.appendChild(header);
+                headerRecords.push({ category, el: header });
             }
 
             const card = document.createElement("button");
             card.type = "button";
             card.className = "ts-style-card";
             card.dataset.value = value;
-            if (matchesSelection(style, state.selectedValue)) {
-                card.classList.add("is-selected");
-            }
             card.title = styleTooltip(style);
 
             if (style.preview) {
                 const img = document.createElement("img");
                 img.alt = styleLabel(style) || "style";
+                img.loading = "lazy";
                 img.src = makePreviewUrl(style.preview);
                 img.onerror = () => {
                     img.remove();
@@ -468,30 +496,51 @@ function setupStyleSelector(node) {
                 event.preventDefault();
                 const nextValue = value === state.selectedValue ? "" : value;
                 setSelection(nextValue, true);
-                renderGrid();
             });
 
             grid.appendChild(card);
+            cardRecords.push({
+                style,
+                value,
+                el: card,
+                haystack: [
+                    style.id, style.name, style.name_ru,
+                    style.category, style.category_ru,
+                    style.description, style.prompt,
+                ].filter(Boolean).join(" ").toLowerCase(),
+            });
         });
-
-        scheduleLayout();
     };
 
     const applyFilter = () => {
-        const query = search.value.trim().toLowerCase();
-        if (!query) {
-            state.filtered = state.styles.slice();
-        } else {
-            state.filtered = state.styles.filter((style) => {
-                const haystack = [style.id, style.name, style.name_ru, style.category,
-                    style.description, style.prompt]
-                    .filter(Boolean)
-                    .join(" ")
-                    .toLowerCase();
-                return haystack.includes(query);
-            });
+        if (state.loading) {
+            empty.textContent = L.loading;
+            empty.style.display = "block";
+            return;
         }
-        renderGrid();
+
+        const query = search.value.trim().toLowerCase();
+        let visibleCount = 0;
+        cardRecords.forEach((record) => {
+            const categoryOk = state.category === ALL_CATEGORIES
+                || (record.style.category || "") === state.category;
+            const queryOk = !query || record.haystack.includes(query);
+            const show = categoryOk && queryOk;
+            record.el.hidden = !show;
+            if (show) {
+                visibleCount += 1;
+            }
+        });
+
+        // Section headers only make sense for the full, unfiltered list; a
+        // filtered result set reads better as a flat grid.
+        const showHeaders = state.category === ALL_CATEGORIES && !query;
+        headerRecords.forEach((record) => {
+            record.el.hidden = !showHeaders;
+        });
+
+        empty.textContent = L.noStyles;
+        empty.style.display = visibleCount ? "none" : "block";
     };
 
     const syncSelection = () => {
@@ -499,9 +548,14 @@ function setupStyleSelector(node) {
         setSelection(stored, false);
     };
 
+    const scrollSelectionIntoView = () => {
+        const selected = cardRecords.find((record) => record.el.classList.contains("is-selected"));
+        selected?.el.scrollIntoView({ block: "nearest" });
+    };
+
     const loadStyles = async () => {
         state.loading = true;
-        renderGrid();
+        applyFilter();
         try {
             const response = await fetch(api.apiURL("/ts_styles"));
             if (!response.ok) {
@@ -510,19 +564,34 @@ function setupStyleSelector(node) {
             const payload = await response.json();
             state.styles = Array.isArray(payload.styles) ? payload.styles : [];
             state.loading = false;
+            rebuildCategorySelect();
+            buildGrid();
             syncSelection();
             applyFilter();
-            scheduleLayout();
+            scrollSelectionIntoView();
         } catch (error) {
             state.loading = false;
-            state.filtered = [];
             empty.textContent = L.loadFailed;
             empty.style.display = "block";
             console.error("[TS Style Prompt Selector] Failed to load styles:", error);
         }
     };
 
-    search.addEventListener("input", applyFilter);
+    search.addEventListener("input", () => {
+        if (searchTimer) {
+            clearTimeout(searchTimer);
+        }
+        searchTimer = setTimeout(() => {
+            searchTimer = null;
+            applyFilter();
+        }, SEARCH_DEBOUNCE_MS);
+    });
+
+    categorySelect.addEventListener("change", () => {
+        state.category = categorySelect.value || ALL_CATEGORIES;
+        grid.scrollTop = 0;
+        applyFilter();
+    });
 
     stopPropagation(container, [
         "pointerdown",
@@ -533,72 +602,52 @@ function setupStyleSelector(node) {
         "dblclick",
         "contextmenu",
     ]);
-    stopPropagation(grid, ["wheel"]);
 
     node._tsStyleSelectorSync = () => {
         syncSelection();
         applyFilter();
-        scheduleLayout();
     };
 
     const previousOnResize = node.onResize;
     const onResizeWrapped = function () {
         const result = previousOnResize?.apply(this, arguments);
         sanitizeNodeSize(this);
-        scheduleLayout();
+        syncLegacyHeight();
         return result;
     };
     node.onResize = onResizeWrapped;
 
-    const prevOnRemoved = node.onRemoved;
-    const onRemovedWrapped = function () {
-        if (layoutRaf) {
-            cancelAnimationFrame(layoutRaf);
-            layoutRaf = null;
+    const teardown = () => {
+        if (searchTimer) {
+            clearTimeout(searchTimer);
+            searchTimer = null;
         }
-        resizeObserver?.disconnect();
-        resizeObserver = null;
-        node._tsStyleSelectorCleanup = null;
-        node._tsStyleSelectorSync = null;
-        node._tsStyleSelectorInitialized = false;
         if (node.onResize === onResizeWrapped) {
             node.onResize = previousOnResize;
         }
+        node._tsStyleSelectorSync = null;
+        node._tsStyleSelectorInitialized = false;
+    };
+
+    const prevOnRemoved = node.onRemoved;
+    const onRemovedWrapped = function () {
+        teardown();
+        node._tsStyleSelectorCleanup = null;
         return prevOnRemoved?.apply(this, arguments);
     };
     node.onRemoved = onRemovedWrapped;
 
     node._tsStyleSelectorCleanup = () => {
-        if (layoutRaf) {
-            cancelAnimationFrame(layoutRaf);
-            layoutRaf = null;
-        }
-        resizeObserver?.disconnect();
-        resizeObserver = null;
-        if (node.onResize === onResizeWrapped) {
-            node.onResize = previousOnResize;
-        }
+        teardown();
         if (node.onRemoved === onRemovedWrapped) {
             node.onRemoved = prevOnRemoved;
         }
         removeDomWidgets(node);
-        node._tsStyleSelectorSync = null;
-        node._tsStyleSelectorInitialized = false;
     };
 
-    if (typeof ResizeObserver !== "undefined") {
-        resizeObserver = new ResizeObserver(() => {
-            scheduleLayout();
-        });
-        resizeObserver.observe(container);
-        if (domWidgetEl && domWidgetEl !== container) {
-            resizeObserver.observe(domWidgetEl);
-        }
-    }
-
-    renderGrid();
+    syncLegacyHeight();
+    applyFilter();
     loadStyles();
-    scheduleLayout();
 }
 
 app.registerExtension({
