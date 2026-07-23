@@ -68,6 +68,7 @@ const AUTO_CAPTION_INPUT = "auto_caption";
 // сразу по кнопке, без постановки workflow в очередь.
 const ENHANCE_ROUTE = "/ts_super_prompt/enhance";
 const ENHANCE_PRESET = "Ideogram Prompt Enhance";
+const AI_EVENT_PREFIX = "ts_super_prompt";
 
 // Node-chrome strings follow the ComfyUI UI locale (the design document keeps
 // its own language; this is interface, not content).
@@ -119,6 +120,9 @@ function ensureStyles() {
 .ts-ideo-node__auto-text{flex:1 1 55%;min-height:0;resize:none}
 .ts-ideo-node__auto-result{flex:1 1 45%;min-height:0;overflow:auto;font-size:var(--ts-fs-xs);white-space:pre-wrap;word-break:break-word;background:var(--ts-sunken);border:1px solid var(--ts-border-soft);border-radius:var(--ts-radius-sm);padding:4px 6px;color:var(--ts-muted)}
 .ts-ideo-node__auto-status{flex:0 0 auto;min-height:14px;font-size:var(--ts-fs-xs);text-align:center}
+.ts-ideo-node__auto-bar{flex:0 0 auto;height:3px;border-radius:2px;background:var(--ts-border-soft);overflow:hidden;display:none}
+.ts-ideo-node__auto-bar.is-active{display:block}
+.ts-ideo-node__auto-bar div{height:100%;width:0%;background:var(--ts-accent);transition:width .25s ease}
 `;
     document.head.appendChild(style);
 }
@@ -312,10 +316,14 @@ export function setupIdeogramNode(node) {
     generateBtn.textContent = C.generate;
     const autoStatus = document.createElement("div");
     autoStatus.className = "ts-ui-status ts-ideo-node__auto-status";
+    const autoBar = document.createElement("div");
+    autoBar.className = "ts-ideo-node__auto-bar";
+    const autoBarFill = document.createElement("div");
+    autoBar.appendChild(autoBarFill);
     const autoResult = document.createElement("div");
     autoResult.className = "ts-ideo-node__auto-result";
     autoResult.textContent = String(readPersisted(AUTO_CAPTION_INPUT, "") || "") || C.resultHint;
-    autoPanel.append(autoText, generateBtn, autoStatus, autoResult);
+    autoPanel.append(autoText, generateBtn, autoBar, autoStatus, autoResult);
 
     container.append(canvas, modesRow, toolbar, autoPanel, summary);
     stopPropagation(container, [
@@ -376,6 +384,11 @@ export function setupIdeogramNode(node) {
         setWidgetValue(node, AUTO_SEED_INPUT, (seed + 1) & 0x7fffffff);
         setAutoStatus(C.running);
         generateBtn.disabled = true;
+        // The enhance route reports real backend stages (model download,
+        // memory checks, generation) over the ts_super_prompt.* websocket
+        // events, keyed by this operation id.
+        activeOperationId = `ts_ideo_${node.id}_${Math.random().toString(36).slice(2, 10)}`;
+        setBar(true, 2);
         try {
             const response = await api.fetchApi(ENHANCE_ROUTE, {
                 method: "POST",
@@ -383,6 +396,7 @@ export function setupIdeogramNode(node) {
                 body: JSON.stringify({
                     text: autoText.value,
                     system_preset: ENHANCE_PRESET,
+                    operation_id: activeOperationId,
                 }),
             });
             const payload = await response.json().catch(() => ({}));
@@ -398,8 +412,22 @@ export function setupIdeogramNode(node) {
             setAutoStatus(C.runFailed(error?.message || error), "error");
         } finally {
             generateBtn.disabled = false;
+            activeOperationId = null;
+            setBar(false);
         }
     }
+    function setBar(active, percent) {
+        autoBar.classList.toggle("is-active", Boolean(active));
+        if (typeof percent === "number") autoBarFill.style.width = `${Math.max(0, Math.min(100, percent))}%`;
+    }
+    let activeOperationId = null;
+    const onAiProgress = (event) => {
+        const d = event?.detail || {};
+        if (!activeOperationId || d.operation_id !== activeOperationId) return;
+        if (typeof d.percent === "number") setBar(true, d.percent);
+        if (d.text) setAutoStatus(d.text);
+    };
+    api.addEventListener(`${AI_EVENT_PREFIX}.progress`, onAiProgress);
     generateBtn.addEventListener("click", (e) => { e.stopPropagation(); queueGenerate(); });
 
     const prevOnExecuted = node.onExecuted;
@@ -665,6 +693,7 @@ export function setupIdeogramNode(node) {
         try { node._tsIdeoEditorClose?.(); } catch { /* ignore */ }
         resizeObserver.disconnect();
         api.removeEventListener("execution_error", onExecError);
+        api.removeEventListener(`${AI_EVENT_PREFIX}.progress`, onAiProgress);
         if (autoTextTimer) { clearTimeout(autoTextTimer); autoTextTimer = null; }
     };
 
