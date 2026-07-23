@@ -41,8 +41,10 @@ import {
     ensureThemeStyles,
     getThemeColors,
     getUiLanguage,
+    pickLocaleStrings,
     setOpenInterfaceLabel,
 } from "../_theme.js";
+import { api } from "/scripts/api.js";
 
 const STYLE_ID = "ts-ideogram-node-styles";
 const DOM_WIDGET_NAME = "ts_ideogram_node";
@@ -54,7 +56,42 @@ const PAD = 10;
 // node's old inline button) plus breathing room, so it cannot spill over
 // the artboard drawn underneath.
 const TOOLBAR_H = 44;
+// Mode switch row (Designer / Auto) above the toolbar.
+const MODE_H = 30;
+const TOP_CHROME = MODE_H + TOOLBAR_H;
 const SUMMARY_H = 22;
+const MODE_INPUT = "mode";
+const AUTO_PROMPT_INPUT = "auto_prompt";
+const AUTO_SEED_INPUT = "auto_seed";
+
+// Node-chrome strings follow the ComfyUI UI locale (the design document keeps
+// its own language; this is interface, not content).
+const CHROME_STRINGS = {
+    en: {
+        modeDesigner: "Designer",
+        modeAuto: "Auto",
+        generate: "Generate Prompt",
+        autoPlaceholder: "Describe your idea in plain words — the model writes the structured Ideogram JSON for you.",
+        resultHint: "The generated JSON caption will appear here after a run.",
+        running: "Generating...",
+        done: "Caption ready.",
+        needPrompt: "Type an idea first.",
+        queueFailed: (m) => `Queue failed: ${m}`,
+        runFailed: (m) => `Generation failed: ${m}`,
+    },
+    ru: {
+        modeDesigner: "Дизайнер",
+        modeAuto: "Авто",
+        generate: "Создать промпт",
+        autoPlaceholder: "Опишите идею обычными словами — модель сама напишет структурированный Ideogram JSON.",
+        resultHint: "Сгенерированный JSON-капшен появится здесь после запуска.",
+        running: "Генерация...",
+        done: "Капшен готов.",
+        needPrompt: "Сначала введите идею.",
+        queueFailed: (m) => `Не удалось поставить в очередь: ${m}`,
+        runFailed: (m) => `Генерация не удалась: ${m}`,
+    },
+};
 
 function ensureStyles() {
     // Colours come from the shared --ts-* tokens in js/_theme.js; this
@@ -66,10 +103,17 @@ function ensureStyles() {
     style.textContent = `
 .ts-ideo-node{position:relative;width:100%;height:100%;min-height:0;box-sizing:border-box;color:var(--ts-text);font-family:var(--ts-font);background:var(--ts-checker);border:1px solid var(--ts-border-soft);border-radius:var(--ts-radius-lg);overflow:hidden;user-select:none}
 .ts-ideo-node__canvas{position:absolute;inset:0;display:block;width:100%;height:100%}
-.ts-ideo-node__toolbar{position:absolute;top:6px;left:6px;right:6px;height:${TOOLBAR_H - 8}px;display:flex;align-items:center;justify-content:center;gap:6px;z-index:3}
+.ts-ideo-node__toolbar{position:absolute;top:${MODE_H + 4}px;left:6px;right:6px;height:${TOOLBAR_H - 8}px;display:flex;align-items:center;justify-content:center;gap:6px;z-index:3}
 .ts-ideo-node__pill{margin-left:auto;flex:0 0 auto;font-size:var(--ts-fs-xs);color:var(--ts-faint);white-space:nowrap;font-variant-numeric:tabular-nums}
 .ts-ideo-node__summary{position:absolute;left:6px;right:6px;bottom:6px;height:${SUMMARY_H - 6}px;display:flex;align-items:center;gap:8px;font-size:var(--ts-fs-sm);color:var(--ts-muted);background:var(--ts-elevated);border:1px solid var(--ts-border-soft);border-radius:8px;padding:0 8px;z-index:3;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden}
 .ts-ideo-node__warn{color:var(--ts-warning)}
+.ts-ideo-node__modes{position:absolute;top:6px;left:6px;right:6px;height:${MODE_H - 8}px;display:flex;gap:4px;z-index:3}
+.ts-ideo-node__modes .ts-ui-btn{flex:1 1 0;padding:3px 6px;font-size:var(--ts-fs-xs)}
+.ts-ideo-node__auto{position:absolute;left:6px;right:6px;top:${MODE_H + 4}px;bottom:${SUMMARY_H + 4}px;display:none;flex-direction:column;gap:6px;z-index:3}
+.ts-ideo-node__auto.is-active{display:flex}
+.ts-ideo-node__auto-text{flex:1 1 55%;min-height:0;resize:none}
+.ts-ideo-node__auto-result{flex:1 1 45%;min-height:0;overflow:auto;font-size:var(--ts-fs-xs);white-space:pre-wrap;word-break:break-word;background:var(--ts-sunken);border:1px solid var(--ts-border-soft);border-radius:var(--ts-radius-sm);padding:4px 6px;color:var(--ts-muted)}
+.ts-ideo-node__auto-status{flex:0 0 auto;min-height:14px;font-size:var(--ts-fs-xs);text-align:center}
 `;
     document.head.appendChild(style);
 }
@@ -188,6 +232,15 @@ export function setupIdeogramNode(node) {
     removeDomWidget(node);
     ensureStyles();
     hideWidget(node, DESIGN_INPUT);
+    hideWidget(node, MODE_INPUT);
+    hideWidget(node, AUTO_PROMPT_INPUT);
+    hideWidget(node, AUTO_SEED_INPUT);
+    const C = pickLocaleStrings(CHROME_STRINGS);
+    const readPersisted = (name, fallback) => {
+        const w = node.widgets?.find((x) => x?.name === name);
+        const v = w?.value ?? node.properties?.[name];
+        return v === undefined || v === null || v === "" ? fallback : v;
+    };
 
     node.resizable = true;
     node.size = [
@@ -229,7 +282,36 @@ export function setupIdeogramNode(node) {
     const summary = document.createElement("div");
     summary.className = "ts-ideo-node__summary";
 
-    container.append(canvas, toolbar, summary);
+    const modesRow = document.createElement("div");
+    modesRow.className = "ts-ideo-node__modes";
+    const designerBtn = document.createElement("button");
+    designerBtn.type = "button";
+    designerBtn.className = "ts-ui-btn";
+    designerBtn.textContent = C.modeDesigner;
+    const autoBtn = document.createElement("button");
+    autoBtn.type = "button";
+    autoBtn.className = "ts-ui-btn";
+    autoBtn.textContent = C.modeAuto;
+    modesRow.append(designerBtn, autoBtn);
+
+    const autoPanel = document.createElement("div");
+    autoPanel.className = "ts-ideo-node__auto";
+    const autoText = document.createElement("textarea");
+    autoText.className = "ts-ui-textarea ts-ideo-node__auto-text";
+    autoText.placeholder = C.autoPlaceholder;
+    autoText.value = String(readPersisted(AUTO_PROMPT_INPUT, "") || "");
+    const generateBtn = document.createElement("button");
+    generateBtn.type = "button";
+    generateBtn.className = "ts-ui-btn ts-ui-btn--primary";
+    generateBtn.textContent = C.generate;
+    const autoStatus = document.createElement("div");
+    autoStatus.className = "ts-ui-status ts-ideo-node__auto-status";
+    const autoResult = document.createElement("div");
+    autoResult.className = "ts-ideo-node__auto-result";
+    autoResult.textContent = C.resultHint;
+    autoPanel.append(autoText, generateBtn, autoStatus, autoResult);
+
+    container.append(canvas, modesRow, toolbar, autoPanel, summary);
     stopPropagation(container, [
         "pointerdown", "pointerup", "pointermove", "mousedown", "mouseup",
         "wheel", "click", "dblclick", "contextmenu",
@@ -244,6 +326,93 @@ export function setupIdeogramNode(node) {
     };
     const domWidget = node.addDOMWidget(DOM_WIDGET_NAME, "div", container, widgetOptions);
     const domWidgetEl = domWidget?.element || domWidget?.el || domWidget?.container;
+
+    let mode = String(readPersisted(MODE_INPUT, "designer") || "designer");
+    function applyMode(next, persist = true) {
+        mode = next === "auto" ? "auto" : "designer";
+        const isAuto = mode === "auto";
+        designerBtn.classList.toggle("is-active", !isAuto);
+        autoBtn.classList.toggle("is-active", isAuto);
+        toolbar.style.display = isAuto ? "none" : "";
+        canvas.style.display = isAuto ? "none" : "";
+        autoPanel.classList.toggle("is-active", isAuto);
+        if (persist) setWidgetValue(node, MODE_INPUT, mode);
+    }
+    designerBtn.addEventListener("click", (e) => { e.stopPropagation(); applyMode("designer"); });
+    autoBtn.addEventListener("click", (e) => { e.stopPropagation(); applyMode("auto"); });
+
+    let autoTextTimer = null;
+    autoText.addEventListener("input", () => {
+        if (autoTextTimer) clearTimeout(autoTextTimer);
+        autoTextTimer = setTimeout(() => {
+            autoTextTimer = null;
+            setWidgetValue(node, AUTO_PROMPT_INPUT, autoText.value);
+        }, 150);
+    });
+
+    const setAutoStatus = (text, kind = "") => {
+        autoStatus.textContent = text || "";
+        autoStatus.classList.toggle("is-error", kind === "error");
+        autoStatus.classList.toggle("is-success", kind === "success");
+    };
+
+    async function queueGenerate() {
+        if (!autoText.value.trim()) {
+            setAutoStatus(C.needPrompt, "error");
+            return;
+        }
+        // Flush the debounced prompt and bump the seed so the node's
+        // fingerprint changes — otherwise ComfyUI would serve the cached
+        // caption instead of generating a fresh one.
+        setWidgetValue(node, AUTO_PROMPT_INPUT, autoText.value);
+        const seed = Number(readPersisted(AUTO_SEED_INPUT, 0)) || 0;
+        setWidgetValue(node, AUTO_SEED_INPUT, (seed + 1) & 0x7fffffff);
+        setAutoStatus(C.running);
+        generateBtn.disabled = true;
+        try {
+            const graph = await app.graphToPrompt();
+            const body = {
+                prompt: graph.output,
+                client_id: api.clientId,
+                extra_data: { extra_pnginfo: { workflow: graph.workflow } },
+                // Run only this node's branch: the click must not fire the
+                // whole image pipeline downstream.
+                partial_execution_targets: [String(node.id)],
+            };
+            const response = await api.fetchApi("/prompt", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(body),
+            });
+            if (!response.ok) {
+                const payload = await response.json().catch(() => ({}));
+                const message = payload?.error?.message || payload?.error || `HTTP ${response.status}`;
+                throw new Error(typeof message === "string" ? message : JSON.stringify(message));
+            }
+        } catch (error) {
+            generateBtn.disabled = false;
+            setAutoStatus(C.queueFailed(error?.message || error), "error");
+        }
+    }
+    generateBtn.addEventListener("click", (e) => { e.stopPropagation(); queueGenerate(); });
+
+    const prevOnExecuted = node.onExecuted;
+    node.onExecuted = function onExecutedWithAuto(message) {
+        const result = prevOnExecuted?.apply(this, arguments);
+        const caption = message?.ts_ideo_auto?.[0];
+        if (typeof caption === "string" && caption) {
+            autoResult.textContent = caption;
+            setAutoStatus(C.done, "success");
+        }
+        generateBtn.disabled = false;
+        return result;
+    };
+    const onExecError = (event) => {
+        if (String(event?.detail?.node_id) !== String(node.id)) return;
+        generateBtn.disabled = false;
+        setAutoStatus(C.runFailed(event?.detail?.exception_message || "error"), "error");
+    };
+    api.addEventListener("execution_error", onExecError);
 
     function syncDomSize() {
         if (domWidgetEl) {
@@ -319,11 +488,11 @@ export function setupIdeogramNode(node) {
         ctx.clearRect(0, 0, rectWidth, rectHeight);
 
         const availW = rectWidth - PAD * 2;
-        const availH = rectHeight - TOOLBAR_H - SUMMARY_H - PAD;
+        const availH = rectHeight - TOP_CHROME - SUMMARY_H - PAD;
         if (availW <= 4 || availH <= 4) return;
         const box = aspectFitBox(state.design.aspect_ratio, availW, availH);
         const ax = PAD + (availW - box.w) / 2;
-        const ay = TOOLBAR_H + (availH - box.h) / 2;
+        const ay = TOP_CHROME + (availH - box.h) / 2;
 
         // Artboard background: a reference underlay wins, else the style palette
         // mesh gradient (matches the editor artboard).
@@ -489,6 +658,8 @@ export function setupIdeogramNode(node) {
         // the document-level keydown/paste listeners and the JSON poll timer).
         try { node._tsIdeoEditorClose?.(); } catch { /* ignore */ }
         resizeObserver.disconnect();
+        api.removeEventListener("execution_error", onExecError);
+        if (autoTextTimer) { clearTimeout(autoTextTimer); autoTextTimer = null; }
     };
 
     const prevOnRemoved = node.onRemoved;
@@ -498,6 +669,7 @@ export function setupIdeogramNode(node) {
     };
 
     // Initial load
+    applyMode(mode, false);
     syncDomSize();
     updateSummary();
     ensureRefImage();
