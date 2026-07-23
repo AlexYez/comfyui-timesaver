@@ -89,7 +89,9 @@ def _extract_json_object(text: str) -> str:
                 if depth == 0:
                     candidate = text[start : index + 1]
                     try:
-                        return json.dumps(json.loads(candidate), ensure_ascii=False)
+                        # Compact separators + literal UTF-8: the serialization Ideogram 4
+                        # was trained on (docs/prompting.md).
+                        return json.dumps(json.loads(candidate), ensure_ascii=False, separators=(",", ":"))
                     except json.JSONDecodeError:
                         break
         start = text.find("{", start + 1)
