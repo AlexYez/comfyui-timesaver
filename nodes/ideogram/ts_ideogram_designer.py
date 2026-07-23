@@ -229,6 +229,12 @@ class TS_IdeogramDesigner(IO.ComfyNode):
                 ),
             ],
             hidden=[IO.Hidden.unique_id],
+            # Output-node status makes the node a valid partial-execution
+            # target: the Auto panel's Generate button queues just this node,
+            # and the server only accepts output nodes as targets. Results are
+            # cached by fingerprint, so a full queue does not re-run the LLM
+            # unless the prompt or seed changed.
+            is_output_node=True,
         )
 
     @classmethod
