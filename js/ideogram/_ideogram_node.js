@@ -246,6 +246,11 @@ export function setupIdeogramNode(node) {
     hideWidget(node, AUTO_SEED_INPUT);
     hideWidget(node, AUTO_CAPTION_INPUT);
     const C = pickLocaleStrings(CHROME_STRINGS);
+    const persist = (name, value) => {
+        setWidgetValue(node, name, value);
+        node.properties = node.properties || {};
+        node.properties[name] = value;
+    };
     const readPersisted = (name, fallback) => {
         const w = node.widgets?.find((x) => x?.name === name);
         const v = w?.value ?? node.properties?.[name];
@@ -350,7 +355,11 @@ export function setupIdeogramNode(node) {
         toolbar.style.display = isAuto ? "none" : "";
         canvas.style.display = isAuto ? "none" : "";
         autoPanel.classList.toggle("is-active", isAuto);
-        if (persist) setWidgetValue(node, MODE_INPUT, mode);
+        if (persist) {
+            setWidgetValue(node, MODE_INPUT, mode);
+            node.properties = node.properties || {};
+            node.properties[MODE_INPUT] = mode;
+        }
     }
     designerBtn.addEventListener("click", (e) => { e.stopPropagation(); applyMode("designer"); });
     autoBtn.addEventListener("click", (e) => { e.stopPropagation(); applyMode("auto"); });
@@ -360,7 +369,7 @@ export function setupIdeogramNode(node) {
         if (autoTextTimer) clearTimeout(autoTextTimer);
         autoTextTimer = setTimeout(() => {
             autoTextTimer = null;
-            setWidgetValue(node, AUTO_PROMPT_INPUT, autoText.value);
+            persist(AUTO_PROMPT_INPUT, autoText.value);
         }, 150);
     });
 
@@ -379,9 +388,9 @@ export function setupIdeogramNode(node) {
         // (the SuperPrompt /enhance route) — no workflow queue involved, same
         // UX as the SuperPrompt AI button. The result is stored into the
         // hidden auto_caption widget, which execute() emits in Auto mode.
-        setWidgetValue(node, AUTO_PROMPT_INPUT, autoText.value);
+        persist(AUTO_PROMPT_INPUT, autoText.value);
         const seed = Number(readPersisted(AUTO_SEED_INPUT, 0)) || 0;
-        setWidgetValue(node, AUTO_SEED_INPUT, (seed + 1) & 0x7fffffff);
+        persist(AUTO_SEED_INPUT, (seed + 1) & 0x7fffffff);
         setAutoStatus(C.running);
         generateBtn.disabled = true;
         setBar(true, 2);
@@ -432,7 +441,7 @@ export function setupIdeogramNode(node) {
         const caption = message?.ts_ideo_auto?.[0];
         if (typeof caption === "string" && caption) {
             autoResult.textContent = caption;
-            setWidgetValue(node, AUTO_CAPTION_INPUT, caption);
+            persist(AUTO_CAPTION_INPUT, caption);
             setAutoStatus(C.done, "success");
         }
         generateBtn.disabled = false;
@@ -681,6 +690,11 @@ export function setupIdeogramNode(node) {
 
     node._tsIdeoApplyDesign = applyDesign;
     node._tsIdeoSync = () => {
+        applyMode(String(readPersisted(MODE_INPUT, mode) || mode), false);
+        const savedPrompt = String(readPersisted(AUTO_PROMPT_INPUT, "") || "");
+        if (savedPrompt && autoText.value !== savedPrompt) autoText.value = savedPrompt;
+        const savedCaption = String(readPersisted(AUTO_CAPTION_INPUT, "") || "");
+        if (savedCaption) autoResult.textContent = savedCaption;
         state.design = parseDesign(readPersistedDesign(node));
         ensureRefImage();
         updateSummary();
