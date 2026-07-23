@@ -393,46 +393,53 @@ export function setupIdeogramNode(node) {
         persist(AUTO_SEED_INPUT, (seed + 1) & 0x7fffffff);
         setAutoStatus(C.running);
         generateBtn.disabled = true;
+        // The SuperPrompt engine generates immediately (no workflow queue).
+        // Route, preset and event names are a shared contract pinned by
+        // tests/test_ideogram_superprompt_contract.py — edit them in sync.
+        activeOperationId = `ts_ideo_${node.id}_${Math.random().toString(36).slice(2, 10)}`;
         setBar(true, 2);
         try {
-            // Queue ONLY this node's branch: the connected clip (the image
-            // model's own LLM) generates the caption server-side, exactly like
-            // the built-in Generate Text node. Its progress arrives through
-            // ComfyUI's standard "progress" events for this node.
-            const graph = await app.graphToPrompt();
-            const response = await api.fetchApi("/prompt", {
+            const response = await api.fetchApi(ENHANCE_ROUTE, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    prompt: graph.output,
-                    client_id: api.clientId,
-                    extra_data: { extra_pnginfo: { workflow: graph.workflow } },
-                    partial_execution_targets: [String(node.id)],
+                    text: autoText.value,
+                    system_preset: ENHANCE_PRESET,
+                    operation_id: activeOperationId,
                 }),
             });
-            if (!response.ok) {
-                const payload = await response.json().catch(() => ({}));
-                const message = payload?.error?.message || payload?.error || `HTTP ${response.status}`;
-                throw new Error(typeof message === "string" ? message : JSON.stringify(message));
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok || payload?.error) {
+                throw new Error(payload?.error || `HTTP ${response.status}`);
             }
+            const caption = String(payload?.text || "").trim();
+            if (!caption) throw new Error("empty reply");
+            autoResult.textContent = caption;
+            persist(AUTO_CAPTION_INPUT, caption);
+            setAutoStatus(C.done, "success");
         } catch (error) {
+            setAutoStatus(C.runFailed(error?.message || error), "error");
+        } finally {
             generateBtn.disabled = false;
+            activeOperationId = null;
             setBar(false);
-            setAutoStatus(C.queueFailed(error?.message || error), "error");
         }
     }
     function setBar(active, percent) {
         autoBar.classList.toggle("is-active", Boolean(active));
         if (typeof percent === "number") autoBarFill.style.width = `${Math.max(0, Math.min(100, percent))}%`;
     }
-    // ComfyUI's own execution progress for this node (what the built-in
-    // Generate Text shows) drives the bar.
-    const onCoreProgress = (event) => {
+    // Real backend stages from the SuperPrompt engine (model download with
+    // percentages, memory checks, generation), keyed by our operation id so a
+    // SuperPrompt run elsewhere does not move this node's bar.
+    let activeOperationId = null;
+    const onAiProgress = (event) => {
         const d = event?.detail || {};
-        if (String(d.node) !== String(node.id) || !d.max) return;
-        setBar(true, (Number(d.value) / Number(d.max)) * 100);
+        if (!activeOperationId || d.operation_id !== activeOperationId) return;
+        if (typeof d.percent === "number") setBar(true, d.percent);
+        if (d.text) setAutoStatus(d.text);
     };
-    api.addEventListener("progress", onCoreProgress);
+    api.addEventListener(`${AI_EVENT_PREFIX}.progress`, onAiProgress);
     generateBtn.addEventListener("click", (e) => { e.stopPropagation(); queueGenerate(); });
 
     const prevOnExecuted = node.onExecuted;
@@ -706,7 +713,7 @@ export function setupIdeogramNode(node) {
         try { node._tsIdeoEditorClose?.(); } catch { /* ignore */ }
         resizeObserver.disconnect();
         api.removeEventListener("execution_error", onExecError);
-        api.removeEventListener("progress", onCoreProgress);
+        api.removeEventListener(`${AI_EVENT_PREFIX}.progress`, onAiProgress);
         if (autoTextTimer) { clearTimeout(autoTextTimer); autoTextTimer = null; }
     };
 

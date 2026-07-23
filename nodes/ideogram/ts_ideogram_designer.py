@@ -38,25 +38,6 @@ LOG_PREFIX = "[TS Ideogram Designer]"
 # Register the /ts_ideogram/* API routes once, at import time.
 register_routes()
 
-# Auto mode reuses the "Ideogram Prompt Enhance" preset shipped for the Qwen
-# nodes: same system prompt, same sampling parameters — one source of truth for
-# how an idea becomes an Ideogram 4 JSON caption.
-_AUTO_PRESET_NAME = "Ideogram Prompt Enhance"
-_AUTO_PRESET_PATH = Path(__file__).resolve().parents[1] / "qwen_3_vl_presets.json"
-
-
-def _load_auto_preset() -> tuple[str, dict]:
-    try:
-        data = json.loads(_AUTO_PRESET_PATH.read_text(encoding="utf-8"))
-        preset = data.get(_AUTO_PRESET_NAME) or {}
-        system_prompt = str(preset.get("system_prompt") or "").strip()
-        gen_params = preset.get("gen_params") or {}
-        if system_prompt:
-            return system_prompt, gen_params if isinstance(gen_params, dict) else {}
-    except Exception as exc:  # noqa: BLE001 - a broken preset must surface, not crash import
-        logger.warning("%s Failed to load auto preset: %s", LOG_PREFIX, exc)
-    return "", {}
-
 
 def _extract_json_object(text: str) -> str:
     """Return the first balanced top-level JSON object found in ``text``.
@@ -98,74 +79,6 @@ def _extract_json_object(text: str) -> str:
     return ""
 
 
-def _generate_auto_caption(clip, auto_prompt: str, image, seed: int) -> str:
-    """Run the clip's LLM (the image model's text encoder) over the user idea.
-
-    Mirrors the built-in ``TextGenerate`` node's use of the clip API
-    (tokenize -> generate -> decode) so any encoder that works with the core
-    node works here too. A connected reference image is passed to the LLM —
-    the preset knows how to caption from an image.
-    """
-    prompt_text = (auto_prompt or "").strip()
-    if not prompt_text:
-        raise RuntimeError(
-            f"{LOG_PREFIX} Auto mode: the prompt is empty. Type your idea into the node's text field."
-        )
-    if clip is None:
-        raise RuntimeError(
-            f"{LOG_PREFIX} Auto mode has no caption yet: press Generate Prompt in the node, "
-            "or connect a clip (LLM text encoder) so the caption can be generated at queue time."
-        )
-    system_prompt, gen_params = _load_auto_preset()
-    if not system_prompt:
-        raise RuntimeError(
-            f"{LOG_PREFIX} Auto preset '{_AUTO_PRESET_NAME}' is missing from {_AUTO_PRESET_PATH.name}."
-        )
-
-    # One user message carrying both the instructions and the idea keeps this
-    # model-agnostic: the clip's own default chat template wraps it correctly
-    # for whichever encoder family is connected.
-    full_prompt = f"{system_prompt}\n\nUser idea: {prompt_text}"
-    try:
-        tokens = clip.tokenize(
-            full_prompt,
-            image=image,
-            skip_template=False,
-            min_length=1,
-            thinking=False,
-            video=None,
-            audio=None,
-        )
-        generated_ids = clip.generate(
-            tokens,
-            do_sample=True,
-            max_length=int(gen_params.get("max_new_tokens", 1024)),
-            temperature=float(gen_params.get("temperature", 0.45)),
-            top_k=int(gen_params.get("top_k", 20)),
-            top_p=float(gen_params.get("top_p", 0.9)),
-            min_p=0.0,
-            repetition_penalty=float(gen_params.get("repetition_penalty", 1.05)),
-            presence_penalty=0.0,
-            seed=int(seed) & 0x7FFFFFFF,
-        )
-        generated_text = clip.decode(generated_ids)
-    except RuntimeError:
-        raise
-    except Exception as exc:  # noqa: BLE001 - surface encoder failures with a TS-prefixed message
-        raise RuntimeError(
-            f"{LOG_PREFIX} Auto mode generation failed: {exc}. "
-            "Make sure the connected clip is an LLM-based text encoder supported by the built-in "
-            "Generate Text node."
-        ) from exc
-
-    caption = _extract_json_object(str(generated_text or ""))
-    if caption:
-        return caption
-    # The model refused to produce JSON — pass its text through rather than
-    # failing the whole workflow; downstream encoders accept plain prose too.
-    logger.warning("%s Auto mode: no JSON object in the LLM reply, passing raw text through.", LOG_PREFIX)
-    return str(generated_text or "").strip()
-
 
 class TS_IdeogramDesigner(IO.ComfyNode):
     @classmethod
@@ -191,11 +104,6 @@ class TS_IdeogramDesigner(IO.ComfyNode):
                     default="",
                     multiline=False,
                     tooltip="Serialized editor state, managed by the node UI. Converted into the Ideogram 4 caption on execution.",
-                ),
-                IO.Clip.Input(
-                    "clip",
-                    optional=True,
-                    tooltip="Text encoder of your image model (an LLM on modern models). Required by Auto mode: it writes the Ideogram JSON caption from your plain-text prompt.",
                 ),
                 IO.String.Input(
                     "mode",
@@ -237,16 +145,10 @@ class TS_IdeogramDesigner(IO.ComfyNode):
                 ),
             ],
             hidden=[IO.Hidden.unique_id],
-            # Output-node status makes the node a valid partial-execution
-            # target: the Auto panel's Generate button queues just this node,
-            # and the server only accepts output nodes as targets. Results are
-            # cached by fingerprint, so a full queue does not re-run the LLM
-            # unless the prompt or seed changed.
-            is_output_node=True,
         )
 
     @classmethod
-    def execute(cls, image=None, design_json: str = "", clip=None, mode: str = "designer",
+    def execute(cls, image=None, design_json: str = "", mode: str = "designer",
                 auto_prompt: str = "", auto_caption: str = "", auto_seed: int = 0) -> IO.NodeOutput:
         if image is not None:
             try:
@@ -259,23 +161,27 @@ class TS_IdeogramDesigner(IO.ComfyNode):
 
         width, height = dims_from_design(design_json or "")
         if (mode or "designer").strip().lower() == "auto":
-            # Primary path: the connected clip (the image model's own LLM text
-            # encoder) generates the caption at queue time, exactly like the
-            # built-in Generate Text node — with ComfyUI's own node progress.
-            # The stored caption is only a fallback for graphs without a clip.
-            if clip is not None:
-                json_prompt = _generate_auto_caption(clip, auto_prompt or "", image, int(auto_seed or 0))
-            else:
-                json_prompt = (auto_caption or "").strip()
-                if not json_prompt:
-                    json_prompt = _generate_auto_caption(clip, auto_prompt or "", image, int(auto_seed or 0))
+            # The caption is produced interactively by the Generate Prompt
+            # button through the SuperPrompt engine (its /enhance route with
+            # the 'Ideogram Prompt Enhance' preset) and stored here — queue
+            # time does zero model work. The shared contract between the two
+            # nodes is pinned by tests/test_ideogram_superprompt_contract.py.
+            raw = (auto_caption or "").strip()
+            if not raw:
+                raise RuntimeError(
+                    f"{LOG_PREFIX} Auto mode has no caption yet: type your idea and press "
+                    "Generate Prompt in the node, or switch back to Designer mode."
+                )
+            # Belt: re-extract the JSON object in case the LLM wrapped it in
+            # prose, and re-serialize compactly (the format Ideogram 4 expects).
+            json_prompt = _extract_json_object(raw) or raw
             # Push the fresh caption back to the node UI (the Auto panel shows it).
             return IO.NodeOutput(json_prompt, width, height, ui={"ts_ideo_auto": [json_prompt]})
         json_prompt, _aspect = build_caption(design_json or "")
         return IO.NodeOutput(json_prompt, width, height)
 
     @classmethod
-    def fingerprint_inputs(cls, image=None, design_json: str = "", clip=None, mode: str = "designer",
+    def fingerprint_inputs(cls, image=None, design_json: str = "", mode: str = "designer",
                            auto_prompt: str = "", auto_caption: str = "", auto_seed: int = 0) -> str:
         design_sig = hashlib.blake2b((design_json or "").encode("utf-8"), digest_size=16).hexdigest()
         auto_sig = hashlib.blake2b(
