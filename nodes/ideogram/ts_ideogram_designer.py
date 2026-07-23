@@ -257,13 +257,16 @@ class TS_IdeogramDesigner(IO.ComfyNode):
 
         width, height = dims_from_design(design_json or "")
         if (mode or "designer").strip().lower() == "auto":
-            # Primary path: the Generate Prompt button already produced the
-            # caption through the pack's own Qwen engine (the SuperPrompt
-            # /enhance route) — no model work at queue time. The clip-based
-            # generation is the fallback for graphs driven without the UI.
-            json_prompt = (auto_caption or "").strip()
-            if not json_prompt:
+            # Primary path: the connected clip (the image model's own LLM text
+            # encoder) generates the caption at queue time, exactly like the
+            # built-in Generate Text node — with ComfyUI's own node progress.
+            # The stored caption is only a fallback for graphs without a clip.
+            if clip is not None:
                 json_prompt = _generate_auto_caption(clip, auto_prompt or "", image, int(auto_seed or 0))
+            else:
+                json_prompt = (auto_caption or "").strip()
+                if not json_prompt:
+                    json_prompt = _generate_auto_caption(clip, auto_prompt or "", image, int(auto_seed or 0))
             # Push the fresh caption back to the node UI (the Auto panel shows it).
             return IO.NodeOutput(json_prompt, width, height, ui={"ts_ideo_auto": [json_prompt]})
         json_prompt, _aspect = build_caption(design_json or "")

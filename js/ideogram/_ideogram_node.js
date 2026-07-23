@@ -384,50 +384,46 @@ export function setupIdeogramNode(node) {
         setWidgetValue(node, AUTO_SEED_INPUT, (seed + 1) & 0x7fffffff);
         setAutoStatus(C.running);
         generateBtn.disabled = true;
-        // The enhance route reports real backend stages (model download,
-        // memory checks, generation) over the ts_super_prompt.* websocket
-        // events, keyed by this operation id.
-        activeOperationId = `ts_ideo_${node.id}_${Math.random().toString(36).slice(2, 10)}`;
         setBar(true, 2);
         try {
-            const response = await api.fetchApi(ENHANCE_ROUTE, {
+            // Queue ONLY this node's branch: the connected clip (the image
+            // model's own LLM) generates the caption server-side, exactly like
+            // the built-in Generate Text node. Its progress arrives through
+            // ComfyUI's standard "progress" events for this node.
+            const graph = await app.graphToPrompt();
+            const response = await api.fetchApi("/prompt", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    text: autoText.value,
-                    system_preset: ENHANCE_PRESET,
-                    operation_id: activeOperationId,
+                    prompt: graph.output,
+                    client_id: api.clientId,
+                    extra_data: { extra_pnginfo: { workflow: graph.workflow } },
+                    partial_execution_targets: [String(node.id)],
                 }),
             });
-            const payload = await response.json().catch(() => ({}));
-            if (!response.ok || payload?.error) {
-                throw new Error(payload?.error || `HTTP ${response.status}`);
+            if (!response.ok) {
+                const payload = await response.json().catch(() => ({}));
+                const message = payload?.error?.message || payload?.error || `HTTP ${response.status}`;
+                throw new Error(typeof message === "string" ? message : JSON.stringify(message));
             }
-            const caption = String(payload?.text || "").trim();
-            if (!caption) throw new Error("empty reply");
-            autoResult.textContent = caption;
-            setWidgetValue(node, AUTO_CAPTION_INPUT, caption);
-            setAutoStatus(C.done, "success");
         } catch (error) {
-            setAutoStatus(C.runFailed(error?.message || error), "error");
-        } finally {
             generateBtn.disabled = false;
-            activeOperationId = null;
             setBar(false);
+            setAutoStatus(C.queueFailed(error?.message || error), "error");
         }
     }
     function setBar(active, percent) {
         autoBar.classList.toggle("is-active", Boolean(active));
         if (typeof percent === "number") autoBarFill.style.width = `${Math.max(0, Math.min(100, percent))}%`;
     }
-    let activeOperationId = null;
-    const onAiProgress = (event) => {
+    // ComfyUI's own execution progress for this node (what the built-in
+    // Generate Text shows) drives the bar.
+    const onCoreProgress = (event) => {
         const d = event?.detail || {};
-        if (!activeOperationId || d.operation_id !== activeOperationId) return;
-        if (typeof d.percent === "number") setBar(true, d.percent);
-        if (d.text) setAutoStatus(d.text);
+        if (String(d.node) !== String(node.id) || !d.max) return;
+        setBar(true, (Number(d.value) / Number(d.max)) * 100);
     };
-    api.addEventListener(`${AI_EVENT_PREFIX}.progress`, onAiProgress);
+    api.addEventListener("progress", onCoreProgress);
     generateBtn.addEventListener("click", (e) => { e.stopPropagation(); queueGenerate(); });
 
     const prevOnExecuted = node.onExecuted;
@@ -436,14 +432,17 @@ export function setupIdeogramNode(node) {
         const caption = message?.ts_ideo_auto?.[0];
         if (typeof caption === "string" && caption) {
             autoResult.textContent = caption;
+            setWidgetValue(node, AUTO_CAPTION_INPUT, caption);
             setAutoStatus(C.done, "success");
         }
         generateBtn.disabled = false;
+        setBar(false);
         return result;
     };
     const onExecError = (event) => {
         if (String(event?.detail?.node_id) !== String(node.id)) return;
         generateBtn.disabled = false;
+        setBar(false);
         setAutoStatus(C.runFailed(event?.detail?.exception_message || "error"), "error");
     };
     api.addEventListener("execution_error", onExecError);
@@ -693,7 +692,7 @@ export function setupIdeogramNode(node) {
         try { node._tsIdeoEditorClose?.(); } catch { /* ignore */ }
         resizeObserver.disconnect();
         api.removeEventListener("execution_error", onExecError);
-        api.removeEventListener(`${AI_EVENT_PREFIX}.progress`, onAiProgress);
+        api.removeEventListener("progress", onCoreProgress);
         if (autoTextTimer) { clearTimeout(autoTextTimer); autoTextTimer = null; }
     };
 
