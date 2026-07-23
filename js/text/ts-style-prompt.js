@@ -7,9 +7,9 @@
 // other than 1 the grid height came out wrong — the classic coordinate-space
 // pitfall from CLAUDE.md §12.5.3. CSS flex sizing is immune to the transform.
 //
-// The card grid is built ONCE per library load; search and the category filter
-// only toggle the `hidden` attribute, so the scroll position survives typing
-// and thumbnails are never re-fetched.
+// The cards are built ONCE per library load; search and the category filter
+// only toggle the `hidden` attribute, so thumbnails are never re-fetched and
+// the browse position is restored when the filter is cleared.
 
 import { app } from "/scripts/app.js";
 import { api } from "/scripts/api.js";
@@ -99,27 +99,33 @@ function ensureStyles() {
     padding: 3px 6px;
     font-size: var(--ts-fs-sm);
 }
-.ts-style-grid {
-    flex: 1 1 auto;
-    min-height: 0;
+.ts-style-body {
+    /* The scroll host is absolutely positioned INSIDE this box (same trick as
+       the Lama canvas): otherwise the sections' natural height (~3200px for
+       113 styles) is what the V2 layout measures, the node grows to fit it,
+       and a node-derived ceiling then feeds that growth back into itself. */
     position: relative;
-    display: grid;
-    /* Column count adapts to node width; cards keep a square shape via
-       aspect-ratio, so no JS ever needs to compute their size. */
-    grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
-    gap: 4px;
-    align-content: start;
+    flex: 1 1 0;
+    min-height: 0;
+}
+.ts-style-scroll {
+    position: absolute;
+    inset: 0;
     overflow-y: auto;
     overflow-x: hidden;
     /* Reserve the gutter so the scrollbar never overlays the last column and
        the columns don't shift when content stops overflowing. */
     scrollbar-gutter: stable;
     padding-right: 2px;
-    padding-bottom: 6px;
     box-sizing: border-box;
 }
+.ts-style-section[hidden] {
+    display: none;
+}
 .ts-style-header {
-    grid-column: 1 / -1;
+    /* Sticky lives on a plain block inside the scroll host, NOT on a grid
+       item: a sticky grid item is clamped to its own grid area, which made
+       the headers pile up over the cards. */
     position: sticky;
     top: 0;
     z-index: 2;
@@ -134,6 +140,18 @@ function ensureStyles() {
 }
 .ts-style-header[hidden] {
     display: none;
+}
+.ts-style-grid {
+    display: grid;
+    /* Column count adapts to node width; cards keep a square shape via
+       aspect-ratio. align-items:start is REQUIRED — the default stretch
+       overrides aspect-ratio, collapsing the auto row to ~2px while the card
+       still painted at full size and spilled over the next rows. */
+    grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+    align-items: start;
+    gap: 4px;
+    padding: 4px 0 8px;
+    box-sizing: border-box;
 }
 .ts-style-card {
     position: relative;
@@ -177,14 +195,14 @@ function ensureStyles() {
     text-overflow: ellipsis;
     pointer-events: none;
 }
-.ts-style-grid.has-selection .ts-style-card::after {
+.ts-style-scroll.has-selection .ts-style-card::after {
     content: "";
     position: absolute;
     inset: 0;
     background: rgba(0, 0, 0, 0.75);
     pointer-events: none;
 }
-.ts-style-grid.has-selection .ts-style-card.is-selected::after {
+.ts-style-scroll.has-selection .ts-style-card.is-selected::after {
     background: transparent;
 }
 .ts-style-empty {
@@ -300,8 +318,11 @@ function setupStyleSelector(node) {
     const categorySelect = document.createElement("select");
     categorySelect.className = "ts-ui-select ts-style-cat";
 
-    const grid = document.createElement("div");
-    grid.className = "ts-style-grid";
+    const body = document.createElement("div");
+    body.className = "ts-style-body";
+    const scroll = document.createElement("div");
+    scroll.className = "ts-style-scroll";
+    body.appendChild(scroll);
 
     const empty = document.createElement("div");
     empty.className = "ts-style-empty";
@@ -309,7 +330,7 @@ function setupStyleSelector(node) {
 
     container.appendChild(search);
     container.appendChild(categorySelect);
-    container.appendChild(grid);
+    container.appendChild(body);
     container.appendChild(empty);
 
     const isV2 = isNodesV2();
@@ -323,8 +344,12 @@ function setupStyleSelector(node) {
         // Height is distributed by the frontend's own layout between
         // getMinHeight/getMaxHeight (CLAUDE.md §12.5.1); the CSS flex column
         // absorbs whatever it receives, so no getHeight/afterResize hooks.
+        // The ceiling MUST follow the node's own height: the sections have a
+        // real content height (~3200px for 113 styles), so an effectively
+        // unbounded getMaxHeight made the layout grant all of it and the node
+        // ballooned instead of scrolling.
         widgetOptions.getMinHeight = () => MIN_WIDGET_HEIGHT;
-        widgetOptions.getMaxHeight = () => 4096;
+        widgetOptions.getMaxHeight = () => 8192;
     }
 
     const domWidget = node.addDOMWidget(DOM_WIDGET_NAME, "div", container, widgetOptions);
@@ -365,7 +390,7 @@ function setupStyleSelector(node) {
     // One record per card, built once per library load. Filtering toggles the
     // `hidden` attribute so scroll position and loaded thumbnails survive.
     const cardRecords = [];
-    const headerRecords = [];
+    const sectionRecords = [];
     let searchTimer = null;
 
     const styleValue = (style) => (style.name || style.id || "").trim();
@@ -397,7 +422,7 @@ function setupStyleSelector(node) {
         const nextValue = value || "";
         const changed = nextValue !== state.selectedValue;
         state.selectedValue = nextValue;
-        grid.classList.toggle("has-selection", Boolean(state.selectedValue));
+        scroll.classList.toggle("has-selection", Boolean(state.selectedValue));
         cardRecords.forEach((record) => {
             record.el.classList.toggle(
                 "is-selected",
@@ -449,68 +474,87 @@ function setupStyleSelector(node) {
     };
 
     const buildGrid = () => {
-        grid.innerHTML = "";
+        scroll.innerHTML = "";
         cardRecords.length = 0;
-        headerRecords.length = 0;
+        sectionRecords.length = 0;
 
-        let lastCategory = null;
+        // One section per category: a sticky header plus its own card grid.
+        const byCategory = new Map();
         state.styles.forEach((style) => {
-            const value = styleValue(style);
-            if (!value) {
-                return;
-            }
+            if (!styleValue(style)) return;
+            const key = style.category || "";
+            if (!byCategory.has(key)) byCategory.set(key, []);
+            byCategory.get(key).push(style);
+        });
 
-            const category = style.category || "";
-            if (category && category !== lastCategory) {
-                lastCategory = category;
-                const header = document.createElement("div");
-                header.className = "ts-style-header";
-                header.textContent = categoryLabel(style);
-                grid.appendChild(header);
-                headerRecords.push({ category, el: header });
-            }
+        byCategory.forEach((styles, category) => {
+            const section = document.createElement("div");
+            section.className = "ts-style-section";
 
-            const card = document.createElement("button");
-            card.type = "button";
-            card.className = "ts-style-card";
-            card.dataset.value = value;
-            card.title = styleTooltip(style);
+            const header = document.createElement("div");
+            header.className = "ts-style-header";
+            header.textContent = category ? categoryLabel(styles[0]) : "";
+            if (!category) header.hidden = true;
+            section.appendChild(header);
 
-            if (style.preview) {
-                const img = document.createElement("img");
-                img.alt = styleLabel(style) || "style";
-                img.loading = "lazy";
-                img.src = makePreviewUrl(style.preview);
-                img.onerror = () => {
-                    img.remove();
+            const grid = document.createElement("div");
+            grid.className = "ts-style-grid";
+            section.appendChild(grid);
+
+            const records = [];
+            styles.forEach((style) => {
+                const value = styleValue(style);
+                const card = document.createElement("button");
+                card.type = "button";
+                card.className = "ts-style-card";
+                card.dataset.value = value;
+                card.title = styleTooltip(style);
+
+                if (style.preview) {
+                    const img = document.createElement("img");
+                    img.alt = styleLabel(style) || "style";
+                    img.loading = "lazy";
+                    img.src = makePreviewUrl(style.preview);
+                    img.onerror = () => { img.remove(); };
+                    card.appendChild(img);
+                }
+
+                const label = document.createElement("div");
+                label.className = "ts-style-label";
+                label.textContent = styleLabel(style);
+                card.appendChild(label);
+
+                card.addEventListener("click", (event) => {
+                    event.preventDefault();
+                    const nextValue = value === state.selectedValue ? "" : value;
+                    setSelection(nextValue, true);
+                });
+
+                grid.appendChild(card);
+                const record = {
+                    style,
+                    value,
+                    el: card,
+                    haystack: [
+                        style.id, style.name, style.name_ru,
+                        style.category, style.category_ru,
+                        style.description, style.prompt,
+                    ].filter(Boolean).join(" ").toLowerCase(),
                 };
-                card.appendChild(img);
-            }
-
-            const label = document.createElement("div");
-            label.className = "ts-style-label";
-            label.textContent = styleLabel(style);
-            card.appendChild(label);
-
-            card.addEventListener("click", (event) => {
-                event.preventDefault();
-                const nextValue = value === state.selectedValue ? "" : value;
-                setSelection(nextValue, true);
+                cardRecords.push(record);
+                records.push(record);
             });
 
-            grid.appendChild(card);
-            cardRecords.push({
-                style,
-                value,
-                el: card,
-                haystack: [
-                    style.id, style.name, style.name_ru,
-                    style.category, style.category_ru,
-                    style.description, style.prompt,
-                ].filter(Boolean).join(" ").toLowerCase(),
-            });
+            scroll.appendChild(section);
+            sectionRecords.push({ category, el: section, header, records });
         });
     };
+
+    // Filtering shortens the content, so the browser clamps scrollTop to 0.
+    // Remember where the user was browsing and put them back when the filter
+    // is cleared, instead of dumping them at the top of 113 styles.
+    let browsePosition = 0;
+    let wasFiltered = false;
 
     const applyFilter = () => {
         if (state.loading) {
@@ -520,27 +564,33 @@ function setupStyleSelector(node) {
         }
 
         const query = search.value.trim().toLowerCase();
-        let visibleCount = 0;
-        cardRecords.forEach((record) => {
-            const categoryOk = state.category === ALL_CATEGORIES
-                || (record.style.category || "") === state.category;
-            const queryOk = !query || record.haystack.includes(query);
-            const show = categoryOk && queryOk;
-            record.el.hidden = !show;
-            if (show) {
-                visibleCount += 1;
-            }
-        });
+        const filtered = Boolean(query) || state.category !== ALL_CATEGORIES;
+        if (filtered && !wasFiltered) {
+            browsePosition = scroll.scrollTop;
+        }
 
-        // Section headers only make sense for the full, unfiltered list; a
-        // filtered result set reads better as a flat grid.
-        const showHeaders = state.category === ALL_CATEGORIES && !query;
-        headerRecords.forEach((record) => {
-            record.el.hidden = !showHeaders;
+        let visibleCount = 0;
+        sectionRecords.forEach((section) => {
+            const categoryOk = state.category === ALL_CATEGORIES || section.category === state.category;
+            let sectionVisible = 0;
+            section.records.forEach((record) => {
+                const show = categoryOk && (!query || record.haystack.includes(query));
+                record.el.hidden = !show;
+                if (show) sectionVisible += 1;
+            });
+            // An empty section would otherwise leave its header floating.
+            section.el.hidden = sectionVisible === 0;
+            visibleCount += sectionVisible;
         });
 
         empty.textContent = L.noStyles;
         empty.style.display = visibleCount ? "none" : "block";
+
+        if (!filtered && wasFiltered && browsePosition) {
+            // The rows only exist again after layout, hence the next frame.
+            requestAnimationFrame(() => { scroll.scrollTop = browsePosition; });
+        }
+        wasFiltered = filtered;
     };
 
     const syncSelection = () => {
@@ -589,8 +639,8 @@ function setupStyleSelector(node) {
 
     categorySelect.addEventListener("change", () => {
         state.category = categorySelect.value || ALL_CATEGORIES;
-        grid.scrollTop = 0;
         applyFilter();
+        if (state.category !== ALL_CATEGORIES) scroll.scrollTop = 0;
     });
 
     stopPropagation(container, [
