@@ -63,6 +63,11 @@ const SUMMARY_H = 22;
 const MODE_INPUT = "mode";
 const AUTO_PROMPT_INPUT = "auto_prompt";
 const AUTO_SEED_INPUT = "auto_seed";
+const AUTO_CAPTION_INPUT = "auto_caption";
+// Same engine and preset the SuperPrompt AI button uses — генерация идёт
+// сразу по кнопке, без постановки workflow в очередь.
+const ENHANCE_ROUTE = "/ts_super_prompt/enhance";
+const ENHANCE_PRESET = "Ideogram Prompt Enhance";
 
 // Node-chrome strings follow the ComfyUI UI locale (the design document keeps
 // its own language; this is interface, not content).
@@ -235,6 +240,7 @@ export function setupIdeogramNode(node) {
     hideWidget(node, MODE_INPUT);
     hideWidget(node, AUTO_PROMPT_INPUT);
     hideWidget(node, AUTO_SEED_INPUT);
+    hideWidget(node, AUTO_CAPTION_INPUT);
     const C = pickLocaleStrings(CHROME_STRINGS);
     const readPersisted = (name, fallback) => {
         const w = node.widgets?.find((x) => x?.name === name);
@@ -308,7 +314,7 @@ export function setupIdeogramNode(node) {
     autoStatus.className = "ts-ui-status ts-ideo-node__auto-status";
     const autoResult = document.createElement("div");
     autoResult.className = "ts-ideo-node__auto-result";
-    autoResult.textContent = C.resultHint;
+    autoResult.textContent = String(readPersisted(AUTO_CAPTION_INPUT, "") || "") || C.resultHint;
     autoPanel.append(autoText, generateBtn, autoStatus, autoResult);
 
     container.append(canvas, modesRow, toolbar, autoPanel, summary);
@@ -361,37 +367,37 @@ export function setupIdeogramNode(node) {
             setAutoStatus(C.needPrompt, "error");
             return;
         }
-        // Flush the debounced prompt and bump the seed so the node's
-        // fingerprint changes — otherwise ComfyUI would serve the cached
-        // caption instead of generating a fresh one.
+        // The button generates IMMEDIATELY through the pack's Qwen engine
+        // (the SuperPrompt /enhance route) — no workflow queue involved, same
+        // UX as the SuperPrompt AI button. The result is stored into the
+        // hidden auto_caption widget, which execute() emits in Auto mode.
         setWidgetValue(node, AUTO_PROMPT_INPUT, autoText.value);
         const seed = Number(readPersisted(AUTO_SEED_INPUT, 0)) || 0;
         setWidgetValue(node, AUTO_SEED_INPUT, (seed + 1) & 0x7fffffff);
         setAutoStatus(C.running);
         generateBtn.disabled = true;
         try {
-            const graph = await app.graphToPrompt();
-            const body = {
-                prompt: graph.output,
-                client_id: api.clientId,
-                extra_data: { extra_pnginfo: { workflow: graph.workflow } },
-                // Run only this node's branch: the click must not fire the
-                // whole image pipeline downstream.
-                partial_execution_targets: [String(node.id)],
-            };
-            const response = await api.fetchApi("/prompt", {
+            const response = await api.fetchApi(ENHANCE_ROUTE, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(body),
+                body: JSON.stringify({
+                    text: autoText.value,
+                    system_preset: ENHANCE_PRESET,
+                }),
             });
-            if (!response.ok) {
-                const payload = await response.json().catch(() => ({}));
-                const message = payload?.error?.message || payload?.error || `HTTP ${response.status}`;
-                throw new Error(typeof message === "string" ? message : JSON.stringify(message));
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok || payload?.error) {
+                throw new Error(payload?.error || `HTTP ${response.status}`);
             }
+            const caption = String(payload?.text || "").trim();
+            if (!caption) throw new Error("empty reply");
+            autoResult.textContent = caption;
+            setWidgetValue(node, AUTO_CAPTION_INPUT, caption);
+            setAutoStatus(C.done, "success");
         } catch (error) {
+            setAutoStatus(C.runFailed(error?.message || error), "error");
+        } finally {
             generateBtn.disabled = false;
-            setAutoStatus(C.queueFailed(error?.message || error), "error");
         }
     }
     generateBtn.addEventListener("click", (e) => { e.stopPropagation(); queueGenerate(); });

@@ -111,8 +111,8 @@ def _generate_auto_caption(clip, auto_prompt: str, image, seed: int) -> str:
         )
     if clip is None:
         raise RuntimeError(
-            f"{LOG_PREFIX} Auto mode needs the clip input: connect the same CLIP/text encoder "
-            "your image model uses, or switch the node back to Designer mode."
+            f"{LOG_PREFIX} Auto mode has no caption yet: press Generate Prompt in the node, "
+            "or connect a clip (LLM text encoder) so the caption can be generated at queue time."
         )
     system_prompt, gen_params = _load_auto_preset()
     if not system_prompt:
@@ -206,6 +206,12 @@ class TS_IdeogramDesigner(IO.ComfyNode):
                     multiline=True,
                     tooltip="Plain-text idea for Auto mode. The connected clip's LLM turns it into a structured Ideogram 4 JSON caption.",
                 ),
+                IO.String.Input(
+                    "auto_caption",
+                    default="",
+                    multiline=True,
+                    tooltip="Last caption produced by the Generate Prompt button (via the pack's Qwen engine). Managed by the node UI; used as the output in Auto mode.",
+                ),
                 IO.Int.Input(
                     "auto_seed",
                     default=0,
@@ -239,7 +245,7 @@ class TS_IdeogramDesigner(IO.ComfyNode):
 
     @classmethod
     def execute(cls, image=None, design_json: str = "", clip=None, mode: str = "designer",
-                auto_prompt: str = "", auto_seed: int = 0) -> IO.NodeOutput:
+                auto_prompt: str = "", auto_caption: str = "", auto_seed: int = 0) -> IO.NodeOutput:
         if image is not None:
             try:
                 node_id = getattr(cls.hidden, "unique_id", None)
@@ -251,7 +257,13 @@ class TS_IdeogramDesigner(IO.ComfyNode):
 
         width, height = dims_from_design(design_json or "")
         if (mode or "designer").strip().lower() == "auto":
-            json_prompt = _generate_auto_caption(clip, auto_prompt or "", image, int(auto_seed or 0))
+            # Primary path: the Generate Prompt button already produced the
+            # caption through the pack's own Qwen engine (the SuperPrompt
+            # /enhance route) — no model work at queue time. The clip-based
+            # generation is the fallback for graphs driven without the UI.
+            json_prompt = (auto_caption or "").strip()
+            if not json_prompt:
+                json_prompt = _generate_auto_caption(clip, auto_prompt or "", image, int(auto_seed or 0))
             # Push the fresh caption back to the node UI (the Auto panel shows it).
             return IO.NodeOutput(json_prompt, width, height, ui={"ts_ideo_auto": [json_prompt]})
         json_prompt, _aspect = build_caption(design_json or "")
@@ -259,10 +271,10 @@ class TS_IdeogramDesigner(IO.ComfyNode):
 
     @classmethod
     def fingerprint_inputs(cls, image=None, design_json: str = "", clip=None, mode: str = "designer",
-                           auto_prompt: str = "", auto_seed: int = 0) -> str:
+                           auto_prompt: str = "", auto_caption: str = "", auto_seed: int = 0) -> str:
         design_sig = hashlib.blake2b((design_json or "").encode("utf-8"), digest_size=16).hexdigest()
         auto_sig = hashlib.blake2b(
-            f"{mode}|{auto_prompt}|{auto_seed}".encode("utf-8"), digest_size=16
+            f"{mode}|{auto_prompt}|{auto_caption}|{auto_seed}".encode("utf-8"), digest_size=16
         ).hexdigest()
         if image is not None and hasattr(image, "shape"):
             try:
