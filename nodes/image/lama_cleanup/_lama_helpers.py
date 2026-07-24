@@ -75,8 +75,9 @@ MODEL_FOLDER_NAME = "lama"
 
 NODE_ROOT = Path(__file__).resolve().parents[2]
 WORKING_SUBDIR = "ts_lama_cleanup"
-OUTPUT_SUBDIR = "lama-cleanup"
-OUTPUT_NAME_TAG = "lama-cleanup"
+# Cleaned results land in output/images/cleanup/cleanup_<date>_<time>.png.
+OUTPUT_SUBDIR = "images/cleanup"
+OUTPUT_NAME_TAG = "cleanup"
 SUPPORTED_IMAGE_EXTENSIONS = {
     ".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tif", ".tiff",
 }
@@ -900,19 +901,18 @@ async def ts_lama_cleanup_save(request: web.Request) -> web.StreamResponse:
 
 
 def _save_to_output(working_path: str, suggested_name: str) -> web.StreamResponse:
-    # Save into ``output/<OUTPUT_SUBDIR>/<base>_<OUTPUT_NAME_TAG>_<timestamp>.png``
-    # so cleaned images are grouped in one folder and easy to spot in the
-    # ComfyUI output viewer.
+    # Save into ``output/images/cleanup/cleanup_<date>_<time>.png`` so cleaned
+    # images are grouped in one folder and named by when they were made.
+    # ``suggested_name`` is intentionally ignored — the name is always the tag +
+    # timestamp per the requested convention.
+    del suggested_name
     output_root = _output_root() / OUTPUT_SUBDIR
     output_root.mkdir(parents=True, exist_ok=True)
-    fallback_stem = OUTPUT_NAME_TAG.replace("-", "_") or "lama_cleanup"
-    base_stem = Path(suggested_name).stem if suggested_name else fallback_stem
-    base_stem = "".join(ch for ch in base_stem if ch.isalnum() or ch in "-_") or fallback_stem
     timestamp = time.strftime("%Y%m%d_%H%M%S")
     counter = 0
     while True:
         suffix = f"_{counter:03d}" if counter else ""
-        candidate = output_root / f"{base_stem}_{OUTPUT_NAME_TAG}_{timestamp}{suffix}.png"
+        candidate = output_root / f"{OUTPUT_NAME_TAG}_{timestamp}{suffix}.png"
         if not candidate.exists():
             break
         counter += 1

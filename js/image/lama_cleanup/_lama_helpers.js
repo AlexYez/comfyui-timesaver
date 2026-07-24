@@ -218,6 +218,19 @@ function ensureStyles() {
   border:1.5px solid rgba(255,255,255,.95);box-shadow:0 0 0 1px rgba(0,0,0,.65);box-sizing:border-box;
   pointer-events:none;will-change:left,top,width,height;display:none;z-index:3}
 .ts-lama__cursor.is-visible{display:block}
+/* Live brush-size preview (Photoshop-style): a centred ring the exact on-screen
+   size of the brush plus a readable px chip, shown while the size slider or the
+   [ / ] keys change the size. Achromatic like the cursor so it reads over any
+   imagery. */
+.ts-lama__brush-preview{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+  border-radius:50%;border:1.5px solid rgba(255,255,255,.95);box-shadow:0 0 0 1px rgba(0,0,0,.65);
+  box-sizing:border-box;pointer-events:none;display:none;z-index:5}
+.ts-lama__brush-preview.is-visible{display:block}
+.ts-lama__brush-preview-label{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+  pointer-events:none;display:none;z-index:6;padding:2px 9px;border-radius:6px;
+  background:rgba(0,0,0,.72);color:#fff;font-size:12px;font-family:var(--ts-font);
+  font-variant-numeric:tabular-nums;white-space:nowrap;box-shadow:0 1px 3px rgba(0,0,0,.5)}
+.ts-lama__brush-preview-label.is-visible{display:block}
 `;
     document.head.appendChild(style);
 }
@@ -551,6 +564,7 @@ export function setupLamaCleanup(node) {
             brushValueLabel.textContent = String(brushPx);
             setWidgetValue(node, INPUT_BRUSH_SIZE, brushPx);
             updateCursorElement();
+            showBrushPreview();
         },
     });
     const brushValueLabel = document.createElement("div");
@@ -648,12 +662,19 @@ export function setupLamaCleanup(node) {
     const cursorElement = document.createElement("div");
     cursorElement.className = "ts-lama__cursor";
 
+    // Centred live brush-size preview (shown while the slider / [ ] keys move
+    // the size — the pointer is off-canvas then, so the cursor ring is hidden).
+    const brushPreviewRing = document.createElement("div");
+    brushPreviewRing.className = "ts-lama__brush-preview";
+    const brushPreviewLabel = document.createElement("div");
+    brushPreviewLabel.className = "ts-lama__brush-preview-label";
+
     // Visual hint shown while dragging an image file over the node.
     const dropHint = document.createElement("div");
     dropHint.className = "ts-ui-drop";
     dropHint.textContent = L.dropHint;
 
-    container.append(canvas, empty, overlay, toolbar, settings, statusBar, fileInput, cursorElement, dropHint);
+    container.append(canvas, empty, overlay, toolbar, settings, statusBar, fileInput, cursorElement, brushPreviewRing, brushPreviewLabel, dropHint);
 
     // ---------- Compact in-node shell ----------
     // The node body only hosts a preview plus the shared launcher button; the
@@ -1075,6 +1096,32 @@ export function setupLamaCleanup(node) {
         cursorElement.classList.add("is-visible");
     }
 
+    // Flash a centred ring of the brush's exact on-screen size (+ a px chip)
+    // while the size is being changed from the slider or the [ / ] keys, then
+    // fade it after a short idle. Mirrors updateCursorElement's diameter math so
+    // the preview matches the actual paint size at any zoom.
+    let brushPreviewTimer = 0;
+    function showBrushPreview() {
+        if (!state.image) return;
+        const containerRect = container.getBoundingClientRect();
+        if (!containerRect.width || !containerRect.height) return;
+        const layoutWidth = container.offsetWidth || containerRect.width;
+        const parentScale = layoutWidth > 0 ? containerRect.width / layoutWidth : 1;
+        const inverseScale = parentScale > 0.001 ? 1 / parentScale : 1;
+        const visualScale = state.scale || 1;
+        const diameter = Math.max(4, state.brushSize * visualScale * inverseScale);
+        brushPreviewRing.style.width = `${diameter}px`;
+        brushPreviewRing.style.height = `${diameter}px`;
+        brushPreviewLabel.textContent = `${Math.round(state.brushSize)} px`;
+        brushPreviewRing.classList.add("is-visible");
+        brushPreviewLabel.classList.add("is-visible");
+        window.clearTimeout(brushPreviewTimer);
+        brushPreviewTimer = window.setTimeout(() => {
+            brushPreviewRing.classList.remove("is-visible");
+            brushPreviewLabel.classList.remove("is-visible");
+        }, 850);
+    }
+
     let pendingLayoutAttempts = 0;
     function redraw() {
         const { rectWidth, rectHeight, dpr } = resizeCanvas();
@@ -1449,6 +1496,7 @@ export function setupLamaCleanup(node) {
         brushValueLabel.textContent = String(brushPx);
         setWidgetValue(node, INPUT_BRUSH_SIZE, brushPx);
         updateCursorElement();
+        showBrushPreview();
     }
 
     // ComfyUI's hotkey service listens on window in the CAPTURE phase and was
