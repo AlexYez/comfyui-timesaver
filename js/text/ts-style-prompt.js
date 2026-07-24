@@ -718,6 +718,9 @@ function setupStyleSelector(node) {
         event.preventDefault();
         event.stopPropagation();
         collapsePreview();
+        // Second click turns the style OFF: back in the grid nothing is
+        // selected, so the node applies no style until one is picked again.
+        setSelection("", true);
     });
 
     const rebuildCategorySelect = () => {
