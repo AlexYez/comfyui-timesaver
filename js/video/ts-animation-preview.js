@@ -29,6 +29,10 @@ const MIN_NODE_WIDTH = 300;
 const MIN_NODE_HEIGHT = 200;
 const HEADER_HEIGHT_V1 = 30;
 const FOOTER_PADDING_V1 = 10;
+// Nodes 2.0 widget sizing: a floor for the preview pane and the chrome (title +
+// input rows + fps widget) the ceiling leaves above it.
+const MIN_WIDGET_HEIGHT = 120;
+const V2_CHROME_HEIGHT = 90;
 
 // Icons (SVG)
 // volumeOn: Звук есть
@@ -66,8 +70,14 @@ function ensureStyles() {
             box-sizing: border-box;
         }
         
-        /* Video */
+        /* Video — absolute, NOT in-flow. A loaded <video> reports an intrinsic
+           height from its aspect ratio; in flow that became the container's
+           min-content and the Nodes 2.0 (Vue) layout grew the node to fit it on
+           every tab switch (infinite downward stretch). Positioned absolute it
+           fills the pane but contributes no min-content. */
         .ts-anim-preview__video {
+            position: absolute;
+            inset: 0;
             width: 100%;
             height: 100%;
             object-fit: contain;
@@ -247,6 +257,13 @@ function setupAnimationPreview(node) {
     controls.appendChild(seekSlider);
     controls.appendChild(volBtn);
 
+    // In-flow spacer: every visible child (video, placeholder, controls) is
+    // position:absolute, so without this the container's min-content is 0 and
+    // the Nodes 2.0 layout collapses the pane to a sliver on first mount. A
+    // hidden 1px-wide spacer of the preview's min height keeps it solid.
+    const spacer = document.createElement("div");
+    spacer.style.cssText = `width:1px;height:${MIN_WIDGET_HEIGHT}px;visibility:hidden;pointer-events:none;flex:0 0 auto`;
+    container.appendChild(spacer);
     container.appendChild(video);
     container.appendChild(placeholder);
     container.appendChild(controls);
@@ -369,7 +386,18 @@ function setupAnimationPreview(node) {
     // -- V1 / V2 Layout Logic --
     const isV2 = isNodesV2();
     const widgetOptions = { serialize: false, hideOnZoom: false };
-    if (isV2) widgetOptions.getMinHeight = () => MIN_NODE_HEIGHT;
+    if (isV2) {
+        // getMaxHeight is REQUIRED, not optional: without a ceiling the Vue
+        // layout grew the widget to the video's content height and the node crept
+        // down on every tab switch. With the video positioned absolute the
+        // container has no min-content, so pinning the ceiling to the node's own
+        // height lets the pane fill a user resize without ever running away.
+        widgetOptions.getMinHeight = () => MIN_WIDGET_HEIGHT;
+        widgetOptions.getMaxHeight = () => Math.max(
+            MIN_WIDGET_HEIGHT,
+            (Number(node.size?.[1]) || MIN_NODE_HEIGHT) - V2_CHROME_HEIGHT,
+        );
+    }
 
     const domWidget = node.addDOMWidget("ts_animation_preview", "div", container, widgetOptions);
     const domWidgetEl = domWidget?.element || domWidget?.el || domWidget?.container;

@@ -162,7 +162,13 @@ function ensureStyles() {
 .ts-audio-loader__status,.ts-audio-loader__stats,.ts-audio-loader__timeline,.ts-audio-loader__crop{font-size:var(--ts-fs-sm);color:var(--ts-muted)}
 .ts-audio-loader__stats{display:inline-flex;gap:10px;flex-wrap:wrap;justify-content:flex-end}
 .ts-audio-loader__wave-wrap{position:relative;flex:1 1 auto;min-height:110px;border-radius:12px;overflow:hidden;border:1px solid var(--ts-border-soft);background:repeating-linear-gradient(90deg,var(--ts-border-soft) 0 1px,transparent 1px 80px),var(--ts-sunken)}
-.ts-audio-loader__canvas{width:100%;height:100%;display:block;cursor:crosshair}
+/* Absolute, NOT in-flow: the <canvas> carries an intrinsic pixel height (set
+   from its rendered size in drawWaveform). In flow that height became the
+   wave-wrap's min-content, which the Nodes 2.0 (Vue) layout grew the node to
+   fit — feeding the next draw a taller canvas and stretching the node down on
+   every tab switch. Positioned absolute it fills the pane but contributes no
+   min-content, so only the pane's own min-height bounds the node. */
+.ts-audio-loader__canvas{position:absolute;inset:0;width:100%;height:100%;display:block;cursor:crosshair}
 .ts-audio-loader__empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:16px;color:var(--ts-muted);font-size:var(--ts-fs);pointer-events:none}
 .ts-audio-loader__bottom{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:8px;align-items:center}
 .ts-audio-loader__transport{display:flex;align-items:center;gap:6px}
@@ -398,7 +404,16 @@ export function setupAudioLoader(node) {
     stopPropagation(container, ["pointerdown", "pointerup", "mousedown", "mouseup", "mousemove", "wheel", "click", "dblclick", "contextmenu"]);
     const widgetOptions = { serialize: false, hideOnZoom: false };
     if (isNodesV2()) {
+        // Floor is fixed; ceiling follows the node so the pane fills a user
+        // resize. This is only safe because the waveform canvas is positioned
+        // absolute (see .ts-audio-loader__canvas) — the container's min-content
+        // is just the pane's min-height, so Vue never grows the node to fit
+        // content and the ceiling reading node.height cannot run away.
         widgetOptions.getMinHeight = () => MIN_NODE_HEIGHT - HEADER_FOOTER_HEIGHT;
+        widgetOptions.getMaxHeight = () => Math.max(
+            MIN_NODE_HEIGHT - HEADER_FOOTER_HEIGHT,
+            (Number(node.size?.[1]) || DEFAULT_NODE_SIZE[1]) - HEADER_FOOTER_HEIGHT,
+        );
         widgetOptions.afterResize = () => { syncDomSize(); updateScrollbar(); drawWaveform(); };
     }
     const domWidget = node.addDOMWidget(DOM_WIDGET_NAME, "div", container, widgetOptions);
@@ -516,11 +531,18 @@ export function setupAudioLoader(node) {
         const width = Math.max(MIN_NODE_WIDTH, Number(node.size?.[0]) || DEFAULT_NODE_SIZE[0]);
         const height = Math.max(MIN_NODE_HEIGHT, Number(node.size?.[1]) || DEFAULT_NODE_SIZE[1]);
         node.size = [width, height];
-        const targetHeight = Math.max(132, height - 88);
         if (domWidgetEl) {
             domWidgetEl.style.width = "100%";
-            domWidgetEl.style.height = `${targetHeight}px`;
             domWidgetEl.style.overflow = "hidden";
+            if (isNodesV2()) {
+                // Vue owns the widget-slot height via getMinHeight/getMaxHeight;
+                // an explicit pixel height here fights it and, fed back through
+                // afterResize, grew the node on every tab switch. Clear it and
+                // let the container's flexbox fill whatever slot Vue grants.
+                domWidgetEl.style.height = "";
+            } else {
+                domWidgetEl.style.height = `${Math.max(132, height - 88)}px`;
+            }
         }
         container.style.width = "100%";
         container.style.height = "100%";
