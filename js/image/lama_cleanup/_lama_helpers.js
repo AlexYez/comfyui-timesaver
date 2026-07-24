@@ -223,6 +223,11 @@ function ensureStyles() {
 }
 
 function isNodesV2() {
+    // Keys off the CLASS (always present in modern builds), so this is
+    // effectively always true and the widget always uses getMinHeight/getMaxHeight
+    // — which size the pane correctly in BOTH renderers. Do NOT "fix" this to read
+    // Comfy.VueNodes.Enabled: the computeSize branch it would enable in the classic
+    // renderer fights node.size in a runaway feedback loop. See js/_dom_widget.js.
     return Boolean(window?.comfyAPI?.domWidget?.DOMWidgetImpl);
 }
 function stopPropagation(element, events) {

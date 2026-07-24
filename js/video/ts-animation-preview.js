@@ -181,6 +181,9 @@ function ensureStyles() {
 
 function isNodesV2() {
     if (typeof window === "undefined") return false;
+    // Keys off the CLASS (always present in modern builds) on purpose: the widget
+    // then always uses getMinHeight/getMaxHeight, correct in BOTH renderers. Do
+    // NOT switch to reading Comfy.VueNodes.Enabled here. See js/_dom_widget.js.
     return Boolean(window.comfyAPI?.domWidget?.DOMWidgetImpl);
 }
 

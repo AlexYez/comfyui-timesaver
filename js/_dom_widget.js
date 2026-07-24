@@ -16,7 +16,20 @@
 
 import { app } from "/scripts/app.js";
 
-/** True when the Vue (Nodes 2.0) DOM-widget implementation is present. */
+/**
+ * True when the DOMWidgetImpl (Nodes 2.0) widget implementation is present.
+ *
+ * NOTE: this deliberately keys off the CLASS, which exists in every modern build
+ * even when Vue nodes are toggled OFF — so it is effectively always true today,
+ * and this helper's DOM widgets ALWAYS take the getMinHeight/getMaxHeight path.
+ * That is intentional and load-bearing: those bounds size the pane correctly in
+ * BOTH the Vue and the classic canvas renderers for helper users. The computeSize
+ * branch below is legacy (pre-DOMWidgetImpl) and would fight node.size in a
+ * feedback loop if it ever ran, so we must NOT switch this to read the
+ * Comfy.VueNodes.Enabled setting here. (The audio nodes DO read the setting —
+ * they need computeSize in the classic renderer because their pane must fill an
+ * exact height; they carry their own non-feedback computeSize for it.)
+ */
 export function isNodesV2() {
     if (typeof window === "undefined") return false;
     return Boolean(window.comfyAPI?.domWidget?.DOMWidgetImpl);

@@ -465,6 +465,10 @@ function isNodesV2() {
     if (typeof window === "undefined") {
         return false;
     }
+    // Keys off the CLASS (always present in modern builds) on purpose, so the
+    // widget always uses getMinHeight/getMaxHeight — correct in BOTH renderers.
+    // Do NOT switch to reading Comfy.VueNodes.Enabled: the syncLegacyHeight /
+    // computeSize branch it would enable fights node.size and runs the node away.
     return Boolean(window.comfyAPI?.domWidget?.DOMWidgetImpl);
 }
 
