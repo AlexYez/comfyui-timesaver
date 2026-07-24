@@ -44,6 +44,7 @@ from ._sam_media_helpers import (
     _resolve_media_path,
     _video_meta,
     _working_file_signature,
+    refine_sam_mask_tensor,
 )
 
 
@@ -402,11 +403,21 @@ def _compute_initial_mask(
     mask_tensor = output.result[0]
     if not torch.is_tensor(mask_tensor):
         return empty
+    if mask_tensor.ndim not in (2, 3):
+        return empty
+    # Apply the same hole-fill / despeckle / edge-smooth cleanup the in-node
+    # preview shows, so the emitted initial_mask is the high-quality mask the
+    # user selected rather than the raw decoder output. Cleanup failure is
+    # non-fatal — fall back to the raw mask so the workflow still runs.
+    try:
+        refined = refine_sam_mask_tensor(mask_tensor)
+        if torch.is_tensor(refined) and refined.ndim == 3:
+            return refined.contiguous()
+    except Exception as exc:  # noqa: BLE001 - postprocess must never break execute
+        _log_warning(f"initial_mask postprocess failed, using raw mask: {exc}")
     if mask_tensor.ndim == 3:
         return mask_tensor.detach().to(torch.float32).cpu().contiguous()
-    if mask_tensor.ndim == 2:
-        return mask_tensor.detach().to(torch.float32).cpu().unsqueeze(0).contiguous()
-    return empty
+    return mask_tensor.detach().to(torch.float32).cpu().unsqueeze(0).contiguous()
 
 
 NODE_CLASS_MAPPINGS = {"TS_SAM_MediaLoader": TS_SAM_MediaLoader}

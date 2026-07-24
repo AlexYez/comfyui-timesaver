@@ -86,6 +86,7 @@ const STRINGS = {
         pillLoadingModel: "Loading SAM3 model...",
         statusStart: "Load an image or a video to start placing SAM3 points.",
         dropHint: "Drop image or video to load",
+        closeEditor: "Close editor (Esc)",
         statusFilePicker: (message) => `Failed to open file picker: ${message}`,
         statusCleared: "Cleared all points.",
         statusUploadingFile: (name) => `Uploading ${name}...`,
@@ -117,6 +118,7 @@ const STRINGS = {
         pillLoadingModel: "Загрузка модели SAM3...",
         statusStart: "Загрузите изображение или видео, чтобы расставить точки SAM3.",
         dropHint: "Перетащите изображение или видео",
+        closeEditor: "Закрыть редактор (Esc)",
         statusFilePicker: (message) => `Не удалось открыть выбор файла: ${message}`,
         statusCleared: "Все точки удалены.",
         statusUploadingFile: (name) => `Загрузка ${name}...`,
@@ -155,7 +157,9 @@ function ensureStyles() {
 .ts-sml__overlay.is-active{display:flex}
 .ts-sml__spinner{width:28px;height:28px;border-radius:999px;border:3px solid var(--ts-border-soft);border-top-color:var(--tsm-accent);animation:tsm-spin .9s linear infinite}
 @keyframes tsm-spin{to{transform:rotate(360deg)}}
-.ts-sml__toolbar{position:absolute;top:8px;left:8px;right:8px;display:flex;flex-wrap:wrap;align-items:center;gap:8px;row-gap:6px;padding:6px 8px;border-radius:var(--ts-radius-lg);background:var(--tsm-toolbar);border:1px solid var(--tsm-toolbar-border);backdrop-filter:blur(8px);z-index:6}
+/* right inset leaves the top-right corner free for the shared fullscreen close
+   button (.ts-ui-fs-close). */
+.ts-sml__toolbar{position:absolute;top:8px;left:8px;right:52px;display:flex;flex-wrap:wrap;align-items:center;gap:8px;row-gap:6px;padding:6px 8px;border-radius:var(--ts-radius-lg);background:var(--tsm-toolbar);border:1px solid var(--tsm-toolbar-border);backdrop-filter:blur(8px);z-index:6}
 .ts-sml__group{display:flex;flex-wrap:wrap;align-items:center;gap:6px;row-gap:6px}
 .ts-sml__btn{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--ts-border);background:var(--ts-surface);color:var(--tsm-text);border-radius:8px;padding:6px 11px;font-size:var(--ts-fs-sm);cursor:pointer;font-weight:600;letter-spacing:.02em;white-space:nowrap}
 .ts-sml__btn:hover{background:var(--ts-surface-hover)}
@@ -532,6 +536,7 @@ export function setupSamMediaLoader(node) {
     function openEditor() {
         if (editorHandle?.isOpen()) return;
         editorHandle = openFullscreenOverlay(container, {
+            closeTitle: L.closeEditor,
             onOpen: () => { requestRedraw(); },
             onClose: () => { editorHandle = null; updateShell(); },
         });

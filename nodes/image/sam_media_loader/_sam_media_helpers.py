@@ -1077,23 +1077,31 @@ def _postprocess_mask(
     *,
     fill_holes: bool = True,
     min_component_area_px: int = 64,
+    min_component_area_ratio: float = 0.0004,
     smooth_radius_px: int = 3,
+    smooth_edges: bool = True,
 ) -> "np.ndarray":
-    """Clean up the raw SAM3 binary mask so the preview looks tidy.
+    """Clean up the raw SAM3 binary mask to Facebook-SAM-demo quality.
 
     The SAM3 decoder produces a tight per-pixel probability map; thresholding
     at 0.5 gives a usable mask but typically leaves:
       - small specks of false-positive foreground scattered around the object,
-      - 1-3 pixel holes inside the object where confidence dips,
+      - interior holes where per-pixel confidence dips,
       - jagged single-pixel edge stair-stepping.
 
-    Postprocess removes those without smoothing away genuine object structure:
+    The pipeline removes those without eroding genuine structure:
       1. Morphological CLOSE — bridges 1-2 pixel gaps, smooths concave nibs.
-      2. Flood-fill the exterior background; whatever is NOT flooded but lies
-         inside the bounding hull is an interior hole → OR back into the mask.
-      3. Drop connected components below ``min_component_area_px`` so a single
-         user click does not produce a swarm of dots beside the real object.
-      4. Morphological OPEN with a smaller kernel — softens the boundary.
+      2. Robust hole fill — draw every EXTERNAL contour solid. Closing the
+         silhouette fills all enclosed holes and, unlike a corner flood-fill,
+         still works when the object touches every image border (there is no
+         background pixel to seed a flood from).
+      3. Drop specks below an area floor that scales with resolution, so a 4K
+         speck floor is proportionally larger. The largest component is always
+         kept, so an over-aggressive floor can never blank a valid mask.
+      4. Median-blur the boundary — a 3x3 (or larger) median is a majority
+         filter: it rounds off single-pixel stair-stepping into clean contours
+         while staying strictly binary (a valid SAM3 Video Track seed) and
+         preserving structures two pixels wide or thicker (a tail, an antenna).
 
     All ops use OpenCV which is already a hard runtime dependency. Returns a
     uint8 ``[H, W]`` 0/255 mask the same shape as the input.
@@ -1128,48 +1136,67 @@ def _postprocess_mask(
         )
         m = cv2.morphologyEx(m, cv2.MORPH_CLOSE, k_close)
 
-    # Step 2: flood-fill interior holes. Find a background corner as the
-    # seed; flood with white, then invert and OR the holes back in.
+    # Step 2: fill interior holes by rasterising every external contour solid.
     if fill_holes:
-        seed = None
-        for sy, sx in ((0, 0), (0, w - 1), (h - 1, 0), (h - 1, w - 1)):
-            if m[sy, sx] == 0:
-                seed = (sx, sy)
-                break
-        if seed is not None:
-            flood = m.copy()
-            flood_mask = np.zeros((h + 2, w + 2), dtype=np.uint8)
-            cv2.floodFill(flood, flood_mask, seed, 255)
-            holes = cv2.bitwise_not(flood)
-            m = cv2.bitwise_or(m, holes)
+        contours, _ = cv2.findContours(
+            m, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+        )
+        if contours:
+            filled = np.zeros_like(m)
+            cv2.drawContours(filled, contours, -1, 255, thickness=cv2.FILLED)
+            m = filled
 
-    # Step 3: drop tiny disconnected components. Keeps the largest mass(es)
-    # so an off-object speck does not survive — but the threshold is small
-    # enough that thin object extremities (a finger, a tail, an antenna)
-    # remain attached as long as they connect to the main component.
-    if min_component_area_px > 0:
+    # Step 3: drop specks. The floor scales with image area but the biggest
+    # component always survives, so a small user-selected object is never lost.
+    min_area = max(
+        int(min_component_area_px),
+        int(round(float(min_component_area_ratio) * h * w)),
+    )
+    if min_area > 0:
         num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(
             m, connectivity=8
         )
         if num_labels > 1:
+            areas = stats[1:, cv2.CC_STAT_AREA]
+            largest = int(np.argmax(areas)) + 1 if areas.size else 0
             keep = np.zeros_like(m)
             for i in range(1, num_labels):  # 0 is the background label
-                if stats[i, cv2.CC_STAT_AREA] >= min_component_area_px:
+                if stats[i, cv2.CC_STAT_AREA] >= min_area or i == largest:
                     keep[labels == i] = 255
             m = keep
 
-    # Step 4: morphological OPEN with a smaller kernel softens the boundary
-    # by clipping 1-pixel protrusions. Kernel kept small so we do not shave
-    # off real geometry.
-    if smooth_radius_px > 0:
-        open_radius = max(1, smooth_radius_px - 1)
-        k_open = cv2.getStructuringElement(
-            cv2.MORPH_ELLIPSE,
-            (open_radius * 2 + 1, open_radius * 2 + 1),
-        )
-        m = cv2.morphologyEx(m, cv2.MORPH_OPEN, k_open)
+    # Step 4: median-blur the boundary to erase stair-stepping. ksize is odd
+    # and grows with the smoothing radius; capped at 7 so we never over-smooth.
+    if smooth_edges and smooth_radius_px > 0:
+        ksize = smooth_radius_px if smooth_radius_px % 2 == 1 else smooth_radius_px + 1
+        ksize = max(3, min(7, ksize))
+        m = cv2.medianBlur(m, ksize)
 
     return m
+
+
+def refine_sam_mask_tensor(mask_tensor: "torch.Tensor") -> "torch.Tensor":
+    """Apply :func:`_postprocess_mask` to a SAM3 ``MASK`` tensor.
+
+    Accepts a ``[H, W]`` or ``[B, H, W]`` float tensor in ``[0, 1]`` (the shape
+    ``SAM3_Detect`` emits) and returns a ``[1, H, W]`` float32 ``MASK`` in
+    ``[0, 1]`` whose first channel has been hole-filled, despeckled and edge
+    smoothed. This is the SAME cleanup the in-node preview shows, so the
+    workflow's ``initial_mask`` output matches what the user selected. Falls
+    back to a passed-through float tensor if numpy/torch/cv2 are unavailable.
+    """
+    if mask_tensor is None or not torch.is_tensor(mask_tensor):
+        return mask_tensor
+    if mask_tensor.ndim == 3:
+        mask_2d = mask_tensor[0]
+    elif mask_tensor.ndim == 2:
+        mask_2d = mask_tensor
+    else:
+        return mask_tensor
+    raw = (mask_2d.detach().to(torch.float32).cpu().numpy() > 0.5).astype(np.uint8) * 255
+    cleaned = _postprocess_mask(raw)
+    out = torch.from_numpy((cleaned > 0).astype(np.float32))
+    return out.unsqueeze(0).contiguous()
 
 
 def _mask_to_base64_png(mask: "np.ndarray") -> str:

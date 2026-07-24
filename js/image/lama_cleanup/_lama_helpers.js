@@ -204,7 +204,9 @@ function ensureStyles() {
   justify-content:center;text-align:center;padding:16px;color:var(--ts-muted);font-size:var(--ts-fs);
   pointer-events:none;background:var(--ts-scrim);border-radius:var(--ts-radius)}
 .ts-lama__overlay{z-index:22}
-.ts-lama__toolbar{position:absolute;top:8px;left:8px;right:8px;z-index:6}
+/* right inset leaves the top-right corner free for the shared fullscreen close
+   button (.ts-ui-fs-close). */
+.ts-lama__toolbar{position:absolute;top:8px;left:8px;right:52px;z-index:6}
 .ts-lama__group--brush{flex:1 1 auto;min-width:0;justify-content:flex-start}
 .ts-lama__brush-slider{flex:1 1 auto;min-width:60px;max-width:200px}
 .ts-lama__brush-value{font-size:var(--ts-fs-sm);color:var(--ts-text);font-variant-numeric:tabular-nums;
@@ -368,11 +370,6 @@ function undoIconSvg() {
 function redoIconSvg() {
     // Material Design "redo" icon.
     return `<svg viewBox="0 0 24 24"><path d="M18.4 10.6C16.55 8.99 14.15 8 11.5 8c-4.65 0-8.58 3.03-9.96 7.22L3.9 16c1.05-3.19 4.05-5.5 7.6-5.5 1.95 0 3.73.72 5.12 1.88L13 16h9V7l-3.6 3.6z"/></svg>`;
-}
-
-function closeIconSvg() {
-    // Material Design "close" icon.
-    return `<svg viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>`;
 }
 
 function makeSlider({ min, max, step, value, onInput, className }) {
@@ -591,11 +588,9 @@ export function setupLamaCleanup(node) {
     settingsButton.className = "ts-ui-btn ts-ui-btn--icon";
     settingsButton.title = L.settingsTitle;
     settingsButton.innerHTML = gearIconSvg();
-    const closeButton = document.createElement("button");
-    closeButton.className = "ts-ui-btn ts-ui-btn--icon";
-    closeButton.title = L.closeTitle;
-    closeButton.innerHTML = closeIconSvg();
-    rightGroup.append(settingsButton, closeButton);
+    // The close (×) control is provided by the shared fullscreen overlay
+    // (openFullscreenOverlay), unified across all TS fullscreen editors.
+    rightGroup.append(settingsButton);
 
     toolbar.append(leftGroup, brushGroup, zoomGroup, rightGroup);
 
@@ -1503,6 +1498,7 @@ export function setupLamaCleanup(node) {
         state.editorOpen = true;
         resizeObserver.observe(container);
         editorHandle = openFullscreenOverlay(container, {
+            closeTitle: L.closeTitle,
             onKey: onEditorKey,
             onOpen: () => {
                 // The container was detached (zero-size rects) while closed, so
@@ -1747,7 +1743,6 @@ export function setupLamaCleanup(node) {
             requestRedraw();
         }
     });
-    closeButton.addEventListener("click", (event) => { event.stopPropagation(); closeEditor(); });
     shellPreview.addEventListener("click", (event) => { event.stopPropagation(); openEditor(); });
     shell.addEventListener("pointerenter", () => { state.pointerOverShell = true; });
     shell.addEventListener("pointerleave", () => { state.pointerOverShell = false; });

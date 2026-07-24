@@ -208,6 +208,11 @@ function themeCss() {
 /* ── Fullscreen editor shell ─────────────────────────────────────────── */
 .ts-ui-modal{position:fixed;inset:0;z-index:11000;display:flex;background:var(--ts-modal-bg);
   color:var(--ts-text);font-family:var(--ts-font)}
+/* Unified fullscreen close button — every editor opened via openFullscreenOverlay
+   gets the SAME control in the SAME spot (top-right). Nodes must keep their top
+   toolbar's right edge clear of this corner (see their right inset). */
+.ts-ui-fs-close{position:fixed;top:12px;right:12px;z-index:11050;width:34px;height:34px;
+  box-shadow:0 2px 10px rgba(0,0,0,.35)}
 /* Hidden focus anchor: parks keyboard focus so ComfyUI's graph hotkeys
    (Ctrl+Z → ChangeTracker) stay out of an open editor. See CLAUDE.md §12.5. */
 .ts-ui-keyanchor{position:fixed;left:-9999px;top:-9999px;width:1px;height:1px;opacity:0;

@@ -21,6 +21,12 @@
 
 import { TS_UI_CLASS } from "./_theme.js";
 
+// Single × icon shared by every fullscreen editor's close control.
+const CLOSE_ICON_SVG =
+    '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">' +
+    '<path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" ' +
+    'stroke-width="2.2" stroke-linecap="round"/></svg>';
+
 /**
  * @typedef {object} FullscreenHandle
  * @property {() => void} close     Tear the overlay down (idempotent).
@@ -45,10 +51,17 @@ import { TS_UI_CLASS } from "./_theme.js";
  * @param {boolean} [options.closeOnBackdrop=false] Close when the dimmed area
  *   outside the content is clicked. Leave false for editors that could lose work.
  * @param {string} [options.extraClass] Extra class on the overlay root.
+ * @param {boolean} [options.showClose=true] Render the unified top-right × close
+ *   button. Turn off only if the editor supplies its own equivalent control.
+ * @param {string} [options.closeTitle] Tooltip / aria-label for the close button
+ *   (localise via the caller; defaults to "Close (Esc)").
  * @returns {FullscreenHandle}
  */
 export function openFullscreenOverlay(content, options = {}) {
-    const { onClose, onOpen, onKey, closeOnBackdrop = false, extraClass = "" } = options;
+    const {
+        onClose, onOpen, onKey, closeOnBackdrop = false, extraClass = "",
+        showClose = true, closeTitle = "Close (Esc)",
+    } = options;
     const doc = content?.ownerDocument || document;
     let open = true;
 
@@ -62,6 +75,23 @@ export function openFullscreenOverlay(content, options = {}) {
     keyAnchor.tabIndex = -1;
     keyAnchor.setAttribute("aria-hidden", "true");
     modal.append(keyAnchor);
+
+    // Unified close control (top-right). Same button, same place, every editor.
+    let closeButton = null;
+    if (showClose) {
+        closeButton = doc.createElement("button");
+        closeButton.type = "button";
+        closeButton.className = "ts-ui-btn ts-ui-btn--icon ts-ui-fs-close";
+        closeButton.title = closeTitle;
+        closeButton.setAttribute("aria-label", closeTitle);
+        closeButton.innerHTML = CLOSE_ICON_SVG;
+        closeButton.addEventListener("click", (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            close();
+        });
+        modal.append(closeButton);
+    }
 
     const parkFocus = () => { try { keyAnchor.focus(); } catch { /* not focusable yet */ } };
 
