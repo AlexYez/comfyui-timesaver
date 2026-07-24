@@ -11,8 +11,9 @@
 import { app } from "/scripts/app.js";
 import { api } from "/scripts/api.js";
 import { hideWidget as sharedHideWidget } from "../../_dom_widget.js";
+import { openFullscreenOverlay } from "../../_fullscreen.js";
 
-import { TS_UI_CLASS, ensureThemeStyles, pickLocaleStrings } from "../../_theme.js";
+import { TS_UI_CLASS, createOpenInterfaceButton, ensureThemeStyles, pickLocaleStrings } from "../../_theme.js";
 
 export const NODE_NAME = "TS_SAM_MediaLoader";
 const ROUTE_BASE = "/ts_sam_media_loader";
@@ -191,6 +192,24 @@ function ensureStyles() {
 .ts-sml__preview-pill.is-ready .ts-sml__preview-dot{background:var(--ts-success)}
 .ts-sml__preview-pill.is-error .ts-sml__preview-dot{background:var(--ts-danger)}
 @keyframes tsm-blink{0%,100%{opacity:1}50%{opacity:.3}}
+/* ---- Compact in-node shell ---- The node body hosts a small preview + the
+   shared launcher; the full point-placing UI (the .ts-sml container) mounts
+   into a fullscreen overlay on demand (see openFullscreenOverlay). */
+.ts-sml-shell{position:relative;width:100%;height:100%;min-height:0;display:flex;flex-direction:column;gap:6px;
+  padding:8px;box-sizing:border-box;color:var(--tsm-text);font-family:var(--ts-font);background:var(--ts-bg);
+  border:1px solid var(--ts-border-soft);border-radius:var(--ts-radius-lg);overflow:hidden}
+.ts-sml-shell__preview{position:relative;flex:1 1 auto;min-height:0;display:flex;align-items:center;
+  justify-content:center;border-radius:var(--ts-radius);overflow:hidden;background:var(--ts-checker);cursor:pointer}
+/* Absolute (never in-flow): an in-flow canvas carries its backing-store pixel
+   height as min-content and would grow the node unbounded in Vue (CLAUDE.md
+   §12.5, in-flow-media runaway). */
+.ts-sml-shell__preview canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+.ts-sml-shell__placeholder{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  text-align:center;padding:10px;font-size:var(--ts-fs-sm);color:var(--tsm-muted);pointer-events:none}
+.ts-sml-shell__placeholder.is-hidden{display:none}
+.ts-sml-shell__row{display:flex;align-items:center;gap:6px;flex:0 0 auto}
+.ts-sml-shell__status{flex:0 0 auto;width:100%;min-width:0;font-size:var(--ts-fs-xs);color:var(--tsm-muted);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 `;
     document.head.appendChild(style);
 }
@@ -456,15 +475,44 @@ export function setupSamMediaLoader(node) {
         "wheel", "click", "dblclick", "contextmenu",
     ]);
 
+    // ---------- Compact in-node shell ----------
+    // The node body shows a small preview + the shared launcher; the full
+    // point-placing UI (the container above) mounts into a fullscreen overlay on
+    // demand — the same shell + overlay pattern as Lama Cleanup / Ideogram
+    // Designer, via the shared js/_fullscreen.js helper.
+    const shell = document.createElement("div");
+    shell.className = `${TS_UI_CLASS} ts-sml-shell`;
+    const shellPreview = document.createElement("div");
+    shellPreview.className = "ts-sml-shell__preview";
+    shellPreview.title = L.openInterface || L.pillAddPoints || "";
+    const shellCanvas = document.createElement("canvas");
+    const shellPlaceholder = document.createElement("div");
+    shellPlaceholder.className = "ts-sml-shell__placeholder";
+    shellPlaceholder.textContent = L.emptyTitle || L.dropHint || "";
+    shellPreview.append(shellCanvas, shellPlaceholder);
+    const shellRow = document.createElement("div");
+    shellRow.className = "ts-ui-launchbar ts-sml-shell__row";
+    const shellLaunchButton = createOpenInterfaceButton(() => openEditor());
+    shellRow.append(shellLaunchButton);
+    const shellStatus = document.createElement("div");
+    shellStatus.className = "ts-sml-shell__status";
+    shell.append(shellPreview, shellRow, shellStatus);
+    shellPreview.addEventListener("click", () => openEditor());
+    stopPropagation(shell, [
+        "pointerdown", "pointerup", "pointermove",
+        "mousedown", "mouseup", "mousemove",
+        "wheel", "click", "dblclick", "contextmenu",
+    ]);
+
     // V2-safe: getMinHeight/getMaxHeight only, never widget.computeSize.
     const widgetOptions = {
         serialize: false,
         hideOnZoom: false,
-        getMinHeight: () => 220,
+        getMinHeight: () => 120,
         getMaxHeight: () => 8192,
-        afterResize: () => { requestRedraw(); },
+        afterResize: () => { updateShell(); },
     };
-    const domWidget = node.addDOMWidget(DOM_WIDGET_NAME, "div", container, widgetOptions);
+    const domWidget = node.addDOMWidget(DOM_WIDGET_NAME, "div", shell, widgetOptions);
     const domWidgetEl = domWidget?.element || domWidget?.el || domWidget?.container;
 
     function syncDomSize() {
@@ -474,9 +522,57 @@ export function setupSamMediaLoader(node) {
             domWidgetEl.style.minHeight = "0";
             domWidgetEl.style.overflow = "hidden";
         }
-        container.style.width = "100%";
-        container.style.height = "100%";
-        container.style.minHeight = "0";
+        shell.style.width = "100%";
+        shell.style.height = "100%";
+        shell.style.minHeight = "0";
+    }
+
+    // ---- Fullscreen editor (shared overlay) ----
+    let editorHandle = null;
+    function openEditor() {
+        if (editorHandle?.isOpen()) return;
+        editorHandle = openFullscreenOverlay(container, {
+            onOpen: () => { requestRedraw(); },
+            onClose: () => { editorHandle = null; updateShell(); },
+        });
+        requestRedraw();
+    }
+    function closeEditor() { editorHandle?.close(); }
+
+    // Draw the loaded media (+ mask) into the shell preview, or show the
+    // placeholder. Cheap contain-fit blit; called on load / resize / mask update.
+    function updateShell() {
+        const hasImage = Boolean(state.image && state.imageWidth && state.imageHeight);
+        shellPlaceholder.classList.toggle("is-hidden", hasImage);
+        shellStatus.textContent = state.statusText
+            || (state.checkpointName ? L.pillAddPoints : L.pillConnect) || "";
+        const rect = shellPreview.getBoundingClientRect();
+        const w = Math.max(1, Math.floor(rect.width));
+        const h = Math.max(1, Math.floor(rect.height));
+        const dpr = window.devicePixelRatio || 1;
+        // Only the backing store is sized here; CSS keeps the element absolute
+        // and 100%/100%, so it never contributes intrinsic height to the flow.
+        shellCanvas.width = Math.floor(w * dpr);
+        shellCanvas.height = Math.floor(h * dpr);
+        const sctx = shellCanvas.getContext("2d");
+        if (!sctx) return;
+        sctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        sctx.clearRect(0, 0, w, h);
+        if (!hasImage) return;
+        const scale = Math.min(w / state.imageWidth, h / state.imageHeight);
+        const dw = state.imageWidth * scale;
+        const dh = state.imageHeight * scale;
+        const ox = (w - dw) / 2;
+        const oy = (h - dh) / 2;
+        try {
+            sctx.drawImage(state.image, ox, oy, dw, dh);
+            if (state.previewMask) {
+                sctx.save();
+                sctx.globalAlpha = 0.55;
+                sctx.drawImage(state.previewMask, ox, oy, dw, dh);
+                sctx.restore();
+            }
+        } catch { /* media not decodable yet — placeholder stays */ }
     }
 
     function setStatus(message, kind = "info") {
@@ -505,6 +601,7 @@ export function setupSamMediaLoader(node) {
         empty.style.display = state.image ? "none" : "flex";
         canvas.classList.toggle("has-image", Boolean(state.image));
         loadButton.disabled = state.isUploading;
+        updateShell();
     }
 
     function persistPoints() {
@@ -653,6 +750,7 @@ export function setupSamMediaLoader(node) {
             state.previewMaskKey = `${requestId}:${state.positivePoints.length}p${state.negativePoints.length}n`;
             setPreviewPill("ready", L.pillReady);
             requestRedraw();
+            updateShell();
         } catch (error) {
             if (requestId !== state.previewRequestId) return;
             setPreviewPill("error", error?.message || L.pillPreviewFailed);
@@ -1157,8 +1255,9 @@ export function setupSamMediaLoader(node) {
         return result;
     };
 
-    const resizeObserver = new ResizeObserver(() => requestRedraw());
+    const resizeObserver = new ResizeObserver(() => { requestRedraw(); updateShell(); });
     resizeObserver.observe(container);
+    resizeObserver.observe(shell);
 
     // Some loader chains rename their checkpoint widget asynchronously after
     // the link change fires (e.g. after a "convert widget to input" flow).
@@ -1173,6 +1272,7 @@ export function setupSamMediaLoader(node) {
     }, SAM3_STATUS_POLL_MS);
 
     node._tsSamMediaLoaderCleanup = () => {
+        try { closeEditor(); } catch {}
         resizeObserver.disconnect();
         document.removeEventListener("paste", onDocumentPaste);
         if (state.previewDebounceHandle) {

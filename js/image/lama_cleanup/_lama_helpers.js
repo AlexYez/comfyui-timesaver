@@ -6,6 +6,7 @@ import { api } from "/scripts/api.js";
 
 import { TS_UI_CLASS, createOpenInterfaceButton, ensureThemeStyles, pickLocaleStrings } from "../../_theme.js";
 import { hideWidget as sharedHideWidget } from "../../_dom_widget.js";
+import { openFullscreenOverlay } from "../../_fullscreen.js";
 
 export const NODE_NAME = "TS_LamaCleanup";
 const ROUTE_BASE = "/ts_lama_cleanup";
@@ -228,7 +229,7 @@ function ensureStyles() {
 .ts-lama__brush-preview.is-visible{display:block}
 .ts-lama__brush-preview-label{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
   pointer-events:none;display:none;z-index:6;padding:2px 9px;border-radius:6px;
-  background:rgba(0,0,0,.72);color:#fff;font-size:12px;font-family:var(--ts-font);
+  background:rgba(0,0,0,.72);color:rgba(255,255,255,.96);font-size:12px;font-family:var(--ts-font);
   font-variant-numeric:tabular-nums;white-space:nowrap;box-shadow:0 1px 3px rgba(0,0,0,.5)}
 .ts-lama__brush-preview-label.is-visible{display:block}
 `;
@@ -1458,36 +1459,11 @@ export function setupLamaCleanup(node) {
     }
 
     // ---------- Fullscreen editor ----------
-    // The overlay is created on open and destroyed on close; `container` (with
-    // its canvas, mask bitmaps and history) is merely re-parented, so closing
-    // and reopening never loses the in-progress edit.
-    let modal = null;
-    let keyAnchor = null;
-
-    function parkFocus() {
-        if (!state.editorOpen || !keyAnchor || !modal) return;
-        const active = document.activeElement;
-        if (!active || active === document.body || !modal.contains(active)) {
-            keyAnchor.focus();
-        }
-    }
-
-    function onModalFocusIn(event) {
-        const target = event.target;
-        if (target === keyAnchor) return;
-        const tag = target?.tagName;
-        // Real fields inside the editor (the sliders) keep focus; buttons don't
-        // need it, and letting them hold it would re-arm ComfyUI's hotkeys.
-        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target?.isContentEditable) return;
-        keyAnchor?.focus();
-    }
-
-    function onModalPointerUp() {
-        const active = document.activeElement;
-        const tag = active?.tagName;
-        if (active === keyAnchor || tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || active?.isContentEditable) return;
-        keyAnchor?.focus();
-    }
+    // The heavy editing UI (`container`, with its canvas, mask bitmaps and undo
+    // history) is mounted into the shared fullscreen overlay on open and merely
+    // re-parented out on close, so closing/reopening never loses the edit. All
+    // the modal + focus-shield + Esc plumbing lives in js/_fullscreen.js.
+    let editorHandle = null;
 
     function setBrushSize(nextPx) {
         const brushPx = clamp(Math.round(nextPx), BRUSH_MIN_PX, BRUSH_MAX_PX);
@@ -1499,20 +1475,19 @@ export function setupLamaCleanup(node) {
         showBrushPreview();
     }
 
-    // ComfyUI's hotkey service listens on window in the CAPTURE phase and was
-    // registered before us, so event order cannot be won — Ctrl+Z would reach
-    // the graph's ChangeTracker and undo the node-add, deleting the node under
-    // the open editor. Parking focus on the hidden read-only textarea makes the
-    // service skip our events (it ignores text-field targets); this handler
-    // then implements the editor-scoped shortcuts. See CLAUDE.md §12.5 /
-    // project_memory/reference_modal_hotkeys.md.
+    // Editor-scoped shortcuts. Esc-to-close and the focus shield that keeps
+    // ComfyUI's capture-phase Ctrl+Z away from the graph (so it can't delete the
+    // node under the open editor) are handled by the shared overlay. See
+    // CLAUDE.md §12.5 / project_memory/reference_modal_hotkeys.md.
     function onEditorKey(event) {
         if (!state.editorOpen) return;
         const stop = () => { event.preventDefault(); event.stopPropagation(); };
-        if (event.key === "Escape") { stop(); closeEditor(); return; }
         const active = document.activeElement;
         const tag = active?.tagName;
-        if ((tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") && active !== keyAnchor) return;
+        // Real fields (the sliders) keep the keys; the parked key-anchor textarea
+        // does not count as a field here.
+        if ((tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT")
+            && !active?.classList?.contains("ts-ui-keyanchor")) return;
         // Brush size on [ / ] — e.code is the physical key, so it also works on
         // a Cyrillic layout.
         if (event.code === "BracketLeft") { stop(); setBrushSize(state.brushSize / 1.2); return; }
@@ -1525,49 +1500,34 @@ export function setupLamaCleanup(node) {
 
     function openEditor() {
         if (state.editorOpen) return;
-        modal = document.createElement("div");
-        modal.className = `${TS_UI_CLASS} ts-ui-modal`;
-        modal.append(container);
-        keyAnchor = document.createElement("textarea");
-        keyAnchor.className = "ts-ui-keyanchor";
-        keyAnchor.readOnly = true;
-        keyAnchor.tabIndex = -1;
-        keyAnchor.setAttribute("aria-hidden", "true");
-        modal.append(keyAnchor);
-        modal.addEventListener("focusin", onModalFocusIn);
-        modal.addEventListener("pointerup", onModalPointerUp);
-        document.body.appendChild(modal);
         state.editorOpen = true;
-        window.addEventListener("keydown", onEditorKey, true);
         resizeObserver.observe(container);
-        keyAnchor.focus();
-        // The container was detached (zero-size rects) while closed, so every
-        // cached layout value is stale.
-        imageCacheValid = false;
-        updateMeta();
-        requestRedraw();
+        editorHandle = openFullscreenOverlay(container, {
+            onKey: onEditorKey,
+            onOpen: () => {
+                // The container was detached (zero-size rects) while closed, so
+                // every cached layout value is stale.
+                imageCacheValid = false;
+                updateMeta();
+                requestRedraw();
+            },
+            onClose: () => {
+                editorHandle = null;
+                state.editorOpen = false;
+                toggleSettings(false);
+                state.isDrawing = false;
+                state.isPanning = false;
+                state.cursorVisible = false;
+                updateCursorElement();
+                try { resizeObserver.unobserve(container); } catch { /* observer may be gone */ }
+                updateMeta();
+                scheduleCanvasDirty();
+            },
+        });
     }
 
     function closeEditor() {
-        if (!state.editorOpen) return;
-        state.editorOpen = false;
-        window.removeEventListener("keydown", onEditorKey, true);
-        toggleSettings(false);
-        state.isDrawing = false;
-        state.isPanning = false;
-        state.cursorVisible = false;
-        updateCursorElement();
-        try { resizeObserver.unobserve(container); } catch { /* observer may be gone */ }
-        modal?.removeEventListener("focusin", onModalFocusIn);
-        modal?.removeEventListener("pointerup", onModalPointerUp);
-        // Detach the container rather than destroy it: canvas bitmaps, mask and
-        // undo history all live inside this closure and survive for reopening.
-        container.remove();
-        modal?.remove();
-        modal = null;
-        keyAnchor = null;
-        updateMeta();
-        scheduleCanvasDirty();
+        editorHandle?.close();
     }
 
     function toggleSettings(open) {
