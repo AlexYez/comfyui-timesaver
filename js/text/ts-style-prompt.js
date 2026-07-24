@@ -691,6 +691,22 @@ function setupStyleSelector(node) {
             }
             node.setDirtyCanvas(true, true);
         }
+
+        // Keep the in-node big preview in lock-step with the selection, so the
+        // pick looks identical no matter where it came from — an in-node card,
+        // the fullscreen gallery (on Done), or a reloaded workflow: a selected
+        // style shows expanded, no selection returns to the grid.
+        if (state.selectedValue) {
+            const rec = cardRecords.find(
+                (record) => record.value === state.selectedValue
+                    || matchesSelection(record.style, state.selectedValue),
+            );
+            if (rec && expandedRecord?.value !== rec.value) {
+                expandPreview(rec);
+            }
+        } else {
+            collapsePreview();
+        }
     };
 
     // The card record currently blown up to fill the body, or null.
@@ -717,9 +733,8 @@ function setupStyleSelector(node) {
     expand.addEventListener("click", (event) => {
         event.preventDefault();
         event.stopPropagation();
-        collapsePreview();
-        // Second click turns the style OFF: back in the grid nothing is
-        // selected, so the node applies no style until one is picked again.
+        // Turn the style OFF: setSelection("") collapses the preview back to the
+        // grid AND clears the selection, so the node applies no style.
         setSelection("", true);
     });
 
@@ -803,10 +818,9 @@ function setupStyleSelector(node) {
 
                 card.addEventListener("click", (event) => {
                     event.preventDefault();
-                    // Select the style and blow its thumbnail up to fill the body;
-                    // clicking the enlarged view collapses back (see expand.onclick).
+                    // Select the style; setSelection blows its thumbnail up to
+                    // fill the body (clicking the enlarged view clears it again).
                     setSelection(value, true);
-                    expandPreview(record);
                 });
 
                 grid.appendChild(card);
