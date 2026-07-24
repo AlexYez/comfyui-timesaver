@@ -48,6 +48,7 @@ const STRINGS = {
         clear: "Clear",
         done: "Done",
         closeTitle: "Close (Esc)",
+        collapseHint: "Click to shrink",
     },
     ru: {
         searchPlaceholder: "Поиск стилей...",
@@ -62,6 +63,7 @@ const STRINGS = {
         clear: "Сбросить",
         done: "Готово",
         closeTitle: "Закрыть (Esc)",
+        collapseHint: "Клик — свернуть",
     },
 };
 
@@ -225,6 +227,53 @@ function ensureStyles() {
     font-size: var(--ts-fs-sm);
     color: var(--ts-muted);
     padding: 4px 2px;
+}
+/* Expanded preview: fills the body (the browsing area) with a big view of the
+   selected style; click anywhere on it to collapse back to the grid. Lives
+   inside .ts-style-body (position:relative) above the scroll host. */
+.ts-style-expand {
+    position: absolute;
+    inset: 0;
+    z-index: 5;
+    display: none;
+    flex-direction: column;
+    background: var(--ts-bg);
+    border-radius: var(--ts-radius-sm);
+    overflow: hidden;
+    cursor: zoom-out;
+}
+.ts-style-expand.is-active { display: flex; }
+.ts-style-expand__img {
+    flex: 1 1 auto;
+    min-height: 0;
+    width: 100%;
+    object-fit: contain;
+    background: var(--ts-sunken);
+    display: block;
+}
+.ts-style-expand__bar {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 9px;
+    border-top: 1px solid var(--ts-border-soft);
+    background: var(--ts-elevated);
+}
+.ts-style-expand__name {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-size: var(--ts-fs-sm);
+    font-weight: 600;
+    color: var(--ts-text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.ts-style-expand__hint {
+    flex: 0 0 auto;
+    font-size: var(--ts-fs-xs);
+    color: var(--ts-muted);
 }
 /* Compact top bar in-node: search fills, launcher sits to the right. */
 .ts-style-topbar {
@@ -491,6 +540,23 @@ function setupStyleSelector(node) {
     scroll.className = "ts-style-scroll";
     body.appendChild(scroll);
 
+    // Big-preview overlay: clicking a card enlarges its thumbnail to fill the
+    // body; clicking the enlarged view collapses back and scrolls to the card.
+    const expand = document.createElement("div");
+    expand.className = "ts-style-expand";
+    const expandImg = document.createElement("img");
+    expandImg.className = "ts-style-expand__img";
+    const expandBar = document.createElement("div");
+    expandBar.className = "ts-style-expand__bar";
+    const expandName = document.createElement("div");
+    expandName.className = "ts-style-expand__name";
+    const expandHint = document.createElement("div");
+    expandHint.className = "ts-style-expand__hint";
+    expandHint.textContent = L.collapseHint;
+    expandBar.append(expandName, expandHint);
+    expand.append(expandImg, expandBar);
+    body.appendChild(expand);
+
     const empty = document.createElement("div");
     empty.className = "ts-style-empty";
     empty.textContent = L.loading;
@@ -627,6 +693,33 @@ function setupStyleSelector(node) {
         }
     };
 
+    // The card record currently blown up to fill the body, or null.
+    let expandedRecord = null;
+    const expandPreview = (record) => {
+        if (!record?.style?.preview) return;
+        expandImg.src = makePreviewUrl(record.style.preview);
+        expandImg.alt = styleLabel(record.style);
+        expandName.textContent = styleLabel(record.style);
+        expandName.title = styleTooltip(record.style);
+        expand.classList.add("is-active");
+        expandedRecord = record;
+    };
+    const collapsePreview = () => {
+        if (!expandedRecord) return;
+        const record = expandedRecord;
+        expand.classList.remove("is-active");
+        expandedRecord = null;
+        // Return the user to the spot in the grid where that thumbnail lives.
+        requestAnimationFrame(() => {
+            try { record.el.scrollIntoView({ block: "center", behavior: "auto" }); } catch { /* ignore */ }
+        });
+    };
+    expand.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        collapsePreview();
+    });
+
     const rebuildCategorySelect = () => {
         categorySelect.innerHTML = "";
         const counts = new Map(); // canonical (en) category -> {label, count}
@@ -707,8 +800,10 @@ function setupStyleSelector(node) {
 
                 card.addEventListener("click", (event) => {
                     event.preventDefault();
-                    const nextValue = value === state.selectedValue ? "" : value;
-                    setSelection(nextValue, true);
+                    // Select the style and blow its thumbnail up to fill the body;
+                    // clicking the enlarged view collapses back (see expand.onclick).
+                    setSelection(value, true);
+                    expandPreview(record);
                 });
 
                 grid.appendChild(card);
