@@ -2,7 +2,7 @@ import { app } from "/scripts/app.js";
 import { api } from "/scripts/api.js";
 
 import { TS_UI_CLASS, ensureThemeStyles, pickLocaleStrings } from "../_theme.js";
-import { addResizableDomWidget, hideWidget as sharedHideWidget } from "../_dom_widget.js";
+import { addResizableDomWidget, hideWidget as sharedHideWidget, getWidget as sharedGetWidget } from "../_dom_widget.js";
 
 const TS_PROMPT_BUILDER_EXTENSION_ID = "ts.prompt_builder";
 const TS_PROMPT_BUILDER_NODE_NAME = "TS_PromptBuilder";
@@ -247,7 +247,7 @@ function tsSetupPromptBuilder(tsNode) {
         minWidgetHeight: TS_PROMPT_BUILDER_MIN_WIDGET_HEIGHT,
     });
 
-    const tsConfigWidget = tsNode.widgets?.find((tsItem) => tsItem.name === TS_PROMPT_BUILDER_CONFIG_INPUT);
+    const tsConfigWidget = sharedGetWidget(tsNode, TS_PROMPT_BUILDER_CONFIG_INPUT);
     const tsState = {
         items: [],
         loading: true,

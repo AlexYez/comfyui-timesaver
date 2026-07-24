@@ -15,7 +15,7 @@ import { app } from "/scripts/app.js";
 import { api } from "/scripts/api.js";
 
 import { TS_UI_CLASS, ensureThemeStyles, getUiLanguage, pickLocaleStrings } from "../_theme.js";
-import { hideWidget as sharedHideWidget } from "../_dom_widget.js";
+import { hideWidget as sharedHideWidget, getWidget as sharedGetWidget } from "../_dom_widget.js";
 
 const EXTENSION_ID = "ts_suite.style_prompt_selector";
 const NODE_NAME = "TS_StylePromptSelector";
@@ -290,11 +290,9 @@ function setupStyleSelector(node) {
     node.resizable = true;
     node._tsStyleSelectorInitialized = true;
 
-    const styleWidget = node.widgets?.find((widget) => widget.name === STYLE_INPUT);
-    if (styleWidget) {
-        styleWidget.hidden = true;
-        styleWidget.computeSize = () => [0, 0];
-    }
+    // hideStyleWidget() above already removed this widget from the grid; keep a
+    // reference (from the hidden-widget stash) for reading the persisted value.
+    const styleWidget = sharedGetWidget(node, STYLE_INPUT);
 
     const container = document.createElement("div");
     container.className = `${TS_UI_CLASS} ts-style-selector`;

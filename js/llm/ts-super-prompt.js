@@ -269,7 +269,7 @@ function ensureStylesInjected(doc) {
 }
 
 function getWidget(node, name) {
-    return node?.widgets?.find((widget) => widget?.name === name) || null;
+    return node?.widgets?.find((widget) => widget?.name === name) || node?._tsHiddenWidgets?.[name] || null;
 }
 
 function getWidgetValue(node, name, fallback = null) {

@@ -202,7 +202,7 @@ function clamp(value, min, max) {
     return Math.max(min, Math.min(max, value));
 }
 export function getWidget(node, name) {
-    return node?.widgets?.find((widget) => widget?.name === name) || null;
+    return node?.widgets?.find((widget) => widget?.name === name) || node?._tsHiddenWidgets?.[name] || null;
 }
 function hideWidget(node, name) {
     return sharedHideWidget(node, name);

@@ -1,7 +1,7 @@
 import { app } from "/scripts/app.js";
 
 import { TS_UI_CLASS, ensureThemeStyles } from "../_theme.js";
-import { addResizableDomWidget, hideWidget as sharedHideWidget } from "../_dom_widget.js";
+import { addResizableDomWidget, hideWidget as sharedHideWidget, getWidget as sharedGetWidget } from "../_dom_widget.js";
 
 const EXTENSION_ID = "ts.resolutionselector";
 const NODE_NAME = "TS_ResolutionSelector";
@@ -152,7 +152,7 @@ function hideRatioWidget(node) {
     // is hidden via the shared helper (collapses in both renderers + drops the
     // converted-input row from the Nodes 2.0 grid).
     sharedHideWidget(node, INPUT_RATIO);
-    return node?.widgets?.find((item) => item.name === INPUT_RATIO);
+    return sharedGetWidget(node, INPUT_RATIO);
 }
 
 function setupResolutionSelector(node) {

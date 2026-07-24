@@ -199,7 +199,7 @@ function formatSeconds(value) {
     const secondsText = seconds.toFixed(2).padStart(5, "0");
     return hours > 0 ? `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${secondsText}` : `${String(minutes).padStart(2, "0")}:${secondsText}`;
 }
-export function getWidget(node, name) { return node?.widgets?.find((widget) => widget?.name === name) || null; }
+export function getWidget(node, name) { return node?.widgets?.find((widget) => widget?.name === name) || node?._tsHiddenWidgets?.[name] || null; }
 function hideWidget(node, name) {
     return sharedHideWidget(node, name);
 }

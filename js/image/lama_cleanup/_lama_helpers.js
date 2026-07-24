@@ -249,7 +249,7 @@ function brushToSliderValue(brushPx) {
     return clamp(Math.round(t * BRUSH_SLIDER_STEPS), 0, BRUSH_SLIDER_STEPS);
 }
 export function getWidget(node, name) {
-    return node?.widgets?.find((widget) => widget?.name === name) || null;
+    return node?.widgets?.find((widget) => widget?.name === name) || node?._tsHiddenWidgets?.[name] || null;
 }
 function hideWidget(node, name) {
     return sharedHideWidget(node, name);

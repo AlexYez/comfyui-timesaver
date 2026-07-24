@@ -32,7 +32,7 @@ export const DIM_MULTIPLE = 32;
 
 // ── DOM/widget helpers (mirrors of the sam_media_loader patterns) ─────────── //
 export function getWidget(node, name) {
-    return node?.widgets?.find((widget) => widget?.name === name) || null;
+    return node?.widgets?.find((widget) => widget?.name === name) || node?._tsHiddenWidgets?.[name] || null;
 }
 
 // Re-export the pack-wide widget hider so existing imports keep working; the
