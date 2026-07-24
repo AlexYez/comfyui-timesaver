@@ -20,10 +20,25 @@ const INPUT_SOURCE_PATH = "source_path";
 const INPUT_CROP_START = "crop_start_seconds";
 const INPUT_CROP_END = "crop_end_seconds";
 const INPUT_PREVIEW_STATE = "preview_state_json";
-const DEFAULT_NODE_SIZE = [560, 380];
+const DEFAULT_NODE_SIZE = [560, 400];
 const MIN_NODE_WIDTH = 440;
-const MIN_NODE_HEIGHT = 360;
+// Per-node minimum height so the pane's controls (…Play) never clip on first
+// load: the preview's chrome is just title + audio slot (~44px) over ~245px of
+// content; the loader adds the source_path combo (~92px) over ~310px. A shared
+// minimum would either clip the loader or make the preview needlessly tall.
+const MIN_NODE_HEIGHT_PREVIEW = 320;
+const MIN_NODE_HEIGHT_LOADER = 420;
 const HEADER_FOOTER_HEIGHT = 118;
+// Classic (Nodes 1.0 canvas) DOM-widget sizing. computeSize = node.height −
+// chrome fills the pane and tracks a user resize. The chrome MUST be ≥ the
+// renderer's real chrome or LiteGraph grows the node every layout (feedback);
+// the loader's is bigger because of its source_path combo. Fixed per node so it
+// never mismatches (last_y is transiently short on reload and ran the loader
+// away). A small over-estimate only leaves a few px under the pane, never a clip.
+const V1_CHROME_PREVIEW = 44;
+const V1_CHROME_LOADER = 92;
+const V1_MIN_WIDGET_HEIGHT = 132;
+const V1_WIDGET_BOTTOM_PAD = 6;
 const HANDLE_HITBOX = 10;
 const MIN_ZOOM = 1;
 const MAX_ZOOM = 200;
@@ -194,7 +209,21 @@ function ensureStyles() {
     document.head.appendChild(style);
 }
 
-function isNodesV2() { return Boolean(window?.comfyAPI?.domWidget?.DOMWidgetImpl); }
+function isNodesV2() {
+    // "V2" must mean the node is RENDERED by the Vue graph — NOT merely that the
+    // DOMWidgetImpl class exists (it does in every modern build, even with Vue
+    // nodes turned off). The two renderers size a DOM widget differently: Vue
+    // distributes height via getMin/getMaxHeight, the classic canvas renderer
+    // sizes it from the widget's computeSize. Using the DOMWidgetImpl heuristic
+    // sent the classic renderer down the Vue path and left the pane too short
+    // (Play row clipped) with empty space below. Read the actual setting.
+    try {
+        const application = window.comfyAPI?.app?.app || window.app;
+        const enabled = application?.extensionManager?.setting?.get?.("Comfy.VueNodes.Enabled");
+        if (typeof enabled === "boolean") return enabled;
+    } catch { /* fall through to the class heuristic */ }
+    return Boolean(window?.comfyAPI?.domWidget?.DOMWidgetImpl);
+}
 function stopPropagation(element, events) { events.forEach((name) => element.addEventListener(name, (event) => event.stopPropagation())); }
 function clamp(value, min, max) { return Math.max(min, Math.min(max, value)); }
 function formatSeconds(value) {
@@ -261,6 +290,7 @@ export function setupAudioLoader(node) {
     const L = pickLocaleStrings(STRINGS);
     const nodeName = node.type || node.comfyClass || "";
     const isPreviewNode = nodeName === PREVIEW_NODE_NAME;
+    const nodeMinHeight = isPreviewNode ? MIN_NODE_HEIGHT_PREVIEW : MIN_NODE_HEIGHT_LOADER;
     if (typeof node._tsAudioLoaderCleanup === "function") node._tsAudioLoaderCleanup();
     removeDomWidget(node);
     ensureStyles();
@@ -274,9 +304,9 @@ export function setupAudioLoader(node) {
     node.resizable = true;
     node.size = [
         Math.max(Number(node.size?.[0]) || DEFAULT_NODE_SIZE[0], MIN_NODE_WIDTH),
-        Math.max(Number(node.size?.[1]) || DEFAULT_NODE_SIZE[1], MIN_NODE_HEIGHT),
+        Math.max(Number(node.size?.[1]) || nodeMinHeight, nodeMinHeight),
     ];
-    node.min_size = [MIN_NODE_WIDTH, MIN_NODE_HEIGHT];
+    node.min_size = [MIN_NODE_WIDTH, nodeMinHeight];
 
     const state = {
         mode: String(getWidgetValue(node, INPUT_MODE, "load") || "load"),
@@ -409,15 +439,38 @@ export function setupAudioLoader(node) {
         // absolute (see .ts-audio-loader__canvas) — the container's min-content
         // is just the pane's min-height, so Vue never grows the node to fit
         // content and the ceiling reading node.height cannot run away.
-        widgetOptions.getMinHeight = () => MIN_NODE_HEIGHT - HEADER_FOOTER_HEIGHT;
+        widgetOptions.getMinHeight = () => nodeMinHeight - HEADER_FOOTER_HEIGHT;
         widgetOptions.getMaxHeight = () => Math.max(
-            MIN_NODE_HEIGHT - HEADER_FOOTER_HEIGHT,
+            nodeMinHeight - HEADER_FOOTER_HEIGHT,
             (Number(node.size?.[1]) || DEFAULT_NODE_SIZE[1]) - HEADER_FOOTER_HEIGHT,
         );
         widgetOptions.afterResize = () => { syncDomSize(); updateScrollbar(); drawWaveform(); };
     }
     const domWidget = node.addDOMWidget(DOM_WIDGET_NAME, "div", container, widgetOptions);
     const domWidgetEl = domWidget?.element || domWidget?.el || domWidget?.container;
+
+    if (!isNodesV2()) {
+        // Legacy LiteGraph: without computeSize the DOM widget gets a fixed
+        // ~200px slot — the pane's own controls (Play/…) clipped at the bottom
+        // while the node reserved empty space below. this.last_y is the y-offset
+        // LiteGraph assigns the widget (below the title + input rows + the
+        // source_path combo, which differs between loader and preview), so
+        // node.height − last_y − pad fills the pane exactly and tracks a user
+        // resize — no fixed chrome constant to mismatch and run the node away.
+        const v1Chrome = isPreviewNode ? V1_CHROME_PREVIEW : V1_CHROME_LOADER;
+        domWidget.computeSize = function computeSize(width) {
+            // Clamp to the node minimum: on first layout LiteGraph calls
+            // computeSize while node.size is still its pre-clamp auto value
+            // (~260px), which would size the pane too short and clip it until a
+            // manual resize. max(MIN, node.height) makes the pane full-size at once.
+            const nodeHeight = Math.max(nodeMinHeight, Number(node.size?.[1]) || DEFAULT_NODE_SIZE[1]);
+            const height = Math.max(V1_MIN_WIDGET_HEIGHT, nodeHeight - v1Chrome - V1_WIDGET_BOTTOM_PAD);
+            return [
+                Math.max(MIN_NODE_WIDTH, Number(width) || node.size?.[0] || DEFAULT_NODE_SIZE[0]),
+                height,
+            ];
+        };
+    }
 
     function getActiveMedia() { return state.mediaType === "video" ? videoEl : audioEl; }
     function getSelectionBounds() {
@@ -529,20 +582,16 @@ export function setupAudioLoader(node) {
     }
     function syncDomSize() {
         const width = Math.max(MIN_NODE_WIDTH, Number(node.size?.[0]) || DEFAULT_NODE_SIZE[0]);
-        const height = Math.max(MIN_NODE_HEIGHT, Number(node.size?.[1]) || DEFAULT_NODE_SIZE[1]);
+        const height = Math.max(nodeMinHeight, Number(node.size?.[1]) || DEFAULT_NODE_SIZE[1]);
         node.size = [width, height];
         if (domWidgetEl) {
             domWidgetEl.style.width = "100%";
             domWidgetEl.style.overflow = "hidden";
-            if (isNodesV2()) {
-                // Vue owns the widget-slot height via getMinHeight/getMaxHeight;
-                // an explicit pixel height here fights it and, fed back through
-                // afterResize, grew the node on every tab switch. Clear it and
-                // let the container's flexbox fill whatever slot Vue grants.
-                domWidgetEl.style.height = "";
-            } else {
-                domWidgetEl.style.height = `${Math.max(132, height - 88)}px`;
-            }
+            // Never write an explicit pixel height on the element. In V2 Vue owns
+            // the slot (getMin/getMaxHeight) and in V1 LiteGraph sizes it from the
+            // widget's computeSize (last_y based); an explicit height fought both
+            // — V2 grew on tab switch, V1 mismatched the slot and clipped/gapped.
+            domWidgetEl.style.height = "";
         }
         container.style.width = "100%";
         container.style.height = "100%";
