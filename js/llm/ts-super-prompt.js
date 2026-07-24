@@ -14,6 +14,7 @@ import { app } from "/scripts/app.js";
 import { api } from "/scripts/api.js";
 
 import { TS_UI_CLASS, ensureThemeStyles, pickLocaleStrings } from "../_theme.js";
+import { addResizableDomWidget, hideWidget } from "../_dom_widget.js";
 
 const EXTENSION_ID = "ts.superPrompt";
 const NODE_NAME = "TS_SuperPrompt";
@@ -47,11 +48,14 @@ const MIME_CANDIDATES = [
 
 const STYLE_ID = "ts-super-prompt-style";
 const STYLE_TEXT = `
-.ts-sp{position:absolute;inset:0;display:flex;flex-direction:column;gap:4px;padding:4px;
-    background:var(--ts-bg);border:1px solid var(--ts-border-soft);border-radius:8px;
-    color:var(--ts-text);font-family:var(--ts-font);font-size:var(--ts-fs-sm);line-height:1.3;box-sizing:border-box;
-    backdrop-filter:blur(4px);}
-.ts-sp.is-drag-over{outline:2px dashed var(--ts-accent-line);outline-offset:-3px}
+/* In-flow flex fill inside the DOM-widget slot — NOT position:absolute. An
+   absolute+inset:0 container escapes to the nearest positioned ancestor (none
+   of the Vue node wrappers are positioned), so it floated over the node title
+   and the whole canvas. Transparent background lets the node's own surface and
+   title bar show; the inner controls carry their own colours. */
+.ts-sp{position:relative;width:100%;height:100%;min-height:0;display:flex;flex-direction:column;gap:4px;padding:4px;
+    color:var(--ts-text);font-family:var(--ts-font);font-size:var(--ts-fs-sm);line-height:1.3;box-sizing:border-box;}
+.ts-sp.is-drag-over{outline:2px dashed var(--ts-accent-line);outline-offset:-3px;border-radius:6px}
 .ts-sp__bar{display:flex;align-items:center;gap:6px;height:26px;flex:0 0 auto}
 .ts-sp__group{display:inline-flex;align-items:center;gap:2px;flex:0 0 auto}
 .ts-sp__textarea{flex:1 1 auto;min-height:0;width:100%;resize:none;box-sizing:border-box;
@@ -288,29 +292,6 @@ function setWidgetValue(node, name, value) {
     return true;
 }
 
-function hideNativeWidget(widget) {
-    if (!widget) return;
-    // CRITICAL: do NOT mutate ``widget.type`` to ``"hidden"``. ComfyUI
-    // workflow serialization skips ``hidden``-type widgets, which means
-    // copying the node, switching workflow tabs, or reloading the page
-    // drops the user's text / preset / high_quality / attached_image.
-    // Just hide it visually + collapse its layout slot — the widget stays
-    // a regular string/boolean/combo for serialize purposes.
-    widget.hidden = true;
-    widget.serializeValue = widget.serializeValue || (() => widget.value);
-    // Litegraph reserves space for any widget whose computeSize doesn't
-    // return ≤0, so we force ``[0, -4]`` — matching the spacing fudge it
-    // applies between widget rows.
-    widget.computeSize = () => [0, -4];
-    widget.draw = () => {};
-    if (widget.inputEl) {
-        widget.inputEl.style.display = "none";
-    }
-    if (widget.element) {
-        widget.element.style.display = "none";
-    }
-}
-
 function toBoolean(value) {
     if (typeof value === "boolean") return value;
     if (typeof value === "string") {
@@ -401,9 +382,11 @@ function setupSuperPrompt(node) {
 
     const L = pickLocaleStrings(STRINGS);
 
-    // Hide every native widget — the DOM widget renders all controls.
+    // Hide every native widget — the DOM widget renders all controls. The shared
+    // hideWidget also drops each converted-input row from the Nodes 2.0 grid and
+    // guards the value against the hidden-type serialization skip.
     for (const widgetName of [TEXT_WIDGET, HIGH_QUALITY_WIDGET, SYSTEM_PRESET_WIDGET, ATTACHED_IMAGE_WIDGET]) {
-        hideNativeWidget(getWidget(node, widgetName));
+        hideWidget(node, widgetName);
     }
 
     const doc = node?.graph?.canvas?.canvas?.ownerDocument || document;
@@ -1238,24 +1221,21 @@ function setupSuperPrompt(node) {
     // -----------------------------------------------------------------
     // Mount DOM widget
     // -----------------------------------------------------------------
-    const domWidgetOptions = {
-        serialize: false,
-        hideOnZoom: false,
-        getMinHeight: () => 110,
-        getMaxHeight: () => 8192,
-    };
-    const domWidget = node.addDOMWidget(DOM_WIDGET_NAME, "div", container, domWidgetOptions);
+    // Mount through the shared resizer so sizing is correct in BOTH renderers
+    // (computeSize for Nodes 1.0, getMinHeight/getMaxHeight for Nodes 2.0) and
+    // the node stays resizable — the same plumbing every other TS GUI node uses.
+    // The node has no visible input rows (all four widgets are hidden), so the
+    // chrome above the widget is just the title bar.
+    const { domWidget } = addResizableDomWidget(node, container, {
+        name: DOM_WIDGET_NAME,
+        minWidth: 260,
+        minHeight: 150,
+        defaultWidth: 400,
+        defaultHeight: 230,
+        chromeHeight: 34,
+        minWidgetHeight: 110,
+    });
     domWidget.__tsSuperPromptUi = true;
-
-    // Make the node a touch taller out-of-the-box so the textarea has room.
-    try {
-        const minHeight = 170;
-        if (Array.isArray(node.size) && node.size[1] < minHeight) {
-            node.size[1] = minHeight;
-        }
-    } catch {
-        // Some Litegraph forks store size differently — non-fatal.
-    }
 
     // -----------------------------------------------------------------
     // Cleanup

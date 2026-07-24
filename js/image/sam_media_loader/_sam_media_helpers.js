@@ -10,6 +10,7 @@
 
 import { app } from "/scripts/app.js";
 import { api } from "/scripts/api.js";
+import { hideWidget as sharedHideWidget } from "../../_dom_widget.js";
 
 import { TS_UI_CLASS, ensureThemeStyles, pickLocaleStrings } from "../../_theme.js";
 
@@ -142,6 +143,10 @@ function ensureStyles() {
    js/_theme.js. The local --tsm-* aliases are kept so existing selectors read
    unchanged; they now just forward to the pack tokens. */
 .ts-sml{--tsm-bg:var(--ts-bg);--tsm-text:var(--ts-text);--tsm-muted:var(--ts-muted);--tsm-accent:var(--ts-accent);--tsm-accent-strong:var(--ts-accent-strong);--tsm-danger:var(--ts-danger);--tsm-success:var(--ts-success);--tsm-toolbar:var(--ts-bg);--tsm-toolbar-border:var(--ts-border-soft);position:relative;width:100%;height:100%;min-height:0;box-sizing:border-box;color:var(--tsm-text);font-family:var(--ts-font);background:var(--ts-checker);border:1px solid var(--ts-border-soft);border-radius:var(--ts-radius-lg);overflow:hidden;user-select:none}
+/* Every other child is position:absolute (zero min-content), so Nodes 2.0 (Vue)
+   would collapse the widget to a sliver. This hidden in-flow spacer gives the
+   container a real min-content height so Vue grants it space immediately. */
+.ts-sml__spacer{width:1px;height:220px;visibility:hidden;pointer-events:none}
 .ts-sml__canvas{position:absolute;inset:0;display:block;width:100%;height:100%;cursor:default;touch-action:none}
 .ts-sml__canvas.has-image{cursor:crosshair}
 .ts-sml__empty{position:absolute;left:8px;right:8px;top:50px;bottom:38px;display:flex;align-items:center;justify-content:center;text-align:center;padding:16px;color:var(--ts-text);font-size:var(--ts-fs);pointer-events:none;background:var(--ts-scrim);border-radius:6px;line-height:1.6}
@@ -200,16 +205,7 @@ export function getWidget(node, name) {
     return node?.widgets?.find((widget) => widget?.name === name) || null;
 }
 function hideWidget(node, name) {
-    const widget = getWidget(node, name);
-    if (widget) {
-        widget.hidden = true;
-        widget.type = "hidden";
-        widget.serialize = true;
-        widget.options = { ...(widget.options || {}), hidden: true, serialize: true };
-        widget.computeSize = () => [0, 0];
-    }
-    const input = node?.inputs?.find((item) => item?.name === name);
-    if (input) input.hidden = true;
+    return sharedHideWidget(node, name);
 }
 function setWidgetValue(node, name, value) {
     const widget = getWidget(node, name);
@@ -353,6 +349,11 @@ export function setupSamMediaLoader(node) {
     const container = document.createElement("div");
     container.className = `${TS_UI_CLASS} ts-sml`;
 
+    // In-flow spacer so the all-absolute container keeps a non-zero min-content
+    // in Nodes 2.0 (Vue) — otherwise the widget collapses to a sliver.
+    const spacer = document.createElement("div");
+    spacer.className = "ts-sml__spacer";
+
     const canvas = document.createElement("canvas");
     canvas.className = "ts-sml__canvas";
 
@@ -447,7 +448,7 @@ export function setupSamMediaLoader(node) {
     dropHint.className = "ts-sml__drop-hint";
     dropHint.textContent = L.dropHint;
 
-    container.append(canvas, empty, overlay, toolbar, statusBar, fileInput, dropHint);
+    container.append(spacer, canvas, empty, overlay, toolbar, statusBar, fileInput, dropHint);
 
     stopPropagation(container, [
         "pointerdown", "pointerup", "pointermove",

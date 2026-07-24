@@ -15,6 +15,7 @@ import { app } from "/scripts/app.js";
 import { api } from "/scripts/api.js";
 
 import { TS_UI_CLASS, ensureThemeStyles, getUiLanguage, pickLocaleStrings } from "../_theme.js";
+import { hideWidget as sharedHideWidget } from "../_dom_widget.js";
 
 const EXTENSION_ID = "ts_suite.style_prompt_selector";
 const NODE_NAME = "TS_StylePromptSelector";
@@ -253,19 +254,7 @@ function getWidgetHeight(node) {
 }
 
 function hideStyleWidget(node) {
-    const widget = node?.widgets?.find((item) => item.name === STYLE_INPUT);
-    if (widget) {
-        widget.hidden = true;
-        widget.type = "hidden";
-        widget.serialize = true;
-        widget.options = { ...(widget.options || {}), hidden: true, serialize: true };
-        widget.computeSize = () => [0, 0];
-    }
-
-    const input = node?.inputs?.find((item) => item?.name === STYLE_INPUT);
-    if (input) {
-        input.hidden = true;
-    }
+    sharedHideWidget(node, STYLE_INPUT);
 }
 
 function removeDomWidgets(node) {

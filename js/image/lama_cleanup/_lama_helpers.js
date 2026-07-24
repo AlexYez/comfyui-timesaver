@@ -5,6 +5,7 @@ import { app } from "/scripts/app.js";
 import { api } from "/scripts/api.js";
 
 import { TS_UI_CLASS, createOpenInterfaceButton, ensureThemeStyles, pickLocaleStrings } from "../../_theme.js";
+import { hideWidget as sharedHideWidget } from "../../_dom_widget.js";
 
 export const NODE_NAME = "TS_LamaCleanup";
 const ROUTE_BASE = "/ts_lama_cleanup";
@@ -251,16 +252,7 @@ export function getWidget(node, name) {
     return node?.widgets?.find((widget) => widget?.name === name) || null;
 }
 function hideWidget(node, name) {
-    const widget = getWidget(node, name);
-    if (widget) {
-        widget.hidden = true;
-        widget.type = "hidden";
-        widget.serialize = true;
-        widget.options = { ...(widget.options || {}), hidden: true, serialize: true };
-        widget.computeSize = () => [0, 0];
-    }
-    const input = node?.inputs?.find((item) => item?.name === name);
-    if (input) input.hidden = true;
+    return sharedHideWidget(node, name);
 }
 function setWidgetValue(node, name, value) {
     const widget = getWidget(node, name);

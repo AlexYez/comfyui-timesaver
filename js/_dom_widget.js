@@ -26,6 +26,57 @@ function clamp(value, min) {
 }
 
 /**
+ * Hide a native widget whose value a node's own DOM UI manages.
+ *
+ * This is the pack's ONE correct way to hide a state-carrier widget so it shows
+ * in NEITHER renderer and stacks NO empty rows — every TS GUI node uses it.
+ *
+ * Two row sources have to be silenced:
+ *  1. The widget itself. Nodes 2.0 (Vue) drops it from the node grid when
+ *     widget.hidden is true (getLayoutWidgets filters on it); Nodes 1.0 is
+ *     collapsed via computeSize + a no-op draw. We deliberately do NOT set
+ *     widget.type = "hidden": that type is skipped by workflow value
+ *     serialization (widgets_values), which would drop the user's text/state on
+ *     reload for nodes that don't also mirror to node.properties.
+ *  2. The widget-input SLOT. A converted-widget input renders a ~22px slot row
+ *     in the Nodes 2.0 grid, and marking it hidden does NOT collapse it — five
+ *     such rows stacked ~120px of dead space above the node's UI. Removing the
+ *     input entry collapses the row for good, and the widget keeps serialising
+ *     its value into the prompt (verified via graphToPrompt), so execution is
+ *     unaffected. Only unconnected slots are removed, so a user's wire is never
+ *     orphaned.
+ *
+ * @param {object} node LiteGraph node.
+ * @param {string} name Widget/input name to hide.
+ */
+export function hideWidget(node, name) {
+    const widget = (node?.widgets || []).find((w) => w?.name === name);
+    if (widget) {
+        widget.hidden = true;
+        // type="hidden" is what actually collapses the widget in the Nodes 2.0
+        // grid (widget.hidden alone leaves the native row at full height). We
+        // guard the value against the hidden-type serialization skip by forcing
+        // serialize + a serializeValue that returns the live value, so save/reload
+        // keeps the user's state even for nodes that don't mirror to properties.
+        widget.type = "hidden";
+        widget.serialize = true;
+        widget.serializeValue = widget.serializeValue || (() => widget.value);
+        widget.options = { ...(widget.options || {}), hidden: true, serialize: true };
+        widget.computeSize = () => [0, -4];
+        widget.computeLayoutSize = () => ({ minHeight: 0, maxHeight: 0, minWidth: 0 });
+        widget.draw = () => {};
+        const el = widget.element || widget.el || widget.container;
+        if (el?.style) el.style.display = "none";
+    }
+    if (Array.isArray(node?.inputs)) {
+        const idx = node.inputs.findIndex((i) => i?.name === name);
+        if (idx >= 0 && node.inputs[idx] && !node.inputs[idx].link) {
+            node.inputs.splice(idx, 1);
+        }
+    }
+}
+
+/**
  * Mount a resizable DOM widget with correct sizing in both renderers.
  *
  * @param {object} node LiteGraph node.

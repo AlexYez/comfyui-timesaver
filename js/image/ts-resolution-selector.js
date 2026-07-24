@@ -1,7 +1,7 @@
 import { app } from "/scripts/app.js";
 
 import { TS_UI_CLASS, ensureThemeStyles } from "../_theme.js";
-import { addResizableDomWidget } from "../_dom_widget.js";
+import { addResizableDomWidget, hideWidget as sharedHideWidget } from "../_dom_widget.js";
 
 const EXTENSION_ID = "ts.resolutionselector";
 const NODE_NAME = "TS_ResolutionSelector";
@@ -149,20 +149,10 @@ function isTargetNode(node) {
 
 function hideRatioWidget(node) {
     // The card grid is the visible control for aspect_ratio, so the stock combo
-    // must be fully hidden. type="hidden" is the part the Vue (Nodes 2.0)
-    // renderer honours; the bare .hidden flag alone leaves it on screen and it
-    // doubles the grid.
-    const widget = node?.widgets?.find((item) => item.name === INPUT_RATIO);
-    if (widget) {
-        widget.hidden = true;
-        widget.type = "hidden";
-        widget.serialize = true;
-        widget.options = { ...(widget.options || {}), hidden: true, serialize: true };
-        widget.computeSize = () => [0, 0];
-    }
-    const input = node?.inputs?.find((item) => item?.name === INPUT_RATIO);
-    if (input) input.hidden = true;
-    return widget;
+    // is hidden via the shared helper (collapses in both renderers + drops the
+    // converted-input row from the Nodes 2.0 grid).
+    sharedHideWidget(node, INPUT_RATIO);
+    return node?.widgets?.find((item) => item.name === INPUT_RATIO);
 }
 
 function setupResolutionSelector(node) {

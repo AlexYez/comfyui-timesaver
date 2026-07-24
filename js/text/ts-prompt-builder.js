@@ -2,7 +2,7 @@ import { app } from "/scripts/app.js";
 import { api } from "/scripts/api.js";
 
 import { TS_UI_CLASS, ensureThemeStyles, pickLocaleStrings } from "../_theme.js";
-import { addResizableDomWidget } from "../_dom_widget.js";
+import { addResizableDomWidget, hideWidget as sharedHideWidget } from "../_dom_widget.js";
 
 const TS_PROMPT_BUILDER_EXTENSION_ID = "ts.prompt_builder";
 const TS_PROMPT_BUILDER_NODE_NAME = "TS_PromptBuilder";
@@ -148,18 +148,7 @@ function tsIsTargetNode(tsNode) {
 }
 
 function tsHideConfigWidget(tsNode) {
-    const tsWidget = tsNode?.widgets?.find((tsItem) => tsItem.name === TS_PROMPT_BUILDER_CONFIG_INPUT);
-    if (tsWidget) {
-        tsWidget.hidden = true;
-        tsWidget.type = "hidden";
-        tsWidget.serialize = true;
-        tsWidget.options = { ...(tsWidget.options || {}), hidden: true, serialize: true };
-        tsWidget.computeSize = () => [0, -4];
-    }
-    const tsInput = tsNode?.inputs?.find((tsItem) => tsItem?.name === TS_PROMPT_BUILDER_CONFIG_INPUT);
-    if (tsInput) {
-        tsInput.hidden = true;
-    }
+    sharedHideWidget(tsNode, TS_PROMPT_BUILDER_CONFIG_INPUT);
 }
 
 function tsMakeLabel(tsFileName) {
