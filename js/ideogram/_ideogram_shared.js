@@ -42,6 +42,13 @@ export function hideWidget(node, name) {
         widget.serialize = true;
         widget.options = { ...(widget.options || {}), hidden: true, serialize: true };
         widget.computeSize = () => [0, -4];
+        // A multiline STRING widget in Nodes 2.0 owns a real <textarea> DOM
+        // element (ComponentWidgetImpl). type="hidden" stops the legacy canvas
+        // renderer, but the Vue renderer keeps painting that element, so it
+        // must be hidden directly — otherwise auto_prompt / auto_caption show
+        // as stray text boxes above the node's own UI.
+        const el = widget.element || widget.el || widget.container;
+        if (el?.style) el.style.display = "none";
     }
     const input = node?.inputs?.find((item) => item?.name === name);
     if (input) input.hidden = true;

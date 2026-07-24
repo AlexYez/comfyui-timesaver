@@ -2,6 +2,7 @@ import { app } from "/scripts/app.js";
 import { api } from "/scripts/api.js";
 
 import { TS_UI_CLASS, ensureThemeStyles, pickLocaleStrings } from "../_theme.js";
+import { addResizableDomWidget } from "../_dom_widget.js";
 
 const TS_PROMPT_BUILDER_EXTENSION_ID = "ts.prompt_builder";
 const TS_PROMPT_BUILDER_NODE_NAME = "TS_PromptBuilder";
@@ -9,7 +10,9 @@ const TS_PROMPT_BUILDER_CONFIG_INPUT = "config_json";
 const TS_PROMPT_BUILDER_STYLE_ID = "ts-prompt-builder-styles";
 const TS_PROMPT_BUILDER_NODE_WIDTH = 260;
 const TS_PROMPT_BUILDER_NODE_HEIGHT = 340;
-const TS_PROMPT_BUILDER_WIDGET_HEIGHT = 260;
+const TS_PROMPT_BUILDER_MIN_HEIGHT = 240;
+const TS_PROMPT_BUILDER_CHROME_HEIGHT = 60;
+const TS_PROMPT_BUILDER_MIN_WIDGET_HEIGHT = 160;
 
 const STRINGS = {
     en: {
@@ -135,13 +138,6 @@ function tsIsTargetNode(tsNode) {
     return tsNode?.comfyClass === TS_PROMPT_BUILDER_NODE_NAME || tsNode?.type === TS_PROMPT_BUILDER_NODE_NAME;
 }
 
-function tsIsNodesV2() {
-    if (typeof window === "undefined") {
-        return false;
-    }
-    return Boolean(window.comfyAPI?.domWidget?.DOMWidgetImpl);
-}
-
 function tsHideConfigWidget(tsNode) {
     const tsWidget = tsNode?.widgets?.find((tsItem) => tsItem.name === TS_PROMPT_BUILDER_CONFIG_INPUT);
     if (tsWidget) {
@@ -208,10 +204,10 @@ function tsSetupPromptBuilder(tsNode) {
     tsEnsureStyles();
     tsHideConfigWidget(tsNode);
 
-    tsNode.resizable = false;
+    // Seed a sensible default size on first mount; the shared helper below keeps
+    // the node resizable and clamps to the min. A saved workflow size (applied
+    // after onNodeCreated) still wins for loaded nodes.
     tsNode.size = [TS_PROMPT_BUILDER_NODE_WIDTH, TS_PROMPT_BUILDER_NODE_HEIGHT];
-    tsNode.min_size = [TS_PROMPT_BUILDER_NODE_WIDTH, TS_PROMPT_BUILDER_NODE_HEIGHT];
-    tsNode.max_size = [TS_PROMPT_BUILDER_NODE_WIDTH, TS_PROMPT_BUILDER_NODE_HEIGHT];
 
     const tsContainer = document.createElement("div");
     tsContainer.className = `${TS_UI_CLASS} ts-prompt-builder`;
@@ -231,37 +227,19 @@ function tsSetupPromptBuilder(tsNode) {
     tsContainer.appendChild(tsHint);
     tsContainer.appendChild(tsEmpty);
 
-    const tsIsV2 = tsIsNodesV2();
-    const tsWidgetOptions = {
-        serialize: false,
-        hideOnZoom: true,
-    };
-    if (tsIsV2) {
-        tsWidgetOptions.getMinHeight = () => TS_PROMPT_BUILDER_WIDGET_HEIGHT;
-        tsWidgetOptions.getMaxHeight = () => TS_PROMPT_BUILDER_WIDGET_HEIGHT;
-    }
-
-    const tsDomWidget = tsNode.addDOMWidget("ts_prompt_builder", "div", tsContainer, tsWidgetOptions);
-    const tsDomWidgetEl = tsDomWidget?.element || tsDomWidget?.el || tsDomWidget?.container;
-    if (tsDomWidgetEl) {
-        tsDomWidgetEl.style.overflow = "hidden";
-        tsDomWidgetEl.style.height = `${TS_PROMPT_BUILDER_WIDGET_HEIGHT}px`;
-        tsDomWidgetEl.style.minHeight = `${TS_PROMPT_BUILDER_WIDGET_HEIGHT}px`;
-        tsDomWidgetEl.style.maxHeight = `${TS_PROMPT_BUILDER_WIDGET_HEIGHT}px`;
-    }
-    tsContainer.style.height = `${TS_PROMPT_BUILDER_WIDGET_HEIGHT}px`;
-    tsContainer.style.minHeight = `${TS_PROMPT_BUILDER_WIDGET_HEIGHT}px`;
-    tsContainer.style.maxHeight = `${TS_PROMPT_BUILDER_WIDGET_HEIGHT}px`;
-
-    // V1 (LiteGraph) only: fixed-size legacy layout. In V2 the Vue renderer
-    // sizes DOM widgets through getMinHeight/getMaxHeight (set above) — an
-    // assigned computeSize would push the widget into the legacy fixed branch
-    // of computeLayoutSize() (see CLAUDE.md §12.5.1).
-    if (!tsIsV2) {
-        tsDomWidget.computeSize = function () {
-            return [TS_PROMPT_BUILDER_NODE_WIDTH, TS_PROMPT_BUILDER_WIDGET_HEIGHT];
-        };
-    }
+    // The container is a flex column whose .ts-prompt-list scrolls (min-height:0
+    // + overflow-y:auto), so its natural min-content stays small — no runaway
+    // downward growth in Nodes 2.0. The shared helper handles both renderers'
+    // sizing hooks and keeps the node resizable (CLAUDE.md §12.5.1, §12.5.3).
+    addResizableDomWidget(tsNode, tsContainer, {
+        name: "ts_prompt_builder",
+        minWidth: TS_PROMPT_BUILDER_NODE_WIDTH,
+        minHeight: TS_PROMPT_BUILDER_MIN_HEIGHT,
+        defaultWidth: TS_PROMPT_BUILDER_NODE_WIDTH,
+        defaultHeight: TS_PROMPT_BUILDER_NODE_HEIGHT,
+        chromeHeight: TS_PROMPT_BUILDER_CHROME_HEIGHT,
+        minWidgetHeight: TS_PROMPT_BUILDER_MIN_WIDGET_HEIGHT,
+    });
 
     const tsConfigWidget = tsNode.widgets?.find((tsItem) => tsItem.name === TS_PROMPT_BUILDER_CONFIG_INPUT);
     const tsState = {
@@ -504,10 +482,6 @@ app.registerExtension({
         if (!tsNode._tsPromptBuilderInitialized) {
             tsSetupPromptBuilder(tsNode);
         }
-        tsNode.resizable = false;
-        tsNode.size = [TS_PROMPT_BUILDER_NODE_WIDTH, TS_PROMPT_BUILDER_NODE_HEIGHT];
-        tsNode.min_size = [TS_PROMPT_BUILDER_NODE_WIDTH, TS_PROMPT_BUILDER_NODE_HEIGHT];
-        tsNode.max_size = [TS_PROMPT_BUILDER_NODE_WIDTH, TS_PROMPT_BUILDER_NODE_HEIGHT];
         tsHideConfigWidget(tsNode);
         tsNode._tsPromptBuilderSync?.();
     },
