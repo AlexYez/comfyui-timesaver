@@ -1039,10 +1039,9 @@ class _Sam3PreviewModel:
             return np.zeros((rgb.height, rgb.width), dtype=np.uint8)
         binary = (mask_2d > 0.5).to(torch.uint8) * 255
         raw = binary.detach().cpu().numpy()
-        # Visual postprocessing — the SAM3 decoder mask has scattered noise
-        # and small interior holes that the UI overlay magnifies. Cleaning
-        # up here keeps the workflow's actual SAM3 output unmodified (this
-        # is only the in-node preview) while showing the user a tight mask.
+        # Meta's SAM cleanup: fill small holes, drop small islands (size-aware).
+        # The same _postprocess_mask runs on the execute() initial_mask output
+        # (via refine_sam_mask_tensor), so the preview matches the workflow mask.
         return _postprocess_mask(raw)
 
 
@@ -1072,44 +1071,78 @@ def _get_preview_lock(checkpoint: str) -> asyncio.Lock:
     return lock
 
 
+def _remove_small_regions(
+    mask_bool: "np.ndarray", area_thresh: int, mode: str
+) -> tuple["np.ndarray", bool]:
+    """Meta's SAM ``remove_small_regions`` (segment_anything/utils/amg.py).
+
+    ``mode="holes"``: fill background holes SMALLER than ``area_thresh`` — large,
+    legitimate holes (a donut's centre, the gap between an arm and the torso)
+    are preserved. ``mode="islands"``: drop foreground components smaller than
+    ``area_thresh``; if every component is below the threshold the single
+    largest is kept so a valid mask is never blanked.
+
+    Size-aware by design: this is exactly what the Facebook SAM demo does. The
+    XOR trick inverts the mask for hole mode so holes become foreground
+    components that ``connectedComponentsWithStats`` can measure.
+
+    Args:
+        mask_bool: 2D boolean mask.
+        area_thresh: components strictly smaller than this (in pixels) are removed.
+        mode: ``"holes"`` or ``"islands"``.
+
+    Returns:
+        ``(cleaned_bool_mask, changed)``.
+    """
+    import cv2  # type: ignore
+
+    correct_holes = mode == "holes"
+    working = (correct_holes ^ mask_bool).astype(np.uint8)
+    n_labels, regions, stats, _ = cv2.connectedComponentsWithStats(working, 8)
+    sizes = stats[1:, cv2.CC_STAT_AREA]
+    small_regions = [i + 1 for i, s in enumerate(sizes) if s < area_thresh]
+    if not small_regions:
+        return mask_bool, False
+    fill_labels = [0] + small_regions
+    if not correct_holes:
+        # Keep every component that is NOT background (0) and NOT a small island.
+        fill_labels = [i for i in range(n_labels) if i not in fill_labels]
+        if not fill_labels:  # all islands below the floor -> keep the largest
+            fill_labels = [int(np.argmax(sizes)) + 1]
+    return np.isin(regions, fill_labels), True
+
+
 def _postprocess_mask(
     mask_u8: "np.ndarray",
     *,
-    fill_holes: bool = True,
-    min_component_area_px: int = 64,
-    min_component_area_ratio: float = 0.0004,
-    smooth_radius_px: int = 3,
-    smooth_edges: bool = True,
+    min_region_area_px: int = 32,
+    min_region_area_ratio: float = 0.0004,
 ) -> "np.ndarray":
-    """Clean up the raw SAM3 binary mask to Facebook-SAM-demo quality.
+    """Clean the raw SAM3 mask exactly the way Meta's SAM demo does.
 
-    The SAM3 decoder produces a tight per-pixel probability map; thresholding
-    at 0.5 gives a usable mask but typically leaves:
-      - small specks of false-positive foreground scattered around the object,
-      - interior holes where per-pixel confidence dips,
-      - jagged single-pixel edge stair-stepping.
+    Two size-aware connected-component passes — the precise algorithm from
+    ``segment_anything/utils/amg.py`` (:func:`_remove_small_regions`):
 
-    The pipeline removes those without eroding genuine structure:
-      1. Morphological CLOSE — bridges 1-2 pixel gaps, smooths concave nibs.
-      2. Robust hole fill — draw every EXTERNAL contour solid. Closing the
-         silhouette fills all enclosed holes and, unlike a corner flood-fill,
-         still works when the object touches every image border (there is no
-         background pixel to seed a flood from).
-      3. Drop specks below an area floor that scales with resolution, so a 4K
-         speck floor is proportionally larger. The largest component is always
-         kept, so an over-aggressive floor can never blank a valid mask.
-      4. Median-blur the boundary — a 3x3 (or larger) median is a majority
-         filter: it rounds off single-pixel stair-stepping into clean contours
-         while staying strictly binary (a valid SAM3 Video Track seed) and
-         preserving structures two pixels wide or thicker (a tail, an antenna).
+      1. Fill interior holes SMALLER than the area floor. Large, legitimate
+         holes (a donut, the gap between an arm and the torso, a window) are
+         kept — unlike a blanket contour fill that would erase them.
+      2. Remove disconnected islands SMALLER than the area floor (decoder
+         speckle), always keeping at least the largest component.
 
-    All ops use OpenCV which is already a hard runtime dependency. Returns a
-    uint8 ``[H, W]`` 0/255 mask the same shape as the input.
+    Deliberately NO morphological smoothing or blur: ``SAM3_Detect`` already
+    bilinearly upsamples the mask logits to full resolution *before*
+    thresholding, so the boundary is already smooth. Extra morphology only
+    erodes thin structures and rounds real corners, which is why Meta omits it.
+
+    The area floor scales with image area (so a 4K speck floor is
+    proportionally larger) with a small absolute minimum for tiny images.
+    OpenCV is already a hard runtime dependency. Returns a uint8 ``[H, W]``
+    0/255 mask the same shape as the input.
     """
-    if mask_u8 is None or mask_u8.size == 0:
+    if mask_u8 is None or getattr(mask_u8, "size", 0) == 0:
         return mask_u8
     try:
-        import cv2  # type: ignore
+        import cv2  # type: ignore  # noqa: F401 - probe; helpers import it too
     except ImportError:
         # Defensive — opencv-python is in requirements, but a misconfigured
         # install should still see a raw mask rather than an exception.
@@ -1119,60 +1152,20 @@ def _postprocess_mask(
     if arr.ndim != 2:
         return mask_u8
 
-    # Normalise to strict 0/255 (the SAM3 path already does this but be safe).
-    m = (arr > 0).astype(np.uint8) * 255
+    m = arr > 0
     if not m.any():
-        return m
+        return m.astype(np.uint8) * 255
 
     h, w = m.shape
-
-    # Step 1: morphological CLOSE — fills small gaps in the mask outline,
-    # bridges thin disconnects, smooths short concave nibs. The kernel is
-    # an ellipse so the smoothing is isotropic.
-    if smooth_radius_px > 0:
-        k_close = cv2.getStructuringElement(
-            cv2.MORPH_ELLIPSE,
-            (smooth_radius_px * 2 + 1, smooth_radius_px * 2 + 1),
-        )
-        m = cv2.morphologyEx(m, cv2.MORPH_CLOSE, k_close)
-
-    # Step 2: fill interior holes by rasterising every external contour solid.
-    if fill_holes:
-        contours, _ = cv2.findContours(
-            m, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
-        )
-        if contours:
-            filled = np.zeros_like(m)
-            cv2.drawContours(filled, contours, -1, 255, thickness=cv2.FILLED)
-            m = filled
-
-    # Step 3: drop specks. The floor scales with image area but the biggest
-    # component always survives, so a small user-selected object is never lost.
-    min_area = max(
-        int(min_component_area_px),
-        int(round(float(min_component_area_ratio) * h * w)),
+    area = max(
+        int(min_region_area_px),
+        int(round(float(min_region_area_ratio) * h * w)),
     )
-    if min_area > 0:
-        num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(
-            m, connectivity=8
-        )
-        if num_labels > 1:
-            areas = stats[1:, cv2.CC_STAT_AREA]
-            largest = int(np.argmax(areas)) + 1 if areas.size else 0
-            keep = np.zeros_like(m)
-            for i in range(1, num_labels):  # 0 is the background label
-                if stats[i, cv2.CC_STAT_AREA] >= min_area or i == largest:
-                    keep[labels == i] = 255
-            m = keep
+    if area > 0:
+        m, _ = _remove_small_regions(m, area, "holes")
+        m, _ = _remove_small_regions(m, area, "islands")
 
-    # Step 4: median-blur the boundary to erase stair-stepping. ksize is odd
-    # and grows with the smoothing radius; capped at 7 so we never over-smooth.
-    if smooth_edges and smooth_radius_px > 0:
-        ksize = smooth_radius_px if smooth_radius_px % 2 == 1 else smooth_radius_px + 1
-        ksize = max(3, min(7, ksize))
-        m = cv2.medianBlur(m, ksize)
-
-    return m
+    return m.astype(np.uint8) * 255
 
 
 def refine_sam_mask_tensor(mask_tensor: "torch.Tensor") -> "torch.Tensor":
@@ -1180,10 +1173,11 @@ def refine_sam_mask_tensor(mask_tensor: "torch.Tensor") -> "torch.Tensor":
 
     Accepts a ``[H, W]`` or ``[B, H, W]`` float tensor in ``[0, 1]`` (the shape
     ``SAM3_Detect`` emits) and returns a ``[1, H, W]`` float32 ``MASK`` in
-    ``[0, 1]`` whose first channel has been hole-filled, despeckled and edge
-    smoothed. This is the SAME cleanup the in-node preview shows, so the
-    workflow's ``initial_mask`` output matches what the user selected. Falls
-    back to a passed-through float tensor if numpy/torch/cv2 are unavailable.
+    ``[0, 1]`` whose first channel has had its small holes filled and small
+    islands removed (Meta's SAM cleanup). This is the SAME cleanup the in-node
+    preview shows, so the workflow's ``initial_mask`` output matches what the
+    user selected. Falls back to a passed-through float tensor if
+    numpy/torch/cv2 are unavailable.
     """
     if mask_tensor is None or not torch.is_tensor(mask_tensor):
         return mask_tensor
