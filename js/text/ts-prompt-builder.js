@@ -52,9 +52,14 @@ function tsEnsureStyles() {
     font-family: var(--ts-font);
     pointer-events: auto;
 }
-.ts-prompt-list {
-    flex: 1 1 auto;
+.ts-prompt-body {
+    position: relative;
+    flex: 1 1 0;
     min-height: 0;
+}
+.ts-prompt-list {
+    position: absolute;
+    inset: 0;
     display: flex;
     flex-direction: column;
     gap: 4px;
@@ -118,6 +123,10 @@ function tsEnsureStyles() {
     color: var(--ts-muted);
 }
 .ts-prompt-empty {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
     font-size: var(--ts-fs-sm);
     color: var(--ts-muted);
     padding: 2px 0;
@@ -212,20 +221,28 @@ function tsSetupPromptBuilder(tsNode) {
     const tsContainer = document.createElement("div");
     tsContainer.className = `${TS_UI_CLASS} ts-prompt-builder`;
 
+    // Scrollable list lives in a relative body with the list positioned
+    // absolute, so the body's min-content is zero and Nodes 2.0 Vue cannot
+    // balloon the node to fit every item (mirrors the style selector layout;
+    // CLAUDE.md §12.5.1). The hint stays in-flow at the bottom.
+    const tsBody = document.createElement("div");
+    tsBody.className = "ts-prompt-body";
+
     const tsList = document.createElement("div");
     tsList.className = "ts-prompt-list";
-
-    const tsHint = document.createElement("div");
-    tsHint.className = "ts-prompt-hint";
-    tsHint.textContent = L.hint;
 
     const tsEmpty = document.createElement("div");
     tsEmpty.className = "ts-prompt-empty";
     tsEmpty.textContent = L.loading;
 
-    tsContainer.appendChild(tsList);
+    const tsHint = document.createElement("div");
+    tsHint.className = "ts-prompt-hint";
+    tsHint.textContent = L.hint;
+
+    tsBody.appendChild(tsList);
+    tsBody.appendChild(tsEmpty);
+    tsContainer.appendChild(tsBody);
     tsContainer.appendChild(tsHint);
-    tsContainer.appendChild(tsEmpty);
 
     // The container is a flex column whose .ts-prompt-list scrolls (min-height:0
     // + overflow-y:auto), so its natural min-content stays small — no runaway
