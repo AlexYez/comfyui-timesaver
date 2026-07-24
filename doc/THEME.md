@@ -189,6 +189,44 @@ Ideogram Designer использует собственную, более шир
 `_ideogram_shared.js`) — исторически и осознанно: у него локализуется весь
 редактор, включая контентные подписи. Новым нодам достаточно `pickLocaleStrings`.
 
+### Масштабирование DOM-виджета: `addResizableDomWidget()`
+
+Ноды с собственным resizable-интерфейсом **обязаны** монтировать его через
+`addResizableDomWidget()` из [`js/_dom_widget.js`](../js/_dom_widget.js), а не
+писать sizing-логику заново. Хелпер один раз кодирует правильную работу в обоих
+рендерерах (Nodes 1.0 и Nodes 2.0/Vue) и на любом зуме канваса:
+
+```javascript
+import { addResizableDomWidget } from "../_dom_widget.js";
+
+addResizableDomWidget(node, container, {
+    name: "ts_my_widget",
+    minWidth: 240, minHeight: 280,
+    defaultWidth: 250, defaultHeight: 340,
+    chromeHeight: 56,        // высота над виджетом (title + штатные виджеты), legacy
+    minWidgetHeight: 160,
+});
+```
+
+Что он делает и почему так:
+
+- **Никакой JS-геометрии.** Высота берётся из `node.size` (это graph-единицы =
+  layout-пиксели, не зависят от zoom-трансформа), а не из `getBoundingClientRect()`
+  (viewport-пиксели, домноженные на зум). Измерение rect и запись его обратно —
+  причина #1 перекошенного UI на зумах ≠ 1 (§12.5.3).
+- **Разные хуки для разных рендереров.** Legacy сайзит виджет через `computeSize`,
+  Vue — через `getMinHeight/getMaxHeight` (§12.5.1). Хелпер ставит нужный.
+- `hideOnZoom: false` — содержимое не пропадает при отдалении.
+- Ставит `node.resizable`, `min_size`, оборачивает `onResize` с клампом размеров.
+
+CSS виджета должен быть flex/absolute-раскладкой, заполняющей 100% высоты — хелпер
+раздаёт только слот, внутреннюю геометрию делает CSS. Если внутри есть длинный
+скроллируемый блок, держи его **вне потока** (`position:absolute` внутри
+flex-контейнера), иначе его натуральная высота раздует ноду в V2 — эталон
+обхода в `js/text/ts-style-prompt.js` (`.ts-style-body` / `.ts-style-scroll`).
+
+Эталон применения хелпера — `js/image/ts-resolution-selector.js`.
+
 ### Нативные ноды (без своего DOM): `locales/ru/nodeDefs.json`
 
 У нод, чей интерфейс — стандартные виджеты ComfyUI (нет своего DOM), `pickLocaleStrings`

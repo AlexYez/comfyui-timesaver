@@ -113,6 +113,13 @@ function ensureStyles() {
 .ts-ideo-node__pill{margin-left:auto;flex:0 0 auto;font-size:var(--ts-fs-xs);color:var(--ts-faint);white-space:nowrap;font-variant-numeric:tabular-nums}
 .ts-ideo-node__summary{position:absolute;left:6px;right:6px;bottom:6px;height:${SUMMARY_H - 6}px;display:flex;align-items:center;gap:8px;font-size:var(--ts-fs-sm);color:var(--ts-muted);background:var(--ts-elevated);border:1px solid var(--ts-border-soft);border-radius:8px;padding:0 8px;z-index:3;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden}
 .ts-ideo-node__warn{color:var(--ts-warning)}
+/* Every other child of .ts-ideo-node is position:absolute, so its
+   min-content height is 0 and the Nodes 2.0 (Vue) layout collapses the
+   widget to a 2px sliver at node-creation time — the toolbar then floats
+   over the bare graph canvas and its launcher button is unclickable until a
+   manual resize. This hidden in-flow spacer gives the container a real
+   min-content height so Vue grants it space immediately. */
+.ts-ideo-node__spacer{flex:0 0 auto;width:1px;height:${MIN_NODE_HEIGHT - TOP_CHROME}px;visibility:hidden;pointer-events:none}
 .ts-ideo-node__modes{position:absolute;top:6px;left:6px;right:6px;height:${MODE_H - 8}px;display:flex;gap:4px;z-index:3}
 .ts-ideo-node__modes .ts-ui-btn{flex:1 1 0;padding:3px 6px;font-size:var(--ts-fs-xs)}
 .ts-ideo-node__auto{position:absolute;left:6px;right:6px;top:${MODE_H + 4}px;bottom:${SUMMARY_H + 4}px;display:none;flex-direction:column;gap:6px;z-index:3}
@@ -330,7 +337,9 @@ export function setupIdeogramNode(node) {
     autoResult.textContent = String(readPersisted(AUTO_CAPTION_INPUT, "") || "") || C.resultHint;
     autoPanel.append(autoText, generateBtn, autoBar, autoStatus, autoResult);
 
-    container.append(canvas, modesRow, toolbar, autoPanel, summary);
+    const spacer = document.createElement("div");
+    spacer.className = "ts-ideo-node__spacer";
+    container.append(spacer, canvas, modesRow, toolbar, autoPanel, summary);
     stopPropagation(container, [
         "pointerdown", "pointerup", "pointermove", "mousedown", "mouseup",
         "wheel", "click", "dblclick", "contextmenu",

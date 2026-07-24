@@ -1,15 +1,19 @@
 import { app } from "/scripts/app.js";
 
 import { TS_UI_CLASS, ensureThemeStyles } from "../_theme.js";
+import { addResizableDomWidget } from "../_dom_widget.js";
 
 const EXTENSION_ID = "ts.resolutionselector";
 const NODE_NAME = "TS_ResolutionSelector";
 const INPUT_RATIO = "aspect_ratio";
 const STYLE_ID = "ts-resolution-selector-styles";
-const FIXED_NODE_WIDTH = 250;
-const FIXED_NODE_HEIGHT = 340;
-const FIXED_WIDGET_HEIGHT = 240;
-const GRID_CELL_SIZE = 65;
+const DEFAULT_NODE_WIDTH = 250;
+const DEFAULT_NODE_HEIGHT = 340;
+const MIN_NODE_WIDTH = 180;
+const MIN_NODE_HEIGHT = 260;
+// Node title bar + slot rows above the DOM widget (legacy sizing only).
+const WIDGET_CHROME_HEIGHT = 60;
+const MIN_WIDGET_HEIGHT = 160;
 
 const RATIO_PRESETS = [
     { label: "1:1", value: "1:1" },
@@ -47,18 +51,21 @@ function ensureStyles() {
     pointer-events: auto;
 }
 .ts-reso-grid {
+    /* 3x3 of equal cells that fill the widget — no fixed pixel size, so the
+       grid scales with the node in both renderers and at any canvas zoom
+       (pure CSS, never JS geometry: see CLAUDE.md §12.5.3). */
     display: grid;
-    grid-template-columns: repeat(3, var(--ts-reso-cell, 56px));
-    grid-template-rows: repeat(3, var(--ts-reso-cell, 56px));
+    grid-template-columns: repeat(3, 1fr);
+    grid-template-rows: repeat(3, 1fr);
     gap: 5px;
     flex: 1 1 auto;
     min-height: 0;
     width: 100%;
-    height: 100%;
-    align-content: center;
-    justify-content: center;
+    /* A square cell would leave one axis short on a non-square node; instead
+       cells fill the grid and the icon inside keeps the aspect proportions. */
+    justify-items: stretch;
+    align-items: stretch;
     overflow: hidden;
-    --ts-reso-cell: ${GRID_CELL_SIZE}px;
 }
 .ts-reso-card {
     border: 1px solid var(--ts-border-soft);
@@ -101,7 +108,7 @@ function ensureStyles() {
     background: var(--ts-elevated);
 }
 .ts-reso-label {
-    font-size: clamp(8px, 1.2vh, 10px);
+    font-size: var(--ts-fs-xs);
     letter-spacing: 0.02em;
     color: var(--ts-muted);
 }
@@ -137,11 +144,25 @@ function isTargetNode(node) {
     return node?.comfyClass === NODE_NAME || node?.type === NODE_NAME;
 }
 
-function isNodesV2() {
-    if (typeof window === "undefined") {
-        return false;
+
+
+
+function hideRatioWidget(node) {
+    // The card grid is the visible control for aspect_ratio, so the stock combo
+    // must be fully hidden. type="hidden" is the part the Vue (Nodes 2.0)
+    // renderer honours; the bare .hidden flag alone leaves it on screen and it
+    // doubles the grid.
+    const widget = node?.widgets?.find((item) => item.name === INPUT_RATIO);
+    if (widget) {
+        widget.hidden = true;
+        widget.type = "hidden";
+        widget.serialize = true;
+        widget.options = { ...(widget.options || {}), hidden: true, serialize: true };
+        widget.computeSize = () => [0, 0];
     }
-    return Boolean(window.comfyAPI?.domWidget?.DOMWidgetImpl);
+    const input = node?.inputs?.find((item) => item?.name === INPUT_RATIO);
+    if (input) input.hidden = true;
+    return widget;
 }
 
 function setupResolutionSelector(node) {
@@ -156,20 +177,10 @@ function setupResolutionSelector(node) {
 
     ensureStyles();
 
-    node.resizable = false;
-    node.size = [FIXED_NODE_WIDTH, FIXED_NODE_HEIGHT];
-
-    const ratioWidget = node.widgets?.find((widget) => widget.name === INPUT_RATIO);
-    if (ratioWidget) {
-        ratioWidget.hidden = true;
-        ratioWidget.computeSize = () => [0, -4];
-    }
+    const ratioWidget = hideRatioWidget(node);
 
     const container = document.createElement("div");
     container.className = `${TS_UI_CLASS} ts-reso-selector`;
-    const isV2 = isNodesV2();
-    const widgetHeight = FIXED_WIDGET_HEIGHT;
-    let domWidgetEl = null;
 
     const grid = document.createElement("div");
     grid.className = "ts-reso-grid";
@@ -213,28 +224,15 @@ function setupResolutionSelector(node) {
         "contextmenu",
     ]);
 
-    const widgetOptions = {
-        serialize: false,
-        hideOnZoom: true,
-    };
-    if (isV2) {
-        widgetOptions.getMinHeight = () => widgetHeight;
-        widgetOptions.getMaxHeight = () => widgetHeight;
-    }
-    const domWidget = node.addDOMWidget("ts_resolution_selector", "div", container, widgetOptions);
-    domWidgetEl = domWidget?.element || domWidget?.el || domWidget?.container;
-    if (domWidgetEl) {
-        domWidgetEl.style.overflow = "hidden";
-    }
-
-    // V1 (LiteGraph) only — V2 sizes DOM widgets via getMinHeight/getMaxHeight
-    // (set in widgetOptions above); assigning computeSize there would force the
-    // legacy fixed branch of computeLayoutSize() (CLAUDE.md §12.5.1).
-    if (!isV2) {
-        domWidget.computeSize = function (width) {
-            return [width, widgetHeight];
-        };
-    }
+    addResizableDomWidget(node, container, {
+        name: "ts_resolution_selector",
+        minWidth: MIN_NODE_WIDTH,
+        minHeight: MIN_NODE_HEIGHT,
+        defaultWidth: DEFAULT_NODE_WIDTH,
+        defaultHeight: DEFAULT_NODE_HEIGHT,
+        chromeHeight: WIDGET_CHROME_HEIGHT,
+        minWidgetHeight: MIN_WIDGET_HEIGHT,
+    });
 
     const state = {
         selected: "",
@@ -278,11 +276,6 @@ function setupResolutionSelector(node) {
         syncSelection();
     };
 
-    const prevOnRemoved = node.onRemoved;
-    node.onRemoved = function () {
-        return prevOnRemoved?.apply(this, arguments);
-    };
-
     syncSelection();
 }
 
@@ -300,6 +293,8 @@ app.registerExtension({
         }
         if (!node._tsResolutionSelectorInitialized) {
             setupResolutionSelector(node);
+        } else {
+            hideRatioWidget(node);
         }
         node._tsResolutionSelectorSync?.();
     },
