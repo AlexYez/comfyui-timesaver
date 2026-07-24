@@ -14,7 +14,7 @@
 import { app } from "/scripts/app.js";
 import { api } from "/scripts/api.js";
 
-import { TS_UI_CLASS, ensureThemeStyles, getUiLanguage, pickLocaleStrings } from "../_theme.js";
+import { TS_UI_CLASS, ensureThemeStyles, getUiLanguage, pickLocaleStrings, createOpenInterfaceButton } from "../_theme.js";
 import { hideWidget as sharedHideWidget, getWidget as sharedGetWidget } from "../_dom_widget.js";
 
 const EXTENSION_ID = "ts_suite.style_prompt_selector";
@@ -41,6 +41,13 @@ const STRINGS = {
         loading: "Loading styles...",
         noStyles: "No styles found.",
         loadFailed: "Failed to load styles.",
+        modalTitle: "Style Library",
+        modalSearch: "Search by name, category or prompt...",
+        selectedNone: "No style selected",
+        selected: (name) => `Selected: ${name}`,
+        clear: "Clear",
+        done: "Done",
+        closeTitle: "Close (Esc)",
     },
     ru: {
         searchPlaceholder: "Поиск стилей...",
@@ -48,6 +55,13 @@ const STRINGS = {
         loading: "Загрузка стилей...",
         noStyles: "Стили не найдены.",
         loadFailed: "Не удалось загрузить стили.",
+        modalTitle: "Библиотека стилей",
+        modalSearch: "Поиск по названию, категории или промпту...",
+        selectedNone: "Стиль не выбран",
+        selected: (name) => `Выбрано: ${name}`,
+        clear: "Сбросить",
+        done: "Готово",
+        closeTitle: "Закрыть (Esc)",
     },
 };
 
@@ -212,6 +226,172 @@ function ensureStyles() {
     color: var(--ts-muted);
     padding: 4px 2px;
 }
+/* Compact top bar in-node: search fills, launcher sits to the right. */
+.ts-style-topbar {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    flex: 0 0 auto;
+}
+.ts-style-topbar .ts-style-search {
+    flex: 1 1 auto;
+    width: auto;
+}
+.ts-style-topbar .ts-ui-launch {
+    flex: 0 0 auto;
+    padding: 6px 9px;
+}
+/* Compact in-node launcher: icon only (the shared button keeps its "Open
+   Interface" tooltip); the full label lives in the fullscreen header. */
+.ts-style-topbar .ts-ui-launch span { display: none; }
+.ts-style-topbar .ts-ui-launch svg { margin: 0; }
+/* ── Fullscreen style library ──────────────────────────────────────────── */
+.ts-style-modal { align-items: center; justify-content: center; padding: 24px; }
+.ts-style-modal__panel {
+    display: flex;
+    flex-direction: column;
+    width: min(1680px, 96vw);
+    height: min(92vh, 100%);
+    min-height: 0;
+    background: var(--ts-bg);
+    border: 1px solid var(--ts-border-soft);
+    border-radius: var(--ts-radius-lg);
+    box-shadow: 0 24px 80px rgba(0, 0, 0, 0.55);
+    overflow: hidden;
+}
+.ts-style-modal__head {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--ts-border-soft);
+    background: var(--ts-elevated);
+}
+.ts-style-modal__title { font-size: var(--ts-fs-lg); font-weight: 600; white-space: nowrap; }
+.ts-style-modal__search {
+    flex: 1 1 auto;
+    min-width: 0;
+    max-width: 460px;
+    box-sizing: border-box;
+    padding: 7px 10px;
+    background: var(--ts-sunken);
+    border: 1px solid var(--ts-border-soft);
+    border-radius: var(--ts-radius-sm);
+    color: var(--ts-text);
+    outline: none;
+    font-size: var(--ts-fs);
+}
+.ts-style-modal__search:focus { border-color: var(--ts-accent-line); }
+.ts-style-modal__cat { flex: 0 0 auto; width: 220px; min-width: 180px; }
+.ts-style-modal__selinfo {
+    flex: 1 1 auto;
+    min-width: 0;
+    text-align: right;
+    font-size: var(--ts-fs-sm);
+    color: var(--ts-muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.ts-style-modal__scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    scrollbar-gutter: stable;
+    padding: 14px 18px 24px;
+}
+.ts-style-modal__section { margin-bottom: 10px; }
+.ts-style-modal__header {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    padding: 8px 2px;
+    font-size: var(--ts-fs-sm);
+    font-weight: 700;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: var(--ts-muted);
+    background: var(--ts-bg);
+    border-bottom: 1px solid var(--ts-border-soft);
+}
+.ts-style-modal__header[hidden] { display: none; }
+.ts-style-modal__section[hidden] { display: none; }
+.ts-style-modal__grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 14px;
+    padding: 12px 0 4px;
+}
+.ts-style-modal__card {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--ts-border-soft);
+    border-radius: var(--ts-radius-md);
+    background: var(--ts-surface);
+    padding: 0;
+    cursor: pointer;
+    overflow: hidden;
+    text-align: left;
+    transition: border-color .12s, box-shadow .12s, transform .08s;
+}
+.ts-style-modal__card:hover { border-color: var(--ts-accent-line); transform: translateY(-2px); }
+.ts-style-modal__card[hidden] { display: none; }
+.ts-style-modal__card.is-selected {
+    border-color: var(--ts-accent);
+    box-shadow: 0 0 0 2px var(--ts-accent-line);
+}
+.ts-style-modal__thumb {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    background: var(--ts-sunken);
+    overflow: hidden;
+}
+.ts-style-modal__thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.ts-style-modal__check {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 24px;
+    height: 24px;
+    border-radius: 999px;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    /* Deliberate: badge floats over an arbitrary thumbnail. */
+    background: var(--ts-accent);
+    color: var(--ts-accent-contrast);
+    font-size: 14px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+.ts-style-modal__card.is-selected .ts-style-modal__check { display: flex; }
+.ts-style-modal__meta { padding: 8px 10px 10px; }
+.ts-style-modal__name {
+    font-size: var(--ts-fs);
+    font-weight: 600;
+    color: var(--ts-text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.ts-style-modal__desc {
+    margin-top: 3px;
+    font-size: var(--ts-fs-xs);
+    color: var(--ts-muted);
+    line-height: 1.35;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+.ts-style-modal__empty {
+    padding: 40px;
+    text-align: center;
+    color: var(--ts-muted);
+    font-size: var(--ts-fs);
+}
 `;
     document.head.appendChild(style);
 }
@@ -315,7 +495,15 @@ function setupStyleSelector(node) {
     empty.className = "ts-style-empty";
     empty.textContent = L.loading;
 
-    container.appendChild(search);
+    // Launcher opens the big fullscreen library; it shares the same style data
+    // and selection so browsing large or in-node stays in sync.
+    const launchBtn = createOpenInterfaceButton(() => openStyleLibrary());
+    const topbar = document.createElement("div");
+    topbar.className = "ts-style-topbar";
+    topbar.appendChild(search);
+    topbar.appendChild(launchBtn);
+
+    container.appendChild(topbar);
     container.appendChild(categorySelect);
     container.appendChild(body);
     container.appendChild(empty);
@@ -405,6 +593,11 @@ function setupStyleSelector(node) {
         return value === style.id || value === style.name || value === styleValue(style);
     };
 
+    // Set by openStyleLibrary while the fullscreen modal is mounted; lets
+    // setSelection keep the big grid + selection banner in sync with the node.
+    let modalRefresh = null;
+    let modalRoot = null;
+
     const setSelection = (value, trigger = true) => {
         const nextValue = value || "";
         const changed = nextValue !== state.selectedValue;
@@ -416,6 +609,7 @@ function setupStyleSelector(node) {
                 record.value === state.selectedValue || matchesSelection(record.style, state.selectedValue),
             );
         });
+        modalRefresh?.();
 
         if (styleWidget && trigger && changed) {
             styleWidget.value = state.selectedValue;
@@ -614,6 +808,233 @@ function setupStyleSelector(node) {
         }
     };
 
+    // ── Fullscreen library ────────────────────────────────────────────────
+    // A big, comfortable browser over the SAME style data + selection. Built
+    // fresh on open (cheap: cards are plain <img loading="lazy">), torn down on
+    // close so no listeners leak.
+    const openStyleLibrary = () => {
+        if (modalRoot) return;
+        const doc = node?.graph?.canvas?.canvas?.ownerDocument || document;
+
+        const overlay = doc.createElement("div");
+        overlay.className = `${TS_UI_CLASS} ts-ui-modal ts-style-modal`;
+
+        const keyAnchor = doc.createElement("textarea");
+        keyAnchor.className = "ts-ui-keyanchor";
+        keyAnchor.setAttribute("aria-hidden", "true");
+
+        const panel = doc.createElement("div");
+        panel.className = "ts-style-modal__panel";
+
+        const head = doc.createElement("div");
+        head.className = "ts-style-modal__head";
+
+        const title = doc.createElement("div");
+        title.className = "ts-style-modal__title";
+        title.textContent = L.modalTitle;
+
+        const mSearch = doc.createElement("input");
+        mSearch.type = "search";
+        mSearch.className = "ts-style-modal__search";
+        mSearch.placeholder = L.modalSearch;
+
+        const mCat = doc.createElement("select");
+        mCat.className = "ts-ui-select ts-style-modal__cat";
+
+        const selInfo = doc.createElement("div");
+        selInfo.className = "ts-style-modal__selinfo";
+
+        const clearBtn = doc.createElement("button");
+        clearBtn.type = "button";
+        clearBtn.className = "ts-ui-btn";
+        clearBtn.textContent = L.clear;
+
+        const doneBtn = doc.createElement("button");
+        doneBtn.type = "button";
+        doneBtn.className = "ts-ui-btn ts-ui-btn--primary";
+        doneBtn.textContent = L.done;
+
+        head.append(title, mSearch, mCat, selInfo, clearBtn, doneBtn);
+
+        const mScroll = doc.createElement("div");
+        mScroll.className = "ts-style-modal__scroll";
+
+        const mEmpty = doc.createElement("div");
+        mEmpty.className = "ts-style-modal__empty";
+        mEmpty.textContent = L.noStyles;
+        mEmpty.style.display = "none";
+
+        panel.append(head, mScroll, mEmpty);
+        overlay.append(keyAnchor, panel);
+
+        // Category dropdown (mirrors the in-node one).
+        const counts = new Map();
+        state.styles.forEach((style) => {
+            const key = style.category || "";
+            if (!key) return;
+            const entry = counts.get(key) || { label: categoryLabel(style), count: 0 };
+            entry.count += 1;
+            counts.set(key, entry);
+        });
+        const allOpt = doc.createElement("option");
+        allOpt.value = ALL_CATEGORIES;
+        allOpt.textContent = `${L.allCategories} (${state.styles.length})`;
+        mCat.appendChild(allOpt);
+        counts.forEach((entry, key) => {
+            const opt = doc.createElement("option");
+            opt.value = key;
+            opt.textContent = `${entry.label} (${entry.count})`;
+            mCat.appendChild(opt);
+        });
+        mCat.value = ALL_CATEGORIES;
+
+        // Cards, grouped into sticky-header sections like the in-node grid.
+        const mRecords = [];
+        const mSections = [];
+        const byCategory = new Map();
+        state.styles.forEach((style) => {
+            if (!styleValue(style)) return;
+            const key = style.category || "";
+            if (!byCategory.has(key)) byCategory.set(key, []);
+            byCategory.get(key).push(style);
+        });
+        byCategory.forEach((styles, category) => {
+            const section = doc.createElement("div");
+            section.className = "ts-style-modal__section";
+            const header = doc.createElement("div");
+            header.className = "ts-style-modal__header";
+            header.textContent = category ? categoryLabel(styles[0]) : "";
+            if (!category) header.hidden = true;
+            const grid = doc.createElement("div");
+            grid.className = "ts-style-modal__grid";
+            section.append(header, grid);
+
+            const records = [];
+            styles.forEach((style) => {
+                const value = styleValue(style);
+                const card = doc.createElement("button");
+                card.type = "button";
+                card.className = "ts-style-modal__card";
+                card.title = styleTooltip(style);
+
+                const thumb = doc.createElement("div");
+                thumb.className = "ts-style-modal__thumb";
+                if (style.preview) {
+                    const img = doc.createElement("img");
+                    img.alt = styleLabel(style) || "style";
+                    img.loading = "lazy";
+                    img.src = makePreviewUrl(style.preview);
+                    img.onerror = () => { img.remove(); };
+                    thumb.appendChild(img);
+                }
+                const check = doc.createElement("div");
+                check.className = "ts-style-modal__check";
+                check.textContent = "✓";
+                thumb.appendChild(check);
+
+                const meta = doc.createElement("div");
+                meta.className = "ts-style-modal__meta";
+                const nm = doc.createElement("div");
+                nm.className = "ts-style-modal__name";
+                nm.textContent = styleLabel(style);
+                meta.appendChild(nm);
+                const descText = (isRu ? style.description : style.prompt) || style.description || style.prompt;
+                if (descText) {
+                    const desc = doc.createElement("div");
+                    desc.className = "ts-style-modal__desc";
+                    desc.textContent = descText;
+                    meta.appendChild(desc);
+                }
+                card.append(thumb, meta);
+
+                card.addEventListener("click", (event) => {
+                    event.preventDefault();
+                    const next = value === state.selectedValue ? "" : value;
+                    setSelection(next, true);
+                });
+
+                grid.appendChild(card);
+                const record = {
+                    style,
+                    value,
+                    el: card,
+                    haystack: [
+                        style.id, style.name, style.name_ru,
+                        style.category, style.category_ru,
+                        style.description, style.prompt,
+                    ].filter(Boolean).join(" ").toLowerCase(),
+                };
+                mRecords.push(record);
+                records.push(record);
+            });
+            mScroll.appendChild(section);
+            mSections.push({ category, el: section, records });
+        });
+
+        const applyModalFilter = () => {
+            const query = mSearch.value.trim().toLowerCase();
+            const cat = mCat.value || ALL_CATEGORIES;
+            let visible = 0;
+            mSections.forEach((section) => {
+                const catOk = cat === ALL_CATEGORIES || section.category === cat;
+                let n = 0;
+                section.records.forEach((record) => {
+                    const show = catOk && (!query || record.haystack.includes(query));
+                    record.el.hidden = !show;
+                    if (show) n += 1;
+                });
+                section.el.hidden = n === 0;
+                visible += n;
+            });
+            mEmpty.style.display = visible ? "none" : "block";
+        };
+
+        const refresh = () => {
+            mRecords.forEach((record) => {
+                record.el.classList.toggle(
+                    "is-selected",
+                    record.value === state.selectedValue || matchesSelection(record.style, state.selectedValue),
+                );
+            });
+            const sel = mRecords.find((r) => r.el.classList.contains("is-selected"));
+            selInfo.textContent = sel ? L.selected(styleLabel(sel.style)) : L.selectedNone;
+        };
+
+        const close = () => {
+            if (!modalRoot) return;
+            doc.removeEventListener("keydown", onKey, true);
+            overlay.remove();
+            modalRoot = null;
+            modalRefresh = null;
+        };
+        const onKey = (event) => {
+            if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); close(); }
+        };
+
+        mSearch.addEventListener("input", applyModalFilter);
+        mCat.addEventListener("change", applyModalFilter);
+        clearBtn.addEventListener("click", () => setSelection("", true));
+        doneBtn.addEventListener("click", close);
+        // Click on the dimmed backdrop (outside the panel) closes.
+        overlay.addEventListener("pointerdown", (event) => {
+            if (event.target === overlay) close();
+        });
+        // The overlay lives over the graph canvas; stop events leaking to it.
+        ["pointerdown", "pointerup", "wheel", "click", "dblclick", "contextmenu", "keydown"].forEach((ev) => {
+            panel.addEventListener(ev, (event) => event.stopPropagation());
+        });
+        doc.addEventListener("keydown", onKey, true);
+
+        doc.body.appendChild(overlay);
+        modalRoot = overlay;
+        modalRefresh = refresh;
+        applyModalFilter();
+        refresh();
+        // Focus the search for immediate typing; keyAnchor parks graph hotkeys.
+        requestAnimationFrame(() => mSearch.focus());
+    };
+    node._tsStyleSelectorCloseLibrary = () => { if (modalRoot) modalRoot.remove(); modalRoot = null; modalRefresh = null; };
+
     search.addEventListener("input", () => {
         if (searchTimer) {
             clearTimeout(searchTimer);
@@ -655,6 +1076,8 @@ function setupStyleSelector(node) {
     node.onResize = onResizeWrapped;
 
     const teardown = () => {
+        node._tsStyleSelectorCloseLibrary?.();
+        node._tsStyleSelectorCloseLibrary = null;
         if (searchTimer) {
             clearTimeout(searchTimer);
             searchTimer = null;
