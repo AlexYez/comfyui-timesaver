@@ -110,6 +110,57 @@ function serializableWidgetCount(node) {
 }
 
 /**
+ * The value kind a widget accepts, from its STABLE LiteGraph type.
+ *
+ * Deliberately not `typeof widget.value`: by the time onConfigure runs the
+ * value may already be a mis-shifted one of the wrong type, which is exactly
+ * what we are trying to detect.
+ */
+function expectedKind(widget) {
+    const type = String(widget?.type || "").toLowerCase();
+    if (type === "number" || type === "slider") return "number";
+    if (type === "toggle" || type === "boolean") return "boolean";
+    if (type === "combo") return "combo";
+    if (type === "text" || type === "string" || type === "customtext" || type === "textarea") return "string";
+    return "unknown";
+}
+
+function widgetAccepts(widget, value) {
+    switch (expectedKind(widget)) {
+        case "number": return typeof value === "number";
+        case "boolean": return typeof value === "boolean";
+        case "string": return typeof value === "string";
+        case "combo": {
+            const values = widget?.options?.values;
+            if (Array.isArray(values) && values.length) return values.includes(value);
+            return typeof value === "string";
+        }
+        default: return false; // unknown: neutral, scores for no layout
+    }
+}
+
+function resolveWidget(node, name) {
+    return node?.widgets?.find((w) => w?.name === name) || node?._tsHiddenWidgets?.[name] || null;
+}
+
+/**
+ * How well a positional value array fits a candidate widget layout.
+ *
+ * DOM widgets are skipped: they carry no meaningful value and appear in only
+ * one of the two layouts, so counting them would bias the comparison.
+ */
+function layoutFitScore(node, names, values) {
+    let score = 0;
+    const limit = Math.min(names.length, values.length);
+    for (let i = 0; i < limit; i += 1) {
+        const widget = resolveWidget(node, names[i]);
+        if (!widget || !isSerializableWidget(widget)) continue;
+        if (widgetAccepts(widget, values[i])) score += 1;
+    }
+    return score;
+}
+
+/**
  * Re-apply a workflow saved BEFORE this module started removing hidden widgets.
  *
  * LiteGraph serialises widget values POSITIONALLY (`widgets_values` is a plain
@@ -123,9 +174,15 @@ function serializableWidgetCount(node) {
  * `aspect_ratio` kept its "1:1" default while `resolution` got "16:9".)
  *
  * `node._tsWidgetOrder` records the ORIGINAL order captured before the first
- * removal, so a legacy array can be mapped back by name. A current-format save
- * carries exactly one value per REMAINING widget, so `values.length` tells the
- * two formats apart and this migration never touches a modern workflow.
+ * removal, so a legacy array can be mapped back by name.
+ *
+ * Telling the two formats apart by LENGTH does not work: LiteGraph pushes a
+ * slot for EVERY widget including the node's own DOM widget, so a current save
+ * can be exactly as long as a legacy one. Instead both candidate layouts are
+ * scored by how well the values fit each widget's declared type, and the array
+ * is only remapped when the original layout fits strictly better. A modern
+ * workflow always fits its own layout best, so it is never touched; a tie
+ * (ambiguous) also leaves the data alone.
  *
  * @param {object} node LiteGraph node.
  * @param {object} info Serialized node data passed to onConfigure.
@@ -136,14 +193,30 @@ function restoreLegacyWidgetValues(node, info) {
     if (!Array.isArray(order) || !stash) return;
     const values = info?.widgets_values;
     // Object-keyed saves address widgets by name and cannot shift.
-    if (!Array.isArray(values)) return;
+    if (!Array.isArray(values) || !values.length) return;
+    // A legacy array carries a slot for EVERY original widget. Anything shorter
+    // is a current-format save (whose only slots may be the node's own DOM
+    // widget) — remapping that would overwrite values already restored from
+    // node.properties with the DOM widget's empty placeholder.
+    const currentWidgets = node.widgets || [];
+    if (values.length < order.length) return;
+    if (values.length < currentWidgets.length) return;
 
-    const current = serializableWidgetCount(node);
-    // Legacy saves carry a value for widgets that are no longer in node.widgets.
-    // A save from this build has exactly `current` values, so `>` is the tell.
-    // (Values can be fewer than `order` when the node gained inputs later — they
-    // are always appended, so mapping the leading slots stays correct.)
-    if (!(values.length > current && values.length <= order.length)) return;
+    const currentNames = currentWidgets.map((w) => w?.name);
+    const legacyScore = layoutFitScore(node, order, values);
+    const currentScore = layoutFitScore(node, currentNames, values);
+
+    if (values.length === currentWidgets.length) {
+        // Same length: only a strict type-fit win proves this is the old
+        // layout. When the current layout has no scoreable widget at all (every
+        // widget is hidden, so the single slot belongs to the DOM widget) the
+        // comparison is meaningless — leave the data alone, because
+        // node.properties already carries the truth for such saves.
+        const scoreableCurrent = currentWidgets.filter(isSerializableWidget).length;
+        if (!scoreableCurrent || legacyScore <= currentScore) return;
+    } else if (legacyScore < currentScore) {
+        return; // more slots than this layout holds, but it still fits better
+    }
 
     for (let i = 0; i < values.length; i += 1) {
         const name = order[i];

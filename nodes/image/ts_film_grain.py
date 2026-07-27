@@ -29,7 +29,12 @@ class TS_FilmGrain(IO.ComfyNode):
                 IO.Float.Input("grain_softness", default=0.5, min=0.0, max=2.0, step=0.1, display_mode=IO.NumberDisplay.slider, tooltip="Gaussian blur applied to the grain to soften it. 0 = sharp grain (needs the kornia package when >0)."),
                 IO.Float.Input("color_grain_strength", default=0.15, min=0.0, max=1.0, step=0.01, display_mode=IO.NumberDisplay.slider, tooltip="Amount of colored (chroma) grain mixed in with the monochrome grain."),
                 IO.Float.Input("mid_tone_grain_bias", default=0.5, min=0.01, max=0.99, step=0.01, display_mode=IO.NumberDisplay.slider, tooltip="Luminance where grain peaks. 0.5 concentrates grain in mid-tones; lower/higher biases it toward shadows/highlights."),
-                IO.Int.Input("seed", default=0, min=0, max=0xFFFFFFFFFFFFFFFF, tooltip="Noise seed for the grain pattern. Change for a different random grain."),
+                # control_after_generate is declared so the node definition matches
+                # the widget the frontend renders next to every seed anyway. When
+                # it is undeclared the saved widgets_values array carries an extra
+                # slot and the LAST widget's value is dropped on reload (see
+                # tests/test_seed_control_after_generate.py).
+                IO.Int.Input("seed", default=0, min=0, max=0xFFFFFFFFFFFFFFFF, control_after_generate=True, tooltip="Noise seed for the grain pattern. Change for a different random grain."),
             ],
             outputs=[IO.Image.Output(display_name="IMAGE")],
         )

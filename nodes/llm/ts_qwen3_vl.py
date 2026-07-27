@@ -206,6 +206,14 @@ class TS_Qwen3_VL_V3(IO.ComfyNode):
                     default=42,
                     min=0,
                     max=0xFFFFFFFFFFFFFFFF,
+                    # The frontend renders a "control_after_generate" widget next
+                    # to every seed whether or not the schema declares one. When
+                    # it is undeclared the saved widgets_values array carries a
+                    # slot the loader does not expect and the LAST widget's value
+                    # is dropped on reload (video_max_frames silently reverted to
+                    # its default). Declaring it keeps the node definition and
+                    # the rendered widget list in lockstep. Same as core KSampler.
+                    control_after_generate=True,
                     tooltip="Seed for reproducible generation.",
                 ),
                 IO.Int.Input(

@@ -749,7 +749,10 @@ class TSSmartInpaint(IO.ComfyNode):
                     "floor. ~3% is a sensible default; 0 = hard edge.",
                 ),
                 IO.Combo.Input("resize_method", options=_FINE_UPSCALE_RESIZE_METHODS, default="lanczos", tooltip="Interpolation used to up/downscale the image crop. lanczos and bicubic keep the most detail."),
-                IO.Int.Input("seed", default=0, min=0, max=0xFFFFFFFFFFFFFFFF, tooltip="Noise seed for the sampler. Change for a different variation of the inpainted region."),
+                # See ts_film_grain.py: an undeclared control_after_generate makes
+                # the frontend add a widget the node definition does not know
+                # about, and the last widget's value is lost on reload.
+                IO.Int.Input("seed", default=0, min=0, max=0xFFFFFFFFFFFFFFFF, control_after_generate=True, tooltip="Noise seed for the sampler. Change for a different variation of the inpainted region."),
                 IO.Int.Input("steps", default=4, min=1, max=100, tooltip="Number of sampling steps. More steps trade speed for quality."),
                 IO.Float.Input("cfg", default=1.0, min=0.0, max=30.0, step=0.1, tooltip="Classifier-free guidance scale. Higher values follow the prompt more strongly."),
                 IO.Combo.Input("sampler_name", options=comfy.samplers.KSampler.SAMPLERS, default="euler", tooltip="Sampling algorithm used to denoise the region."),
