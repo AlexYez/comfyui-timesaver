@@ -48,11 +48,8 @@ def _box_blur_mask(mask_tensor_batch, blur_amount, device):
     if blur_amount <= 0:
         return mask_tensor_batch
 
-    kernel_size = int(blur_amount * 2) + 1
-    if blur_amount > 0:
-        kernel_size = max(3, kernel_size)
-    else:
-        return mask_tensor_batch
+    # blur_amount > 0 is guaranteed by the early return above.
+    kernel_size = max(3, int(blur_amount * 2) + 1)
 
     kernel_1d = torch.ones(kernel_size, device=device, dtype=torch.float32) / kernel_size
 

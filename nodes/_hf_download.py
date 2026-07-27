@@ -15,9 +15,11 @@ two things that actually matter in the field:
 Node-specific policy (``allow_patterns``, repo fallbacks, progress reporting)
 stays with the caller — this helper only owns the transport.
 
-Note: ``nodes/llm/_qwen_engine.py`` keeps its own equivalent implementation
-because it also tracks endpoint support to size its download estimates; it is
-not a candidate for this helper without dragging that state along.
+Note: ``nodes/llm/_qwen_engine.py`` still carries its own equivalent
+implementation. The two differ only in failure policy — the Qwen one stops
+cycling mirrors on ``TypeError`` (a hub-version mismatch that switching
+endpoints cannot fix), while this helper retries every endpoint — so merging
+them means carrying that fail-fast rule over first.
 
 The loader skips ``_``-prefixed modules, so this is never registered as a node.
 """

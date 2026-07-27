@@ -72,12 +72,6 @@ try:
 except Exception:
     _comfy_sd = None
 
-try:
-    import comfy.utils as _comfy_utils
-except Exception:
-    _comfy_utils = None
-
-
 LOGGER = logging.getLogger("comfyui_timesaver.ts_sam_media_loader")
 LOG_PREFIX = "[TS SAM Media Loader]"
 

@@ -21,7 +21,6 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-from pathlib import Path
 
 from comfy_api.v0_0_2 import IO
 

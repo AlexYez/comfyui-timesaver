@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import difflib
 import re
-import threading
 import time
 import unicodedata
 from dataclasses import dataclass
@@ -50,7 +49,6 @@ from ._helpers import (
     TEMPERATURE,
     VOICE_LOG_PREFIX,
     VOICE_MODEL_BASE,
-    VOICE_MODEL_CACHE,
     VOICE_MODEL_HIGH_QUALITY,
     WHISPER_COMPRESSION_RATIO_THRESHOLD,
     WHISPER_DIR,

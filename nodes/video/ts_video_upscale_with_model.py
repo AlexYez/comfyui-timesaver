@@ -30,8 +30,6 @@ _UPSCALE_METHODS = ["nearest-exact", "bilinear", "area", "bicubic"]
 class TS_Video_Upscale_With_Model(IO.ComfyNode):
     """Memory-efficient per-frame upscaler with three device strategies."""
 
-    upscale_methods = _UPSCALE_METHODS
-
     @classmethod
     def define_schema(cls) -> IO.Schema:
         return IO.Schema(

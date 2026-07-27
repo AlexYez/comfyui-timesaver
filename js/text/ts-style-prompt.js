@@ -47,7 +47,6 @@ const STRINGS = {
         selected: (name) => `Selected: ${name}`,
         clear: "Clear",
         done: "Done",
-        closeTitle: "Close (Esc)",
         collapseHint: "Click to shrink",
     },
     ru: {
@@ -62,7 +61,6 @@ const STRINGS = {
         selected: (name) => `Выбрано: ${name}`,
         clear: "Сбросить",
         done: "Готово",
-        closeTitle: "Закрыть (Esc)",
         collapseHint: "Клик — свернуть",
     },
 };
@@ -521,7 +519,6 @@ function setupStyleSelector(node) {
     sanitizeNodeSize(node);
 
     node.resizable = true;
-    node._tsStyleSelectorInitialized = true;
 
     // hideStyleWidget() above already removed this widget from the grid; keep a
     // reference (from the hidden-widget stash) for reading the persisted value.
@@ -938,9 +935,6 @@ function setupStyleSelector(node) {
         const overlay = doc.createElement("div");
         overlay.className = `${TS_UI_CLASS} ts-ui-modal ts-style-modal`;
 
-        const keyAnchor = doc.createElement("textarea");
-        keyAnchor.className = "ts-ui-keyanchor";
-        keyAnchor.setAttribute("aria-hidden", "true");
 
         const panel = doc.createElement("div");
         panel.className = "ts-style-modal__panel";
@@ -984,7 +978,7 @@ function setupStyleSelector(node) {
         mEmpty.style.display = "none";
 
         panel.append(head, mScroll, mEmpty);
-        overlay.append(keyAnchor, panel);
+        overlay.append(panel);
 
         // Category dropdown (mirrors the in-node one).
         const counts = new Map();
@@ -1151,7 +1145,8 @@ function setupStyleSelector(node) {
         modalClose = close;
         applyModalFilter();
         refresh();
-        // Focus the search for immediate typing; keyAnchor parks graph hotkeys.
+        // Focus the search for immediate typing. It is a text field, so
+        // ComfyUI's hotkey service already skips events while it holds focus.
         requestAnimationFrame(() => mSearch.focus());
     };
     // Route teardown through the modal's own close() so the capture-phase
@@ -1216,7 +1211,6 @@ function setupStyleSelector(node) {
             node.onResize = previousOnResize;
         }
         node._tsStyleSelectorSync = null;
-        node._tsStyleSelectorInitialized = false;
     };
 
     const prevOnRemoved = node.onRemoved;

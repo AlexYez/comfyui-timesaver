@@ -184,13 +184,11 @@ class TSCropToMask(IO.ComfyNode):
             r = final_regions[i]
             center_x, center_y = r["x_min"] + r["width"] // 2, r["y_min"] + r["height"] // 2
             crop_x, crop_y = center_x - max_target_width // 2, center_y - max_target_height // 2
+            # An image narrower/shorter than the tile already clamps to 0 here,
+            # so the "centre it instead" correction that used to follow only
+            # recomputed the same 0. Undersize is handled by the F.pad below.
             crop_x = max(0, min(crop_x, original_img_w - max_target_width))
             crop_y = max(0, min(crop_y, original_img_h - max_target_height))
-
-            if original_img_w < max_target_width:
-                crop_x = max(0, (original_img_w - max_target_width) // 2)
-            if original_img_h < max_target_height:
-                crop_y = max(0, (original_img_h - max_target_height) // 2)
 
             crop_x_end, crop_y_end = crop_x + max_target_width, crop_y + max_target_height
             cropped_img = img[crop_y:crop_y_end, crop_x:crop_x_end, :]

@@ -15,7 +15,6 @@ import logging
 from pathlib import Path
 from typing import Any
 
-import folder_paths
 
 # Whisper model registry, on-disk dir, download lock and in-memory model cache
 # now live in the shared engine (nodes/_whisper_engine.py). Re-exported here so

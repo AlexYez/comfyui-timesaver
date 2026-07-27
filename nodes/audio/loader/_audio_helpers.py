@@ -513,21 +513,6 @@ def _coerce_audio_tensor(audio: dict[str, Any]) -> tuple[torch.Tensor, int]:
     return tensor.contiguous(), sample_rate
 
 
-def _audio_duration_seconds(audio: dict[str, Any]) -> float:
-    waveform, sample_rate = _coerce_audio_tensor(audio)
-    return float(waveform.shape[-1]) / float(sample_rate)
-
-
-def _crop_audio_input(audio: dict[str, Any], crop_start_seconds: float, crop_end_seconds: float) -> tuple[dict[str, Any], int]:
-    """Crop a ComfyUI audio payload without mutating the input."""
-    waveform, sample_rate = _coerce_audio_tensor(audio)
-    duration_seconds = float(waveform.shape[-1]) / float(sample_rate)
-    start_seconds, end_seconds = _sanitize_crop(duration_seconds, crop_start_seconds, crop_end_seconds)
-    start_index = min(waveform.shape[-1], max(0, int(math.floor(start_seconds * sample_rate))))
-    end_index = min(waveform.shape[-1], max(start_index + 1, int(math.ceil(end_seconds * sample_rate))))
-    cropped = waveform[:, start_index:end_index].contiguous()
-    duration_int = int(math.ceil(cropped.shape[-1] / float(sample_rate))) if cropped.shape[-1] > 0 else 0
-    return {"waveform": cropped.unsqueeze(0), "sample_rate": sample_rate}, duration_int
 
 
 def _build_peaks_from_audio_tensor(

@@ -132,28 +132,6 @@ def _load_attached_image_pil(annotated: str):
         return None
 
 
-def _attached_image_as_tensor(annotated: str):
-    """Load the attached image as a ComfyUI IMAGE tensor (``[1, H, W, C]``)."""
-    pil = _load_attached_image_pil(annotated)
-    if pil is None:
-        return None
-    try:
-        import numpy as np
-        import torch
-    except Exception as exc:
-        LOGGER.warning("%s torch/numpy unavailable for attached image: %s", LOG_PREFIX, exc)
-        return None
-    arr = np.asarray(pil, dtype=np.float32) / 255.0
-    if arr.ndim == 2:
-        arr = arr[..., None]
-    if arr.shape[-1] == 4:
-        arr = arr[..., :3]
-    return torch.from_numpy(arr).unsqueeze(0)
-
-
-# ---------------------------------------------------------------------------
-# Voice recognition HTTP routes
-# ---------------------------------------------------------------------------
 
 def _safe_audio_suffix(filename: str | None) -> str:
     suffix = Path(filename or "").suffix.lower()

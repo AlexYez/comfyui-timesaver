@@ -85,6 +85,9 @@ function tsEnsureStyles() {
     border-color: var(--ts-accent);
     box-shadow: 0 0 0 1px var(--ts-accent-line);
 }
+.ts-prompt-item.is-dragging {
+    opacity: 0.6;
+}
 .ts-prompt-handle {
     display: inline-flex;
     align-items: center;

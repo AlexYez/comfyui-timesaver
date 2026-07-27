@@ -103,7 +103,6 @@ class QwenEngine:
         self._cache: dict[str, tuple[Any, Any]] = {}
         self._cache_order: list[str] = []
         self._cache_max_items = max(1, int(cache_max_items))
-        self._snapshot_endpoint_supported: bool | None = None
         self._optimizations_applied = False
 
     # ------------------------------------------------------------------
@@ -698,22 +697,6 @@ class QwenEngine:
                 return value
         return None
 
-    def apply_chat_template(self, processor, messages, **overrides):
-        template_fn = getattr(processor, "apply_chat_template", None)
-        if template_fn is None:
-            tokenizer = self.get_tokenizer_from_processor(processor)
-            template_fn = getattr(tokenizer, "apply_chat_template", None)
-        if template_fn is None:
-            raise RuntimeError("Loaded processor/tokenizer does not provide apply_chat_template.")
-        kwargs: dict[str, Any] = {
-            "tokenize": True,
-            "add_generation_prompt": True,
-            "return_dict": True,
-            "return_tensors": "pt",
-        }
-        kwargs.update(overrides)
-        return template_fn(messages, **kwargs)
-
     def apply_chat_template_no_thinking(self, processor, messages):
         """``apply_chat_template`` with ``enable_thinking=False`` baked in.
 
@@ -1155,8 +1138,6 @@ class QwenEngine:
         while True:
             try:
                 snapshot_download(**kwargs)
-                if "endpoint" in kwargs:
-                    self._snapshot_endpoint_supported = True
                 return
             except TypeError as exc:
                 msg = str(exc)
@@ -1165,7 +1146,6 @@ class QwenEngine:
                     continue
                 if "endpoint" in msg and "endpoint" in kwargs:
                     kwargs.pop("endpoint", None)
-                    self._snapshot_endpoint_supported = False
                     self._logger.warning(
                         "%s snapshot_download endpoint unsupported; using default hub.",
                         self._log_prefix,

@@ -226,7 +226,7 @@ def _resolve_birefnet_dtype(target_device, precision: str) -> "torch.dtype":
 
 
 @contextmanager
-def _progress_pulse(progress_bar, start_step, cap_step, total_steps=100, interval=0.75):
+def _progress_pulse(progress_bar, start_step, total_steps=100):
     """No-op context manager. The previous implementation spawned a
     background thread per phase to animate the progress bar; on a
     multi-phase execute (download / load module / load weights / model.to /
@@ -537,7 +537,7 @@ class BiRefNetModel:
             )
             try:
                 _update_progress(progress_bar, start_step)
-                with _progress_pulse(progress_bar, start_step, max(start_step, end_step - 1)):
+                with _progress_pulse(progress_bar, start_step):
                     # Shared transport adds mirror cycling (HF_ENDPOINT) + hub
                     # kwarg compatibility. The narrow allow_patterns stay here:
                     # a wide pattern on the mirror repo would pull GBs of extras.
@@ -573,7 +573,7 @@ class BiRefNetModel:
             # with a variant-specific filename, plus a single shared
             # ``birefnet.py``/``birefnet_lite.py``/``BiRefNet_config.py``.
             # We pull just the files we actually need.
-            with _progress_pulse(progress_bar, start_step, max(start_step, end_step - 1)):
+            with _progress_pulse(progress_bar, start_step):
                 snapshot_download_resilient(
                     repo_id=fallback_repo,
                     local_dir=cache_dir,
@@ -667,13 +667,13 @@ class BiRefNetModel:
                 sys.modules[f"{package_name}.{model_module_name}"] = model_module
                 with _scoped_sys_modules(
                     {"BiRefNet_config": config_module, model_module_name: model_module}
-                ), _progress_pulse(progress_bar, start_step + 2, start_step + 8):
+                ), _progress_pulse(progress_bar, start_step + 2):
                     spec.loader.exec_module(model_module)
 
                 _update_progress(progress_bar, start_step + 10)
                 self.model = model_module.BiRefNet(config_module.BiRefNetConfig())
 
-                with _progress_pulse(progress_bar, start_step + 12, end_step - 8):
+                with _progress_pulse(progress_bar, start_step + 12):
                     # Accept both safetensors (preferred) and legacy
                     # .bin pickles. Lazy import keeps cold startup fast.
                     if weights_path.endswith(".safetensors"):
@@ -697,7 +697,7 @@ class BiRefNetModel:
                 else:
                     self.model.float()
 
-                with _progress_pulse(progress_bar, end_step - 8, end_step - 1):
+                with _progress_pulse(progress_bar, end_step - 8):
                     self.model.to(target_device)
 
                 # Channels-last layout helps the BiRefNet decoder's conv

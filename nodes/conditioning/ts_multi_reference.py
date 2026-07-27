@@ -64,7 +64,6 @@ from comfy_execution.graph_utils import ExecutionBlocker
 
 logger = logging.getLogger(__name__)
 
-_IMAGE_SLOT_COUNT = 3
 _DEFAULT_SIZE_MULTIPLE = 32
 _MIN_SIZE_MULTIPLE = 1
 _MAX_SIZE_MULTIPLE = 128

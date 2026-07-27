@@ -14,7 +14,6 @@ __all__ = [
     "_log_error",
     "_resolve_image_path",
     "_load_image_tensor",
-    "_get_uploadable_image_options",
     "_session_working_path",
     "_working_file_signature",
     "MODEL_DOWNLOAD_URL",
@@ -178,17 +177,6 @@ def _resolve_image_path(source_path: str) -> str:
     if annotated and os.path.isfile(annotated):
         return annotated
     return normalized
-
-
-def _get_uploadable_image_options() -> list[str]:
-    """Return input-directory image files compatible with ComfyUI's native upload combo."""
-    input_dir = folder_paths.get_input_directory()
-    try:
-        files, _ = folder_paths.recursive_search(input_dir)
-    except OSError as exc:
-        _log_warning(f"Failed to scan input directory for image files: {exc}")
-        return []
-    return sorted(folder_paths.filter_files_content_types(files, ["image"]))
 
 
 def _safe_session_id(session_id: str) -> str:
@@ -375,17 +363,6 @@ def _save_image_atomic(image: "Image.Image", destination: Path) -> None:
                 tmp_path.unlink()
             except OSError:
                 pass
-
-
-def _to_input_annotation(filepath: Path) -> str:
-    """Convert an input-directory file path to ComfyUI's annotated widget value."""
-    input_dir = Path(folder_paths.get_input_directory()).resolve()
-    resolved_path = filepath.resolve()
-    try:
-        relative_path = resolved_path.relative_to(input_dir)
-    except ValueError:
-        return _normalize_path(str(resolved_path))
-    return f"{_normalize_path(str(relative_path))} [input]"
 
 
 # -----------------------------------------------------------------------------
