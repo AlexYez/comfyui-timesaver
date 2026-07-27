@@ -97,6 +97,74 @@ function installPromptInjector() {
 //     value hideWidget seeded at creation is stale. Re-seed each stashed widget
 //     from the freshly restored properties here, before the node's own
 //     onConfigure (e.g. SuperPrompt's syncUiFromWidgets) reads it.
+/** Widgets that occupy a slot in the positional `widgets_values` array. */
+function isSerializableWidget(widget) {
+    if (!widget) return false;
+    if (widget.options?.serialize === false) return false;
+    if (widget.serialize === false) return false;
+    return true;
+}
+
+function serializableWidgetCount(node) {
+    return (node?.widgets || []).filter(isSerializableWidget).length;
+}
+
+/**
+ * Re-apply a workflow saved BEFORE this module started removing hidden widgets.
+ *
+ * LiteGraph serialises widget values POSITIONALLY (`widgets_values` is a plain
+ * array, one slot per serialisable widget, in node.widgets order). Older builds
+ * hid state-carrier widgets with `widget.hidden = true`, which KEPT them in
+ * node.widgets — so their values are in that array. Now hideWidget removes them
+ * (the only way to kill the Vue phantom row), which makes the array one slot
+ * shorter than the save: LiteGraph then shifts every value into the wrong
+ * widget and the hidden ones silently fall back to their Python defaults.
+ * (Symptom users hit: TS Resolution Selector always emitting a square, because
+ * `aspect_ratio` kept its "1:1" default while `resolution` got "16:9".)
+ *
+ * `node._tsWidgetOrder` records the ORIGINAL order captured before the first
+ * removal, so a legacy array can be mapped back by name. A current-format save
+ * carries exactly one value per REMAINING widget, so `values.length` tells the
+ * two formats apart and this migration never touches a modern workflow.
+ *
+ * @param {object} node LiteGraph node.
+ * @param {object} info Serialized node data passed to onConfigure.
+ */
+function restoreLegacyWidgetValues(node, info) {
+    const order = node?._tsWidgetOrder;
+    const stash = node?._tsHiddenWidgets;
+    if (!Array.isArray(order) || !stash) return;
+    const values = info?.widgets_values;
+    // Object-keyed saves address widgets by name and cannot shift.
+    if (!Array.isArray(values)) return;
+
+    const current = serializableWidgetCount(node);
+    // Legacy saves carry a value for widgets that are no longer in node.widgets.
+    // A save from this build has exactly `current` values, so `>` is the tell.
+    // (Values can be fewer than `order` when the node gained inputs later — they
+    // are always appended, so mapping the leading slots stays correct.)
+    if (!(values.length > current && values.length <= order.length)) return;
+
+    for (let i = 0; i < values.length; i += 1) {
+        const name = order[i];
+        const value = values[i];
+        if (!name || value === undefined) continue;
+        const widget = node.widgets?.find((w) => w?.name === name) || stash[name];
+        if (!widget) continue;
+        try {
+            widget.value = value;
+        } catch {
+            continue; // non-writable widget — leave it alone
+        }
+        if (stash[name]) {
+            // Mirror to properties too: hideWidget seeded them with the default
+            // at creation, and the re-seed below would otherwise clobber us.
+            node.properties = node.properties || {};
+            node.properties[name] = value;
+        }
+    }
+}
+
 function installNodeHooks(node) {
     if (node._tsNodeHooksInstalled) return;
     node._tsNodeHooksInstalled = true;
@@ -123,7 +191,14 @@ function installNodeHooks(node) {
     };
 
     const prevConfigure = node.onConfigure;
-    node.onConfigure = function tsOnConfigure() {
+    node.onConfigure = function tsOnConfigure(info) {
+        // FIRST: repair a pre-removal (legacy) widgets_values array, so the
+        // node's own onConfigure below already reads correct values.
+        try {
+            restoreLegacyWidgetValues(node, info);
+        } catch (err) {
+            console.warn("[TS DomWidget] legacy widget restore failed", err);
+        }
         const result = prevConfigure?.apply(this, arguments);
         try {
             const stash = node._tsHiddenWidgets;
@@ -174,6 +249,14 @@ export function hideWidget(node, name) {
     installPromptInjector();
     const widget = (node?.widgets || []).find((w) => w?.name === name);
     if (widget) {
+        // Snapshot the widget order BEFORE the first removal. This is the layout
+        // every previously saved workflow used for its positional
+        // `widgets_values`, and restoreLegacyWidgetValues() maps them back by it.
+        if (!node._tsWidgetOrder) {
+            node._tsWidgetOrder = (node.widgets || [])
+                .filter(isSerializableWidget)
+                .map((w) => w.name);
+        }
         node.properties = node.properties || {};
         // Restore the value from properties when present (widgets_values dropped
         // it on reload because the widget was removed before save); otherwise
