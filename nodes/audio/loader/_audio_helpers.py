@@ -145,7 +145,34 @@ def _hash_file_identity(filepath: str) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
+class _CacheSweepState:
+    """One-shot guard for the stale-cache sweep (module-level state per §5)."""
+
+    done = False
+
+
+_cache_sweep_state = _CacheSweepState()
+
+
+def _sweep_cache_once() -> None:
+    """Run the stale-cache sweep once per process, on first cache use.
+
+    Deleting files as a side effect of `import` is what CLAUDE.md §13 forbids
+    ("Side effects на module-level ... открытие файлов"), and it fired even when
+    the module was imported for introspection. Deferring it here keeps the
+    reclaim without touching the filesystem at import time.
+    """
+    if _cache_sweep_state.done:
+        return
+    _cache_sweep_state.done = True
+    try:
+        _cleanup_stale_cache_files()
+    except Exception as exc:  # noqa: BLE001 - cache cleanup must never break a request
+        LOGGER.debug("%s Cache cleanup skipped: %s", LOG_PREFIX, exc)
+
+
 def _cache_path(filepath: str) -> Path:
+    _sweep_cache_once()
     return CACHE_DIR / f"{_hash_file_identity(filepath)}.json"
 
 
@@ -574,6 +601,7 @@ def _hash_audio_tensor(waveform: torch.Tensor, sample_rate: int, prefix: str) ->
 
 def _write_preview_audio_file(waveform: torch.Tensor, sample_rate: int, prefix: str) -> Path:
     """Persist a preview WAV file that the browser player can stream."""
+    _sweep_cache_once()
     preview_key = _hash_audio_tensor(waveform, sample_rate, prefix)
     output_path = GENERATED_AUDIO_DIR / f"{preview_key}.wav"
     if output_path.is_file():
@@ -681,10 +709,6 @@ async def ts_audio_loader_upload_recording(request: web.Request) -> web.StreamRe
         return web.json_response({"error": str(exc)}, status=500)
 
 
-# One sweep per process start: reclaim peaks-cache JSON / preview WAVs left
-# behind by clips that are no longer opened (best-effort, never fatal).
-try:
-    _cleanup_stale_cache_files()
-except Exception as _cleanup_exc:  # noqa: BLE001 - cache cleanup must never block import
-    LOGGER.debug("%s Startup cache cleanup skipped: %s", LOG_PREFIX, _cleanup_exc)
+# The stale-cache sweep runs lazily on first cache use (_sweep_cache_once), not
+# at import: deleting files as an import side effect is forbidden by §13.
 

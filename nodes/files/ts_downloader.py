@@ -457,7 +457,17 @@ class TS_DownloadFilesNode(IO.ComfyNode):
 
     @staticmethod
     def _get_filename_from_header_map(headers):
-        content_disposition = headers.get('content-disposition')
+        # Match the header case-insensitively. `headers` arrives as a plain dict
+        # built from requests' CaseInsensitiveDict, and iterating that yields the
+        # ORIGINAL casing ("Content-Disposition"), so a bare lowercase .get()
+        # never matched: the server-supplied filename was always ignored and the
+        # URL-derived name won (a Civitai /api/download/models/12345 link saved
+        # as "12345", and skip-existing could not match a previous download).
+        content_disposition = None
+        for key, value in (headers or {}).items():
+            if str(key).lower() == "content-disposition":
+                content_disposition = value
+                break
         if not content_disposition:
             return None
         fn_match_utf8 = re.search(r"filename\*=\s*UTF-8''([^;]+)", content_disposition, re.IGNORECASE)

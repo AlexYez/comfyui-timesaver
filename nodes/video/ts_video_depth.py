@@ -757,7 +757,7 @@ class TS_VideoDepth(IO.ComfyNode):
                 adjusted = 14
             if adjusted != effective_input_size:
                 logger.info(
-                    "%s Adjusted input_size %s → %s (multiple of 14).",
+                    "%s Adjusted input_size %s -> %s (multiple of 14).",
                     LOG_PREFIX, effective_input_size, adjusted,
                 )
             effective_input_size = adjusted
@@ -871,7 +871,7 @@ class TS_VideoDepth(IO.ComfyNode):
 
                 try:
                     logger.info(
-                        "%s [stage 1/3] Preprocess: %s frames %sx%s → %sx%s on %s (%s)",
+                        "%s [stage 1/3] Preprocess: %s frames %sx%s -> %sx%s on %s (%s)",
                         LOG_PREFIX, n_frames, original_h, original_w,
                         attempt_target_h, attempt_target_w, load_device, precision,
                     )
@@ -947,7 +947,7 @@ class TS_VideoDepth(IO.ComfyNode):
 
         # depth_raw: (N, target_h, target_w) float32 on CPU
         # --- GPU postprocess (chunked) ---
-        logger.info("%s [stage 3/3] Postprocess: %s frames → %sx%s", LOG_PREFIX, n_frames, original_h, original_w)
+        logger.info("%s [stage 3/3] Postprocess: %s frames -> %sx%s", LOG_PREFIX, n_frames, original_h, original_w)
         # Postprocess does denoise + final upscale; we give each pass half the
         # postprocess slot. `inner_total` is set lazily inside _postprocess_depth
         # based on the actual number of chunks done.

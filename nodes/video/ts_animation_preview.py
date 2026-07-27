@@ -353,9 +353,17 @@ class TS_Animation_Preview(IO.ComfyNode):
         # Mux is `-c:v copy` + AAC re-encode of typically ≤30 s preview audio.
         # 5 min is far above the realistic worst case; a longer hang means
         # ffmpeg got stuck on a corrupt input.
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+        # Capture bytes, not text: `text=True` decodes with the Windows ANSI
+        # codepage in strict mode, and ffmpeg echoes the full (possibly
+        # non-ASCII) input/output paths into stderr. The resulting
+        # UnicodeDecodeError killed the reader thread, so `stderr` came back
+        # None and a genuine ffmpeg failure raised with an empty message.
+        # Every other ffmpeg call site in the pack decodes defensively too.
+        result = subprocess.run(cmd, capture_output=True, timeout=300)
         if result.returncode != 0:
-            error_msg = (result.stderr or result.stdout or "").strip()
+            stderr_text = (result.stderr or b"").decode("utf-8", errors="replace")
+            stdout_text = (result.stdout or b"").decode("utf-8", errors="replace")
+            error_msg = (stderr_text or stdout_text).strip()
             raise RuntimeError(f"FFmpeg mux failed. {error_msg}")
 
 

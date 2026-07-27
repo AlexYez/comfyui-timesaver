@@ -1045,30 +1045,26 @@ class _Sam3PreviewModel:
         return _postprocess_mask(raw)
 
 
-# Per-checkpoint asyncio.Lock so concurrent /preview_mask calls don't trample
-# each other while sharing the same SAM3 model on GPU.
-# Bounded LRU: checkpoint names are client-supplied, so an unbounded dict
-# would grow for the lifetime of the server (same policy as the LaMa
-# session-lock cache). Idle (unlocked) entries past the cap are evicted
-# oldest-first; locked entries are skipped, never dropped.
-_PREVIEW_LOCKS_MAX = 64
-_PREVIEW_LOCKS: dict[str, asyncio.Lock] = {}
+# ONE process-wide asyncio.Lock guarding the whole load+infer sequence.
+#
+# It used to be keyed per checkpoint, which gave no mutual exclusion at all:
+# `_Sam3PreviewModel` is a singleton with a single model slot, so two requests
+# naming DIFFERENT checkpoints took different locks, never contended, and the
+# second one's `ensure_loaded` unloaded the first one's weights mid-inference —
+# `segment_first_frame` reads `self._model` outside the load lock and runs in a
+# worker thread. The result was either a spurious "SAM3 preview model not
+# loaded" or a mask produced from the other checkpoint's weights.
+#
+# Serialising every preview through one lock is also what the shared slot can
+# actually deliver; previews are debounced and short, so the queueing cost is
+# not noticeable.
+_PREVIEW_LOCK = asyncio.Lock()
 
 
 def _get_preview_lock(checkpoint: str) -> asyncio.Lock:
-    safe = re.sub(r"[^A-Za-z0-9._-]+", "_", checkpoint or "default")
-    lock = _PREVIEW_LOCKS.pop(safe, None)
-    if lock is None:
-        lock = asyncio.Lock()
-    _PREVIEW_LOCKS[safe] = lock  # re-insert => most-recently-used
-    if len(_PREVIEW_LOCKS) > _PREVIEW_LOCKS_MAX:
-        for key in list(_PREVIEW_LOCKS):
-            if len(_PREVIEW_LOCKS) <= _PREVIEW_LOCKS_MAX:
-                break
-            if key == safe or _PREVIEW_LOCKS[key].locked():
-                continue
-            _PREVIEW_LOCKS.pop(key)
-    return lock
+    """Return the shared preview lock (the argument is kept for call-site clarity)."""
+    del checkpoint
+    return _PREVIEW_LOCK
 
 
 def _remove_small_regions(

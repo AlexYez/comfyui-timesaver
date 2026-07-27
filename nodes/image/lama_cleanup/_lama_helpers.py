@@ -289,6 +289,16 @@ def _cleanup_session_paths(session_id: str, paths: list[str]) -> int:
     safe = _safe_session_id(session_id)
     if not safe or not paths:
         return 0
+    # Scope to the temp root ONLY. _is_inside_allowed_root() also accepts input/
+    # and output/ — correct for the read-only view route, but here it combined
+    # with a client-chosen session_id prefix to make this endpoint able to unlink
+    # saved results (session_id="cleanup" matches output/images/cleanup/cleanup_*.png,
+    # session_id="ComfyUI" matches the default ComfyUI_00001_.png saves).
+    try:
+        temp_root = _temp_root().resolve()
+    except OSError as exc:
+        LOGGER.debug("%s Could not resolve temp root: %s", LOG_PREFIX, exc)
+        return 0
     removed = 0
     for raw in paths:
         if not raw:
@@ -303,10 +313,16 @@ def _cleanup_session_paths(session_id: str, paths: list[str]) -> int:
             continue
         if not path_obj.is_file():
             continue
-        if not _is_inside_allowed_root(path_obj):
+        try:
+            resolved_path = path_obj.resolve()
+        except (OSError, ValueError) as exc:
+            LOGGER.debug("%s Could not resolve '%s': %s", LOG_PREFIX, path_obj, exc)
             continue
-        if not path_obj.name.startswith(f"{safe}_"):
+        if not resolved_path.is_relative_to(temp_root):
             continue
+        if not resolved_path.name.startswith(f"{safe}_"):
+            continue
+        path_obj = resolved_path
         try:
             path_obj.unlink()
             removed += 1

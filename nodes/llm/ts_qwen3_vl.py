@@ -351,7 +351,20 @@ class TS_Qwen3_VL_V3(IO.ComfyNode):
                 video=video,
                 custom_system_prompt=custom_system_prompt,
             )
-        return IO.NodeOutput(text, engine.pil_to_tensor(processed_images))
+        # Pass the ORIGINAL tensor through, as the output tooltip promises.
+        # Rebuilding it from `processed_images` round-tripped every frame through
+        # 8-bit PIL (and, in the enabled branch, through the LANCZOS downscale +
+        # 32-aligned crop prepared for the model), so the "unchanged" output was
+        # quantised and resized. Those PIL frames are the model's input, not the
+        # user's image. With neither input connected there is nothing to pass
+        # through, so the empty-list placeholder is kept for that case only.
+        if isinstance(image, torch.Tensor):
+            passthrough = image
+        elif isinstance(video, torch.Tensor):
+            passthrough = video
+        else:
+            passthrough = engine.pil_to_tensor(processed_images)
+        return IO.NodeOutput(text, passthrough)
 
 
 # ---------------------------------------------------------------------------

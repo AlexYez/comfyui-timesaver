@@ -95,7 +95,9 @@ class TS_WAN_SafeResize(IO.ComfyNode):
         output_images = []
 
         for i in range(b):
-            img_np = (image[i].cpu().numpy() * 255).astype(np.uint8)
+            # Clip before the cast: VAEDecode output is not clamped to [0, 1],
+            # and an out-of-range value wraps modulo 256 (1.03 -> 6, -0.02 -> 251).
+            img_np = np.clip(image[i].cpu().numpy() * 255.0, 0, 255).astype(np.uint8)
             pil_img = Image.fromarray(img_np)
 
             scale = max(target_w / w, target_h / h)

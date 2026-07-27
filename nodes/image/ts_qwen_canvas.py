@@ -79,7 +79,10 @@ class TS_QwenCanvas(IO.ComfyNode):
                     LOG_PREFIX, int(image.shape[0]),
                 )
             img_tensor = image[0]
-            img_np = (img_tensor.cpu().numpy() * 255).astype(np.uint8)
+            # VAEDecode hands back unclamped values (commonly ~-0.02 … ~1.03).
+            # Casting those straight to uint8 wraps modulo 256, turning blown
+            # highlights black and crushed shadows white, so clip first.
+            img_np = np.clip(img_tensor.cpu().numpy() * 255.0, 0, 255).astype(np.uint8)
             img = Image.fromarray(img_np)
 
             if mask is not None:

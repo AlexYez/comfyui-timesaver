@@ -442,7 +442,22 @@ def _interpolate_batch_adaptive(
             )
         except model_management.OOM_EXCEPTION:
             if current_tile_size <= 0:
-                current_tile_size = _initial_tile_size(img0_single.shape[2], img0_single.shape[3], align, tile_size=_MIN_TILE_SIZE * 4)
+                frame_height = img0_single.shape[2]
+                frame_width = img0_single.shape[3]
+                max_dim = max(frame_height, frame_width)
+                fallback = _initial_tile_size(frame_height, frame_width, align, tile_size=_MIN_TILE_SIZE * 4)
+                # _initial_tile_size reports "no tiling needed" (0) whenever the
+                # requested tile is at least as large as the frame, so for any
+                # frame up to 1024 px it hands back the very full-frame path that
+                # just ran out of memory. Retrying that unchanged spins forever,
+                # so step down from the frame size instead.
+                if fallback <= 0:
+                    fallback = _next_tile_size(max_dim, align)
+                if fallback <= 0 or fallback >= max_dim:
+                    # Tiling cannot shrink the allocation any further; let the
+                    # caller's batch-halving handler take over.
+                    raise
+                current_tile_size = fallback
             else:
                 next_tile_size = _next_tile_size(current_tile_size, align)
                 if next_tile_size == current_tile_size:

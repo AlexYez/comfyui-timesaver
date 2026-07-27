@@ -667,6 +667,9 @@ function setupStyleSelector(node) {
     // setSelection keep the big grid + selection banner in sync with the node.
     let modalRefresh = null;
     let modalRoot = null;
+    // The library modal's own close(), published here so teardown paths can run
+    // the SAME cleanup (including detaching the document-level key listener).
+    let modalClose = null;
 
     const setSelection = (value, trigger = true) => {
         const nextValue = value || "";
@@ -1122,6 +1125,7 @@ function setupStyleSelector(node) {
             overlay.remove();
             modalRoot = null;
             modalRefresh = null;
+            modalClose = null;
         };
         const onKey = (event) => {
             if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); close(); }
@@ -1144,12 +1148,22 @@ function setupStyleSelector(node) {
         doc.body.appendChild(overlay);
         modalRoot = overlay;
         modalRefresh = refresh;
+        modalClose = close;
         applyModalFilter();
         refresh();
         // Focus the search for immediate typing; keyAnchor parks graph hotkeys.
         requestAnimationFrame(() => mSearch.focus());
     };
-    node._tsStyleSelectorCloseLibrary = () => { if (modalRoot) modalRoot.remove(); modalRoot = null; modalRefresh = null; };
+    // Route teardown through the modal's own close() so the capture-phase
+    // keydown listener on `document` is detached too. Removing only the overlay
+    // left that listener alive forever, and it swallowed every Escape in
+    // ComfyUI (preventDefault + stopPropagation) while close() no-opped.
+    node._tsStyleSelectorCloseLibrary = () => {
+        if (modalClose) { modalClose(); return; }
+        if (modalRoot) modalRoot.remove();
+        modalRoot = null;
+        modalRefresh = null;
+    };
 
     search.addEventListener("input", () => {
         if (searchTimer) {

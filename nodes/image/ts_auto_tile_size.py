@@ -67,8 +67,12 @@ class TSAutoTileSize(IO.ComfyNode):
         tile_w = (img_width + (tiles_x - 1) * padding) / tiles_x
         tile_h = (img_height + (tiles_y - 1) * padding) / tiles_y
 
-        tile_width = round(tile_w / divide_by) * divide_by
-        tile_height = round(tile_h / divide_by) * divide_by
+        # Never round down to zero: with a large divide_by and a small tile
+        # (e.g. divide_by=512 on a 512x512 image split 2x2 -> tile_w=256,
+        # round(0.5)=0 under banker's rounding) the node used to emit 0, and the
+        # failure surfaced in whatever downstream node consumed it.
+        tile_width = max(divide_by, round(tile_w / divide_by) * divide_by)
+        tile_height = max(divide_by, round(tile_h / divide_by) * divide_by)
 
         return IO.NodeOutput(tile_width, tile_height)
 

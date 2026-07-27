@@ -167,32 +167,40 @@ class TS_ResolutionSelector(IO.ComfyNode):
 
         rgb = image[..., :3]
         alpha = image[..., 3:4].clamp(0.0, 1.0)
-        output = []
 
+        # One bounding box for the WHOLE batch. Cropping each frame to its own
+        # bbox produced tensors of differing sizes, which made the concatenation
+        # below raise as soon as two frames disagreed (a moving subject is
+        # enough). A shared rect also keeps the framing stable across a sequence
+        # instead of jittering frame to frame.
+        y_min = x_min = y_max = x_max = None
         for i in range(batch):
             alpha_i = alpha[i, ..., 0]
             if not torch.any(alpha_i > 0):
-                comp = rgb[i] * alpha_i.unsqueeze(-1) + (1.0 - alpha_i.unsqueeze(-1))
-                output.append(comp.unsqueeze(0))
                 continue
-
             coords = torch.nonzero(alpha_i > 0, as_tuple=False)
-            y_min = int(coords[:, 0].min().item())
-            y_max = int(coords[:, 0].max().item())
-            x_min = int(coords[:, 1].min().item())
-            x_max = int(coords[:, 1].max().item())
+            item_y_min = int(coords[:, 0].min().item())
+            item_y_max = int(coords[:, 0].max().item())
+            item_x_min = int(coords[:, 1].min().item())
+            item_x_max = int(coords[:, 1].max().item())
+            y_min = item_y_min if y_min is None else min(y_min, item_y_min)
+            y_max = item_y_max if y_max is None else max(y_max, item_y_max)
+            x_min = item_x_min if x_min is None else min(x_min, item_x_min)
+            x_max = item_x_max if x_max is None else max(x_max, item_x_max)
 
-            y_min = max(0, y_min - pad_px)
-            x_min = max(0, x_min - pad_px)
-            y_max = min(src_h - 1, y_max + pad_px)
-            x_max = min(src_w - 1, x_max + pad_px)
+        if y_min is None:
+            # Every frame is fully transparent: there is nothing to crop to, so
+            # composite the batch as-is over white.
+            return rgb * alpha + (1.0 - alpha)
 
-            crop_rgb = rgb[i, y_min : y_max + 1, x_min : x_max + 1, :]
-            crop_alpha = alpha_i[y_min : y_max + 1, x_min : x_max + 1].unsqueeze(-1)
-            comp = crop_rgb * crop_alpha + (1.0 - crop_alpha)
-            output.append(comp.unsqueeze(0))
+        y_min = max(0, y_min - pad_px)
+        x_min = max(0, x_min - pad_px)
+        y_max = min(src_h - 1, y_max + pad_px)
+        x_max = min(src_w - 1, x_max + pad_px)
 
-        return torch.cat(output, dim=0)
+        crop_rgb = rgb[:, y_min : y_max + 1, x_min : x_max + 1, :]
+        crop_alpha = alpha[:, y_min : y_max + 1, x_min : x_max + 1, :]
+        return crop_rgb * crop_alpha + (1.0 - crop_alpha)
 
     @classmethod
     def _fit_image_to_canvas(cls, image, target_w, target_h):

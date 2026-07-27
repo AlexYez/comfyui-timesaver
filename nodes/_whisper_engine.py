@@ -234,7 +234,12 @@ def load_model(
     target_device = resolve_device(device)
     use_fp16 = target_device == "cuda" and bool(fp16_pref)
 
-    cache_key = (name, target_device, use_fp16)
+    # Keyed by (name, device) only: `use_fp16` never changes the loaded object —
+    # whisper.load_model takes no dtype argument and nothing casts the module
+    # afterwards. It is purely a decode-time option, so including it in the key
+    # made a `precision` toggle load a second full copy of identical weights
+    # (~6 GB for large-v3) that nothing ever evicts.
+    cache_key = (name, target_device)
     if cache_key in MODEL_CACHE:
         _emit(progress_cb, "already_cached", name=name, device=target_device)
         return MODEL_CACHE[cache_key], target_device, use_fp16
@@ -252,7 +257,7 @@ def load_model(
         _emit(progress_cb, "gpu_fallback", name=name, error=str(exc))
         target_device = "cpu"
         use_fp16 = False
-        cache_key = (name, target_device, use_fp16)
+        cache_key = (name, target_device)
         if cache_key in MODEL_CACHE:
             return MODEL_CACHE[cache_key], target_device, use_fp16
         model = whisper.load_model(name, device=target_device, download_root=str(WHISPER_DIR), in_memory=False)
