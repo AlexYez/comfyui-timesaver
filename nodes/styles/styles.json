@@ -200,6 +200,28 @@
       "category_ru": "Восток и исламский мир"
     },
     {
+      "id": "minhwa",
+      "name": "Korean Minhwa",
+      "name_ru": "Минхва",
+      "prompt": "Korean Minhwa folk painting style, symbolic motifs, bright flat colours, decorative simplicity, lively hand-painted rhythm, ",
+      "preview": "img/minhwa.webp",
+      "description": "Korean folk painting: bright, flat, symbolic and entirely unbothered by realism.",
+      "description_ru": "Корейская народная живопись: яркая, плоская, символическая и совершенно равнодушная к реализму.",
+      "category": "East & Islamic World",
+      "category_ru": "Восток и исламский мир"
+    },
+    {
+      "id": "thai-temple-mural",
+      "name": "Thai Temple Mural",
+      "name_ru": "Тайская храмовая роспись",
+      "prompt": "Thai temple mural style, gilded ornament, elegant elongated figures, intricate decorative narrative, luminous sacred colour, ",
+      "preview": "img/thai-temple-mural.webp",
+      "description": "Gold ornament and elongated figures, with the story told across the whole wall.",
+      "description_ru": "Золотой орнамент и вытянутые фигуры, а рассказ развёрнут по всей стене.",
+      "category": "East & Islamic World",
+      "category_ru": "Восток и исламский мир"
+    },
+    {
       "id": "russian-lubok",
       "name": "Russian Lubok",
       "name_ru": "Лубок",
@@ -262,6 +284,50 @@
       "preview": "img/alebrije.webp",
       "description": "A chimera of bright patches: a creature assembled from other creatures and painted without fear.",
       "description_ru": "Химера из ярких пятен: зверь, собранный из чужих частей и раскрашенный без страха.",
+      "category": "Folk & Tribal Art",
+      "category_ru": "Народное и племенное искусство"
+    },
+    {
+      "id": "madhubani",
+      "name": "Madhubani",
+      "name_ru": "Мадхубани",
+      "prompt": "Madhubani painting style, dense decorative patterning, bold local colours, flat folk geometry, intricate hand-drawn ornament, ",
+      "preview": "img/madhubani.webp",
+      "description": "Mithila painting: no empty space left, every inch given a pattern.",
+      "description_ru": "Живопись Митхилы: пустого места не остаётся, каждый сантиметр отдан узору.",
+      "category": "Folk & Tribal Art",
+      "category_ru": "Народное и племенное искусство"
+    },
+    {
+      "id": "warli",
+      "name": "Warli",
+      "name_ru": "Варли",
+      "prompt": "Warli art style, simple white geometric figures, earthy clay background, rhythmic folk storytelling, minimalist tribal pattern, ",
+      "preview": "img/warli.webp",
+      "description": "White triangles and circles on clay — a whole village told in the simplest marks.",
+      "description_ru": "Белые треугольники и круги по глине — целая деревня, рассказанная простейшими знаками.",
+      "category": "Folk & Tribal Art",
+      "category_ru": "Народное и племенное искусство"
+    },
+    {
+      "id": "pichwai",
+      "name": "Pichwai",
+      "name_ru": "Пичхваи",
+      "prompt": "Pichwai painting style, ornate devotional patterning, rich textile-like detail, flat ceremonial composition, luminous decorative colour, ",
+      "preview": "img/pichwai.webp",
+      "description": "Temple cloth painting: ceremonial, frontal and worked like embroidery.",
+      "description_ru": "Роспись храмовой ткани: церемониальная, фронтальная, проработанная как вышивка.",
+      "category": "Folk & Tribal Art",
+      "category_ru": "Народное и племенное искусство"
+    },
+    {
+      "id": "scandinavian-folk-art",
+      "name": "Scandinavian Folk Art",
+      "name_ru": "Скандинавский народный орнамент",
+      "prompt": "Scandinavian folk art style, floral ornamental symmetry, painted woodcraft feel, clean decorative rhythm, cosy handmade charm, ",
+      "preview": "img/scandinavian-folk-art.webp",
+      "description": "Painted woodwork and symmetrical flowers — northern warmth without excess.",
+      "description_ru": "Расписное дерево и симметричные цветы — северное тепло без излишеств.",
       "category": "Folk & Tribal Art",
       "category_ru": "Народное и племенное искусство"
     },
@@ -354,6 +420,17 @@
       "category_ru": "Классическая Европа"
     },
     {
+      "id": "gothic-romantic-portraiture",
+      "name": "Gothic Romantic Portraiture",
+      "name_ru": "Готический романтизм",
+      "prompt": "gothic romantic portraiture, deep shadows, rich drapery, melancholic elegance, dark painterly beauty, ",
+      "preview": "img/gothic-romantic-portraiture.webp",
+      "description": "Heavy drapery, deep shadow and a beauty that is clearly in mourning.",
+      "description_ru": "Тяжёлые драпировки, глубокая тень и красота, которая явно в трауре.",
+      "category": "Classical Europe",
+      "category_ru": "Классическая Европа"
+    },
+    {
       "id": "pre-raphaelite",
       "name": "Pre-Raphaelite",
       "name_ru": "Прерафаэлиты",
@@ -438,6 +515,28 @@
       "preview": "img/fauvism.webp",
       "description": "Colour cut loose from nature: a face may be green if that is truer to the feeling.",
       "description_ru": "Цвет отвязан от натуры: лицо может быть зелёным, если так вернее по чувству.",
+      "category": "Turn of the Century",
+      "category_ru": "Рубеж веков"
+    },
+    {
+      "id": "belle-epoque",
+      "name": "Belle Époque Poster",
+      "name_ru": "Прекрасная эпоха",
+      "prompt": "Belle Époque poster style, elegant ornamental linework, refined turn-of-the-century glamour, muted lithographic colour, decorative urban sophistication, ",
+      "preview": "img/belle-epoque.webp",
+      "description": "The city as an advertisement for itself: ornament, elegance and litho ink.",
+      "description_ru": "Город как реклама самого себя: орнамент, элегантность и литографская краска.",
+      "category": "Turn of the Century",
+      "category_ru": "Рубеж веков"
+    },
+    {
+      "id": "edwardian-illustration",
+      "name": "Edwardian Illustration",
+      "name_ru": "Эдвардианская иллюстрация",
+      "prompt": "Edwardian illustration style, elegant fine linework, refined period fashion, muted vintage print palette, graceful early-1900s finish, ",
+      "preview": "img/edwardian-illustration.webp",
+      "description": "A fine pen, good manners and the muted colour of early magazine print.",
+      "description_ru": "Тонкое перо, хорошие манеры и приглушённый цвет ранней журнальной печати.",
       "category": "Turn of the Century",
       "category_ru": "Рубеж веков"
     },
@@ -640,6 +739,17 @@
       "category_ru": "Послевоенное и современное"
     },
     {
+      "id": "biomechanical-horror",
+      "name": "Biomechanical Horror",
+      "name_ru": "Биомеханический хоррор",
+      "prompt": "surreal biomechanical horror, dark organic machinery, unsettling texture, eerie atmosphere, painterly grotesque detail, ",
+      "preview": "img/biomechanical-horror.webp",
+      "description": "Where flesh and machinery stop being distinguishable, and neither is comforting.",
+      "description_ru": "Там, где плоть и механика перестают различаться, и ни то ни другое не утешает.",
+      "category": "Post-War & Contemporary",
+      "category_ru": "Послевоенное и современное"
+    },
+    {
       "id": "swiss-style",
       "name": "Swiss Style",
       "name_ru": "Швейцарский стиль",
@@ -724,6 +834,28 @@
       "preview": "img/blueprint.webp",
       "description": "White line on blue: the language of a drawing, not of a picture.",
       "description_ru": "Белая линия по синему полю: язык чертежа, а не картинки.",
+      "category": "Print, Poster & Graphics",
+      "category_ru": "Печать, плакат и графика"
+    },
+    {
+      "id": "victorian-engraving",
+      "name": "Victorian Engraving",
+      "name_ru": "Викторианская гравюра",
+      "prompt": "Victorian engraving style, intricate linework, dense cross-hatching, aged paper tone, ornate nineteenth-century detail, ",
+      "preview": "img/victorian-engraving.webp",
+      "description": "Nineteenth-century printing at its densest: every tone built from crossed lines.",
+      "description_ru": "Печать девятнадцатого века в предельной плотности: каждый тон набран перекрёстным штрихом.",
+      "category": "Print, Poster & Graphics",
+      "category_ru": "Печать, плакат и графика"
+    },
+    {
+      "id": "graphic-portrait-poster",
+      "name": "Graphic Portrait Poster",
+      "name_ru": "Плакатный портрет",
+      "prompt": "bold graphic portrait poster, simplified shape language, strong silhouette, limited high-impact palette, crisp editorial punch, ",
+      "preview": "img/graphic-portrait-poster.webp",
+      "description": "Face reduced to a few strong shapes and three colours that carry across a room.",
+      "description_ru": "Лицо, сведённое к нескольким сильным пятнам и трём цветам, читаемым через комнату.",
       "category": "Print, Poster & Graphics",
       "category_ru": "Печать, плакат и графика"
     },
@@ -858,6 +990,182 @@
       "description_ru": "Компасная роза, морские чудовища и обжитая пустота по краям.",
       "category": "Illustration & Comics",
       "category_ru": "Иллюстрация и комикс"
+    },
+    {
+      "id": "storybook-pastoral-animation",
+      "name": "Storybook Pastoral Animation",
+      "name_ru": "Пасторальная анимация",
+      "prompt": "storybook pastoral animation, hand-painted backgrounds, gentle natural light, cosy everyday wonder, lyrical cinematic warmth, ",
+      "preview": "img/storybook-pastoral-animation.webp",
+      "description": "Hand-painted backgrounds and soft daylight, where the ordinary is worth watching.",
+      "description_ru": "Рисованные фоны и мягкий дневной свет, где обыденное стоит того, чтобы смотреть.",
+      "category": "Illustration & Comics",
+      "category_ru": "Иллюстрация и комикс"
+    },
+    {
+      "id": "flat-geometric-editorial",
+      "name": "Flat Geometric Editorial",
+      "name_ru": "Плоская редакционная графика",
+      "prompt": "flat geometric editorial illustration, clean vector shapes, limited palette, smart negative space, crisp magazine-friendly clarity, ",
+      "preview": "img/flat-geometric-editorial.webp",
+      "description": "Flat shapes, few colours and negative space doing the clever part.",
+      "description_ru": "Плоские формы, мало цветов и пустота, которая делает всю умную работу.",
+      "category": "Illustration & Comics",
+      "category_ru": "Иллюстрация и комикс"
+    },
+    {
+      "id": "analog-film",
+      "name": "Analog Film",
+      "name_ru": "Аналоговая плёнка",
+      "prompt": "analog film photo, subtle film grain, natural imperfections, soft contrast, realistic colour response, ",
+      "preview": "img/analog-film.webp",
+      "description": "Film grain, imperfect colour and a softness digital never quite fakes.",
+      "description_ru": "Зерно, неидеальный цвет и мягкость, которую цифра так и не научилась подделывать.",
+      "category": "Photographic Processes",
+      "category_ru": "Фотографические процессы"
+    },
+    {
+      "id": "polaroid",
+      "name": "Polaroid",
+      "name_ru": "Полароид",
+      "prompt": "polaroid instant photo, soft faded tones, slight washout, nostalgic analog softness, vintage instant-film feel, ",
+      "preview": "img/polaroid.webp",
+      "description": "Milky pastels and a gentle washout: the picture that developed in your hand.",
+      "description_ru": "Молочная пастель и лёгкая блёклость: снимок, который проявлялся у вас в руке.",
+      "category": "Photographic Processes",
+      "category_ru": "Фотографические процессы"
+    },
+    {
+      "id": "lomography",
+      "name": "Lomography",
+      "name_ru": "Ломография",
+      "prompt": "lomography, saturated cross-processed colours, strong vignette, playful snapshot energy, imperfect analog charm, ",
+      "preview": "img/lomography.webp",
+      "description": "Cross-processed colour and a heavy vignette — mistakes kept on purpose.",
+      "description_ru": "Кросс-процесс и тяжёлая виньетка — ошибки, оставленные нарочно.",
+      "category": "Photographic Processes",
+      "category_ru": "Фотографические процессы"
+    },
+    {
+      "id": "disposable-camera",
+      "name": "Disposable Camera",
+      "name_ru": "Одноразовая камера",
+      "prompt": "disposable camera snapshot, direct on-camera flash, visible grain, casual candid framing, raw early-2000s feel, ",
+      "preview": "img/disposable-camera.webp",
+      "description": "Flash straight to the face, coarse grain, nothing composed — and that is the charm.",
+      "description_ru": "Вспышка в лоб, грубое зерно, ничего не выстроено — в этом и обаяние.",
+      "category": "Photographic Processes",
+      "category_ru": "Фотографические процессы"
+    },
+    {
+      "id": "infrared-photography",
+      "name": "Infrared Photography",
+      "name_ru": "Инфракрасная фотография",
+      "prompt": "infrared photography look, luminous pale foliage, dark dramatic sky, surreal tonal separation, crisp fine detail, ",
+      "preview": "img/infrared-photography.webp",
+      "description": "White foliage under a black sky: the world with its tones turned inside out.",
+      "description_ru": "Белая листва под чёрным небом: мир с вывернутыми наизнанку тонами.",
+      "category": "Photographic Processes",
+      "category_ru": "Фотографические процессы"
+    },
+    {
+      "id": "double-exposure",
+      "name": "Double Exposure",
+      "name_ru": "Двойная экспозиция",
+      "prompt": "double exposure photography, layered translucent imagery, elegant silhouette overlap, atmospheric composite, poetic visual blending, ",
+      "preview": "img/double-exposure.webp",
+      "description": "Two frames sharing one piece of film: silhouette and texture read at once.",
+      "description_ru": "Два кадра на одном куске плёнки: силуэт и фактура читаются одновременно.",
+      "category": "Photographic Processes",
+      "category_ru": "Фотографические процессы"
+    },
+    {
+      "id": "film-noir",
+      "name": "Film Noir",
+      "name_ru": "Фильм-нуар",
+      "prompt": "film noir, black and white, deep shadows, sharp chiaroscuro, rain-soaked moody atmosphere, ",
+      "preview": "img/film-noir.webp",
+      "description": "Venetian blinds, wet asphalt and a shadow doing half the acting.",
+      "description_ru": "Жалюзи, мокрый асфальт и тень, которая играет половину роли.",
+      "category": "Cinematic Styles",
+      "category_ru": "Кинематографические стили"
+    },
+    {
+      "id": "neo-noir",
+      "name": "Neo-Noir",
+      "name_ru": "Неонуар",
+      "prompt": "neo-noir cinematic look, neon reflections, deep contrast, slick urban night atmosphere, tense modern mood, ",
+      "preview": "img/neo-noir.webp",
+      "description": "Noir rewritten in neon: wet streets, cold light, warm skin.",
+      "description_ru": "Нуар, переписанный неоном: мокрые улицы, холодный свет, тёплая кожа.",
+      "category": "Cinematic Styles",
+      "category_ru": "Кинематографические стили"
+    },
+    {
+      "id": "technicolor",
+      "name": "Technicolor",
+      "name_ru": "Техниколор",
+      "prompt": "Technicolor film look, richly saturated primary colours, crisp studio lighting, classic vintage cinema glamour, ",
+      "preview": "img/technicolor.webp",
+      "description": "Primary colours turned all the way up — cinema when colour was still an event.",
+      "description_ru": "Основные цвета выкручены на максимум — кино тех времён, когда цвет был событием.",
+      "category": "Cinematic Styles",
+      "category_ru": "Кинематографические стили"
+    },
+    {
+      "id": "german-expressionist-cinema",
+      "name": "German Expressionist Cinema",
+      "name_ru": "Немецкий киноэкспрессионизм",
+      "prompt": "German expressionist cinema, distorted sets, sharp angular shadows, theatrical contrast, uncanny silent-era atmosphere, ",
+      "preview": "img/german-expressionist-cinema.webp",
+      "description": "Walls that lean the wrong way and shadows painted onto the set.",
+      "description_ru": "Стены, наклонённые не туда, и тени, нарисованные прямо на декорации.",
+      "category": "Cinematic Styles",
+      "category_ru": "Кинематографические стили"
+    },
+    {
+      "id": "giallo",
+      "name": "Giallo",
+      "name_ru": "Джалло",
+      "prompt": "giallo cinema look, saturated red and blue gels, stylish suspense, glossy surfaces, operatic thriller mood, ",
+      "preview": "img/giallo.webp",
+      "description": "Red and blue gels, glossy surfaces and suspense staged like opera.",
+      "description_ru": "Красные и синие гели, лаковые поверхности и саспенс, поставленный как опера.",
+      "category": "Cinematic Styles",
+      "category_ru": "Кинематографические стили"
+    },
+    {
+      "id": "spaghetti-western",
+      "name": "Spaghetti Western",
+      "name_ru": "Спагетти-вестерн",
+      "prompt": "spaghetti western, sun-bleached desert palette, wide dramatic framing, dusty texture, rugged mythic tension, ",
+      "preview": "img/spaghetti-western.webp",
+      "description": "Sun-bleached dust, a very wide frame and a stand-off that lasts a minute.",
+      "description_ru": "Выжженная солнцем пыль, очень широкий кадр и дуэль длиной в минуту.",
+      "category": "Cinematic Styles",
+      "category_ru": "Кинематографические стили"
+    },
+    {
+      "id": "silent-film",
+      "name": "Silent Film",
+      "name_ru": "Немое кино",
+      "prompt": "silent film look, monochrome or sepia tint, vintage vignette, theatrical staging, early-cinema texture, ",
+      "preview": "img/silent-film.webp",
+      "description": "Sepia, a soft vignette and acting pitched to the back row.",
+      "description_ru": "Сепия, мягкая виньетка и игра, рассчитанная на последний ряд.",
+      "category": "Cinematic Styles",
+      "category_ru": "Кинематографические стили"
+    },
+    {
+      "id": "found-footage",
+      "name": "Found Footage",
+      "name_ru": "Найденная плёнка",
+      "prompt": "found footage look, handheld instability, harsh practical light, noisy texture, raw documentary immediacy, ",
+      "preview": "img/found-footage.webp",
+      "description": "A camera that cannot hold still, harsh light and noise standing in for polish.",
+      "description_ru": "Камера, которая не может замереть, жёсткий свет и шум вместо вылизанности.",
+      "category": "Cinematic Styles",
+      "category_ru": "Кинематографические стили"
     },
     {
       "id": "watercolor",
@@ -1014,6 +1322,83 @@
       "category_ru": "Материалы и ремесло"
     },
     {
+      "id": "liquid-chrome",
+      "name": "Liquid Chrome",
+      "name_ru": "Жидкий хром",
+      "prompt": "liquid chrome material, mirror-like reflections, fluid metallic surface, futuristic sheen, ultra-clean specular highlights, ",
+      "preview": "img/liquid-chrome.webp",
+      "description": "Mirror metal caught mid-pour: every highlight razor-clean.",
+      "description_ru": "Зеркальный металл, застигнутый в движении: каждый блик бритвенно чист.",
+      "category": "Materials & Craft",
+      "category_ru": "Материалы и ремесло"
+    },
+    {
+      "id": "holographic",
+      "name": "Holographic Iridescence",
+      "name_ru": "Голографическая иризация",
+      "prompt": "holographic iridescent material, shifting spectral colours, glossy reflective finish, futuristic shimmer, prismatic highlights, ",
+      "preview": "img/holographic.webp",
+      "description": "Colour that changes with the angle — a surface that refuses to settle.",
+      "description_ru": "Цвет, который меняется от угла, — поверхность, отказывающаяся определиться.",
+      "category": "Materials & Craft",
+      "category_ru": "Материалы и ремесло"
+    },
+    {
+      "id": "frosted-glass",
+      "name": "Frosted Glass",
+      "name_ru": "Матовое стекло",
+      "prompt": "frosted glass material, diffused translucency, soft refraction, matte surface bloom, elegant modern minimalism, ",
+      "preview": "img/frosted-glass.webp",
+      "description": "Light gets through, detail does not: everything softened behind a haze.",
+      "description_ru": "Свет проходит, детали — нет: всё смягчено за матовой дымкой.",
+      "category": "Materials & Craft",
+      "category_ru": "Материалы и ремесло"
+    },
+    {
+      "id": "translucent-resin",
+      "name": "Translucent Resin",
+      "name_ru": "Полупрозрачная смола",
+      "prompt": "translucent resin material, smooth cast surface, soft internal glow, subtle depth, clean contemporary craft finish, ",
+      "preview": "img/translucent-resin.webp",
+      "description": "Cast and polished, with a glow that comes from somewhere inside the thickness.",
+      "description_ru": "Отлито и отполировано, со свечением откуда-то из глубины толщи.",
+      "category": "Materials & Craft",
+      "category_ru": "Материалы и ремесло"
+    },
+    {
+      "id": "velvet",
+      "name": "Velvet",
+      "name_ru": "Бархат",
+      "prompt": "luxurious velvet texture, rich pile direction, deep soft shadows, tactile fabric depth, sumptuous matte sheen, ",
+      "preview": "img/velvet.webp",
+      "description": "Pile that shifts tone as it turns, and shadows you could sink a hand into.",
+      "description_ru": "Ворс, меняющий тон на повороте, и тени, в которые можно опустить руку.",
+      "category": "Materials & Craft",
+      "category_ru": "Материалы и ремесло"
+    },
+    {
+      "id": "embossed-foil",
+      "name": "Embossed Foil",
+      "name_ru": "Тиснёная фольга",
+      "prompt": "embossed foil print finish, metallic stamped highlights, crisp raised detail, premium packaging texture, elegant graphic luxury, ",
+      "preview": "img/embossed-foil.webp",
+      "description": "Metal pressed into paper: the luxury you notice with your fingertips first.",
+      "description_ru": "Металл, вдавленный в бумагу: роскошь, которую сперва замечают пальцы.",
+      "category": "Materials & Craft",
+      "category_ru": "Материалы и ремесло"
+    },
+    {
+      "id": "glossy-latex",
+      "name": "Glossy Latex",
+      "name_ru": "Глянцевый латекс",
+      "prompt": "glossy latex material, tight reflective surface, bright specular highlights, sleek synthetic finish, dramatic contour shine, ",
+      "preview": "img/glossy-latex.webp",
+      "description": "A skin-tight synthetic sheen that turns every contour into a highlight.",
+      "description_ru": "Обтягивающий синтетический глянец, превращающий каждый контур в блик.",
+      "category": "Materials & Craft",
+      "category_ru": "Материалы и ремесло"
+    },
+    {
       "id": "digital-painting",
       "name": "Digital Painting",
       "name_ru": "Цифровая живопись",
@@ -1146,6 +1531,39 @@
       "category_ru": "Цифровое, объём и экран"
     },
     {
+      "id": "epic-fantasy-concept",
+      "name": "Epic Fantasy Concept",
+      "name_ru": "Эпический фэнтези-концепт",
+      "prompt": "painterly high fantasy illustration, monumental sense of scale, layered mist between distant planes, burnished heroic light, finished production polish, ",
+      "preview": "img/epic-fantasy-concept.webp",
+      "description": "Painterly worldbuilding at monumental scale, with mist stacked between the planes.",
+      "description_ru": "Живописный мир в монументальном масштабе, с дымкой, наслоённой между планами.",
+      "category": "Digital, 3D & Screen",
+      "category_ru": "Цифровое, объём и экран"
+    },
+    {
+      "id": "luminous-cinematic-realism",
+      "name": "Luminous Cinematic Realism",
+      "name_ru": "Светящийся кинореализм",
+      "prompt": "dreamy luminous cinematic realism, soft glowing atmosphere, elegant natural skin tones, subtle depth, emotionally rich photoreal finish, ",
+      "preview": "img/luminous-cinematic-realism.webp",
+      "description": "Photoreal but lit like a memory: glowing air and skin that holds the light.",
+      "description_ru": "Фотореализм, освещённый как воспоминание: светящийся воздух и кожа, держащая свет.",
+      "category": "Digital, 3D & Screen",
+      "category_ru": "Цифровое, объём и экран"
+    },
+    {
+      "id": "rounded-3d-mascot",
+      "name": "Rounded 3D Mascot",
+      "name_ru": "Округлый 3D-маскот",
+      "prompt": "cute rounded 3D mascot render, chunky squashed proportions, thick soft-edged forms, matte vinyl and rubber surfaces, bright cheerful key light, ",
+      "preview": "img/rounded-3d-mascot.webp",
+      "description": "Chunky vinyl forms with every edge rounded off — nothing sharp anywhere.",
+      "description_ru": "Пухлые виниловые формы, у которых скруглён каждый угол, — ничего острого.",
+      "category": "Digital, 3D & Screen",
+      "category_ru": "Цифровое, объём и экран"
+    },
+    {
       "id": "psychedelic-poster",
       "name": "Psychedelic Poster",
       "name_ru": "Психоделика",
@@ -1241,6 +1659,72 @@
       "preview": "img/irezumi.webp",
       "description": "Japanese tattoo: wave, carp and smoke filling the whole field.",
       "description_ru": "Японская татуировка: волна, карп и дым, заполняющие всё поле.",
+      "category": "Aesthetics & Subcultures",
+      "category_ru": "Эстетики и субкультуры"
+    },
+    {
+      "id": "mid-century-modern",
+      "name": "Mid-Century Modern",
+      "name_ru": "Mid-century modern",
+      "prompt": "mid-century modern design style, clean geometric forms, optimistic retro palette, sleek functional simplicity, atomic-age elegance, ",
+      "preview": "img/mid-century-modern.webp",
+      "description": "Clean geometry and atomic-age optimism: the future as designed in 1957.",
+      "description_ru": "Чистая геометрия и оптимизм атомного века: будущее в редакции 1957 года.",
+      "category": "Aesthetics & Subcultures",
+      "category_ru": "Эстетики и субкультуры"
+    },
+    {
+      "id": "sixties-mod",
+      "name": "1960s Mod",
+      "name_ru": "Мод шестидесятых",
+      "prompt": "1960s mod style, bold graphic patterns, sharp silhouette design, punchy retro colour blocking, swinging-sixties energy, ",
+      "preview": "img/sixties-mod.webp",
+      "description": "Sharp silhouettes and colour blocking that still looks like it is moving.",
+      "description_ru": "Резкие силуэты и цветовые блоки, которые до сих пор выглядят движущимися.",
+      "category": "Aesthetics & Subcultures",
+      "category_ru": "Эстетики и субкультуры"
+    },
+    {
+      "id": "seventies-retro",
+      "name": "1970s Retro",
+      "name_ru": "Ретро семидесятых",
+      "prompt": "1970s retro graphic style, harvest gold and burnt orange palette, sunburst and stripe motifs, thick rounded shapes, screen-printed flatness, ",
+      "preview": "img/seventies-retro.webp",
+      "description": "Harvest gold, burnt orange and sunburst motifs — the decade printed flat.",
+      "description_ru": "Золотистая охра, жжёный оранжевый и лучевые мотивы — десятилетие в плоской печати.",
+      "category": "Aesthetics & Subcultures",
+      "category_ru": "Эстетики и субкультуры"
+    },
+    {
+      "id": "eighties-arcade",
+      "name": "1980s Arcade Poster",
+      "name_ru": "Аркадный плакат восьмидесятых",
+      "prompt": "1980s arcade poster style, neon energy, bold action composition, glossy retro graphics, electric high-contrast nostalgia, ",
+      "preview": "img/eighties-arcade.webp",
+      "description": "Neon, gloss and a composition shouting at you from across the arcade.",
+      "description_ru": "Неон, глянец и композиция, кричащая на вас через весь зал автоматов.",
+      "category": "Aesthetics & Subcultures",
+      "category_ru": "Эстетики и субкультуры"
+    },
+    {
+      "id": "nineties-grunge",
+      "name": "1990s Grunge",
+      "name_ru": "Гранж девяностых",
+      "prompt": "1990s grunge aesthetic, distressed textures, photocopy grain, rough collage layering, rebellious DIY editorial mood, ",
+      "preview": "img/nineties-grunge.webp",
+      "description": "Photocopy grain, torn layers and a deliberate refusal to look tidy.",
+      "description_ru": "Ксероксное зерно, рваные слои и осознанный отказ выглядеть аккуратно.",
+      "category": "Aesthetics & Subcultures",
+      "category_ru": "Эстетики и субкультуры"
+    },
+    {
+      "id": "frutiger-aero",
+      "name": "Frutiger Aero",
+      "name_ru": "Frutiger Aero",
+      "prompt": "Frutiger Aero aesthetic, glossy gradients, clean eco-tech optimism, translucent bubbles, bright sky-and-leaf freshness, ",
+      "preview": "img/frutiger-aero.webp",
+      "description": "Glossy gradients, bubbles and blue sky: technology as it felt in 2006.",
+      "description_ru": "Глянцевые градиенты, пузыри и синее небо: технологии, какими они ощущались в 2006-м.",
       "category": "Aesthetics & Subcultures",
       "category_ru": "Эстетики и субкультуры"
     }
