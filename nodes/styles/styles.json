@@ -7,7 +7,8 @@
       "name_ru": "Наскальная живопись",
       "prompt": "prehistoric cave painting style, ochre and charcoal pigment on rough limestone, simple confident hand-drawn contours, flickering torchlight, ",
       "preview": "img/cave-painting.webp",
-      "description": "Охра, уголь и неровный камень: несколько уверенных линий — и зверь узнаётся спустя тридцать тысяч лет.",
+      "description": "Ochre, charcoal and rough stone: a few confident lines, and the beast still reads thirty thousand years on.",
+      "description_ru": "Охра, уголь и неровный камень: несколько уверенных линий — и зверь узнаётся спустя тридцать тысяч лет.",
       "category": "Ancient World & Antiquity",
       "category_ru": "Древний мир и античность"
     },
@@ -17,7 +18,8 @@
       "name_ru": "Месопотамский рельеф",
       "prompt": "ancient Mesopotamian carved stone relief style, shallow bas-relief in limestone, strict profile stylisation, incised cuneiform banding, earthy palette, ",
       "preview": "img/mesopotamian-relief.webp",
-      "description": "Плоский каменный рельеф с рядами бород, крыльев и клинописи — власть, высеченная в камне.",
+      "description": "Flat carved stone in ranks of beards, wings and cuneiform — power cut into the wall.",
+      "description_ru": "Плоский каменный рельеф с рядами бород, крыльев и клинописи — власть, высеченная в камне.",
       "category": "Ancient World & Antiquity",
       "category_ru": "Древний мир и античность"
     },
@@ -27,7 +29,8 @@
       "name_ru": "Египетская роспись",
       "prompt": "ancient Egyptian tomb wall painting style, flat profile stylisation, hieroglyphic border columns, gold turquoise and ochre, matte plaster surface, ",
       "preview": "img/egyptian-wall-painting.webp",
-      "description": "Голова в профиль, плечи анфас, строгие ряды, золото с бирюзой — канон, не менявшийся тысячи лет.",
+      "description": "Head in profile, shoulders square, strict registers, gold and turquoise: a canon unchanged for millennia.",
+      "description_ru": "Голова в профиль, плечи анфас, строгие ряды, золото с бирюзой — канон, не менявшийся тысячи лет.",
       "category": "Ancient World & Antiquity",
       "category_ru": "Древний мир и античность"
     },
@@ -37,7 +40,8 @@
       "name_ru": "Минойская фреска",
       "prompt": "Minoan fresco style, flowing contour outlines, vivid marine blue and coral red, aged cracked lime plaster, airy flat space, ",
       "preview": "img/minoan-fresco.webp",
-      "description": "Морская лёгкость Крита: текучие контуры, дельфины и лилии по сырой штукатурке.",
+      "description": "The sea-light of Crete: flowing contours, dolphins and lilies laid into wet plaster.",
+      "description_ru": "Морская лёгкость Крита: текучие контуры, дельфины и лилии по сырой штукатурке.",
       "category": "Ancient World & Antiquity",
       "category_ru": "Древний мир и античность"
     },
@@ -47,7 +51,8 @@
       "name_ru": "Греческая вазопись",
       "prompt": "ancient Greek black-figure vase painting style, pure black silhouettes on terracotta orange, incised interior detail, meander border, ",
       "preview": "img/greek-vase-painting.webp",
-      "description": "Чёрные силуэты на терракоте: фигура читается одним контуром, без теней и глубины.",
+      "description": "Black silhouettes on terracotta: the figure reads from one contour, with no shadow and no depth.",
+      "description_ru": "Чёрные силуэты на терракоте: фигура читается одним контуром, без теней и глубины.",
       "category": "Ancient World & Antiquity",
       "category_ru": "Древний мир и античность"
     },
@@ -57,7 +62,8 @@
       "name_ru": "Римская мозаика",
       "prompt": "Roman floor mosaic style, small stone tesserae clearly visible, warm ochre and wine red, grouted seams, worn edges, ",
       "preview": "img/roman-mosaic.webp",
-      "description": "Картина, набранная из тысяч каменных кубиков: вблизи крошка, издали живое лицо.",
+      "description": "A picture assembled from thousands of stone cubes: rubble up close, a living face from across the room.",
+      "description_ru": "Картина, набранная из тысяч каменных кубиков: вблизи крошка, издали живое лицо.",
       "category": "Ancient World & Antiquity",
       "category_ru": "Древний мир и античность"
     },
@@ -67,7 +73,8 @@
       "name_ru": "Византийская мозаика",
       "prompt": "Byzantine gold mosaic style, shimmering gold tesserae ground, flat stylised drapery, solemn hieratic stylisation, glinting uneven surface, ",
       "preview": "img/byzantine-mosaic.webp",
-      "description": "Золотой фон вместо неба, огромные глаза, никакой перспективы: пространство вечности, а не комнаты.",
+      "description": "Gold instead of sky, enormous eyes, no perspective: the space of eternity rather than a room.",
+      "description_ru": "Золотой фон вместо неба, огромные глаза, никакой перспективы: пространство вечности, а не комнаты.",
       "category": "Medieval & Sacred Art",
       "category_ru": "Средневековье и сакральное искусство"
     },
@@ -77,7 +84,8 @@
       "name_ru": "Романская фреска",
       "prompt": "Romanesque church fresco style, heavy dark outlines, flat simplified forms, muted earth pigments, cracked plaster surface, ",
       "preview": "img/romanesque-fresco.webp",
-      "description": "Тяжёлый контур, плоские фигуры и глиняная палитра — суровая живопись каменных сводов.",
+      "description": "Heavy outline, flat figures and an earthen palette — the stern painting of stone vaults.",
+      "description_ru": "Тяжёлый контур, плоские фигуры и глиняная палитра — суровая живопись каменных сводов.",
       "category": "Medieval & Sacred Art",
       "category_ru": "Средневековье и сакральное искусство"
     },
@@ -87,7 +95,8 @@
       "name_ru": "Готический витраж",
       "prompt": "Gothic stained glass style, black lead came outlines, glowing cobalt blue and ruby red, strong backlight, leaded panel segments, ",
       "preview": "img/gothic-stained-glass.webp",
-      "description": "Свинцовые линии и стекло, которое горит только на просвет.",
+      "description": "Lead lines and glass that only catches fire when the light comes through it.",
+      "description_ru": "Свинцовые линии и стекло, которое горит только на просвет.",
       "category": "Medieval & Sacred Art",
       "category_ru": "Средневековье и сакральное искусство"
     },
@@ -97,7 +106,8 @@
       "name_ru": "Иконопись",
       "prompt": "Orthodox icon painting style, egg tempera on wooden panel, gold leaf ground, inverse perspective, finely cracked varnish, ",
       "preview": "img/icon-painting.webp",
-      "description": "Обратная перспектива, левкас и золото: фигура смотрит на вас, а не вы на неё.",
+      "description": "Reverse perspective, gesso and gold: the figure looks at you, not the other way round.",
+      "description_ru": "Обратная перспектива, левкас и золото: фигура смотрит на вас, а не вы на неё.",
       "category": "Medieval & Sacred Art",
       "category_ru": "Средневековье и сакральное искусство"
     },
@@ -107,7 +117,8 @@
       "name_ru": "Иллюминированная рукопись",
       "prompt": "illuminated medieval manuscript style, ornate gold leaf, vine and acanthus borders, flat jewel colour, aged vellum, ",
       "preview": "img/illuminated-manuscript.webp",
-      "description": "Буквица, разросшаяся в целый сад, и золото поверх пергамента.",
+      "description": "An initial grown into a whole garden, with gold laid over vellum.",
+      "description_ru": "Буквица, разросшаяся в целый сад, и золото поверх пергамента.",
       "category": "Medieval & Sacred Art",
       "category_ru": "Средневековье и сакральное искусство"
     },
@@ -117,7 +128,8 @@
       "name_ru": "Средневековый гобелен",
       "prompt": "medieval tapestry style, woven wool texture, faded plant-dye colours, flat decorative space, dense millefleur background texture, ",
       "preview": "img/medieval-tapestry.webp",
-      "description": "Сцена, сотканная нитью: приглушённые растительные краски и ковёр из мелких цветов.",
+      "description": "A scene woven in thread: muted plant dyes and a carpet of small flowers.",
+      "description_ru": "Сцена, сотканная нитью: приглушённые растительные краски и ковёр из мелких цветов.",
       "category": "Medieval & Sacred Art",
       "category_ru": "Средневековье и сакральное искусство"
     },
@@ -127,7 +139,8 @@
       "name_ru": "Китайская тушь",
       "prompt": "traditional Chinese ink painting style, wet expressive brushstrokes, soft ink washes, vast empty paper, single red seal, ",
       "preview": "img/chinese-ink-painting.webp",
-      "description": "Пустота работает наравне с линией: горы тают, бумага дышит.",
+      "description": "Emptiness does as much work as the line: mountains dissolve, the paper breathes.",
+      "description_ru": "Пустота работает наравне с линией: горы тают, бумага дышит.",
       "category": "East & Islamic World",
       "category_ru": "Восток и исламский мир"
     },
@@ -137,7 +150,8 @@
       "name_ru": "Укиё-э",
       "prompt": "ukiyo-e woodblock print style, bold black keyblock outlines, flat colour blocks, visible paper grain, subtle wood texture, ",
       "preview": "img/ukiyo-e.webp",
-      "description": "Японская гравюра на дереве: уверенный контур, плоские заливки, ни одной лишней детали.",
+      "description": "Japanese woodblock print: confident outline, flat colour, not one surplus detail.",
+      "description_ru": "Японская гравюра на дереве: уверенный контур, плоские заливки, ни одной лишней детали.",
       "category": "East & Islamic World",
       "category_ru": "Восток и исламский мир"
     },
@@ -147,7 +161,8 @@
       "name_ru": "Суми-э",
       "prompt": "sumi-e ink wash style, few decisive brushstrokes, soft grey gradients, rice paper texture, wide empty space, ",
       "preview": "img/sumi-e.webp",
-      "description": "Один вдох — один мазок: бамбук, написанный тушью за несколько движений.",
+      "description": "One breath, one stroke: bamboo written in ink in a handful of movements.",
+      "description_ru": "Один вдох — один мазок: бамбук, написанный тушью за несколько движений.",
       "category": "East & Islamic World",
       "category_ru": "Восток и исламский мир"
     },
@@ -157,7 +172,8 @@
       "name_ru": "Персидская миниатюра",
       "prompt": "Persian miniature painting style, no shadows, lapis blue and gold, intricate ornamental patterning, flat layered space, ",
       "preview": "img/persian-miniature.webp",
-      "description": "Ковровая плотность узора, отсутствие теней и небо, полное золота.",
+      "description": "Carpet-dense pattern, no shadows, and a sky full of gold.",
+      "description_ru": "Ковровая плотность узора, отсутствие теней и небо, полное золота.",
       "category": "East & Islamic World",
       "category_ru": "Восток и исламский мир"
     },
@@ -167,7 +183,8 @@
       "name_ru": "Могольская миниатюра",
       "prompt": "Mughal miniature painting style, jewel-like fine detail, delicate gold outlining, decorative floral border, luminous flat colour, ",
       "preview": "img/mughal-miniature.webp",
-      "description": "Придворный портрет с ювелирной детализацией и тонким золотым обводом.",
+      "description": "A court portrait with jeweller's detail and a fine gold outline.",
+      "description_ru": "Придворный портрет с ювелирной детализацией и тонким золотым обводом.",
       "category": "East & Islamic World",
       "category_ru": "Восток и исламский мир"
     },
@@ -177,7 +194,8 @@
       "name_ru": "Исламский орнамент",
       "prompt": "Islamic geometric tilework style, interlacing star patterns, turquoise cobalt and white glaze, endless symmetric repetition, ",
       "preview": "img/islamic-geometric-pattern.webp",
-      "description": "Бесконечная геометрия: звёзды, множащиеся по строгому правилу, без единой фигуры.",
+      "description": "Endless geometry: stars multiplying by strict rule, without a single figure.",
+      "description_ru": "Бесконечная геометрия: звёзды, множащиеся по строгому правилу, без единой фигуры.",
       "category": "East & Islamic World",
       "category_ru": "Восток и исламский мир"
     },
@@ -187,7 +205,8 @@
       "name_ru": "Лубок",
       "prompt": "Russian lubok folk print style, crude woodcut lines, hand-tinted red yellow and green, naive flat forms, decorative caption banner, ",
       "preview": "img/russian-lubok.webp",
-      "description": "Народная картинка: грубоватый штрих, подпись прямо в кадре и весёлая раскраска от руки.",
+      "description": "A folk broadside: coarse cut, a caption inside the frame, and cheerful colour laid on by hand.",
+      "description_ru": "Народная картинка: грубоватый штрих, подпись прямо в кадре и весёлая раскраска от руки.",
       "category": "Folk & Tribal Art",
       "category_ru": "Народное и племенное искусство"
     },
@@ -197,7 +216,8 @@
       "name_ru": "Африканская пластика",
       "prompt": "West African carved wood style, boldly simplified geometry, rhythmic chisel grooves, dark polished wood, raffia fibre texture, ",
       "preview": "img/african-tribal-art.webp",
-      "description": "Резьба, где важна не похожесть, а сила формы: обобщённое лицо и ритм насечек.",
+      "description": "Carving where likeness matters less than the force of the form: a distilled face and the rhythm of notches.",
+      "description_ru": "Резьба, где важна не похожесть, а сила формы: обобщённое лицо и ритм насечек.",
       "category": "Folk & Tribal Art",
       "category_ru": "Народное и племенное искусство"
     },
@@ -207,7 +227,8 @@
       "name_ru": "Точечная живопись аборигенов",
       "prompt": "Aboriginal dot painting style, dense ochre dotwork, concentric and linear patterning, red yellow black and white, flat aerial layout, ",
       "preview": "img/aboriginal-dot-painting.webp",
-      "description": "Карта земли, рассказанная точками: вид сверху, охра, ритм.",
+      "description": "A map of country told in dots: seen from above, in ochre, in rhythm.",
+      "description_ru": "Карта земли, рассказанная точками: вид сверху, охра, ритм.",
       "category": "Folk & Tribal Art",
       "category_ru": "Народное и племенное искусство"
     },
@@ -217,7 +238,8 @@
       "name_ru": "Мезоамериканский кодекс",
       "prompt": "Mesoamerican codex illustration style, flat bold outlines, glyph-like ornament, amate bark paper, turquoise red and ochre, ",
       "preview": "img/mesoamerican-codex.webp",
-      "description": "Плоские фигуры в профиль, жёсткий контур и знаки-глифы вместо слов.",
+      "description": "Flat figures in profile, hard outline, and glyph-signs standing in for words.",
+      "description_ru": "Плоские фигуры в профиль, жёсткий контур и знаки-глифы вместо слов.",
       "category": "Folk & Tribal Art",
       "category_ru": "Народное и племенное искусство"
     },
@@ -227,7 +249,8 @@
       "name_ru": "Кельтский орнамент",
       "prompt": "Celtic knotwork illumination style, interlaced endless braid ornament, gold and deep green, vellum ground, ",
       "preview": "img/celtic-knotwork.webp",
-      "description": "Плетёнка без начала и конца, в которую прячутся звери.",
+      "description": "A braid with no beginning and no end, with beasts hidden inside it.",
+      "description_ru": "Плетёнка без начала и конца, в которую прячутся звери.",
       "category": "Folk & Tribal Art",
       "category_ru": "Народное и племенное искусство"
     },
@@ -237,7 +260,8 @@
       "name_ru": "Мексиканский алебрихе",
       "prompt": "Mexican alebrije folk-craft style, carved painted wood, saturated clashing colours, tiny painted patterns covering every surface, ",
       "preview": "img/alebrije.webp",
-      "description": "Химера из ярких пятен: зверь, собранный из чужих частей и раскрашенный без страха.",
+      "description": "A chimera of bright patches: a creature assembled from other creatures and painted without fear.",
+      "description_ru": "Химера из ярких пятен: зверь, собранный из чужих частей и раскрашенный без страха.",
       "category": "Folk & Tribal Art",
       "category_ru": "Народное и племенное искусство"
     },
@@ -247,7 +271,8 @@
       "name_ru": "Ренессанс",
       "prompt": "Renaissance oil painting style, soft sfumato modelling, calm directional window light, balanced composition, oil on panel, ",
       "preview": "img/renaissance.webp",
-      "description": "Точная анатомия, спокойный свет и построенная перспектива — мир, приведённый в порядок.",
+      "description": "Exact anatomy, calm light and constructed perspective — the world put in order.",
+      "description_ru": "Точная анатомия, спокойный свет и построенная перспектива — мир, приведённый в порядок.",
       "category": "Classical Europe",
       "category_ru": "Классическая Европа"
     },
@@ -257,7 +282,8 @@
       "name_ru": "Маньеризм",
       "prompt": "Mannerist painting style, elongated stylisation and spiralling poses, acid pink and green drapery, crowded shallow space, ",
       "preview": "img/mannerism.webp",
-      "description": "Удлинённые тела и закрученные позы: красота важнее правдоподобия.",
+      "description": "Elongated bodies and twisting poses: beauty ranks above plausibility.",
+      "description_ru": "Удлинённые тела и закрученные позы: красота важнее правдоподобия.",
       "category": "Classical Europe",
       "category_ru": "Классическая Европа"
     },
@@ -267,7 +293,8 @@
       "name_ru": "Барокко",
       "prompt": "Baroque painting style, dramatic chiaroscuro, a single shaft of light, deep shadow, dynamic diagonal composition, ",
       "preview": "img/baroque.webp",
-      "description": "Луч из темноты, разорванная диагональ, момент высшего напряжения.",
+      "description": "A shaft of light out of darkness, a broken diagonal, the moment of highest tension.",
+      "description_ru": "Луч из темноты, разорванная диагональ, момент высшего напряжения.",
       "category": "Classical Europe",
       "category_ru": "Классическая Европа"
     },
@@ -277,7 +304,8 @@
       "name_ru": "Голландский натюрморт",
       "prompt": "Dutch golden age still life style, single soft light against a dark ground, meticulous detail, restrained warm palette, glossy oil finish, ",
       "preview": "img/dutch-still-life.webp",
-      "description": "Лимон с завитком кожуры, запотевший бокал и тихое напоминание, что всё это скоро кончится.",
+      "description": "A lemon with its peel curling, a fogged glass, and a quiet reminder that all of it ends soon.",
+      "description_ru": "Лимон с завитком кожуры, запотевший бокал и тихое напоминание, что всё это скоро кончится.",
       "category": "Classical Europe",
       "category_ru": "Классическая Европа"
     },
@@ -287,7 +315,8 @@
       "name_ru": "Рококо",
       "prompt": "Rococo painting style, pastel pink and powder blue, ornate curling forms, soft diffused light, playful airy mood, ",
       "preview": "img/rococo.webp",
-      "description": "Пудра, пастель и завитки: искусство, которому позволено быть лёгким.",
+      "description": "Powder, pastel and scrollwork: art allowed to be light.",
+      "description_ru": "Пудра, пастель и завитки: искусство, которому позволено быть лёгким.",
       "category": "Classical Europe",
       "category_ru": "Классическая Европа"
     },
@@ -297,7 +326,8 @@
       "name_ru": "Неоклассицизм",
       "prompt": "Neoclassical painting style, crisp contours, sculptural modelling, restrained grey and white palette, calm symmetric composition, ",
       "preview": "img/neoclassicism.webp",
-      "description": "Чистая линия, мрамор и античная осанка вместо рокайльных завитков.",
+      "description": "Clean line, marble and antique bearing instead of rocaille curls.",
+      "description_ru": "Чистая линия, мрамор и античная осанка вместо рокайльных завитков.",
       "category": "Classical Europe",
       "category_ru": "Классическая Европа"
     },
@@ -307,7 +337,8 @@
       "name_ru": "Романтизм",
       "prompt": "Romantic painting style, dramatic turbulent sky, sublime scale, glowing atmospheric light, loose expressive brushwork, ",
       "preview": "img/romanticism.webp",
-      "description": "Человек мал, стихия огромна — и в этом весь сюжет.",
+      "description": "Man is small, the elements are vast — and that is the whole subject.",
+      "description_ru": "Человек мал, стихия огромна — и в этом весь сюжет.",
       "category": "Classical Europe",
       "category_ru": "Классическая Европа"
     },
@@ -317,7 +348,8 @@
       "name_ru": "Реализм",
       "prompt": "Realist painting style, unidealised observation, muted earth tones, plain daylight, honest visible texture, ",
       "preview": "img/realism.webp",
-      "description": "Обычный труд без прикрас: грязь на сапогах и честный дневной свет.",
+      "description": "Ordinary labour without flattery: mud on the boots and honest daylight.",
+      "description_ru": "Обычный труд без прикрас: грязь на сапогах и честный дневной свет.",
       "category": "Classical Europe",
       "category_ru": "Классическая Европа"
     },
@@ -327,7 +359,8 @@
       "name_ru": "Прерафаэлиты",
       "prompt": "Pre-Raphaelite painting style, botanical precision, jewel-like colour, even bright light, meticulous detailed finish, ",
       "preview": "img/pre-raphaelite.webp",
-      "description": "Ботаническая точность, медные волосы и литературный сюжет в каждом листе.",
+      "description": "Botanical precision, copper hair, and a literary subject in every leaf.",
+      "description_ru": "Ботаническая точность, медные волосы и литературный сюжет в каждом листе.",
       "category": "Turn of the Century",
       "category_ru": "Рубеж веков"
     },
@@ -337,7 +370,8 @@
       "name_ru": "Импрессионизм",
       "prompt": "Impressionist painting style, broken separate brushstrokes, vibrating greens and violets, no black in the shadows, daylight colour, ",
       "preview": "img/impressionism.webp",
-      "description": "Не предмет, а свет на предмете: мазок раздельный, краски не смешаны.",
+      "description": "Not the object but the light on it: broken touch, colours left unmixed.",
+      "description_ru": "Не предмет, а свет на предмете: мазок раздельный, краски не смешаны.",
       "category": "Turn of the Century",
       "category_ru": "Рубеж веков"
     },
@@ -347,7 +381,8 @@
       "name_ru": "Пуантилизм",
       "prompt": "Pointillist painting style, built entirely from small pure colour dots, luminous complementary contrasts, ",
       "preview": "img/pointillism.webp",
-      "description": "Цвет смешивается не на палитре, а в глазу зрителя.",
+      "description": "Colour mixes in the viewer's eye rather than on the palette.",
+      "description_ru": "Цвет смешивается не на палитре, а в глазу зрителя.",
       "category": "Turn of the Century",
       "category_ru": "Рубеж веков"
     },
@@ -357,7 +392,8 @@
       "name_ru": "Постимпрессионизм",
       "prompt": "Post-impressionist painting style, swirling thick expressive brushwork, saturated blues and yellows, bold simplified form, ",
       "preview": "img/post-impressionism.webp",
-      "description": "Мазок становится характером: он вьётся, давит, живёт отдельной жизнью.",
+      "description": "The brushstroke becomes character: it coils, presses, lives a life of its own.",
+      "description_ru": "Мазок становится характером: он вьётся, давит, живёт отдельной жизнью.",
       "category": "Turn of the Century",
       "category_ru": "Рубеж веков"
     },
@@ -367,7 +403,8 @@
       "name_ru": "Символизм",
       "prompt": "Symbolist painting style, muted violet and gold, dreamlike ambiguous atmosphere, soft twilight haze, ",
       "preview": "img/symbolism.webp",
-      "description": "Сон вместо сюжета: фигура, туман и намёк, который не расшифровать до конца.",
+      "description": "A dream in place of a plot: a figure, mist, and a hint that never fully resolves.",
+      "description_ru": "Сон вместо сюжета: фигура, туман и намёк, который не расшифровать до конца.",
       "category": "Turn of the Century",
       "category_ru": "Рубеж веков"
     },
@@ -377,7 +414,8 @@
       "name_ru": "Ар-нуво",
       "prompt": "Art Nouveau poster style, whiplash floral linework, flat decorative colour, ornate framing border, elegant flowing curves, ",
       "preview": "img/art-nouveau.webp",
-      "description": "Линия-плеть: стебель, волос и рама — одна непрерывная кривая.",
+      "description": "The whiplash line: stem, hair and frame are one unbroken curve.",
+      "description_ru": "Линия-плеть: стебель, волос и рама — одна непрерывная кривая.",
       "category": "Turn of the Century",
       "category_ru": "Рубеж веков"
     },
@@ -387,7 +425,8 @@
       "name_ru": "Венский сецессион",
       "prompt": "Vienna Secession style, flat gold ornamental mosaic patterning, spirals and squares, realistic passages against a decorative ground, ",
       "preview": "img/vienna-secession.webp",
-      "description": "Золото и мозаика орнамента, из которых выглядывает живое лицо.",
+      "description": "Gold and mosaic ornament, with a living face looking out of it.",
+      "description_ru": "Золото и мозаика орнамента, из которых выглядывает живое лицо.",
       "category": "Turn of the Century",
       "category_ru": "Рубеж веков"
     },
@@ -397,7 +436,8 @@
       "name_ru": "Фовизм",
       "prompt": "Fauvist painting style, arbitrary non-natural colour, thick flat strokes of orange green and violet, raw energy, ",
       "preview": "img/fauvism.webp",
-      "description": "Цвет отвязан от натуры: лицо может быть зелёным, если так вернее по чувству.",
+      "description": "Colour cut loose from nature: a face may be green if that is truer to the feeling.",
+      "description_ru": "Цвет отвязан от натуры: лицо может быть зелёным, если так вернее по чувству.",
       "category": "Turn of the Century",
       "category_ru": "Рубеж веков"
     },
@@ -407,7 +447,8 @@
       "name_ru": "Экспрессионизм",
       "prompt": "Expressionist painting style, distorted anxious stylisation, harsh red and blue contrast, jagged nervous brushwork, ",
       "preview": "img/expressionism.webp",
-      "description": "Форма гнётся под чувством: перекошенное лицо, кричащий контраст.",
+      "description": "Form bends under feeling: a skewed face, a shouting contrast.",
+      "description_ru": "Форма гнётся под чувством: перекошенное лицо, кричащий контраст.",
       "category": "20th-Century Avant-Garde",
       "category_ru": "Авангард двадцатого века"
     },
@@ -417,7 +458,8 @@
       "name_ru": "Кубизм",
       "prompt": "Cubist painting style, forms fragmented and seen from many angles at once, faceted planes, muted ochre and grey, ",
       "preview": "img/cubism.webp",
-      "description": "Предмет разобран и показан со всех сторон разом.",
+      "description": "The object taken apart and shown from every side at once.",
+      "description_ru": "Предмет разобран и показан со всех сторон разом.",
       "category": "20th-Century Avant-Garde",
       "category_ru": "Авангард двадцатого века"
     },
@@ -427,7 +469,8 @@
       "name_ru": "Футуризм",
       "prompt": "Futurist painting style, motion multiplied into repeated overlapping forms, speed lines, metallic palette, ",
       "preview": "img/futurism.webp",
-      "description": "Движение важнее предмета: фигура размножена в след от собственного шага.",
+      "description": "Movement outranks the object: the figure multiplied into the trace of its own stride.",
+      "description_ru": "Движение важнее предмета: фигура размножена в след от собственного шага.",
       "category": "20th-Century Avant-Garde",
       "category_ru": "Авангард двадцатого века"
     },
@@ -437,7 +480,8 @@
       "name_ru": "Дадаистский фотомонтаж",
       "prompt": "Dada photomontage style, cut newspaper and photo fragments, mismatched scales, absurd juxtaposition, aged paper, ",
       "preview": "img/dada-photomontage.webp",
-      "description": "Ножницы вместо кисти: обрывки газет и фотографий, склеенные назло смыслу.",
+      "description": "Scissors instead of a brush: scraps of newspaper and photograph glued together to spite sense.",
+      "description_ru": "Ножницы вместо кисти: обрывки газет и фотографий, склеенные назло смыслу.",
       "category": "20th-Century Avant-Garde",
       "category_ru": "Авангард двадцатого века"
     },
@@ -447,7 +491,8 @@
       "name_ru": "Супрематизм",
       "prompt": "Suprematist style, floating geometric shapes on a white void, black red and white, precise flat edges, ",
       "preview": "img/suprematism.webp",
-      "description": "Только фигуры и белый простор: живопись, отказавшаяся от предметов.",
+      "description": "Only shapes and white expanse: painting that has given up objects.",
+      "description_ru": "Только фигуры и белый простор: живопись, отказавшаяся от предметов.",
       "category": "20th-Century Avant-Garde",
       "category_ru": "Авангард двадцатого века"
     },
@@ -457,7 +502,8 @@
       "name_ru": "Конструктивизм",
       "prompt": "Constructivist poster style, bold red black and white, strong diagonal composition, geometric shapes and photomontage, ",
       "preview": "img/constructivism.webp",
-      "description": "Диагональ, красный и чёрный, фотомонтаж — графика, собранная как машина.",
+      "description": "Diagonal, red and black, photomontage — graphics assembled like a machine.",
+      "description_ru": "Диагональ, красный и чёрный, фотомонтаж — графика, собранная как машина.",
       "category": "20th-Century Avant-Garde",
       "category_ru": "Авангард двадцатого века"
     },
@@ -467,7 +513,8 @@
       "name_ru": "Баухаус",
       "prompt": "Bauhaus style, primary colours with black, basic geometric shapes, strict grid structure, clean industrial spirit, ",
       "preview": "img/bauhaus.webp",
-      "description": "Круг, квадрат, треугольник и ни одной лишней детали.",
+      "description": "Circle, square, triangle, and not one detail more.",
+      "description_ru": "Круг, квадрат, треугольник и ни одной лишней детали.",
       "category": "20th-Century Avant-Garde",
       "category_ru": "Авангард двадцатого века"
     },
@@ -477,7 +524,8 @@
       "name_ru": "Де Стейл",
       "prompt": "De Stijl style, black grid lines with rectangles of pure red blue and yellow on white, strict right angles, ",
       "preview": "img/de-stijl.webp",
-      "description": "Мир, сведённый к прямым углам и трём чистым цветам.",
+      "description": "The world reduced to right angles and three pure colours.",
+      "description_ru": "Мир, сведённый к прямым углам и трём чистым цветам.",
       "category": "20th-Century Avant-Garde",
       "category_ru": "Авангард двадцатого века"
     },
@@ -487,7 +535,8 @@
       "name_ru": "Сюрреализм",
       "prompt": "Surrealist style, impossible dreamlike juxtaposition, long raking shadows, vast empty space, hyperreal rendering of the illogical, ",
       "preview": "img/surrealism.webp",
-      "description": "Логика сна: обыденные вещи ведут себя невозможно, но выглядят убедительно.",
+      "description": "Dream logic: everyday things behave impossibly and still look convincing.",
+      "description_ru": "Логика сна: обыденные вещи ведут себя невозможно, но выглядят убедительно.",
       "category": "20th-Century Avant-Garde",
       "category_ru": "Авангард двадцатого века"
     },
@@ -497,7 +546,8 @@
       "name_ru": "Ар-деко",
       "prompt": "Art Deco poster style, symmetrical streamlined design, sunburst motifs, gold black and jade, elegant geometric stylisation, ",
       "preview": "img/art-deco.webp",
-      "description": "Роскошь по линейке: симметрия, лучи, золото и обтекаемый силуэт.",
+      "description": "Luxury drawn with a ruler: symmetry, rays, gold and a streamlined silhouette.",
+      "description_ru": "Роскошь по линейке: симметрия, лучи, золото и обтекаемый силуэт.",
       "category": "20th-Century Avant-Garde",
       "category_ru": "Авангард двадцатого века"
     },
@@ -507,7 +557,8 @@
       "name_ru": "Абстрактный экспрессионизм",
       "prompt": "Abstract expressionist style, dripped and splattered paint, energetic gestural layers, black red and white, raw canvas, ",
       "preview": "img/abstract-expressionism.webp",
-      "description": "Жест художника и есть сюжет: брызги, потёки, холст во всю стену.",
+      "description": "The artist's gesture is the subject: splatter, drip, canvas the size of a wall.",
+      "description_ru": "Жест художника и есть сюжет: брызги, потёки, холст во всю стену.",
       "category": "Post-War & Contemporary",
       "category_ru": "Послевоенное и современное"
     },
@@ -517,7 +568,8 @@
       "name_ru": "Поп-арт",
       "prompt": "pop art style, thick black outlines, halftone Ben-Day dots, flat saturated pink yellow and blue, comic panel treatment, ",
       "preview": "img/pop-art.webp",
-      "description": "Реклама и комикс, увеличенные до размера картины, с растровой точкой и иронией.",
+      "description": "Advertising and comics blown up to painting scale, with halftone dots and irony.",
+      "description_ru": "Реклама и комикс, увеличенные до размера картины, с растровой точкой и иронией.",
       "category": "Post-War & Contemporary",
       "category_ru": "Послевоенное и современное"
     },
@@ -527,7 +579,8 @@
       "name_ru": "Оп-арт",
       "prompt": "Op art style, black and white geometric pattern creating an illusion of bulging movement, precise hard edges, ",
       "preview": "img/op-art.webp",
-      "description": "Чёрно-белый узор, от которого плоскость начинает шевелиться.",
+      "description": "A black-and-white pattern that sets the flat surface moving.",
+      "description_ru": "Чёрно-белый узор, от которого плоскость начинает шевелиться.",
       "category": "Post-War & Contemporary",
       "category_ru": "Послевоенное и современное"
     },
@@ -537,7 +590,8 @@
       "name_ru": "Минимализм",
       "prompt": "minimalist style, reduced to essentials, precise edges, generous empty space, restrained near-monochrome palette, ",
       "preview": "img/minimalism.webp",
-      "description": "Одна форма, много воздуха и ничего лишнего.",
+      "description": "One form, a great deal of air, and nothing surplus.",
+      "description_ru": "Одна форма, много воздуха и ничего лишнего.",
       "category": "Post-War & Contemporary",
       "category_ru": "Послевоенное и современное"
     },
@@ -547,7 +601,8 @@
       "name_ru": "Гиперреализм",
       "prompt": "hyperrealistic rendering style, every pore and fibre resolved, glossy catchlights, razor-sharp macro detail, ",
       "preview": "img/hyperrealism.webp",
-      "description": "Больше подробностей, чем видит глаз: поры, блики, влага.",
+      "description": "More detail than the eye takes in: pores, highlights, moisture.",
+      "description_ru": "Больше подробностей, чем видит глаз: поры, блики, влага.",
       "category": "Post-War & Contemporary",
       "category_ru": "Послевоенное и современное"
     },
@@ -557,7 +612,8 @@
       "name_ru": "Наивное искусство",
       "prompt": "naive folk painting style, no perspective, bright cheerful colours, childlike confident shapes, flat storybook space, ",
       "preview": "img/naive-art.webp",
-      "description": "Нет перспективы и школы — есть радость и полная уверенность в своём мире.",
+      "description": "No perspective and no schooling — just joy and total confidence in one's own world.",
+      "description_ru": "Нет перспективы и школы — есть радость и полная уверенность в своём мире.",
       "category": "Post-War & Contemporary",
       "category_ru": "Послевоенное и современное"
     },
@@ -567,7 +623,8 @@
       "name_ru": "Ар брют",
       "prompt": "art brut style, obsessive dense hatching filling every space, crude untrained mark-making, ballpoint and crayon on cardboard, ",
       "preview": "img/art-brut.webp",
-      "description": "Искусство вне школ: одержимая штриховка, заполняющая каждый миллиметр.",
+      "description": "Art outside the schools: obsessive hatching that fills every millimetre.",
+      "description_ru": "Искусство вне школ: одержимая штриховка, заполняющая каждый миллиметр.",
       "category": "Post-War & Contemporary",
       "category_ru": "Послевоенное и современное"
     },
@@ -577,7 +634,8 @@
       "name_ru": "Мемфис",
       "prompt": "Memphis design style, squiggles zigzags and confetti terrazzo, clashing pastel and neon, playful geometric shapes, ",
       "preview": "img/memphis-design.webp",
-      "description": "Дизайн восьмидесятых в чистом виде: кислотные пятна, зигзаги и терраццо.",
+      "description": "The eighties undiluted: acid patches, zigzags and terrazzo.",
+      "description_ru": "Дизайн восьмидесятых в чистом виде: кислотные пятна, зигзаги и терраццо.",
       "category": "Post-War & Contemporary",
       "category_ru": "Послевоенное и современное"
     },
@@ -587,7 +645,8 @@
       "name_ru": "Швейцарский стиль",
       "prompt": "Swiss international style, strict grid layout, huge sans-serif typography, red and black on white, generous white space, ",
       "preview": "img/swiss-style.webp",
-      "description": "Сетка, воздух и один сильный акцент — графика, где порядок и есть красота.",
+      "description": "Grid, air and one strong accent — graphics where order is the beauty.",
+      "description_ru": "Сетка, воздух и один сильный акцент — графика, где порядок и есть красота.",
       "category": "Print, Poster & Graphics",
       "category_ru": "Печать, плакат и графика"
     },
@@ -597,7 +656,8 @@
       "name_ru": "Агитационный плакат",
       "prompt": "vintage propaganda poster style, heroic low-angle stylisation, limited red cream and black palette, bold banner shapes, ",
       "preview": "img/propaganda-poster.webp",
-      "description": "Крупная фигура снизу вверх, лозунговый ритм и всего два-три цвета.",
+      "description": "A large figure seen from below, slogan rhythm, and only two or three colours.",
+      "description_ru": "Крупная фигура снизу вверх, лозунговый ритм и всего два-три цвета.",
       "category": "Print, Poster & Graphics",
       "category_ru": "Печать, плакат и графика"
     },
@@ -607,7 +667,8 @@
       "name_ru": "Ризограф",
       "prompt": "risograph print style, two-colour fluorescent pink and blue layers slightly misaligned, grainy paper, coarse halftone, ",
       "preview": "img/risograph-print.webp",
-      "description": "Печать в два цвета с лёгким несовпадением слоёв и зернистой текстурой.",
+      "description": "Two-colour printing with slight misregistration and a grainy tooth.",
+      "description_ru": "Печать в два цвета с лёгким несовпадением слоёв и зернистой текстурой.",
       "category": "Print, Poster & Graphics",
       "category_ru": "Печать, плакат и графика"
     },
@@ -617,7 +678,8 @@
       "name_ru": "Шелкография",
       "prompt": "screen print style, flat bold colour areas, limited palette, slight registration offset, visible ink texture, ",
       "preview": "img/screen-print.webp",
-      "description": "Плотные плашки, ограниченная палитра и заметный след трафарета.",
+      "description": "Dense flats, a limited palette, and a visible stencil edge.",
+      "description_ru": "Плотные плашки, ограниченная палитра и заметный след трафарета.",
       "category": "Print, Poster & Graphics",
       "category_ru": "Печать, плакат и графика"
     },
@@ -627,7 +689,8 @@
       "name_ru": "Линогравюра",
       "prompt": "linocut print style, high contrast black ink on cream paper, chunky carved marks, visible gouge texture, ",
       "preview": "img/linocut.webp",
-      "description": "Белое вырезано, чёрное осталось: жирный штрих и рубленые края.",
+      "description": "White is cut away, black stays: fat marks and chopped edges.",
+      "description_ru": "Белое вырезано, чёрное осталось: жирный штрих и рубленые края.",
       "category": "Print, Poster & Graphics",
       "category_ru": "Печать, плакат и графика"
     },
@@ -637,7 +700,8 @@
       "name_ru": "Офорт",
       "prompt": "fine etching style, delicate cross-hatched linework, sepia ink on aged paper, visible plate mark, ",
       "preview": "img/etching.webp",
-      "description": "Тонкая паутина штриха, процарапанная иглой по металлу.",
+      "description": "A fine web of line scratched into metal with a needle.",
+      "description_ru": "Тонкая паутина штриха, процарапанная иглой по металлу.",
       "category": "Print, Poster & Graphics",
       "category_ru": "Печать, плакат и графика"
     },
@@ -647,7 +711,8 @@
       "name_ru": "Ксилография",
       "prompt": "old woodcut print style, coarse black lines, visible wood grain, stark high contrast, yellowed paper, ",
       "preview": "img/woodcut.webp",
-      "description": "Древний способ печати: волокна дерева видны в каждой линии.",
+      "description": "The oldest way to print: the grain of the block shows in every line.",
+      "description_ru": "Древний способ печати: волокна дерева видны в каждой линии.",
       "category": "Print, Poster & Graphics",
       "category_ru": "Печать, плакат и графика"
     },
@@ -657,7 +722,8 @@
       "name_ru": "Синька",
       "prompt": "technical blueprint style, white line drawing on deep cyanotype blue, dimension marks and annotations, drafting precision, ",
       "preview": "img/blueprint.webp",
-      "description": "Белая линия по синему полю: язык чертежа, а не картинки.",
+      "description": "White line on blue: the language of a drawing, not of a picture.",
+      "description_ru": "Белая линия по синему полю: язык чертежа, а не картинки.",
       "category": "Print, Poster & Graphics",
       "category_ru": "Печать, плакат и графика"
     },
@@ -667,7 +733,8 @@
       "name_ru": "Золотой век иллюстрации",
       "prompt": "golden age book illustration style, fine ink linework, muted watercolour wash, decorative border, storybook atmosphere, ",
       "preview": "img/golden-age-illustration.webp",
-      "description": "Сказка, нарисованная тонким пером и акварелью, с тревожными деревьями по краям.",
+      "description": "A fairy tale drawn with fine pen and watercolour, with uneasy trees at the edges.",
+      "description_ru": "Сказка, нарисованная тонким пером и акварелью, с тревожными деревьями по краям.",
       "category": "Illustration & Comics",
       "category_ru": "Иллюстрация и комикс"
     },
@@ -677,7 +744,8 @@
       "name_ru": "Детская книжная иллюстрация",
       "prompt": "children's book illustration style, warm gouache texture, rounded soft shapes, cosy palette, friendly simplified forms, ",
       "preview": "img/children-s-book-illustration.webp",
-      "description": "Тёплая гуашь, круглые формы и полное отсутствие страха.",
+      "description": "Warm gouache, round shapes and a complete absence of fear.",
+      "description_ru": "Тёплая гуашь, круглые формы и полное отсутствие страха.",
       "category": "Illustration & Comics",
       "category_ru": "Иллюстрация и комикс"
     },
@@ -687,7 +755,8 @@
       "name_ru": "Ясная линия",
       "prompt": "ligne claire comic style, uniform clean outlines, flat unshaded colour, clear readable staging, retro european look, ",
       "preview": "img/ligne-claire.webp",
-      "description": "Ровный контур одной толщины, плоский цвет и никаких теней.",
+      "description": "Even outline of one weight, flat colour, and no shadows at all.",
+      "description_ru": "Ровный контур одной толщины, плоский цвет и никаких теней.",
       "category": "Illustration & Comics",
       "category_ru": "Иллюстрация и комикс"
     },
@@ -697,7 +766,8 @@
       "name_ru": "Американский комикс",
       "prompt": "classic american comic book style, heavy ink shadows, halftone dots, bold primary colours, dynamic low-angle staging, ",
       "preview": "img/comic-book-art.webp",
-      "description": "Динамичный ракурс, тушевые тени и растр вместо полутонов.",
+      "description": "Dynamic angle, inked shadows, and benday dots instead of halftone.",
+      "description_ru": "Динамичный ракурс, тушевые тени и растр вместо полутонов.",
       "category": "Illustration & Comics",
       "category_ru": "Иллюстрация и комикс"
     },
@@ -707,7 +777,8 @@
       "name_ru": "Манга",
       "prompt": "manga art style, black and white ink, screentone shading, speed lines, expressive confident linework, ",
       "preview": "img/manga.webp",
-      "description": "Чёрно-белая графика со скринтонами и линиями скорости.",
+      "description": "Black-and-white graphics with screentone and speed lines.",
+      "description_ru": "Чёрно-белая графика со скринтонами и линиями скорости.",
       "category": "Illustration & Comics",
       "category_ru": "Иллюстрация и комикс"
     },
@@ -717,7 +788,8 @@
       "name_ru": "Аниме-кадр",
       "prompt": "anime film still style, cel shading with hard shadow edges, richly painted background, warm afternoon light, ",
       "preview": "img/anime-still.webp",
-      "description": "Плоская заливка с жёсткой границей тени и подробно написанным фоном.",
+      "description": "Flat cel colour with a hard shadow edge and a painstakingly painted background.",
+      "description_ru": "Плоская заливка с жёсткой границей тени и подробно написанным фоном.",
       "category": "Illustration & Comics",
       "category_ru": "Иллюстрация и комикс"
     },
@@ -727,7 +799,8 @@
       "name_ru": "Нуарный комикс",
       "prompt": "noir comic style, stark black and white ink, venetian blind shadow bands, heavy silhouettes, high-contrast crush, ",
       "preview": "img/noir-comic.webp",
-      "description": "Только чёрное и белое: свет режет кадр жалюзи и дождём.",
+      "description": "Black and white only: light cuts the frame into blinds and rain.",
+      "description_ru": "Только чёрное и белое: свет режет кадр жалюзи и дождём.",
       "category": "Illustration & Comics",
       "category_ru": "Иллюстрация и комикс"
     },
@@ -737,7 +810,8 @@
       "name_ru": "Карикатура",
       "prompt": "caricature style, exaggerated proportions, lively ink and watercolour, bold expressive linework, ",
       "preview": "img/caricature.webp",
-      "description": "Одна черта увеличена втрое — и человек узнаётся мгновенно.",
+      "description": "One feature tripled in size — and the person is recognised instantly.",
+      "description_ru": "Одна черта увеличена втрое — и человек узнаётся мгновенно.",
       "category": "Illustration & Comics",
       "category_ru": "Иллюстрация и комикс"
     },
@@ -747,7 +821,8 @@
       "name_ru": "Пин-ап",
       "prompt": "retro pin-up illustration style, soft airbrushed painting, warm pastel palette, glossy vintage advertising finish, ",
       "preview": "img/pin-up.webp",
-      "description": "Ретро-открытка: мягкая живопись, лукавый взгляд и лёгкий сюжет.",
+      "description": "A retro postcard: soft painting, a sly glance and a light story.",
+      "description_ru": "Ретро-открытка: мягкая живопись, лукавый взгляд и лёгкий сюжет.",
       "category": "Illustration & Comics",
       "category_ru": "Иллюстрация и комикс"
     },
@@ -757,7 +832,8 @@
       "name_ru": "Ботаническая иллюстрация",
       "prompt": "botanical illustration plate style, precise watercolour rendering, white background, handwritten labels, scientific clarity, ",
       "preview": "img/botanical-illustration.webp",
-      "description": "Растение как документ: разрез, корень и подпись на белом поле.",
+      "description": "The plant as document: a section, a root, and a caption on white.",
+      "description_ru": "Растение как документ: разрез, корень и подпись на белом поле.",
       "category": "Illustration & Comics",
       "category_ru": "Иллюстрация и комикс"
     },
@@ -767,7 +843,8 @@
       "name_ru": "Анатомическая таблица",
       "prompt": "vintage anatomical plate style, engraved fine hatching, sepia paper, handwritten annotations, clinical scientific presentation, ",
       "preview": "img/anatomical-plate.webp",
-      "description": "Старая медицинская гравюра: точный штрих и невозмутимая подпись.",
+      "description": "An old medical engraving: precise hatching and an unflappable caption.",
+      "description_ru": "Старая медицинская гравюра: точный штрих и невозмутимая подпись.",
       "category": "Illustration & Comics",
       "category_ru": "Иллюстрация и комикс"
     },
@@ -777,7 +854,8 @@
       "name_ru": "Старинная карта",
       "prompt": "antique nautical chart style, hand-drawn sepia ink linework, aged parchment, ornate cartouche framing, engraved lettering, ",
       "preview": "img/antique-map.webp",
-      "description": "Компасная роза, морские чудовища и обжитая пустота по краям.",
+      "description": "Sepia ink, sea monsters, and an inhabited emptiness at the margins.",
+      "description_ru": "Компасная роза, морские чудовища и обжитая пустота по краям.",
       "category": "Illustration & Comics",
       "category_ru": "Иллюстрация и комикс"
     },
@@ -787,7 +865,8 @@
       "name_ru": "Акварель",
       "prompt": "loose watercolour painting style, wet edges and blooms, white paper showing through, soft pigment granulation, ",
       "preview": "img/watercolor.webp",
-      "description": "Мокрые края, затёки и просвечивающая бумага — краска, которую нельзя полностью подчинить.",
+      "description": "Wet edges, blooms and paper showing through — paint that will not be fully commanded.",
+      "description_ru": "Мокрые края, затёки и просвечивающая бумага — краска, которую нельзя полностью подчинить.",
       "category": "Materials & Craft",
       "category_ru": "Материалы и ремесло"
     },
@@ -797,7 +876,8 @@
       "name_ru": "Гуашь",
       "prompt": "gouache painting style, flat matte opaque colour, visible brush edges, muted retro palette, ",
       "preview": "img/gouache.webp",
-      "description": "Плотная матовая краска: цвет ложится ровным непрозрачным слоем.",
+      "description": "Dense matte colour laid down as one flat, opaque coat.",
+      "description_ru": "Плотная матовая краска: цвет ложится ровным непрозрачным слоем.",
       "category": "Materials & Craft",
       "category_ru": "Материалы и ремесло"
     },
@@ -807,7 +887,8 @@
       "name_ru": "Масло с импасто",
       "prompt": "impasto oil painting style, thick sculptural paint ridges, palette knife strokes catching the light, rich buttery texture, ",
       "preview": "img/impasto-oil.webp",
-      "description": "Краска стоит рельефом: видно каждое движение мастихина.",
+      "description": "Paint stands up in relief: every movement of the knife is visible.",
+      "description_ru": "Краска стоит рельефом: видно каждое движение мастихина.",
       "category": "Materials & Craft",
       "category_ru": "Материалы и ремесло"
     },
@@ -817,7 +898,8 @@
       "name_ru": "Пастель",
       "prompt": "soft pastel drawing style, velvety powdery strokes, textured paper tooth, smudged blended edges, ",
       "preview": "img/soft-pastel.webp",
-      "description": "Бархатная пыль, растёртая пальцем по шершавой бумаге.",
+      "description": "Velvet dust rubbed into rough paper with a finger.",
+      "description_ru": "Бархатная пыль, растёртая пальцем по шершавой бумаге.",
       "category": "Materials & Craft",
       "category_ru": "Материалы и ремесло"
     },
@@ -827,7 +909,8 @@
       "name_ru": "Карандашный набросок",
       "prompt": "graphite pencil sketch style, searching construction lines, visible eraser marks, unfinished open contours, ",
       "preview": "img/pencil-sketch.webp",
-      "description": "Живой поиск линии: следы стирания и незамкнутый контур.",
+      "description": "A line still being searched for: erasure marks and an open contour.",
+      "description_ru": "Живой поиск линии: следы стирания и незамкнутый контур.",
       "category": "Materials & Craft",
       "category_ru": "Материалы и ремесло"
     },
@@ -837,7 +920,8 @@
       "name_ru": "Уголь",
       "prompt": "charcoal drawing style, deep velvety blacks, smudged mid tones, highlights lifted with an eraser, rough paper, ",
       "preview": "img/charcoal-drawing.webp",
-      "description": "Глубокий бархатный чёрный и белые пробелы, вытертые ластиком.",
+      "description": "Deep velvet black and white gaps lifted back out with an eraser.",
+      "description_ru": "Глубокий бархатный чёрный и белые пробелы, вытертые ластиком.",
       "category": "Materials & Craft",
       "category_ru": "Материалы и ремесло"
     },
@@ -847,7 +931,8 @@
       "name_ru": "Тушь и перо",
       "prompt": "pen and ink drawing style, dense cross-hatching building volume, pure black lines on white, no grey tones, ",
       "preview": "img/pen-and-ink.webp",
-      "description": "Объём набирается штриховкой: чем гуще сетка, тем глубже тень.",
+      "description": "Volume built from hatching: the denser the mesh, the deeper the shadow.",
+      "description_ru": "Объём набирается штриховкой: чем гуще сетка, тем глубже тень.",
       "category": "Materials & Craft",
       "category_ru": "Материалы и ремесло"
     },
@@ -857,7 +942,8 @@
       "name_ru": "Бумажный коллаж",
       "prompt": "paper collage style, torn magazine and newsprint pieces, visible glue edges, layered mixed textures, ",
       "preview": "img/paper-collage.webp",
-      "description": "Рваные края, чужие тексты и клей вместо мазка.",
+      "description": "Torn edges, borrowed type, and glue where the brushstroke should be.",
+      "description_ru": "Рваные края, чужие тексты и клей вместо мазка.",
       "category": "Materials & Craft",
       "category_ru": "Материалы и ремесло"
     },
@@ -867,7 +953,8 @@
       "name_ru": "Бумажная вырезка",
       "prompt": "layered papercut style, stacked paper planes, soft drop shadows between layers, matte coloured paper, ",
       "preview": "img/papercut.webp",
-      "description": "Многослойный силуэт: каждый план — отдельный лист с мягкой тенью.",
+      "description": "A layered silhouette: each plane its own sheet, with a soft shadow beneath.",
+      "description_ru": "Многослойный силуэт: каждый план — отдельный лист с мягкой тенью.",
       "category": "Materials & Craft",
       "category_ru": "Материалы и ремесло"
     },
@@ -877,7 +964,8 @@
       "name_ru": "Пластилиновая лепка",
       "prompt": "claymation style, plasticine surfaces with visible fingerprints, chunky soft forms, miniature handmade set, ",
       "preview": "img/claymation.webp",
-      "description": "Мягкие формы с отпечатками пальцев — уютное несовершенство.",
+      "description": "Soft forms holding fingerprints — a cosy kind of imperfection.",
+      "description_ru": "Мягкие формы с отпечатками пальцев — уютное несовершенство.",
       "category": "Materials & Craft",
       "category_ru": "Материалы и ремесло"
     },
@@ -887,7 +975,8 @@
       "name_ru": "Вышивка",
       "prompt": "hand embroidery style, stitched in coloured thread on linen, visible satin and chain stitches, fabric weave texture, ",
       "preview": "img/embroidery.webp",
-      "description": "Картинка, набранная стежком: нитяная фактура и живая неровность.",
+      "description": "A picture set in stitches: thread texture and a living unevenness.",
+      "description_ru": "Картинка, набранная стежком: нитяная фактура и живая неровность.",
       "category": "Materials & Craft",
       "category_ru": "Материалы и ремесло"
     },
@@ -897,7 +986,8 @@
       "name_ru": "Амигуруми",
       "prompt": "amigurumi crochet style, chunky yarn stitches clearly visible, round friendly forms, soft felt backdrop, ",
       "preview": "img/amigurumi.webp",
-      "description": "Вязаная игрушка: пряжа, петли и абсолютное обаяние.",
+      "description": "A crocheted toy: yarn, loops and absolute charm.",
+      "description_ru": "Вязаная игрушка: пряжа, петли и абсолютное обаяние.",
       "category": "Materials & Craft",
       "category_ru": "Материалы и ремесло"
     },
@@ -907,7 +997,8 @@
       "name_ru": "Резьба по дереву",
       "prompt": "hand-carved wood style, visible chisel facets, warm oak grain, hand-finished surface, soft directional light, ",
       "preview": "img/wood-carving.webp",
-      "description": "Форма, вынутая из бруска: следы стамески и живой рисунок волокна.",
+      "description": "Form lifted out of the block: chisel marks and a living grain.",
+      "description_ru": "Форма, вынутая из бруска: следы стамески и живой рисунок волокна.",
       "category": "Materials & Craft",
       "category_ru": "Материалы и ремесло"
     },
@@ -917,7 +1008,8 @@
       "name_ru": "Фарфор",
       "prompt": "blue and white porcelain style, cobalt hand-painted decoration under glossy glaze, delicate brush lines, crisp white body, ",
       "preview": "img/porcelain.webp",
-      "description": "Кобальтовая роспись по белой глазури: тонкая линия и холодный блеск.",
+      "description": "Cobalt painted over white glaze: thin line and a cold shine.",
+      "description_ru": "Кобальтовая роспись по белой глазури: тонкая линия и холодный блеск.",
       "category": "Materials & Craft",
       "category_ru": "Материалы и ремесло"
     },
@@ -927,7 +1019,8 @@
       "name_ru": "Цифровая живопись",
       "prompt": "digital painting style, expressive visible brush strokes, rich colour blending, painterly rendering, ",
       "preview": "img/digital-painting.webp",
-      "description": "Свободный мазок планшета: живописность без запаха скипидара.",
+      "description": "The free stroke of a tablet: painterly, without the smell of turpentine.",
+      "description_ru": "Свободный мазок планшета: живописность без запаха скипидара.",
       "category": "Digital, 3D & Screen",
       "category_ru": "Цифровое, объём и экран"
     },
@@ -937,7 +1030,8 @@
       "name_ru": "Концепт-арт",
       "prompt": "concept art key frame style, atmospheric perspective, loose confident rendering, cinematic value grouping, ",
       "preview": "img/concept-art.webp",
-      "description": "Быстрый эскиз мира для производства: настроение важнее вылизанности.",
+      "description": "A fast sketch of a world for production: mood matters more than polish.",
+      "description_ru": "Быстрый эскиз мира для производства: настроение важнее вылизанности.",
       "category": "Digital, 3D & Screen",
       "category_ru": "Цифровое, объём и экран"
     },
@@ -947,7 +1041,8 @@
       "name_ru": "Мэт-пейнтинг",
       "prompt": "matte painting style, photoreal seamless blend of photo and paint, cinematic scale, dramatic atmospheric depth, ",
       "preview": "img/matte-painting.webp",
-      "description": "Достроенный мир: фотореалистичная панорама, в которую войдёт кадр.",
+      "description": "A world completed: a photoreal panorama the shot can walk into.",
+      "description_ru": "Достроенный мир: фотореалистичная панорама, в которую войдёт кадр.",
       "category": "Digital, 3D & Screen",
       "category_ru": "Цифровое, объём и экран"
     },
@@ -957,7 +1052,8 @@
       "name_ru": "3D-рендер",
       "prompt": "polished 3D render style, glossy and matte materials, soft studio lighting, subtle depth of field, clean neutral backdrop, ",
       "preview": "img/3d-render.webp",
-      "description": "Чистая графика: аккуратные материалы, мягкие тени, студийная сцена.",
+      "description": "Clean graphics: tidy materials, soft shadows, a studio set-up.",
+      "description_ru": "Чистая графика: аккуратные материалы, мягкие тени, студийная сцена.",
       "category": "Digital, 3D & Screen",
       "category_ru": "Цифровое, объём и экран"
     },
@@ -967,7 +1063,8 @@
       "name_ru": "Клэй-рендер",
       "prompt": "untextured clay render style, uniform matte grey material, soft ambient occlusion, pure study of form, ",
       "preview": "img/clay-render.webp",
-      "description": "Сцена без текстур: только форма, свет и мягкий серый материал.",
+      "description": "A scene stripped of texture: only form, light and a soft grey material.",
+      "description_ru": "Сцена без текстур: только форма, свет и мягкий серый материал.",
       "category": "Digital, 3D & Screen",
       "category_ru": "Цифровое, объём и экран"
     },
@@ -977,7 +1074,8 @@
       "name_ru": "Low poly",
       "prompt": "low poly 3D style, faceted triangular geometry, flat shading, pastel gradient background, ",
       "preview": "img/low-poly.webp",
-      "description": "Мир, собранный из крупных треугольников, — красота нарочитой грубости.",
+      "description": "A world built from big triangles — the beauty of deliberate coarseness.",
+      "description_ru": "Мир, собранный из крупных треугольников, — красота нарочитой грубости.",
       "category": "Digital, 3D & Screen",
       "category_ru": "Цифровое, объём и экран"
     },
@@ -987,7 +1085,8 @@
       "name_ru": "Воксель",
       "prompt": "voxel art style, built entirely from cubes, bright toy-like colours, crisp blocky edges, isometric view, ",
       "preview": "img/voxel-art.webp",
-      "description": "Трёхмерный пиксель: всё построено из одинаковых кубиков.",
+      "description": "The three-dimensional pixel: everything made of identical cubes.",
+      "description_ru": "Трёхмерный пиксель: всё построено из одинаковых кубиков.",
       "category": "Digital, 3D & Screen",
       "category_ru": "Цифровое, объём и экран"
     },
@@ -997,7 +1096,8 @@
       "name_ru": "Изометрия",
       "prompt": "isometric illustration style, parallel projection, clean shapes, soft flat shadows, tidy cutaway presentation, ",
       "preview": "img/isometric.webp",
-      "description": "Ни схождения линий, ни горизонта: удобный вид сверху-сбоку.",
+      "description": "No vanishing point and no horizon: a convenient view from above and to the side.",
+      "description_ru": "Ни схождения линий, ни горизонта: удобный вид сверху-сбоку.",
       "category": "Digital, 3D & Screen",
       "category_ru": "Цифровое, объём и экран"
     },
@@ -1007,7 +1107,8 @@
       "name_ru": "Пиксель-арт",
       "prompt": "pixel art style, limited palette, crisp visible pixels, dithered gradients, retro game look, ",
       "preview": "img/pixel-art.webp",
-      "description": "Ограниченная палитра и ручная расстановка точек — каждая на счету.",
+      "description": "A limited palette placed dot by dot — every one of them counts.",
+      "description_ru": "Ограниченная палитра и ручная расстановка точек — каждая на счету.",
       "category": "Digital, 3D & Screen",
       "category_ru": "Цифровое, объём и экран"
     },
@@ -1017,7 +1118,8 @@
       "name_ru": "Глитч-арт",
       "prompt": "glitch art style, RGB channel shift, torn datamosh bands, scanline noise, corrupted digital artefacts, ",
       "preview": "img/glitch-art.webp",
-      "description": "Сломанный сигнал как приём: сдвиг каналов, битые полосы, шум.",
+      "description": "The broken signal as a technique: channel shift, corrupted bands, noise.",
+      "description_ru": "Сломанный сигнал как приём: сдвиг каналов, битые полосы, шум.",
       "category": "Digital, 3D & Screen",
       "category_ru": "Цифровое, объём и экран"
     },
@@ -1027,7 +1129,8 @@
       "name_ru": "ASCII-арт",
       "prompt": "ASCII art style, rendered entirely from typed characters, monospaced green text on black, terminal look, ",
       "preview": "img/ascii-art.webp",
-      "description": "Картинка из букв и знаков: тон набирается плотностью символов.",
+      "description": "A picture made of letters and signs: tone comes from character density.",
+      "description_ru": "Картинка из букв и знаков: тон набирается плотностью символов.",
       "category": "Digital, 3D & Screen",
       "category_ru": "Цифровое, объём и экран"
     },
@@ -1037,7 +1140,8 @@
       "name_ru": "Вайрфрейм",
       "prompt": "glowing wireframe render style, cyan mesh edges in black space, no surfaces, technical grid, ",
       "preview": "img/wireframe.webp",
-      "description": "Каркас без кожи: только рёбра сетки светятся в темноте.",
+      "description": "A frame without skin: only the mesh edges glowing in the dark.",
+      "description_ru": "Каркас без кожи: только рёбра сетки светятся в темноте.",
       "category": "Digital, 3D & Screen",
       "category_ru": "Цифровое, объём и экран"
     },
@@ -1047,7 +1151,8 @@
       "name_ru": "Психоделика",
       "prompt": "psychedelic poster style, melting liquid lettering, vibrating complementary colours, swirling ornament, ",
       "preview": "img/psychedelic-poster.webp",
-      "description": "Плавящиеся буквы, кислотный цвет и узор, от которого рябит в глазах.",
+      "description": "Melting letters, acid colour, and a pattern that makes the eyes swim.",
+      "description_ru": "Плавящиеся буквы, кислотный цвет и узор, от которого рябит в глазах.",
       "category": "Aesthetics & Subcultures",
       "category_ru": "Эстетики и субкультуры"
     },
@@ -1057,7 +1162,8 @@
       "name_ru": "Ретрофутуризм",
       "prompt": "retrofuturist illustration style, streamlined chrome forms, atomic age optimism, faded vintage print colours, ",
       "preview": "img/retrofuturism.webp",
-      "description": "Будущее, каким его рисовали в середине прошлого века: обтекаемые формы и оптимизм.",
+      "description": "The future as it was drawn mid-century: streamlined shapes and optimism.",
+      "description_ru": "Будущее, каким его рисовали в середине прошлого века: обтекаемые формы и оптимизм.",
       "category": "Aesthetics & Subcultures",
       "category_ru": "Эстетики и субкультуры"
     },
@@ -1067,7 +1173,8 @@
       "name_ru": "Синтвейв",
       "prompt": "synthwave style, neon magenta and cyan glow, chrome gradients, retro 80s grid and scanline motifs, purple haze, ",
       "preview": "img/synthwave.webp",
-      "description": "Неоновая сетка, полосатый закат и хром: восьмидесятые, которых не было.",
+      "description": "Neon grid, striped sunset and chrome: the eighties that never happened.",
+      "description_ru": "Неоновая сетка, полосатый закат и хром: восьмидесятые, которых не было.",
       "category": "Aesthetics & Subcultures",
       "category_ru": "Эстетики и субкультуры"
     },
@@ -1077,7 +1184,8 @@
       "name_ru": "Вапорвейв",
       "prompt": "vaporwave style, pink and teal gradient wash, VHS artefacts and scanlines, retro computer interface chrome, sun-bleached pastel palette, ",
       "preview": "img/vaporwave.webp",
-      "description": "Мраморный бюст, пальма и розово-бирюзовая дымка старого монитора.",
+      "description": "A marble bust, a palm, and the pink-and-cyan haze of an old monitor.",
+      "description_ru": "Мраморный бюст, пальма и розово-бирюзовая дымка старого монитора.",
       "category": "Aesthetics & Subcultures",
       "category_ru": "Эстетики и субкультуры"
     },
@@ -1087,7 +1195,8 @@
       "name_ru": "Y2K",
       "prompt": "Y2K aesthetic style, glossy chrome bubble forms, holographic iridescence, translucent plastic, lens flare sparkles, ",
       "preview": "img/y2k-aesthetic.webp",
-      "description": "Глянцевый хром, пузыри и блеск ранних нулевых.",
+      "description": "Glossy chrome, bubbles and the shine of the early 2000s.",
+      "description_ru": "Глянцевый хром, пузыри и блеск ранних нулевых.",
       "category": "Aesthetics & Subcultures",
       "category_ru": "Эстетики и субкультуры"
     },
@@ -1097,7 +1206,8 @@
       "name_ru": "Граффити",
       "prompt": "graffiti mural style, bold wildstyle lettering, spray drips, vivid neon layers, urban wall texture, ",
       "preview": "img/graffiti.webp",
-      "description": "Баллончик по кирпичу: жирный контур, подтёки, объёмные буквы.",
+      "description": "Spray on brick: fat outline, drips and letters with volume.",
+      "description_ru": "Баллончик по кирпичу: жирный контур, подтёки, объёмные буквы.",
       "category": "Aesthetics & Subcultures",
       "category_ru": "Эстетики и субкультуры"
     },
@@ -1107,7 +1217,8 @@
       "name_ru": "Стенсил",
       "prompt": "stencil street art style, two-tone spray silhouette, sharp cut edges, slight overspray, concrete wall texture, ",
       "preview": "img/stencil-street-art.webp",
-      "description": "Трафарет в два цвета: резкий силуэт и точная мысль.",
+      "description": "A two-colour stencil: sharp silhouette and one precise idea.",
+      "description_ru": "Трафарет в два цвета: резкий силуэт и точная мысль.",
       "category": "Aesthetics & Subcultures",
       "category_ru": "Эстетики и субкультуры"
     },
@@ -1117,7 +1228,8 @@
       "name_ru": "Тату олд-скул",
       "prompt": "old school tattoo flash style, bold black outlines, limited red green and yellow, heavy solid fills, aged paper, ",
       "preview": "img/old-school-tattoo.webp",
-      "description": "Жирный контур, ограниченная палитра и вечные сюжеты: якорь, роза, ласточка.",
+      "description": "Bold outline, a short palette and the eternal subjects: anchor, rose, swallow.",
+      "description_ru": "Жирный контур, ограниченная палитра и вечные сюжеты: якорь, роза, ласточка.",
       "category": "Aesthetics & Subcultures",
       "category_ru": "Эстетики и субкультуры"
     },
@@ -1127,7 +1239,8 @@
       "name_ru": "Ирезуми",
       "prompt": "irezumi tattoo style, bold black outlines, stylised wave and cloud ornament, deep indigo and vermilion, flowing decorative composition, ",
       "preview": "img/irezumi.webp",
-      "description": "Японская татуировка: волна, карп и дым, заполняющие всё поле.",
+      "description": "Japanese tattoo: wave, carp and smoke filling the whole field.",
+      "description_ru": "Японская татуировка: волна, карп и дым, заполняющие всё поле.",
       "category": "Aesthetics & Subcultures",
       "category_ru": "Эстетики и субкультуры"
     }

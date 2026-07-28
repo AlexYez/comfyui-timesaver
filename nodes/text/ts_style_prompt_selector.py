@@ -108,7 +108,10 @@ def _load_styles():
                 "category": _as_text(style.get("category")).strip(),
                 "category_ru": _as_text(style.get("category_ru")).strip(),
                 "prompt": _as_text(style.get("prompt")),
+                # Descriptions follow the same convention as the name/category
+                # pair: the bare key is English, the `_ru` suffix is Russian.
                 "description": _as_text(style.get("description")),
+                "description_ru": _as_text(style.get("description_ru")),
                 "preview": _as_text(style.get("preview")).strip(),
             }
             if not item["id"] and not item["name"]:

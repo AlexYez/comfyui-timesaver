@@ -637,21 +637,22 @@ function setupStyleSelector(node) {
 
     const styleValue = (style) => (style.name || style.id || "").trim();
 
-    // The library ships both an English and a Russian name per style; show the
-    // one matching the ComfyUI locale, English being the fallback. Descriptions
-    // exist in Russian only, so the English tooltip falls back to the prompt,
-    // which is the more useful text there anyway.
+    // The library ships an English and a Russian variant of the name, category
+    // and description; show the one matching the ComfyUI locale, English being
+    // the fallback in every case.
     const isRu = getUiLanguage() === "ru";
     const styleLabel = (style) =>
         (isRu ? style.name_ru || style.name : style.name) || style.id || "";
     const categoryLabel = (style) =>
         (isRu ? style.category_ru || style.category : style.category) || "";
-    const styleTooltip = (style) => {
-        const parts = isRu
-            ? [style.description, style.prompt]
-            : [style.prompt, style.description];
-        return parts.filter(Boolean)[0] || styleLabel(style);
-    };
+    const descriptionLabel = (style) =>
+        (isRu ? style.description_ru || style.description : style.description) || "";
+    // Every prompt ends with ", " so it concatenates cleanly in front of the
+    // user's own prompt. That trailing comma is plumbing, not text: strip it
+    // wherever the prompt is shown to a human.
+    const promptLabel = (style) => (style.prompt || "").replace(/[,\s]+$/, "");
+    const styleTooltip = (style) =>
+        [descriptionLabel(style), promptLabel(style)].filter(Boolean)[0] || styleLabel(style);
 
     const matchesSelection = (style, value) => {
         if (!value) {
@@ -835,7 +836,7 @@ function setupStyleSelector(node) {
                     haystack: [
                         style.id, style.name, style.name_ru,
                         style.category, style.category_ru,
-                        style.description, style.prompt,
+                        style.description, style.description_ru, style.prompt,
                     ].filter(Boolean).join(" ").toLowerCase(),
                 };
                 cardRecords.push(record);
@@ -1051,7 +1052,7 @@ function setupStyleSelector(node) {
                 nm.className = "ts-style-modal__name";
                 nm.textContent = styleLabel(style);
                 meta.appendChild(nm);
-                const descText = (isRu ? style.description : style.prompt) || style.description || style.prompt;
+                const descText = descriptionLabel(style) || promptLabel(style);
                 if (descText) {
                     const desc = doc.createElement("div");
                     desc.className = "ts-style-modal__desc";
@@ -1074,7 +1075,7 @@ function setupStyleSelector(node) {
                     haystack: [
                         style.id, style.name, style.name_ru,
                         style.category, style.category_ru,
-                        style.description, style.prompt,
+                        style.description, style.description_ru, style.prompt,
                     ].filter(Boolean).join(" ").toLowerCase(),
                 };
                 mRecords.push(record);

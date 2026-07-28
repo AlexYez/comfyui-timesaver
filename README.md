@@ -4,7 +4,7 @@
 
 # 🚀 Timesaver Nodes for ComfyUI
 
-**A friendly toolkit of 60 production-ready nodes that take the boring busywork out of your ComfyUI graphs.**
+**A friendly toolkit of 61 production-ready nodes that take the boring busywork out of your ComfyUI graphs.**
 
 Resize, color-grade, key, denoise, transcribe, translate, prompt-build, manage models — without leaving the canvas.
 
@@ -27,7 +27,7 @@ Whether you build pipelines for image generation, video, audio, or just want to 
 |---|---|---|---|
 | 🖼️ | **[Image](#image)** | 29 | Resize, color, masks, keyer, tiling, 360°, Lama cleanup, Smart Inpaint, BiRefNet bg removal, ViTMatte, SAM3 picker |
 | 🎬 | **[Video](#video)** | 6 | Frame interpolation, RTX/spandrel upscale, depth, animation preview |
-| 🎵 | **[Audio](#audio)** | 5 | Whisper transcription, Silero TTS, Demucs stem split, audio cropping |
+| 🎵 | **[Audio](#audio)** | 6 | Whisper transcription, Silero TTS, Demucs stem split, audio cropping |
 | 🤖 | **[LLM](#llm)** | 2 | Qwen 3 VL multimodal chat, Super Prompt with voice input |
 | 📝 | **[Text & Prompts](#text)** | 4 | Prompt builder, batch loader, style picker, Russian stress marks |
 | 🎨 | **[Ideogram](#ideogram)** | 1 | Visual JSON-prompt designer for Ideogram 4 — text/object blocks, WYSIWYG node preview, per-area colours, layout/style/design presets, width/height output, RU/EN, import/export |
@@ -35,7 +35,7 @@ Whether you build pipelines for image generation, video, audio, or just want to 
 | 🛠️ | **[Utils](#utils)** | 4 | Custom sliders, math, smart type-aware switch |
 | 🎨 | **[Conditioning](#conditioning)** | 1 | Multi-reference image conditioning |
 
-> All 60 nodes use the **ComfyUI V3 API** (`comfy_api.v0_0_2.IO` — pinned namespace for stability).
+> All 61 nodes use the **ComfyUI V3 API** (`comfy_api.v0_0_2.IO` — pinned namespace for stability).
 >
 > **Plus extra samplers & schedulers** added straight into the native KSampler / KSamplerAdvanced / BasicScheduler dropdowns (no node to wire — they just appear after install): sampler **`res_2s`** (2nd-order exponential RK / "RES"), schedulers **`bong_tangent`** (two-stage arctangent sigma curve) and **`beta57`** (`beta` α=0.5/β=0.7). Algorithms reimplemented clean-room from [RES4LYF](https://github.com/ClownsharkBatwing/RES4LYF)'s public math (no code copied).
 
@@ -282,6 +282,7 @@ Built-in inpainting node powered by LaMa — paint a mask right on the node's ca
 ---
 
 #### TS Smart Inpaint
+<img src="doc/screenshots/ts_smart_inpaint.png" alt="TS Smart Inpaint" width="450" />
 
 Mask-driven regenerate **or** refine in one node: feed the full image + a painted mask and it crops the region (+ context padding), upscales the crop to a megapixel budget, VAE-encodes, samples, then feather-composites and latent-blends the result back so untouched pixels stay bit-exact. The `replace` toggle picks the mode — **Replace** = Smart Inpaint, regenerating the masked area from scratch as a Kontext edit (the crop becomes `reference_latents`, denoise locked to 1.0); an optional `reference` image is chained as a second reference ("fill the hole with THIS"). **Refine** = an ADetailer-style partial-denoise pass at the `denoise` value, no reference. Headless port of ComfyUI-Angelo's "Xtra-Fine" inpaint path (MIT) — the crop + composite happen in-node, so the workflow only feeds the source + mask.
 
@@ -290,6 +291,7 @@ Mask-driven regenerate **or** refine in one node: feed the full image + a painte
 ---
 
 #### TS Matting (ViTMatte)
+<img src="doc/screenshots/ts_matting_vitmatte.png" alt="TS Matting (ViTMatte)" width="450" />
 
 Guided alpha matting via Hugging Face ViTMatte. Takes an image + a coarse mask (e.g. from SAM3 Detect), auto-builds a trimap and refines into a photo-realistic alpha matte. Same `mask_blur`/`mask_offset`/`background` post-processing contract as TS Remove Background, so it's a drop-in upgrade when edges/hair/transparency matter. Models cached under `models/vitmatte/`.
 
@@ -298,6 +300,7 @@ Guided alpha matting via Hugging Face ViTMatte. Takes an image + a coarse mask (
 ---
 
 #### TS SAM Media Loader
+<img src="doc/screenshots/ts_sam_media_loader.png" alt="TS SAM Media Loader" width="450" />
 
 Loads an image or video and lets you click-pick positive/negative points right on a first-frame preview. Outputs `IMAGE`, `AUDIO` (for video), and `positive_coords`/`negative_coords` STRING JSON in the exact format expected by the native ComfyUI **SAM3 Detect** / **SAM3 Video Track** nodes. With an optional SAM3 `model` input it also returns the rendered `initial_mask` ready to feed into SAM3 Video Track.
 
@@ -579,9 +582,19 @@ Prompt 3: bird on a branch
 #### TS Style Prompt Selector
 <img src="doc/screenshots/ts_style_prompt_selector.png" alt="TS Style Prompt Selector" width="450" />
 
-Visual style picker. Pre-baked styles (Photorealistic, Cinematic, Anime, Impressionist, Watercolor, Digital Concept Art, …) with thumbnail previews. Pick one — get the matching prompt fragment as a `STRING`.
+Visual style picker: a library of **113 styles** with thumbnail previews, grouped into 13 categories that run from cave painting and Byzantine mosaic through the twentieth-century avant-garde to pixel art and vaporwave. Pick one — get the matching `STRING`.
 
-**Use when:** quickly stylising a generation without writing the same "in the style of …" string again.
+Each entry is a **pure style modifier** — medium, technique, palette and texture, with no subject of its own — and ends with a comma and a space. That is deliberate: the output is meant to be **prepended** to your own prompt (a `Concatenate` node with this node in `string_a` and your prompt in `string_b`), so the two halves read as one sentence:
+
+```text
+style   ukiyo-e woodblock print style, bold black keyblock outlines, visible paper grain,
+yours   portrait of an old fisherman
+result  ukiyo-e woodblock print style, bold black keyblock outlines, visible paper grain, portrait of an old fisherman
+```
+
+Names, categories and descriptions are bilingual and follow the ComfyUI interface language (English / Russian).
+
+**Use when:** stylising a generation without rewriting the same "in the style of …" phrase, or browsing for a look you cannot name yet.
 
 ---
 
@@ -600,6 +613,7 @@ Russian-language text preprocessor: places stress marks (Unicode acute or Silero
 Design tools for the open-weight **Ideogram 4** image model.
 
 #### TS Ideogram Designer
+<img src="doc/screenshots/ts_ideogram_designer.png" alt="TS Ideogram Designer" width="450" />
 
 Visual JSON-prompt designer for Ideogram 4. Open a full-screen editor, drag and resize **text** and **object** blocks on an aspect-correct artboard (optionally over a reference image), and design with **two-level presets** — 10 layout templates (*what* you're making) and 10 styles (palette + fonts + look) — in a **RU/EN** interface. The node emits a valid Ideogram 4 **structured-JSON caption** as a `STRING` plus **`width` and `height`** (INT), sized from the aspect ratio and a **0.5–2 MP** slider, always rounded to multiples of 32 — wire them straight into an empty-latent / canvas node. Editor rectangles become normalized `[y_min, x_min, y_max, x_max]` bounding boxes (integers 0–1000, top-left origin) and the whole caption is assembled to the **exact Ideogram 4 schema** — verified section-by-section key order (incl. the photo-vs-non-photo `medium`/`art_style` ordering). The **in-node preview is a true WYSIWYG miniature of the editor** — real fonts, weights, colours, outlines and solid plates, with auto-fitted, word-wrapped text — so what you see after *Save* is what Ideogram is asked to draw, and the final prompt is shown with **JSON syntax highlighting**. Style each text block with a single **Text style** dropdown (fonts are *described*, not named — Ideogram has no typeface selector), a **Thin / Regular / Bold** weight and a case; **text size comes from how big you draw the block**, not an abstract picker. Add an **outline** and/or a **solid plate** for legibility — each with its own colour, rendered live on the canvas and in the preview. Colour is steered with separate palettes for the **whole image, the background and the lighting** plus per-element colours, all folded into the caption and previewed live on the artboard. **Save, export and import** individual layouts and styles — or a **full design** (the entire artboard) — as JSON (imports are copied into the node's `user_presets/` folder). The inspector is organised into clear steps — *what you're making* → *how it should look* → *what's in the scene* — and **every control has a friendly, fully-localized hover tooltip**. Edit text inline by double-clicking a block, clone with **Alt-drag** or **Ctrl+C / Ctrl+V**, and the text stays the same size in edit and preview. First-class **Russian / Cyrillic** support (UPPERCASE + bold defaults) plus a *visual-only* mode that emits a clean placeholder block so you can overlay the text by hand for print-critical work. Fluid in-node preview that works in both the LiteGraph (Nodes 1.0) and Vue (Nodes 2.0) front-ends.
 
