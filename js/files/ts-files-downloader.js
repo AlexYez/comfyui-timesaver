@@ -406,8 +406,14 @@ function buildGroup(title, entries, t, hint) {
     return group;
 }
 
+// Only ever one report on screen: a second press while the first is still open
+// would stack overlays, and the buttons of the stale one would write a diff that
+// no longer matches the list.
+let openReport = null;
+
 function showReport(node, widget, buckets, t) {
     ensureStyles();
+    if (openReport?.isOpen()) openReport.close();
 
     const panel = document.createElement("div");
     panel.className = `${TS_UI_CLASS} ts-fdl`;
@@ -452,7 +458,11 @@ function showReport(node, widget, buckets, t) {
         closeOnBackdrop: true,
         extraClass: "ts-fdl-overlay",
         closeTitle: t.close,
+        onClose: () => {
+            if (openReport === overlay) openReport = null;
+        },
     });
+    openReport = overlay;
 
     const addButton = (label, primary, handler) => {
         const button = document.createElement("button");
