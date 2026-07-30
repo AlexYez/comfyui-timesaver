@@ -8,7 +8,7 @@
 
 Resize, color-grade, key, denoise, transcribe, translate, prompt-build, manage models — without leaving the canvas.
 
-[![Version](https://img.shields.io/badge/version-9.93-blue.svg)](pyproject.toml)
+[![Version](https://img.shields.io/badge/version-9.94-blue.svg)](pyproject.toml)
 [![ComfyUI](https://img.shields.io/badge/ComfyUI-V3%20API-orange.svg)](https://github.com/comfyanonymous/ComfyUI)
 [![Python](https://img.shields.io/badge/python-3.10+-green.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-see%20LICENSE.txt-lightgrey.svg)](LICENSE.txt)
@@ -829,7 +829,7 @@ Timesaver freezes node ids and inputs across versions on purpose. If something b
 
 ```text
 comfyui-timesaver/
-├─ nodes/                  # 60 node modules, organised by category
+├─ nodes/                  # 64 modules: 61 nodes + 3 sampler/scheduler injectors
 ├─ js/                     # frontend extensions for DOM-widget nodes
 ├─ doc/screenshots/        # node screenshots (this README uses them)
 ├─ requirements.txt        # runtime dependencies

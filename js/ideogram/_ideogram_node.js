@@ -259,9 +259,17 @@ export function setupIdeogramNode(node) {
         node.properties[name] = value;
     };
     const readPersisted = (name, fallback) => {
-        const w = node.widgets?.find((x) => x?.name === name);
-        const v = w?.value ?? node.properties?.[name];
-        return v === undefined || v === null || v === "" ? fallback : v;
+        // Both channels are checked in turn, not merged with ?? — a widget
+        // holding its (empty) default would otherwise mask the properties
+        // mirror that actually carries the restored value. Today hideWidget
+        // removes the widget from node.widgets, so only the mirror is ever
+        // found; this keeps working if that ever stops being true
+        // (CLAUDE.md §12.5.13).
+        const usable = (value) => value !== undefined && value !== null && value !== "";
+        const widgetValue = node.widgets?.find((x) => x?.name === name)?.value;
+        if (usable(widgetValue)) return widgetValue;
+        const mirrored = node.properties?.[name];
+        return usable(mirrored) ? mirrored : fallback;
     };
 
     node.resizable = true;
@@ -398,8 +406,13 @@ export function setupIdeogramNode(node) {
         // UX as the SuperPrompt AI button. The result is stored into the
         // hidden auto_caption widget, which execute() emits in Auto mode.
         persist(AUTO_PROMPT_INPUT, autoText.value);
+        // The bumped seed is SENT with the request. Bumping it alone only
+        // invalidated the node's cache: the engine sampled from a fixed seed,
+        // so pressing Generate twice on the same idea returned the identical
+        // caption — exactly what the button promises not to do.
         const seed = Number(readPersisted(AUTO_SEED_INPUT, 0)) || 0;
-        persist(AUTO_SEED_INPUT, (seed + 1) & 0x7fffffff);
+        const nextSeed = (seed + 1) & 0x7fffffff;
+        persist(AUTO_SEED_INPUT, nextSeed);
         setAutoStatus(C.running);
         generateBtn.disabled = true;
         // The SuperPrompt engine generates immediately (no workflow queue).
@@ -415,6 +428,7 @@ export function setupIdeogramNode(node) {
                     text: autoText.value,
                     system_preset: ENHANCE_PRESET,
                     operation_id: activeOperationId,
+                    seed: nextSeed,
                 }),
             });
             const payload = await response.json().catch(() => ({}));

@@ -51,6 +51,7 @@ OpenAPI schema):
  - serialize compact with ensure_ascii=False.
 """
 
+import hashlib
 import json
 import logging
 import os
@@ -178,7 +179,19 @@ def load_user_presets() -> dict:
 
 
 def _slug(value) -> str:
-    return re.sub(r"[^0-9A-Za-z_-]+", "_", str(value or "")).strip("_")[:40]
+    """Filename-safe stem for a preset id.
+
+    Two different ids can flatten to the same stem ("my design" and
+    "my_design", or any pair agreeing in their first 40 characters), which
+    silently overwrote the other preset's file. A short digest of the FULL id
+    keeps distinct ids in distinct files while staying readable.
+    """
+    raw = str(value or "")
+    stem = re.sub(r"[^0-9A-Za-z_-]+", "_", raw).strip("_")[:40]
+    if not stem:
+        return ""
+    digest = hashlib.blake2b(raw.encode("utf-8"), digest_size=4).hexdigest()
+    return f"{stem}-{digest}"
 
 
 # --------------------------------------------------------------------------- #
@@ -188,6 +201,10 @@ def _slug(value) -> str:
 # saved, loaded, exported and imported as a single reusable preset.
 # --------------------------------------------------------------------------- #
 DESIGNS_DIRNAME = "designs"
+
+# Upper bound for one saved design. /save_design and /import_design write into
+# the installed package directory, and neither had any size limit of its own.
+MAX_DESIGN_PRESET_BYTES = 2 * 1024 * 1024
 
 
 def load_design_presets() -> list[dict]:
@@ -214,13 +231,48 @@ def save_design_preset(name, design, design_id=None) -> dict | None:
     item = {"id": did, "name": name, "version": 1, "custom": True, "design": design}
     directory = _preset_dir(DESIGNS_DIRNAME)
     try:
+        payload = json.dumps(item, ensure_ascii=False, indent=2)
+    except (TypeError, ValueError) as exc:
+        ts_logger.warning("%s Design preset is not serialisable: %s", LOG_PREFIX, exc)
+        return None
+    if len(payload.encode("utf-8")) > MAX_DESIGN_PRESET_BYTES:
+        # A design is layout and text metadata; anything this large is a
+        # malformed or hostile payload, and these files are written into the
+        # installed package directory.
+        ts_logger.warning(
+            "%s Refusing to save a design preset larger than %d bytes.",
+            LOG_PREFIX, MAX_DESIGN_PRESET_BYTES,
+        )
+        return None
+    try:
         os.makedirs(directory, exist_ok=True)
-        with open(os.path.join(directory, f"{_slug(did) or 'design'}.json"), "w", encoding="utf-8") as handle:
-            json.dump(item, handle, ensure_ascii=False, indent=2)
+        # Identity is the `id` INSIDE the file, not the file name (that is how
+        # load/delete match). Re-saving an existing preset must therefore
+        # overwrite its own file — writing to a freshly derived name would leave
+        # the old file behind and the preset would appear twice.
+        path = _design_preset_path(directory, did)
+        tmp_path = f"{path}.tmp"
+        with open(tmp_path, "w", encoding="utf-8") as handle:
+            handle.write(payload)
+        os.replace(tmp_path, path)
         return {"id": did, "name": name}
     except Exception as exc:  # noqa: BLE001
         ts_logger.warning("%s Failed to save design preset: %s", LOG_PREFIX, exc)
         return None
+
+
+def _design_preset_path(directory: str, design_id: str) -> str:
+    """Path for a design id: the file that already holds it, or a fresh one."""
+    try:
+        for fname in sorted(os.listdir(directory)):
+            if not fname.lower().endswith(".json"):
+                continue
+            existing = _load_json_file(os.path.join(directory, fname))
+            if isinstance(existing, dict) and str(existing.get("id")) == design_id:
+                return os.path.join(directory, fname)
+    except OSError as exc:
+        ts_logger.debug("%s Could not scan design presets: %s", LOG_PREFIX, exc)
+    return os.path.join(directory, f"{_slug(design_id) or 'design'}.json")
 
 
 def get_design_preset(design_id) -> dict | None:

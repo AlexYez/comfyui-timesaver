@@ -529,6 +529,14 @@ app.registerExtension({
     },
     loadedGraphNode(node) {
         if (node.type !== NODE_NAME) return;
+        // onNodeCreated runs BEFORE ComfyUI restores the saved properties, so
+        // the setup call above saw an empty payload and the node sat on "No
+        // Media" until the next run. By the time this hook fires the saved
+        // state is in place — re-apply it instead of rebuilding the widget
+        // (a rebuild double-renders the node header in Nodes 2.0, CLAUDE.md
+        // §12.5.12).
         setupAnimationPreview(node);
+        const payload = node.properties?.ts_animation_preview;
+        if (payload) node._tsAnimPreviewApply?.(payload);
     }
 });

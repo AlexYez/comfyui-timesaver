@@ -119,6 +119,11 @@ class TS_RTX_Upscaler(IO.ComfyNode):
 
         if alpha_images is not None:
             upscaled_alpha = cls._resize_alpha(alpha_images, output_width, output_height)
+            # The upscaled RGB comes back on the CPU while the alpha channel
+            # stayed on whatever device the input tensor lives on. torch.cat
+            # requires one device, so an IMAGE arriving on CUDA would raise
+            # here instead of producing a frame.
+            upscaled_alpha = upscaled_alpha.to(upscaled_rgb.device, dtype=upscaled_rgb.dtype)
             final_images = torch.cat([upscaled_rgb, upscaled_alpha], dim=-1)
         else:
             final_images = upscaled_rgb

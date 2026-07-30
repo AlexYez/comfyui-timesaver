@@ -428,3 +428,31 @@ export function getThemeColors() {
 export function resetThemeColors() {
     colorCache = null;
 }
+
+// Switching the ComfyUI colour palette does NOT reload the page (unlike the
+// locale switch), so canvas-drawn widgets kept painting with the colours of the
+// theme that was active when they first drew. ComfyUI applies a palette by
+// rewriting the CSS variables on <html>/<body> and toggling its theme class, so
+// watching those attributes is enough to know the tokens moved.
+let themeWatcher = null;
+
+function watchThemeChanges() {
+    if (themeWatcher || typeof MutationObserver === "undefined") return;
+    themeWatcher = new MutationObserver(() => resetThemeColors());
+    // <html> carries the palette's inline custom properties; <body> only its
+    // theme class. Watching body's `style` too would invalidate the cache on
+    // every unrelated inline tweak, and each invalidation costs a
+    // getComputedStyle probe on the next draw.
+    themeWatcher.observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ["class", "style", "data-theme"],
+    });
+    if (document.body) {
+        themeWatcher.observe(document.body, {
+            attributes: true,
+            attributeFilter: ["class", "data-theme"],
+        });
+    }
+}
+
+watchThemeChanges();

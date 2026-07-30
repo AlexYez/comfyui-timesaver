@@ -375,7 +375,7 @@ function ensureStyles() {
     display: flex;
     flex-direction: column;
     border: 1px solid var(--ts-border-soft);
-    border-radius: var(--ts-radius-md);
+    border-radius: var(--ts-radius);
     background: var(--ts-surface);
     padding: 0;
     cursor: pointer;

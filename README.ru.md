@@ -8,7 +8,7 @@
 
 Ресайз, цветокоррекция, кеинг, инпейнтинг, транскрипция, переводы, конструкторы промптов, менеджмент моделей — всё прямо на канвасе.
 
-[![Версия](https://img.shields.io/badge/version-9.93-blue.svg)](pyproject.toml)
+[![Версия](https://img.shields.io/badge/version-9.94-blue.svg)](pyproject.toml)
 [![ComfyUI](https://img.shields.io/badge/ComfyUI-V3%20API-orange.svg)](https://github.com/comfyanonymous/ComfyUI)
 [![Python](https://img.shields.io/badge/python-3.10+-green.svg)](https://www.python.org/)
 [![Лицензия](https://img.shields.io/badge/license-see%20LICENSE.txt-lightgrey.svg)](LICENSE.txt)
@@ -824,7 +824,7 @@ Timesaver специально замораживает id нод и входы 
 
 ```text
 comfyui-timesaver/
-├─ nodes/                  # 60 модулей нод по категориям
+├─ nodes/                  # 64 модуля: 61 нода + 3 инжектора samplers/schedulers
 ├─ js/                     # frontend extensions для DOM-widget нод
 ├─ doc/screenshots/        # скриншоты нод (этот README их использует)
 ├─ requirements.txt        # runtime-зависимости

@@ -105,6 +105,16 @@ def _log_warning(message: str) -> None:
     LOGGER.warning("%s %s", LOG_PREFIX, message)
 
 
+def _log_safe(value: object, limit: int = 200) -> str:
+    """Client-supplied text, flattened to one bounded log line.
+
+    A rejected path is echoed into the log; with its newlines intact it could
+    forge whole log entries below the real one.
+    """
+    text = " ".join(str(value).split())
+    return text if len(text) <= limit else f"{text[:limit]}..."
+
+
 def _log_error(message: str) -> None:
     LOGGER.error("%s %s", LOG_PREFIX, message)
 
@@ -209,6 +219,13 @@ def _versioned_working_path(session_id: str, suffix: str) -> Path:
 # are evicted oldest-first.
 _SESSION_LOCKS_MAX = 64
 _session_locks: dict[str, asyncio.Lock] = {}
+
+# Process-wide gate on the GPU itself. The per-session lock above only orders
+# requests that share a session id, and that id is chosen by the client: N tabs
+# (or one crafted caller) with N different ids ran N LaMa inferences at once,
+# each claiming activation memory on the same device. One at a time, like the
+# SAM3 preview model already does.
+_INFERENCE_GATE = asyncio.Semaphore(1)
 
 
 def _get_session_lock(session_id: str) -> asyncio.Lock:
@@ -538,6 +555,24 @@ class _LamaModel:
                 _log_error(f"Failed to load LaMa model: {exc}")
                 raise
 
+    def _acquire_model(self):
+        """Load if needed and return the model as a LOCAL reference.
+
+        ``unload()`` clears ``self._model`` under ``_load_lock`` and is reachable
+        at any moment from ``POST /ts_lama_cleanup/unload_model``. An inference
+        that kept reading the attribute could therefore find ``None`` halfway
+        through and die with a TypeError while its VRAM was being released from
+        under it. Holding one reference for the whole forward pass keeps the
+        module alive; the unload then only drops the cache's own reference —
+        the same ownership rule SAM3 preview already follows.
+        """
+        self.ensure_loaded()
+        with self._load_lock:
+            model = self._model
+        if model is None:
+            raise RuntimeError(f"{LOG_PREFIX} LaMa model was unloaded before inference could start.")
+        return model
+
     def unload(self) -> None:
         """Release the model and its VRAM. Safe to call when nothing is loaded."""
         with self._load_lock:
@@ -572,7 +607,7 @@ class _LamaModel:
         """
         if Image is None:
             raise RuntimeError("Pillow is required for inpainting.")
-        self.ensure_loaded()
+        model = self._acquire_model()
         device = self._resolve_device()
         height, width = image_rgb.shape[:2]
         pad_h = (8 - height % 8) % 8
@@ -596,7 +631,7 @@ class _LamaModel:
         image_tensor = image_tensor.to(device)
         mask_tensor = mask_tensor.to(device)
         with torch.no_grad():
-            output = self._model(image_tensor, mask_tensor)
+            output = model(image_tensor, mask_tensor)
         output = output.detach()
         if output.ndim == 4:
             output = output[0]
@@ -759,7 +794,7 @@ async def ts_lama_cleanup_view(request: web.Request) -> web.StreamResponse:
     if not filepath or not os.path.isfile(filepath):
         return web.Response(status=404)
     if not _is_inside_allowed_root(Path(filepath)):
-        _log_warning(f"Rejected view request outside allowed roots: {filepath}")
+        _log_warning(f"Rejected view request outside allowed roots: {_log_safe(filepath)}")
         return web.Response(status=404)
     try:
         return web.FileResponse(
@@ -822,7 +857,7 @@ async def ts_lama_cleanup_inpaint(request: web.Request) -> web.StreamResponse:
     # working file (or returning a result based on a stale snapshot).
     lock = _get_session_lock(session_id)
     try:
-        async with lock:
+        async with lock, _INFERENCE_GATE:
             result = await asyncio.to_thread(
                 _run_inpaint_job,
                 session_id,

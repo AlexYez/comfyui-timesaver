@@ -632,7 +632,45 @@ class QwenEngine:
         context_overhead_gb = 1.5 if size_b < 8 else 2.5
         return weights_gb + context_overhead_gb
 
-    def ensure_memory_available(self, required_vram_gb: float, force_unload: bool = False) -> None:
+    def comfy_prompt_is_running(self) -> bool:
+        """True when ComfyUI is executing a prompt right now.
+
+        Generation used to happen only at queue time, where evicting other
+        models is both safe and expected. It is now also triggered by a button
+        (``/ts_super_prompt/enhance``) that runs in a request thread ALONGSIDE
+        the graph — and ``unload_all_models()`` from there frees VRAM out from
+        under a sampler that is mid-step. Callers reached from HTTP use this to
+        decide whether a full unload is allowed.
+        """
+        try:
+            import server
+
+            queue = getattr(getattr(server.PromptServer, "instance", None), "prompt_queue", None)
+            if queue is None:
+                return False
+            running, _pending = queue.get_current_queue()
+            return bool(running)
+        except Exception as exc:
+            self._logger.debug("%s Could not read the prompt queue: %s", self._log_prefix, exc)
+            return False
+
+    def has_free_vram_for(self, required_vram_gb: float) -> bool:
+        """True when the model fits without evicting anything."""
+        if not torch.cuda.is_available():
+            return True
+        try:
+            mm.soft_empty_cache()
+            return (mm.get_free_memory() / (1024 ** 3)) >= required_vram_gb
+        except Exception as exc:
+            self._logger.debug("%s Free-memory probe failed: %s", self._log_prefix, exc)
+            return True
+
+    def ensure_memory_available(
+        self,
+        required_vram_gb: float,
+        force_unload: bool = False,
+        allow_unload_others: bool = True,
+    ) -> None:
         if not torch.cuda.is_available():
             return
         try:
@@ -645,6 +683,12 @@ class QwenEngine:
                 free_mem_gb,
             )
             if force_unload or free_mem_gb < required_vram_gb:
+                if not allow_unload_others:
+                    self._logger.warning(
+                        "%s A prompt is running — keeping its models resident instead of unloading.",
+                        self._log_prefix,
+                    )
+                    return
                 self._logger.info(
                     "%s Low VRAM detected (or forced). Unloading ComfyUI models...",
                     self._log_prefix,

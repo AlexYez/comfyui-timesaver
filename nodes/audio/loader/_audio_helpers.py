@@ -60,6 +60,13 @@ RECORDINGS_DIR = Path(folder_paths.get_input_directory()) / "ts_audio_loader_rec
 GENERATED_AUDIO_DIR = CACHE_DIR / "generated_audio"
 PREVIEW_BINS = 2048
 PREVIEW_SAMPLE_RATE = 4000
+
+# Concurrent ffmpeg decodes. asyncio.to_thread() borrows from the interpreter's
+# single default executor, which the whole ComfyUI process shares: a handful of
+# long decodes (the ffmpeg timeout allows ten minutes) could occupy every thread
+# in it and stall unrelated to_thread() work elsewhere. Two at a time keeps the
+# UI responsive without monopolising the pool.
+_DECODE_GATE = asyncio.Semaphore(2)
 SUPPORTED_AUDIO_EXTENSIONS = {".aac", ".aif", ".aiff", ".flac", ".m4a", ".mp3", ".ogg", ".opus", ".wav", ".wma", ".webm"}
 SUPPORTED_VIDEO_EXTENSIONS = {".avi", ".flv", ".m2ts", ".m4v", ".mkv", ".mov", ".mp4", ".mpeg", ".mpg", ".mts", ".ts", ".webm"}
 # Hard cap on recording uploads to keep the input directory bounded. A 10-min
@@ -87,6 +94,16 @@ def _log_info(message: str) -> None:
 
 def _log_warning(message: str) -> None:
     LOGGER.warning("%s %s", LOG_PREFIX, message)
+
+
+def _log_safe(value: object, limit: int = 200) -> str:
+    """Client-supplied text, flattened to one bounded log line.
+
+    A rejected path is echoed into the log; with its newlines intact it could
+    forge whole log entries below the real one.
+    """
+    text = " ".join(str(value).split())
+    return text if len(text) <= limit else f"{text[:limit]}..."
 
 
 _PROMPT_SERVER = resolve_prompt_server(_log_warning)
@@ -596,11 +613,21 @@ def _write_preview_audio_file(waveform: torch.Tensor, sample_rate: int, prefix: 
     pcm = waveform[:channel_count].transpose(0, 1).numpy()
     pcm = np.clip(pcm, -1.0, 1.0)
     pcm16 = np.round(pcm * 32767.0).astype(np.int16, copy=False)
-    with wave.open(str(output_path), "wb") as wav_file:
-        wav_file.setnchannels(channel_count)
-        wav_file.setsampwidth(2)
-        wav_file.setframerate(sample_rate)
-        wav_file.writeframes(pcm16.tobytes())
+    # Write beside the target and rename: the path is content-keyed, so a second
+    # call for the same audio takes the `is_file()` shortcut above — and used to
+    # hand back a file the first call was still writing, which the browser then
+    # played as a truncated clip. os.replace is atomic within the directory.
+    tmp_path = output_path.with_name(f"{output_path.stem}.{os.getpid()}.{threading.get_ident()}.tmp")
+    try:
+        with wave.open(str(tmp_path), "wb") as wav_file:
+            wav_file.setnchannels(channel_count)
+            wav_file.setsampwidth(2)
+            wav_file.setframerate(sample_rate)
+            wav_file.writeframes(pcm16.tobytes())
+        os.replace(tmp_path, output_path)
+    finally:
+        if tmp_path.exists():
+            tmp_path.unlink(missing_ok=True)
     return output_path
 
 
@@ -629,10 +656,11 @@ async def ts_audio_loader_metadata(request: web.Request) -> web.StreamResponse:
     if not filepath or not os.path.isfile(filepath):
         return web.json_response({"error": "File not found."}, status=404)
     if not _is_inside_allowed_root(Path(filepath)):
-        _log_warning(f"Rejected metadata request outside allowed roots: {filepath}")
+        _log_warning(f"Rejected metadata request outside allowed roots: {_log_safe(filepath)}")
         return web.json_response({"error": "File not found."}, status=404)
     try:
-        return web.json_response(await asyncio.to_thread(_get_media_preview, filepath))
+        async with _DECODE_GATE:
+            return web.json_response(await asyncio.to_thread(_get_media_preview, filepath))
     except Exception as exc:
         return web.json_response({"error": str(exc)}, status=500)
 
@@ -643,7 +671,7 @@ async def ts_audio_loader_view(request: web.Request) -> web.StreamResponse:
     if not filepath or not os.path.isfile(filepath):
         return web.Response(status=404)
     if not _is_inside_allowed_root(Path(filepath)):
-        _log_warning(f"Rejected view request outside allowed roots: {filepath}")
+        _log_warning(f"Rejected view request outside allowed roots: {_log_safe(filepath)}")
         return web.Response(status=404)
     try:
         return web.FileResponse(filepath)

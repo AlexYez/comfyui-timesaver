@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import re
+import threading
 import time
 import zipfile
 from pathlib import Path
@@ -89,6 +90,27 @@ def _redact_proxy_url(proxy_url: str) -> str:
         netloc = f"***@{netloc}"
     scheme = f"{parsed.scheme}://" if parsed.scheme else ""
     return f"{scheme}{netloc}"
+
+
+# One lock per destination file, shared by every node instance in this process.
+# Two loader nodes pointing at the same URL (or the same graph queued twice)
+# used to write the SAME "<file>.part" concurrently: the bytes interleaved and,
+# with integrity_mode="size_only", the mixed result could still pass the size
+# check and be accepted as a model. The lock serialises them instead — the
+# second writer then finds the finished file and skips it. Locking the path
+# rather than renaming the partial keeps resume-after-restart working.
+_DOWNLOAD_LOCKS: dict[str, threading.Lock] = {}
+_DOWNLOAD_LOCKS_GUARD = threading.Lock()
+
+
+def _download_lock_for(path: str) -> threading.Lock:
+    key = os.path.normcase(os.path.abspath(path))
+    with _DOWNLOAD_LOCKS_GUARD:
+        lock = _DOWNLOAD_LOCKS.get(key)
+        if lock is None:
+            lock = threading.Lock()
+            _DOWNLOAD_LOCKS[key] = lock
+        return lock
 
 
 class TS_DownloadFilesNode(IO.ComfyNode):
@@ -307,12 +329,22 @@ class TS_DownloadFilesNode(IO.ComfyNode):
         # arbitrary hosts. `hf_domain_active` extends the HF allowlist to the
         # user-configured mirror the download actually targets.
         headers = {}
-        host = cls._url_host(url)
         hf_hosts_ok = cls._is_hf_url(url)
-        if not hf_hosts_ok and hf_domain_active:
+        if not hf_hosts_ok and hf_domain_active and hf_token and hf_token.strip():
+            # `hf_domain` is a widget, so its value travels INSIDE the workflow:
+            # a graph from someone else can name any host there. Extending the
+            # token allowlist to that value handed the user's HuggingFace token
+            # to whatever host the shared file asked for, so the allowlist is
+            # now static (_is_hf_url). A custom mirror still serves the
+            # download — it just does not receive the token.
             mirror = cls._parse_mirror_domains(hf_domain_active)[0].lower()
             mirror = mirror.split("/", 1)[0].split(":", 1)[0]
-            hf_hosts_ok = bool(mirror) and (host == mirror or host.endswith("." + mirror))
+            host = cls._url_host(url)
+            if mirror and (host == mirror or host.endswith("." + mirror)):
+                logger.warning(
+                    f"{LOG_PREFIX} Mirror '{mirror}' is not a HuggingFace host — "
+                    f"downloading without the token."
+                )
         if hf_hosts_ok:
             if hf_token and hf_token.strip():
                 headers["Authorization"] = f"Bearer {hf_token.strip()}"
@@ -352,6 +384,22 @@ class TS_DownloadFilesNode(IO.ComfyNode):
             logger.debug(f"{LOG_PREFIX} Known-folder lookup failed for '{folder_name}': {exc}")
         return None
 
+    @staticmethod
+    def _is_within(root, candidate) -> bool:
+        """True when `candidate` resolves inside `root`.
+
+        commonpath raises ValueError for paths on different Windows drives and
+        OSError for an unusable root — both answer the question with "outside".
+        """
+        if not root:
+            return False
+        try:
+            root_abs = os.path.abspath(str(root))
+            candidate_abs = os.path.abspath(str(candidate))
+            return os.path.commonpath([root_abs, candidate_abs]) == root_abs
+        except (ValueError, OSError):
+            return False
+
     @classmethod
     def _resolve_target_directory(cls, target_path):
         if target_path is None:
@@ -371,7 +419,19 @@ class TS_DownloadFilesNode(IO.ComfyNode):
         # Treat that rooted-but-driveless form as a relative path instead.
         drive, _tail = os.path.splitdrive(expanded)
         if os.path.isabs(expanded) and (drive or os.sep == "/"):
-            return os.path.abspath(expanded)
+            resolved = os.path.abspath(expanded)
+            # An absolute target stays honoured — "D:/models/checkpoints" is a
+            # documented, deliberate choice. It is also the one form that can
+            # name any location on the machine, and since the workflow scanner
+            # exists a line may be written by a shared graph rather than typed
+            # here, so a destination outside ComfyUI is worth saying out loud.
+            base_path = getattr(folder_paths, "base_path", None) if folder_paths else None
+            if base_path and not cls._is_within(base_path, resolved):
+                logger.warning(
+                    f"{LOG_PREFIX} Target '{target_path}' resolves OUTSIDE ComfyUI -> '{resolved}'. "
+                    f"Honouring it, but check this line if you did not write it yourself."
+                )
+            return resolved
 
         normalized = expanded.replace("\\", "/").lstrip("/")
         while normalized.startswith("./"):
@@ -391,6 +451,15 @@ class TS_DownloadFilesNode(IO.ComfyNode):
                 models_root = os.path.join(folder_paths.base_path, "models")
             if models_root:
                 resolved = os.path.abspath(os.path.join(models_root, rest)) if rest else os.path.abspath(models_root)
+                # "models/../../elsewhere" normalises straight out of the models
+                # directory. A relative target names a folder INSIDE the root it
+                # picked — anything that climbs back out is refused, not clamped,
+                # so the line is reported instead of silently retargeted.
+                if not cls._is_within(models_root, resolved):
+                    logger.warning(
+                        f"{LOG_PREFIX} Target '{target_path}' escapes the models directory. Skipping this line."
+                    )
+                    return None
                 logger.info(f"{LOG_PREFIX} Target '{target_path}' -> '{resolved}'")
                 return resolved
 
@@ -401,11 +470,21 @@ class TS_DownloadFilesNode(IO.ComfyNode):
         known_root = cls._known_model_folder_root(first_lower)
         if known_root:
             resolved = os.path.abspath(os.path.join(known_root, rest)) if rest else os.path.abspath(known_root)
+            if not cls._is_within(known_root, resolved):
+                logger.warning(
+                    f"{LOG_PREFIX} Target '{target_path}' escapes the '{first_lower}' model folder. Skipping this line."
+                )
+                return None
             logger.info(f"{LOG_PREFIX} Target '{target_path}' -> '{resolved}' (registered model folder)")
             return resolved
 
         if folder_paths and getattr(folder_paths, "base_path", None):
             resolved = os.path.abspath(os.path.join(folder_paths.base_path, normalized))
+            if not cls._is_within(folder_paths.base_path, resolved):
+                logger.warning(
+                    f"{LOG_PREFIX} Target '{target_path}' escapes the ComfyUI directory. Skipping this line."
+                )
+                return None
             logger.info(f"{LOG_PREFIX} Target '{target_path}' -> '{resolved}'")
             return resolved
 
@@ -738,6 +817,7 @@ class TS_DownloadFilesNode(IO.ComfyNode):
     @classmethod
     def _download_single_file(cls, session, url, target_dir, skip_existing, verify_size, chunk_size_bytes, hf_domain_active, hf_token, ms_token, unzip_after_download, integrity_mode):
         response_get = None
+        download_lock = None
         try:
             processed_url = cls._replace_hf_domain(url, hf_domain_active)
             processed_url = cls._process_dropbox_url(processed_url)
@@ -777,6 +857,10 @@ class TS_DownloadFilesNode(IO.ComfyNode):
             )
 
             local_file_path = os.path.join(target_dir, final_filename)
+            # Everything below reads, resumes, writes and renames this exact
+            # file, so only one download of it may be in flight per process.
+            download_lock = _download_lock_for(local_file_path)
+            download_lock.acquire()
             temp_file_path = local_file_path + ".part"
             temp_meta_path = temp_file_path + ".tsmeta.json"
             final_meta_path = local_file_path + ".tsmeta.json"
@@ -1066,6 +1150,8 @@ class TS_DownloadFilesNode(IO.ComfyNode):
                     response_get.close()
                 except Exception as exc:
                     logger.debug("%s Closing GET probe response failed: %s", LOG_PREFIX, exc)
+            if download_lock is not None:
+                download_lock.release()
 
     @classmethod
     def execute(

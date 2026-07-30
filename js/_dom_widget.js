@@ -355,7 +355,16 @@ export function hideWidget(node, name) {
     if (Array.isArray(node?.inputs)) {
         const idx = node.inputs.findIndex((i) => i?.name === name);
         if (idx >= 0 && node.inputs[idx] && !node.inputs[idx].link) {
-            node.inputs.splice(idx, 1);
+            // removeInput(), not splice(): every link stores the INDEX of the
+            // input it lands on, and LiteGraph renumbers those links when a slot
+            // is removed through the API. A bare splice left the links of every
+            // input after this one pointing one slot too far — a wire attached
+            // to the next input silently moved to its neighbour.
+            if (typeof node.removeInput === "function") {
+                node.removeInput(idx);
+            } else {
+                node.inputs.splice(idx, 1);
+            }
         }
     }
 }

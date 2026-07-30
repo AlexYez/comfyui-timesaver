@@ -197,6 +197,31 @@ function keyOf(name) {
  * downloads the file next to the folder the loader actually reads from, so it
  * stays "missing" no matter how many times it is fetched.
  */
+// A workflow is an untrusted document: it is shared, downloaded and opened from
+// strangers. The paths stored in it may therefore name a folder BELOW a model
+// directory and nothing else. These segments do not name a folder — they name a
+// LOCATION, and the backend would expand them into an absolute path outside
+// models/: a drive letter (`C:`), a home reference (`~`) or an environment
+// variable (`%APPDATA%`, `$HOME`, `${HOME}`). One such segment poisons the whole
+// value, so the target it came from is dropped rather than partially cleaned.
+const LOCATION_SEGMENT = /:|^~|%[^%]+%|\$\{?[A-Za-z_]/;
+
+/** Split a path into safe folder segments, or null when it names a location. */
+function safeSegments(value) {
+    const parts = String(value || "")
+        .replace(/\\/g, "/")
+        .split("/")
+        .map((part) => part.trim())
+        .filter((part) => part && part !== "." && part !== "..");
+    for (const part of parts) {
+        if (LOCATION_SEGMENT.test(part)) {
+            console.warn(`[TS FilesDownloader] ignoring non-relative target from the workflow: ${value}`);
+            return null;
+        }
+    }
+    return parts;
+}
+
 function splitRelativePath(value) {
     // A workflow saved on Windows stores `krea2\file.safetensors`, the same
     // graph saved on macOS or Linux stores `krea2/file.safetensors`, and a
@@ -207,8 +232,12 @@ function splitRelativePath(value) {
         .split("/")
         .map((part) => part.trim())
         .filter((part) => part && part !== "." && part !== "..");
+    // The file name is kept verbatim — it identifies the model and is only ever
+    // matched, never written (the backend derives the saved name itself). Only
+    // the subfolder, which DOES become part of the download target, is vetted.
     const base = parts.pop() || "";
-    return { base, sub: parts.join("/") };
+    const sub = safeSegments(parts.join("/"));
+    return { base, sub: sub ? sub.join("/") : "" };
 }
 
 /**
@@ -217,11 +246,13 @@ function splitRelativePath(value) {
  * itself, so forward slashes travel between operating systems unchanged.
  */
 function joinTarget(folder, sub) {
-    const segments = [folder, sub]
-        .flatMap((part) => String(part || "").replace(/\\/g, "/").split("/"))
-        .map((part) => part.trim())
-        .filter((part) => part && part !== "." && part !== "..");
-    return segments.join("/");
+    // `folder` may itself come from the workflow (a template's `directory`), so
+    // both halves are vetted. A poisoned folder yields an empty target, which
+    // classify() reports as "no download link" instead of downloading anywhere.
+    const folderParts = safeSegments(folder);
+    const subParts = safeSegments(sub);
+    if (folderParts === null) return "";
+    return [...folderParts, ...(subParts || [])].join("/");
 }
 
 // ComfyUI reads two directories for some categories and keeps the old name
@@ -514,6 +545,25 @@ function toLine(entry) {
     return `${entry.url} ${entry.directory}`;
 }
 
+/**
+ * Lines of the current list that a rewrite must not throw away: comments, and
+ * downloads for models this scan is not rewriting (a utility model no loader
+ * names, an archive, a link the user curated by hand). "Replace list" used to
+ * emit only what the scan found, silently deleting the rest.
+ */
+function unclaimedLines(text, written) {
+    const claimed = new Set(written.map((entry) => keyOf(entry.name)));
+    return String(text || "")
+        .split(/\r?\n/)
+        .filter((line) => {
+            const trimmed = line.trim();
+            if (!trimmed) return false;
+            if (trimmed.startsWith("#")) return true;
+            return !claimed.has(keyOf(fileNameFromUrl(trimmed.split(/\s+/)[0])));
+        })
+        .map((line) => line.trim());
+}
+
 function writeFileList(node, widget, text) {
     widget.value = text;
     try {
@@ -704,8 +754,9 @@ function showReport(node, widget, buckets, t) {
     }
     if (ready.length) {
         addButton(t.replace, !buckets.add.length, () => {
-            writeFileList(node, widget, ready.map(toLine).join("\n") + "\n");
-            toast("success", t.replaced(ready.length));
+            const lines = [...ready.map(toLine), ...unclaimedLines(widget.value, ready)];
+            writeFileList(node, widget, lines.join("\n") + "\n");
+            toast("success", t.replaced(lines.length));
         });
     }
     addButton(t.cancel, false, () => {});

@@ -188,16 +188,23 @@ class TS_StylePromptSelector(IO.ComfyNode):
             return IO.NodeOutput(" ")
 
         prompt = ""
+        found = False
         if styles and selected_id:
             for style in styles:
                 style_id_value = _as_text(style.get("id")).strip()
                 style_name_value = _as_text(style.get("name")).strip()
                 if selected_id in {style_id_value, style_name_value}:
                     prompt = style.get("prompt", "") or ""
+                    found = True
                     break
 
-        if not prompt:
+        if not found:
             logger.warning("%s Style not found: %s", _LOG_PREFIX, selected_id)
+        elif not prompt:
+            # The style exists but carries no prompt text — a library problem,
+            # not a missing selection. Saying "not found" sent people looking
+            # for a broken workflow instead of a broken entry.
+            logger.warning("%s Style '%s' has an empty prompt.", _LOG_PREFIX, selected_id)
         return IO.NodeOutput(prompt or "")
 
 

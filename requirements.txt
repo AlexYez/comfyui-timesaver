@@ -16,7 +16,9 @@ matplotlib>=3.4.0
 imageio>=2.20.0
 imageio-ffmpeg>=0.4.0
 py360convert>=0.1.0
+# TS Files Downloader talks HTTP directly; it arrived transitively via
+# huggingface_hub, which is not a promise to keep shipping it.
+requests>=2.28.0
 urllib3>=1.26.0
 easydict>=1.10.0
-qwen-vl-utils>=0.0.8
 tiktoken

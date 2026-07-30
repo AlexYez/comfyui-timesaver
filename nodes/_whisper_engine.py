@@ -72,6 +72,10 @@ MODELS_WITHOUT_TRANSLATE = {"turbo"}
 # (directly or via super_prompt/_helpers re-export) so models are shared.
 WHISPER_DIR = Path(getattr(folder_paths, "models_dir", Path.cwd() / "models")) / "whisper"
 DOWNLOAD_LOCK = threading.Lock()
+# Serialises the check-then-load of MODEL_CACHE. Separate from DOWNLOAD_LOCK
+# because load_model() calls ensure_model(), which takes that one — a single
+# non-reentrant lock across both would deadlock.
+LOAD_LOCK = threading.Lock()
 MODEL_CACHE: dict[tuple[str, str, bool], Any] = {}
 
 # torchaudio resampler cache keyed by (orig, new, device, quality).
@@ -245,24 +249,36 @@ def load_model(
         return MODEL_CACHE[cache_key], target_device, use_fp16
 
     ensure_model(name, progress_cb=progress_cb)
-    LOGGER.info("%s Loading Whisper '%s' on %s (%s)", LOG_PREFIX, name, target_device, "fp16" if use_fp16 else "fp32")
-    _emit(progress_cb, "load_start", name=name, device=target_device)
 
-    try:
-        model = whisper.load_model(name, device=target_device, download_root=str(WHISPER_DIR), in_memory=False)
-    except Exception as exc:
-        if target_device != "cuda":
-            raise
-        LOGGER.warning("%s GPU load failed for '%s': %s. Falling back to CPU.", LOG_PREFIX, name, exc)
-        _emit(progress_cb, "gpu_fallback", name=name, error=str(exc))
-        target_device = "cpu"
-        use_fp16 = False
-        cache_key = (name, target_device)
+    with LOAD_LOCK:
+        # Re-check under the lock. Two requests reaching this point together
+        # (two /preload clicks, or /preload racing /transcribe — each runs in
+        # its own worker thread) both missed the cache above and each used to
+        # build its own copy: two ~6 GB large-v3-turbo residents competing with
+        # the diffusion pipeline for VRAM, only one of them ever reachable.
         if cache_key in MODEL_CACHE:
+            _emit(progress_cb, "already_cached", name=name, device=target_device)
             return MODEL_CACHE[cache_key], target_device, use_fp16
-        model = whisper.load_model(name, device=target_device, download_root=str(WHISPER_DIR), in_memory=False)
 
-    MODEL_CACHE[cache_key] = model
+        LOGGER.info("%s Loading Whisper '%s' on %s (%s)", LOG_PREFIX, name, target_device, "fp16" if use_fp16 else "fp32")
+        _emit(progress_cb, "load_start", name=name, device=target_device)
+
+        try:
+            model = whisper.load_model(name, device=target_device, download_root=str(WHISPER_DIR), in_memory=False)
+        except Exception as exc:
+            if target_device != "cuda":
+                raise
+            LOGGER.warning("%s GPU load failed for '%s': %s. Falling back to CPU.", LOG_PREFIX, name, exc)
+            _emit(progress_cb, "gpu_fallback", name=name, error=str(exc))
+            target_device = "cpu"
+            use_fp16 = False
+            cache_key = (name, target_device)
+            if cache_key in MODEL_CACHE:
+                return MODEL_CACHE[cache_key], target_device, use_fp16
+            model = whisper.load_model(name, device=target_device, download_root=str(WHISPER_DIR), in_memory=False)
+
+        MODEL_CACHE[cache_key] = model
+
     _emit(progress_cb, "loaded", name=name, device=target_device)
     return model, target_device, use_fp16
 

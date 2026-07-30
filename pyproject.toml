@@ -1,7 +1,7 @@
 [project]
 name = "comfyui-timesaver"
 description = "ComfyUI nodes from [Timesaver](https://github.com/AlexYez/comfyui-timesaver)."
-version = "9.93"
+version = "9.94"
 license = { file = "LICENSE.txt" }
 # Matches CI (.github/workflows/ci.yml) and the Python range ComfyUI itself
 # supports; >=3.12 wrongly blocked pip installs on 3.10/3.11.
@@ -23,10 +23,12 @@ dependencies = [
     # by both TS Whisper and TS Super Prompt voice. Small package; pulls tiktoken
     # (already core) plus a couple of light native deps.
     "openai-whisper>=20231117",
+    # TS Files Downloader imports requests at module level. It used to arrive
+    # transitively through huggingface_hub, which is not a guarantee.
+    "requests>=2.28.0",
     "urllib3>=1.26.0",
     "easydict>=1.10.0",
     "tiktoken",
-    "qwen-vl-utils>=0.0.8",
 ]
 
 [project.optional-dependencies]

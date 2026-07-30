@@ -420,7 +420,17 @@ def _generate_with_qwen(
     system_preset: str,
     operation_id: str | None = None,
     image: Any = None,
+    seed: int | None = None,
+    interactive: bool = False,
 ) -> str:
+    """Run the shared Qwen engine and return the cleaned prompt text.
+
+    ``seed`` overrides the fixed module seed so a caller that offers a "generate
+    again" button gets a different sample each time; ``None`` keeps the historic
+    deterministic behaviour. ``interactive`` marks a call that came from a
+    button (an HTTP route) rather than from queue execution, which forbids
+    evicting the models of a graph that is running right now.
+    """
     if not str(text or "").strip() and image is None:
         return ""
 
@@ -442,7 +452,14 @@ def _generate_with_qwen(
             f"attention={resolved_attention} thinking=disabled"
         )
         send_progress(operation_id, "Checking memory", 12.0)
-        engine.ensure_memory_available(estimated_vram)
+        # A button press must never evict the models a running graph is using.
+        allow_unload_others = not (interactive and engine.comfy_prompt_is_running())
+        if not allow_unload_others and not engine.has_free_vram_for(estimated_vram):
+            raise RuntimeError(
+                "ComfyUI is running a prompt and there is not enough free VRAM for Qwen. "
+                "Wait for the run to finish and press Generate again."
+            )
+        engine.ensure_memory_available(estimated_vram, allow_unload_others=allow_unload_others)
 
         send_progress(operation_id, "Checking Qwen model files", 16.0)
         qwen_model_available = _is_qwen_model_available(engine, DEFAULT_MODEL_ID)
@@ -489,7 +506,9 @@ def _generate_with_qwen(
         if target_device.type == "cuda" and not engine.model_has_cuda_device(model):
             try:
                 send_progress(operation_id, "Moving Qwen to GPU", 54.0)
-                engine.ensure_memory_available(estimated_vram, force_unload=True)
+                engine.ensure_memory_available(
+                    estimated_vram, force_unload=True, allow_unload_others=allow_unload_others
+                )
                 model.to(target_device)
                 moved_to_gpu = True
             except RuntimeError as exc:
@@ -527,7 +546,12 @@ def _generate_with_qwen(
             gen_params.setdefault("top_p", 0.8 if image is not None else 1.0)
             gen_params.setdefault("top_k", 20)
             gen_params.setdefault("repetition_penalty", 1.0)
-            gen_params["max_new_tokens"] = int(SUPER_PROMPT_MAX_NEW_TOKENS)
+            # A preset that asks for a bigger budget gets it. This used to
+            # overwrite the preset unconditionally, so the Ideogram presets —
+            # which ask for 1024 tokens of structured JSON — were cut off at
+            # 512: the JSON came back unbalanced, failed to parse, and the raw
+            # truncated text was passed downstream as if it were a caption.
+            gen_params.setdefault("max_new_tokens", int(SUPER_PROMPT_MAX_NEW_TOKENS))
             gen_params["use_cache"] = True
             gen_params["pad_token_id"] = engine.get_pad_token_id(processor, model)
             gen_params["do_sample"] = float(gen_params.get("temperature", 0.0) or 0.0) > 0.0
@@ -537,11 +561,14 @@ def _generate_with_qwen(
             # tests can stub the engine without importing torch.
             import torch
 
+            # A caller that offers "generate again" passes its own seed; without
+            # one the historic fixed seed keeps repeat runs reproducible.
+            active_seed = int(SUPER_PROMPT_SEED if seed is None else seed)
             rng_cuda_devices = engine.cuda_indices_for_rng(model, input_device)
             if engine.supports_generator(model):
                 gen_device = engine.select_generator_device(input_device)
                 generator = torch.Generator(device=gen_device)
-                generator.manual_seed(int(SUPER_PROMPT_SEED))
+                generator.manual_seed(active_seed)
                 gen_params["generator"] = generator
                 rng_context = nullcontext()
             else:
@@ -568,10 +595,10 @@ def _generate_with_qwen(
             # samplers of other nodes (see engine.qwen_matmul_precision).
             with engine.qwen_matmul_precision(), rng_context:
                 if "generator" not in gen_params:
-                    torch.manual_seed(int(SUPER_PROMPT_SEED))
+                    torch.manual_seed(active_seed)
                     for idx in rng_cuda_devices:
                         with torch.cuda.device(idx):
-                            torch.cuda.manual_seed(int(SUPER_PROMPT_SEED))
+                            torch.cuda.manual_seed(active_seed)
 
                 send_progress(operation_id, "Generating AI prompt", 78.0)
                 with torch.inference_mode():

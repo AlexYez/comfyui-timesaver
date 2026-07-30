@@ -676,11 +676,14 @@ function setupSuperPrompt(node) {
         return !detail?.model || !state.activeModelName || detail.model === state.activeModelName;
     }
     function matchesActiveAiOperation(detail) {
-        return (
-            !detail?.operation_id ||
-            !state.activeAiOperationId ||
-            detail.operation_id === state.activeAiOperationId
-        );
+        // An event carrying somebody else's operation id is somebody else's
+        // business: the Ideogram node now drives the same engine, and an idle
+        // SuperPrompt used to display ITS progress ("Generating AI prompt 78%")
+        // because "no operation of my own" was treated as "match anything".
+        // Events with no id at all stay accepted — that is how this node's own
+        // queue-time runs report themselves.
+        if (!detail?.operation_id) return true;
+        return detail.operation_id === state.activeAiOperationId;
     }
 
     function onVoiceProgress(event) {

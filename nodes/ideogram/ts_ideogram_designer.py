@@ -173,7 +173,18 @@ class TS_IdeogramDesigner(IO.ComfyNode):
                 )
             # Belt: re-extract the JSON object in case the LLM wrapped it in
             # prose, and re-serialize compactly (the format Ideogram 4 expects).
-            json_prompt = _extract_json_object(raw) or raw
+            json_prompt = _extract_json_object(raw)
+            if not json_prompt:
+                # The raw text still goes downstream — a caption that Ideogram
+                # can half-read beats failing the run — but silence here meant a
+                # truncated or malformed reply looked exactly like a good one.
+                logger.warning(
+                    "%s Auto caption is not valid JSON (truncated or wrapped in prose); "
+                    "passing the raw text through. Press Generate Prompt again if the "
+                    "result looks wrong.",
+                    LOG_PREFIX,
+                )
+                json_prompt = raw
             # Push the fresh caption back to the node UI (the Auto panel shows it).
             return IO.NodeOutput(json_prompt, width, height, ui={"ts_ideo_auto": [json_prompt]})
         json_prompt, _aspect = build_caption(design_json or "")

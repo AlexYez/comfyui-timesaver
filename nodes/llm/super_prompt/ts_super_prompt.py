@@ -81,6 +81,13 @@ from ._voice import (
 )
 
 
+# One transcription at a time per process. Whisper decoding is GPU work, and
+# nothing else bounded it: several browser tabs (or one impatient user) could
+# start N transcriptions in parallel, each claiming VRAM next to the resident
+# diffusion pipeline. Waiting is the right answer — the request still completes.
+_TRANSCRIBE_GATE = asyncio.Semaphore(1)
+
+
 # ---------------------------------------------------------------------------
 # Attached image helpers
 # ---------------------------------------------------------------------------
@@ -88,11 +95,48 @@ from ._voice import (
 _IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tif", ".tiff", ".gif"}
 
 
+def _allowed_image_roots() -> list[Path]:
+    """The directories an attached image may legitimately live in."""
+    roots: list[Path] = []
+    for getter_name in ("get_input_directory", "get_output_directory", "get_temp_directory"):
+        getter = getattr(folder_paths, getter_name, None)
+        if not callable(getter):
+            continue
+        try:
+            roots.append(Path(getter()).resolve(strict=False))
+        except (OSError, TypeError, ValueError):
+            continue
+    return roots
+
+
+def _is_inside_allowed_root(path: Path) -> bool:
+    try:
+        resolved = path.resolve(strict=False)
+    except OSError:
+        return False
+    for root in _allowed_image_roots():
+        try:
+            resolved.relative_to(root)
+            return True
+        except ValueError:
+            continue
+    return False
+
+
 def _resolve_annotated_image_path(annotated: str) -> str:
     """Resolve a ComfyUI annotated filepath (``"name.png [input]"``) to a real path.
 
-    Returns an empty string if the input is empty or unresolvable. Falls back
-    to checking the raw string as a path if ``folder_paths`` rejects it.
+    Returns an empty string if the input is empty, unresolvable, or points
+    outside ComfyUI's input/output/temp directories.
+
+    The path always originates from the node's own upload flow (the JS sends
+    the file through ``/upload/image`` and stores the annotated result), so it
+    is always one of those roots. The raw-string fallback below exists for
+    annotations ``folder_paths`` refuses to parse — but it used to accept ANY
+    absolute path, and ``/ts_super_prompt/enhance`` takes this value straight
+    from the request body: a caller could name any image on the machine and get
+    Qwen's description of it back. Every other path-taking route in the pack
+    scopes to these roots; this one now does too.
     """
     path = str(annotated or "").strip()
     if not path:
@@ -101,10 +145,16 @@ def _resolve_annotated_image_path(annotated: str) -> str:
         resolved = folder_paths.get_annotated_filepath(path)
     except Exception:
         resolved = ""
-    if resolved and Path(resolved).is_file():
-        return resolved
-    if Path(path).is_file():
-        return path
+    for candidate in (resolved, path):
+        if not candidate:
+            continue
+        as_path = Path(candidate)
+        if as_path.is_file() and _is_inside_allowed_root(as_path):
+            return str(candidate)
+    LOGGER.warning(
+        "%s Attached image is not inside the input/output/temp directories; ignoring it.",
+        LOG_PREFIX,
+    )
     return ""
 
 
@@ -206,15 +256,16 @@ async def transcribe_endpoint(request: web.Request) -> web.StreamResponse:
             translate_to_english = False
 
         target_language = "en" if translate_to_english else "same"
-        result = await asyncio.to_thread(
-            transcribe_audio,
-            str(filepath),
-            model_name,
-            DEVICE,
-            SOURCE_LANGUAGE,
-            target_language,
-            _configured_initial_prompt(),
-        )
+        async with _TRANSCRIBE_GATE:
+            result = await asyncio.to_thread(
+                transcribe_audio,
+                str(filepath),
+                model_name,
+                DEVICE,
+                SOURCE_LANGUAGE,
+                target_language,
+                _configured_initial_prompt(),
+            )
         return web.json_response(result)
     except Exception as exc:
         LOGGER.exception("%s Voice transcription failed", VOICE_LOG_PREFIX)
@@ -318,6 +369,13 @@ async def enhance_endpoint(request: web.Request) -> web.StreamResponse:
         )
 
     operation_id = str(data.get("operation_id") or "")
+    # A caller with a "generate again" button sends the seed it just bumped, so
+    # a second press samples differently instead of returning the same caption.
+    raw_seed = data.get("seed")
+    try:
+        seed = int(raw_seed) if raw_seed is not None and str(raw_seed).strip() != "" else None
+    except (TypeError, ValueError):
+        seed = None
     try:
         result = await asyncio.to_thread(
             _generate_with_qwen,
@@ -325,6 +383,8 @@ async def enhance_endpoint(request: web.Request) -> web.StreamResponse:
             preset,
             operation_id,
             image_pil,
+            seed,
+            True,
         )
         send_done(operation_id, "AI prompt ready")
         return web.json_response(

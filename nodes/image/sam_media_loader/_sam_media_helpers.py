@@ -709,9 +709,13 @@ def _resolve_checkpoint_path(name: str) -> str:
             path = None
         if path and os.path.isfile(path):
             return path
-    # As a last resort accept an absolute or input-relative path.
-    if os.path.isfile(name):
-        return name
+    # No fallback to a raw path. `checkpoint_name` arrives straight from the
+    # /preview_mask request body, and accepting an arbitrary absolute path let a
+    # caller hand any file on disk to load_checkpoint_guess_config — an instant
+    # OOM with a large file, and a pickle load when ComfyUI runs with
+    # --disable-safe-unpickle. A checkpoint lives in a registered model folder;
+    # folder_paths.get_full_path already honours extra_model_paths.yaml.
+    _log_warning(f"Checkpoint '{name}' is not in a registered model folder.")
     return ""
 
 
