@@ -84,6 +84,7 @@ const STRINGS = {
         colPresent: "Already in the list",
         colMismatch: "Pointing at the wrong folder",
         colNoLink: "No download link",
+        colOrphan: "Left over from a template",
         srcGraph: "node",
         srcNote: "note",
         srcBoth: "node + note",
@@ -106,6 +107,9 @@ const STRINGS = {
         mismatchHint:
             "The list points these at a folder the loader does not read from, so they " +
             "would download and still count as missing.",
+        orphanHint:
+            "Named by a loader's stored metadata, but no node in the graph uses the file. " +
+            "Usually a model that was swapped out. Not offered for download.",
         replaced: (n) => `file_list replaced with ${n} line(s).`,
         nothing: "Nothing to add — every model is already in the list.",
     },
@@ -117,6 +121,7 @@ const STRINGS = {
         colPresent: "Уже в списке",
         colMismatch: "Указана не та папка",
         colNoLink: "Ссылка не найдена",
+        colOrphan: "Осталось от шаблона",
         srcGraph: "нода",
         srcNote: "заметка",
         srcBoth: "нода + заметка",
@@ -139,6 +144,9 @@ const STRINGS = {
         mismatchHint:
             "В списке они нацелены не в ту папку, из которой читает лоудер, — скачаются, " +
             "но всё равно будут считаться отсутствующими.",
+        orphanHint:
+            "Записаны в метаданных лоудера, но файл не использует ни одна нода графа. " +
+            "Обычно это подменённая модель. К скачиванию не предлагается.",
         replaced: (n) => `file_list заменён, строк: ${n}.`,
         nothing: "Добавлять нечего — все модели уже в списке.",
     },
@@ -216,11 +224,66 @@ function joinTarget(folder, sub) {
     return segments.join("/");
 }
 
+// ComfyUI reads two directories for some categories and keeps the old name
+// working (folder_paths.map_legacy): `models/clip` and `models/text_encoders`
+// are both searched for a text encoder, `models/unet` and
+// `models/diffusion_models` for a UNET. A list aimed at either spelling works,
+// so the two must not be reported as a disagreement.
+const FOLDER_ALIASES = {
+    unet: "diffusion_models",
+    clip: "text_encoders",
+    t2i_adapter: "controlnet",
+};
+
+/** Canonical form of a target folder: separators, case, aliases, `models/`. */
+function canonTarget(value) {
+    const parts = String(value || "")
+        .replace(/\\/g, "/")
+        .split("/")
+        .map((part) => part.trim().toLowerCase())
+        .filter((part) => part && part !== "." && part !== "..");
+    if (parts[0] === "models") parts.shift();
+    if (parts.length) parts[0] = FOLDER_ALIASES[parts[0]] || parts[0];
+    return parts.join("/");
+}
+
 /** Compare two target folders written by a human: separators and case vary. */
 function sameTarget(a, b) {
-    const norm = (t) =>
-        String(t || "").trim().replace(/\\/g, "/").replace(/\/+$/, "").replace(/^\.\//, "").toLowerCase();
-    return norm(a) === norm(b);
+    return canonTarget(a) === canonTarget(b);
+}
+
+/**
+ * Which spelling of an aliased category this list already uses.
+ *
+ * `clip` and `text_encoders` are equally valid names that ComfyUI has read for
+ * years, and each is a real directory. Whichever one a user has settled on is
+ * the right place to keep putting their files, so follow the list instead of
+ * imposing the newer name on it.
+ */
+function preferredAliases(existingText) {
+    const preferred = new Map();
+    for (const row of parseFileList(existingText)) {
+        const [first] = String(row.target || "")
+            .replace(/\\/g, "/")
+            .split("/")
+            .map((part) => part.trim())
+            .filter(Boolean);
+        if (!first) continue;
+        const spelled = first.toLowerCase();
+        const canonical = FOLDER_ALIASES[spelled];
+        if (canonical && !preferred.has(canonical)) preferred.set(canonical, first);
+    }
+    return preferred;
+}
+
+function applyPreferredAlias(directory, preferred) {
+    if (!directory || !preferred.size) return directory;
+    const parts = String(directory).split("/");
+    const canonical = FOLDER_ALIASES[parts[0]?.toLowerCase()] || parts[0]?.toLowerCase();
+    const spelling = preferred.get(canonical);
+    if (!spelling) return directory;
+    parts[0] = spelling;
+    return parts.join("/");
 }
 
 /**
@@ -346,6 +409,20 @@ function scanWorkflow(graph) {
         }
     }
 
+    // 4. Anything the graph actually mentions. Template metadata outlives the
+    //    model it described -- swap in your own checkpoint and the old
+    //    {name, url} stays behind forever -- so an entry whose file name appears
+    //    in NO widget anywhere is a leftover, not a requirement. Scanning every
+    //    node, not just the loader types we know, keeps custom loaders working.
+    const referenced = new Set();
+    for (const node of nodes) {
+        for (const value of node.widgets_values || []) {
+            if (typeof value !== "string" || !MODEL_EXT.test(value)) continue;
+            referenced.add(keyOf(splitRelativePath(value).base));
+        }
+    }
+    for (const [key, entry] of byName) entry.referenced = referenced.has(key);
+
     return [...byName.values()].sort((a, b) =>
         (a.directory || "").localeCompare(b.directory || "") || a.name.localeCompare(b.name),
     );
@@ -375,11 +452,20 @@ function classify(entries, existingText) {
     for (const row of parseFileList(existingText)) {
         listed.set(keyOf(fileNameFromUrl(row.url)), row.target);
     }
+    const preferred = preferredAliases(existingText);
     const add = [];
     const present = [];
     const mismatch = [];
     const noLink = [];
-    for (const entry of entries) {
+    const orphan = [];
+    for (const raw of entries) {
+        const entry = { ...raw, directory: applyPreferredAlias(raw.directory, preferred) };
+        if (!entry.referenced) {
+            // Named only by stale template metadata: downloading it would fetch
+            // a file this graph never loads.
+            orphan.push(entry);
+            continue;
+        }
         if (!entry.url || !entry.directory) {
             noLink.push(entry);
             continue;
@@ -395,7 +481,7 @@ function classify(entries, existingText) {
             mismatch.push({ ...entry, currentTarget: listed.get(key) });
         }
     }
-    return { add, present, mismatch, noLink };
+    return { add, present, mismatch, noLink, orphan };
 }
 
 /** Rewrite only the target of lines whose model is aimed at the wrong folder. */
@@ -533,7 +619,8 @@ function showReport(node, widget, buckets, t) {
     const summary = document.createElement("div");
     summary.className = "ts-fdl__hint";
     const total =
-        buckets.add.length + buckets.mismatch.length + buckets.present.length + buckets.noLink.length;
+        buckets.add.length + buckets.mismatch.length + buckets.present.length +
+        buckets.noLink.length + buckets.orphan.length;
     summary.textContent = total
         ? t.summary(buckets.add.length, total)
         : t.empty;
@@ -547,6 +634,7 @@ function showReport(node, widget, buckets, t) {
         buildGroup(t.colMismatch, buckets.mismatch, t, t.mismatchHint),
         buildGroup(t.colPresent, buckets.present, t),
         buildGroup(t.colNoLink, buckets.noLink, t, t.noLinkHint),
+        buildGroup(t.colOrphan, buckets.orphan, t, t.orphanHint),
     ].filter(Boolean);
     if (!groups.length) {
         const empty = document.createElement("div");
