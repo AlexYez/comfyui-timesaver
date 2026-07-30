@@ -448,9 +448,12 @@ function parseFileList(text) {
  * is to travel with the workflow, so the next person gets the file too.
  */
 function classify(entries, existingText) {
+    // The list itself is a source of URLs: anything already in it was curated
+    // by hand, and for a model no template describes it is the ONLY link there
+    // is. Ignoring it reported hand-added models as "no download link".
     const listed = new Map();
     for (const row of parseFileList(existingText)) {
-        listed.set(keyOf(fileNameFromUrl(row.url)), row.target);
+        listed.set(keyOf(fileNameFromUrl(row.url)), row);
     }
     const preferred = preferredAliases(existingText);
     const add = [];
@@ -459,7 +462,14 @@ function classify(entries, existingText) {
     const noLink = [];
     const orphan = [];
     for (const raw of entries) {
-        const entry = { ...raw, directory: applyPreferredAlias(raw.directory, preferred) };
+        const key = keyOf(raw.name);
+        const row = listed.get(key);
+        const entry = {
+            ...raw,
+            directory: applyPreferredAlias(raw.directory, preferred),
+            // Fall back to the link the user already wrote down for this file.
+            url: raw.url || (row ? row.url : ""),
+        };
         if (!entry.referenced) {
             // Named only by stale template metadata: downloading it would fetch
             // a file this graph never loads.
@@ -470,15 +480,14 @@ function classify(entries, existingText) {
             noLink.push(entry);
             continue;
         }
-        const key = keyOf(entry.name);
-        if (!listed.has(key)) {
+        if (!row) {
             add.push(entry);
-        } else if (sameTarget(listed.get(key), entry.directory)) {
+        } else if (sameTarget(row.target, entry.directory)) {
             present.push(entry);
         } else {
             // Listed, but aimed at a folder the loader does not read from —
             // typically a line written before subfolders were understood.
-            mismatch.push({ ...entry, currentTarget: listed.get(key) });
+            mismatch.push({ ...entry, currentTarget: row.target });
         }
     }
     return { add, present, mismatch, noLink, orphan };
