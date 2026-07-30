@@ -3,16 +3,26 @@
 // Fills the node's `file_list` with every model the CURRENT workflow needs, so a
 // graph handed to someone else pulls its own weights on the first run.
 //
-// Where the models come from, in order of trust:
+// Two questions, two different sources:
 //
-//   1. `node.properties.models` — ComfyUI stamps {name, url, directory} onto each
-//      loader that came from a template. Machine-readable and exact, so this is
-//      the primary source, NOT the note.
-//   2. A MarkdownNote's model list — the same facts as prose, `[file](url)`
-//      grouped under **folder** headings. Fills gaps and cross-checks (1).
-//   3. A loader's own widget value — yields the filename and, through the node
-//      type, the folder, but no URL. Reported so the user sees what is missing;
-//      looking those up on HuggingFace is a separate, later pass.
+//   WHERE does it go?  The loader's own widget value, always. It stores a path
+//      relative to its category folder, and that path carries the subfolder the
+//      user filed the model under (`qwen/qwen_image_vae.safetensors` -> the
+//      loader reads `models/vae/qwen/`). Template metadata knows nothing about
+//      that, so a download aimed at the bare `vae/` stays invisible to the
+//      loader forever. The widget therefore OVERRIDES every other source.
+//
+//   WHERE do I get it?  `node.properties.models` first — ComfyUI stamps
+//      {name, url, directory} onto each loader that came from a template — then
+//      a MarkdownNote's `[file](url)` list to fill gaps and cross-check.
+//
+// Both are matched to the loader by FILE NAME, never by full path, and template
+// metadata goes stale: a user who swaps in their own model leaves the old
+// {name, url} behind, so an entry no loader selects is flagged, not trusted.
+//
+// Separators come from whichever OS saved the graph (`a\b` on Windows, `a/b`
+// elsewhere, sometimes mixed), so every path is normalised to POSIX before it
+// is compared or written.
 //
 // CRITICAL: loaders usually live INSIDE subgraphs. Walking the root node list
 // finds nothing on a modern template — the scan must descend into
@@ -72,12 +82,15 @@ const STRINGS = {
         summary: (add, total) => `${add} to add · ${total} found in total`,
         colAdd: "Will be added",
         colPresent: "Already in the list",
+        colMismatch: "Pointing at the wrong folder",
         colNoLink: "No download link",
         srcGraph: "node",
         srcNote: "note",
         srcBoth: "node + note",
         srcWidget: "filename only",
+        srcUnused: "no loader uses it",
         merge: "Append",
+        fix: "Fix folders",
         replace: "Replace list",
         cancel: "Cancel",
         close: "Close (Esc)",
@@ -89,6 +102,10 @@ const STRINGS = {
             "These are used by the workflow but no URL was found. Add them by hand, " +
             "or wait for the HuggingFace lookup.",
         appended: (n) => `Appended ${n} line(s) to file_list.`,
+        fixedPaths: (n) => `Corrected the folder on ${n} line(s).`,
+        mismatchHint:
+            "The list points these at a folder the loader does not read from, so they " +
+            "would download and still count as missing.",
         replaced: (n) => `file_list replaced with ${n} line(s).`,
         nothing: "Nothing to add — every model is already in the list.",
     },
@@ -98,12 +115,15 @@ const STRINGS = {
         summary: (add, total) => `${add} к добавлению · всего найдено ${total}`,
         colAdd: "Будут добавлены",
         colPresent: "Уже в списке",
+        colMismatch: "Указана не та папка",
         colNoLink: "Ссылка не найдена",
         srcGraph: "нода",
         srcNote: "заметка",
         srcBoth: "нода + заметка",
         srcWidget: "только имя файла",
+        srcUnused: "ни один лоудер не использует",
         merge: "Дополнить",
+        fix: "Исправить папки",
         replace: "Заменить список",
         cancel: "Отмена",
         close: "Закрыть (Esc)",
@@ -115,6 +135,10 @@ const STRINGS = {
             "Эти модели workflow использует, но ссылки на них не нашлось. Добавьте вручную " +
             "или дождитесь поиска по HuggingFace.",
         appended: (n) => `В file_list дописано строк: ${n}.`,
+        fixedPaths: (n) => `Папка исправлена в строках: ${n}.`,
+        mismatchHint:
+            "В списке они нацелены не в ту папку, из которой читает лоудер, — скачаются, " +
+            "но всё равно будут считаться отсутствующими.",
         replaced: (n) => `file_list заменён, строк: ${n}.`,
         nothing: "Добавлять нечего — все модели уже в списке.",
     },
@@ -154,6 +178,49 @@ function fileNameFromUrl(url) {
 
 function keyOf(name) {
     return String(name || "").trim().toLowerCase();
+}
+
+/**
+ * Split a loader's stored value into its file name and its subfolder.
+ *
+ * Loaders store a path RELATIVE to their category folder, and users routinely
+ * organise models into subfolders: `qwen\qwen_image_vae.safetensors` means
+ * `models/vae/qwen/qwen_image_vae.safetensors`. Dropping the `qwen/` part
+ * downloads the file next to the folder the loader actually reads from, so it
+ * stays "missing" no matter how many times it is fetched.
+ */
+function splitRelativePath(value) {
+    // A workflow saved on Windows stores `krea2\file.safetensors`, the same
+    // graph saved on macOS or Linux stores `krea2/file.safetensors`, and a
+    // hand-edited one can mix both. Normalise to POSIX and drop the noise
+    // segments so the two spellings produce an identical result.
+    const parts = String(value || "")
+        .replace(/\\/g, "/")
+        .split("/")
+        .map((part) => part.trim())
+        .filter((part) => part && part !== "." && part !== "..");
+    const base = parts.pop() || "";
+    return { base, sub: parts.join("/") };
+}
+
+/**
+ * Join a category folder with an optional subfolder, always POSIX-style.
+ * `file_list` is read by people and by a backend that normalises separators
+ * itself, so forward slashes travel between operating systems unchanged.
+ */
+function joinTarget(folder, sub) {
+    const segments = [folder, sub]
+        .flatMap((part) => String(part || "").replace(/\\/g, "/").split("/"))
+        .map((part) => part.trim())
+        .filter((part) => part && part !== "." && part !== "..");
+    return segments.join("/");
+}
+
+/** Compare two target folders written by a human: separators and case vary. */
+function sameTarget(a, b) {
+    const norm = (t) =>
+        String(t || "").trim().replace(/\\/g, "/").replace(/\/+$/, "").replace(/^\.\//, "").toLowerCase();
+    return norm(a) === norm(b);
 }
 
 /**
@@ -213,18 +280,28 @@ function scanWorkflow(graph) {
     const nodes = collectNodes(serialised);
     const byName = new Map();
 
+    // Keyed by FILE NAME only. A loader stores `qwen/qwen_image_vae.safetensors`
+    // while the template metadata says `qwen_image_vae.safetensors`; keying on
+    // the full relative path would treat one file as two.
     const upsert = (name, source, patch) => {
-        const key = keyOf(name);
+        const { base } = splitRelativePath(name);
+        const key = keyOf(base);
         if (!key) return null;
         let entry = byName.get(key);
         if (!entry) {
-            entry = { name: String(name).trim(), url: "", directory: "", sources: new Set() };
+            entry = {
+                name: base,
+                url: "",
+                directory: "",
+                sources: new Set(),
+                fromLoader: false,
+            };
             byName.set(key, entry);
         }
         entry.sources.add(source);
         // First writer wins: sources are visited in order of trust.
         if (patch.url && !entry.url) entry.url = patch.url;
-        if (patch.directory && !entry.directory) entry.directory = String(patch.directory).trim();
+        if (patch.directory && !entry.directory) entry.directory = joinTarget(patch.directory, "");
         return entry;
     };
 
@@ -251,29 +328,21 @@ function scanWorkflow(graph) {
         }
     }
 
-    // 3. Loader widgets — filename and folder only, no link.
+    // 3. Loader widgets. This pass runs LAST and OVERRIDES the folder, because
+    //    the widget is the only statement of where the workflow actually looks:
+    //    it carries the subfolder the user organised the model into, and the
+    //    template metadata above knows nothing about it. Downloading to the
+    //    metadata's bare folder leaves the file invisible to the loader.
     for (const node of nodes) {
         const folder = TYPE_TO_FOLDER[node.type];
         if (!folder) continue;
         for (const value of node.widgets_values || []) {
             if (typeof value !== "string" || !MODEL_EXT.test(value)) continue;
-            upsert(value, "widget", { directory: folder });
-        }
-    }
-
-    // A URL with no folder can still be placed if some loader type claims it.
-    for (const entry of byName.values()) {
-        if (entry.directory) continue;
-        for (const node of nodes) {
-            const folder = TYPE_TO_FOLDER[node.type];
-            if (!folder) continue;
-            const used = (node.widgets_values || []).some(
-                (v) => typeof v === "string" && keyOf(v) === keyOf(entry.name),
-            );
-            if (used) {
-                entry.directory = folder;
-                break;
-            }
+            const { base, sub } = splitRelativePath(value);
+            const entry = upsert(base, "widget", {});
+            if (!entry) continue;
+            entry.directory = joinTarget(folder, sub);
+            entry.fromLoader = true;
         }
     }
 
@@ -302,16 +371,48 @@ function parseFileList(text) {
  * is to travel with the workflow, so the next person gets the file too.
  */
 function classify(entries, existingText) {
-    const listed = new Set(parseFileList(existingText).map((row) => keyOf(fileNameFromUrl(row.url))));
+    const listed = new Map();
+    for (const row of parseFileList(existingText)) {
+        listed.set(keyOf(fileNameFromUrl(row.url)), row.target);
+    }
     const add = [];
     const present = [];
+    const mismatch = [];
     const noLink = [];
     for (const entry of entries) {
-        if (!entry.url || !entry.directory) noLink.push(entry);
-        else if (listed.has(keyOf(entry.name))) present.push(entry);
-        else add.push(entry);
+        if (!entry.url || !entry.directory) {
+            noLink.push(entry);
+            continue;
+        }
+        const key = keyOf(entry.name);
+        if (!listed.has(key)) {
+            add.push(entry);
+        } else if (sameTarget(listed.get(key), entry.directory)) {
+            present.push(entry);
+        } else {
+            // Listed, but aimed at a folder the loader does not read from —
+            // typically a line written before subfolders were understood.
+            mismatch.push({ ...entry, currentTarget: listed.get(key) });
+        }
     }
-    return { add, present, noLink };
+    return { add, present, mismatch, noLink };
+}
+
+/** Rewrite only the target of lines whose model is aimed at the wrong folder. */
+function fixTargets(text, entries) {
+    const wanted = new Map(entries.map((e) => [keyOf(e.name), e.directory]));
+    let fixed = 0;
+    const lines = String(text || "").split(/\r?\n/).map((line) => {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith("#")) return line;
+        const parts = trimmed.split(/\s+/);
+        const url = parts[0];
+        const target = wanted.get(keyOf(fileNameFromUrl(url)));
+        if (!target || sameTarget(parts.slice(1).join(" "), target)) return line;
+        fixed += 1;
+        return `${url} ${target}`;
+    });
+    return { text: lines.join("\n"), fixed };
 }
 
 function toLine(entry) {
@@ -360,10 +461,14 @@ function ensureStyles() {
 function sourceLabel(entry, t) {
     const hasGraph = entry.sources.has("graph");
     const hasNote = entry.sources.has("note");
-    if (hasGraph && hasNote) return t.srcBoth;
-    if (hasGraph) return t.srcGraph;
-    if (hasNote) return t.srcNote;
-    return t.srcWidget;
+    let origin = t.srcWidget;
+    if (hasGraph && hasNote) origin = t.srcBoth;
+    else if (hasGraph) origin = t.srcGraph;
+    else if (hasNote) origin = t.srcNote;
+    // Template metadata outlives the model it described: if no loader in the
+    // graph selects this file, say so instead of quietly proposing it.
+    if (!entry.fromLoader && (hasGraph || hasNote)) return `${origin} · ${t.srcUnused}`;
+    return origin;
 }
 
 function buildGroup(title, entries, t, hint) {
@@ -389,7 +494,9 @@ function buildGroup(title, entries, t, hint) {
 
         const dir = document.createElement("span");
         dir.className = "ts-fdl__dir";
-        dir.textContent = entry.directory || "—";
+        dir.textContent = entry.currentTarget
+            ? `${entry.currentTarget} → ${entry.directory}`
+            : entry.directory || "—";
 
         const name = document.createElement("span");
         name.className = "ts-fdl__name";
@@ -425,7 +532,8 @@ function showReport(node, widget, buckets, t) {
     title.textContent = t.title;
     const summary = document.createElement("div");
     summary.className = "ts-fdl__hint";
-    const total = buckets.add.length + buckets.present.length + buckets.noLink.length;
+    const total =
+        buckets.add.length + buckets.mismatch.length + buckets.present.length + buckets.noLink.length;
     summary.textContent = total
         ? t.summary(buckets.add.length, total)
         : t.empty;
@@ -436,6 +544,7 @@ function showReport(node, widget, buckets, t) {
     scroll.className = "ts-fdl__scroll";
     const groups = [
         buildGroup(t.colAdd, buckets.add, t),
+        buildGroup(t.colMismatch, buckets.mismatch, t, t.mismatchHint),
         buildGroup(t.colPresent, buckets.present, t),
         buildGroup(t.colNoLink, buckets.noLink, t, t.noLinkHint),
     ].filter(Boolean);
@@ -480,7 +589,14 @@ function showReport(node, widget, buckets, t) {
         return button;
     };
 
-    const ready = [...buckets.add, ...buckets.present];
+    const ready = [...buckets.add, ...buckets.mismatch, ...buckets.present];
+    if (buckets.mismatch.length) {
+        addButton(t.fix, !buckets.add.length, () => {
+            const result = fixTargets(widget.value, buckets.mismatch);
+            writeFileList(node, widget, result.text);
+            toast("success", t.fixedPaths(result.fixed));
+        });
+    }
     if (buckets.add.length) {
         addButton(t.merge, true, () => {
             const current = String(widget.value || "");
