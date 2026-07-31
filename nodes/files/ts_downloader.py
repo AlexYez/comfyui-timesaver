@@ -396,6 +396,53 @@ class TS_DownloadFilesNode(IO.ComfyNode):
             logger.debug(f"{LOG_PREFIX} Known-folder lookup failed for '{folder_name}': {exc}")
         return None
 
+    @classmethod
+    def _verified_local_path(cls, target_dir: str, url: str, meta_cache: dict) -> str:
+        """Path of an already-downloaded, already-verified file for ``url``.
+
+        Every finished download leaves a ``<file>.tsmeta.json`` recording the
+        source URL, the size the server reported and when it was verified. If
+        that record still matches what is on disk, the work is done — and
+        asking the server about it again buys nothing.
+
+        This is what makes a list of already-present models cost nothing:
+        without it the node probed EVERY url on EVERY run (a HEAD, sometimes a
+        GET) before looking at the folder, so a graph with ten models paid ten
+        round trips to conclude it had nothing to do.
+        """
+        if not target_dir:
+            return ""
+        index = meta_cache.get(target_dir)
+        if index is None:
+            index = {}
+            try:
+                for name in os.listdir(target_dir):
+                    if not name.endswith(".tsmeta.json"):
+                        continue
+                    meta = cls._read_json_file(os.path.join(target_dir, name))
+                    source = str((meta or {}).get("source_url") or "")
+                    if source:
+                        index.setdefault(source, []).append((name, meta))
+            except OSError:
+                index = {}
+            meta_cache[target_dir] = index
+
+        for name, meta in index.get(url, []):
+            model_path = os.path.join(target_dir, name[: -len(".tsmeta.json")])
+            if not os.path.isfile(model_path):
+                continue
+            if not meta.get("verified_at"):
+                continue
+            recorded = cls._safe_int(meta.get("remote_size"), -1)
+            if recorded > 0:
+                try:
+                    if os.path.getsize(model_path) != recorded:
+                        continue  # the file changed since it was verified
+                except OSError:
+                    continue
+            return model_path
+        return ""
+
     @staticmethod
     def _raise_if_interrupted() -> None:
         """Abort the run when the user pressed Cancel.
@@ -925,25 +972,35 @@ class TS_DownloadFilesNode(IO.ComfyNode):
                                 cls._extract_zip(local_file_path, target_dir)
                             return True
 
-                        logger.info(f"{LOG_PREFIX} Verifying existing HF file SHA256 (one-time check)...")
-                        actual_sha256 = cls._compute_sha256(local_file_path).lower()
-                        if actual_sha256 == hf_expected_sha256:
-                            logger.info(f"{LOG_PREFIX} Existing HF file SHA256 verified. Skipping.")
-                            cls._write_json_file(final_meta_path, {
-                                "source_url": url,
-                                "resolved_url": processed_url,
-                                "final_url": final_direct_url,
-                                "remote_size": remote_file_size,
-                                "remote_etag": remote_etag,
-                                "sha256": actual_sha256,
-                                "verified_at": int(time.time()),
-                            })
-                            if unzip_after_download and local_file_path.lower().endswith('.zip'):
-                                cls._extract_zip(local_file_path, target_dir)
-                            return True
-
-                        logger.warning(f"{LOG_PREFIX} Existing HF file failed SHA256 verification. Re-downloading.")
-                        cls._remove_file_silent(local_file_path)
+                        # No recorded hash: this file was not downloaded by this
+                        # node (placed by hand, fetched by another tool, or
+                        # predates the meta files). Re-reading a multi-gigabyte
+                        # model to hash it costs minutes of disk I/O on EVERY
+                        # such file, which is what made a fully-downloaded list
+                        # feel stuck. Its size already matches what the server
+                        # reports — the failure mode that actually happens
+                        # (a truncated or half-copied file) is caught by that.
+                        # Adopt it, and say plainly what was and was not checked.
+                        logger.info(
+                            f"{LOG_PREFIX} Existing file matches the server's size and was not downloaded "
+                            f"by this node — adopting it without hashing. Delete "
+                            f"'{os.path.basename(final_meta_path)}' to force a full SHA256 check."
+                        )
+                        cls._write_json_file(final_meta_path, {
+                            "source_url": url,
+                            "resolved_url": processed_url,
+                            "final_url": final_direct_url,
+                            "remote_size": remote_file_size,
+                            "remote_etag": remote_etag,
+                            # Honest record: the bytes were never hashed, so the
+                            # cached-SHA fast path above must not accept this.
+                            "sha256": None,
+                            "verified_by": "size",
+                            "verified_at": int(time.time()),
+                        })
+                        if unzip_after_download and local_file_path.lower().endswith('.zip'):
+                            cls._extract_zip(local_file_path, target_dir)
+                        return True
                     else:
                         logger.info(f"{LOG_PREFIX} Verified existing file by size. Skipping.")
                         cls._write_json_file(final_meta_path, {
@@ -1306,6 +1363,35 @@ class TS_DownloadFilesNode(IO.ComfyNode):
         # connect timeout) first; only build the retry-enabled download session
         # once we know at least one target is reachable. Both sessions are
         # context-managed so their connection pools never leak.
+        # Settle everything that can be settled from disk BEFORE touching the
+        # network. A list whose models are all present now finishes without a
+        # single request — previously it probed every url just to discover it
+        # had nothing to download.
+        pending = []
+        satisfied = 0
+        if skip_existing:
+            meta_cache: dict = {}
+            for file_info in files_to_download:
+                local = cls._verified_local_path(file_info["target_dir"], file_info["url"], meta_cache)
+                if not local:
+                    pending.append(file_info)
+                    continue
+                satisfied += 1
+                if unzip_after_download and local.lower().endswith(".zip"):
+                    cls._extract_zip(local, file_info["target_dir"])
+            if satisfied:
+                logger.info(
+                    "%s %d file(s) already downloaded and verified — no server check needed.",
+                    LOG_PREFIX, satisfied,
+                )
+        else:
+            pending = list(files_to_download)
+
+        if not pending:
+            logger.info("%s Done. Nothing to fetch: every file is already in place.", LOG_PREFIX)
+            return IO.NodeOutput()
+        files_to_download = pending
+
         with cls._create_session_with_retries(proxy_url, total_retries=0) as probe_session:
             if not cls._check_connectivity_to_targets(files_to_download, probe_session, hf_domain):
                 logger.warning(f"{LOG_PREFIX} All target servers are unreachable. Switching to OFFLINE MODE. Execution finished.")
