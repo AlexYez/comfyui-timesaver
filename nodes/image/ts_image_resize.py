@@ -30,7 +30,7 @@ class TS_ImageResize(IO.ComfyNode):
         return IO.Schema(
             node_id="TS_ImageResize",
             display_name="TS Image Resize",
-            category="TS/Image",
+            category="TS/Image/Size",
             essentials_category="Image",
             description="Resize by exact size, one side, megapixels or scale, with divisor snapping and an optional no-enlarge guard.",
             inputs=[

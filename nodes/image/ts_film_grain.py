@@ -18,7 +18,7 @@ class TS_FilmGrain(IO.ComfyNode):
         return IO.Schema(
             node_id="TS_FilmGrain",
             display_name="TS Film Grain",
-            category="TS/Image",
+            category="TS/Image/Color",
             description="Add three-octave organic film grain.",
             inputs=[
                 IO.Image.Input("images", tooltip="Images to add film grain to."),

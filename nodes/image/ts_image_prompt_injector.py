@@ -20,7 +20,7 @@ class TS_ImagePromptInjector(IO.ComfyNode):
         return IO.Schema(
             node_id="TS_ImagePromptInjector",
             display_name="TS Image Prompt Injector",
-            category="TS/Image",
+            category="TS/Image/Batch",
             description="Inject a string into the workflow's positive prompt at run time, for prompts built by other nodes.",
             inputs=[
                 IO.Image.Input(

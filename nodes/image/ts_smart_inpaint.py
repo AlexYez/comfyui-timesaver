@@ -707,7 +707,7 @@ class TSSmartInpaint(IO.ComfyNode):
         return IO.Schema(
             node_id="TSSmartInpaint",
             display_name="TS Smart Inpaint",
-            category="TS/Image",
+            category="TS/Image/Retouch",
             description="Regenerate or refine only the masked region: it crops with context, samples at full detail and composites the result back.",
             inputs=[
                 IO.Model.Input("model", tooltip="Diffusion model used to regenerate the masked region."),

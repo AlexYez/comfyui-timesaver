@@ -27,7 +27,7 @@ class TS_LamaCleanup(IO.ComfyNode):
         return IO.Schema(
             node_id="TS_LamaCleanup",
             display_name="TS Lama Cleanup",
-            category="TS/Image",
+            category="TS/Image/Retouch",
             essentials_category="Image",
             description=(
                 "Interactive defect removal with the LaMa inpainting model. "

@@ -435,7 +435,7 @@ class TS_Matting_ViTMatte(IO.ComfyNode):
         return IO.Schema(
             node_id="TS_Matting_ViTMatte",
             display_name="TS Matting (ViTMatte)",
-            category="TS/Image",
+            category="TS/Image/Cutout",
             description=(
                 "Guided matting via Hugging Face ViTMatte. Builds an "
                 "auto-trimap from a coarse binary MASK (erode for confident "

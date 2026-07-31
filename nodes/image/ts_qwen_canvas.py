@@ -33,7 +33,7 @@ class TS_QwenCanvas(IO.ComfyNode):
         return IO.Schema(
             node_id="TS_QwenCanvas",
             display_name="TS Qwen Canvas",
-            category="TS/Image",
+            category="TS/Image/Size",
             description="Make a blank Qwen-Image canvas at a supported resolution and optionally paste your image into it.",
             inputs=[
                 IO.Combo.Input(

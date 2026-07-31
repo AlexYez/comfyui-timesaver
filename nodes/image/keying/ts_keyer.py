@@ -23,7 +23,7 @@ class TS_Keyer(IO.ComfyNode):
         return IO.Schema(
             node_id="TS_Keyer",
             display_name="TS Keyer",
-            category="TS/Image",
+            category="TS/Image/Cutout",
             description=(
                 "Advanced Color Difference keyer for green/blue screen. "
                 "Preserves semi-transparency (hair/smoke), provides despill, and returns RGBA foreground + alpha mask."

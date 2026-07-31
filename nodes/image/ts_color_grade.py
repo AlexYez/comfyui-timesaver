@@ -15,7 +15,7 @@ class TS_Color_Grade(IO.ComfyNode):
         return IO.Schema(
             node_id="TS_Color_Grade",
             display_name="TS Color Grade",
-            category="TS/Image",
+            category="TS/Image/Color",
             essentials_category="Image",
             description="Eight-knob colour correction: hue, temperature, saturation, contrast, gain, lift, gamma and brightness.",
             inputs=[

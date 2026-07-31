@@ -52,7 +52,7 @@ class TS_WAN_SafeResize(IO.ComfyNode):
         return IO.Schema(
             node_id="TS_WAN_SafeResize",
             display_name="TS WAN Safe Resize",
-            category="TS/Image",
+            category="TS/Image/Size",
             description="Resize to the nearest official WAN-Video resolution.",
             inputs=[
                 IO.Image.Input("image", tooltip="Image to fit to a WAN-friendly resolution."),

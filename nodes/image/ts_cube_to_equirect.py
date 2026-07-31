@@ -13,7 +13,7 @@ class TS_CubemapFacesToEquirectangularNode(IO.ComfyNode):
         return IO.Schema(
             node_id="TS Cube to Equirectangular",
             display_name="TS Cube to Equirectangular",
-            category="TS/Image",
+            category="TS/Image/360",
             description="Stitch six cube faces into one equirectangular 360 panorama.",
             inputs=[
                 IO.Image.Input("front", tooltip="Front cube face (+Z)."),

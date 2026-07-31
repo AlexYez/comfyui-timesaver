@@ -32,7 +32,7 @@ class TS_ResolutionSelector(IO.ComfyNode):
         return IO.Schema(
             node_id="TS_ResolutionSelector",
             display_name="TS Resolution Selector",
-            category="TS/Image",
+            category="TS/Image/Size",
             essentials_category="Image",
             description="Pick an aspect ratio and a megapixel budget and get a canvas snapped to multiples of 32.",
             inputs=[

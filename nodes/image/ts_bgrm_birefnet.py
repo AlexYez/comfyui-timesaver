@@ -870,7 +870,7 @@ class TS_BGRM_BiRefNet(IO.ComfyNode):
         return IO.Schema(
             node_id="TS_BGRM_BiRefNet",
             display_name="TS Remove Background",
-            category="TS/Image",
+            category="TS/Image/Cutout",
             essentials_category="Image",
             description="Remove the background with BiRefNet and return the cutout together with its mask.",
             inputs=[

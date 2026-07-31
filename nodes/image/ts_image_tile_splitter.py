@@ -23,7 +23,7 @@ class TS_ImageTileSplitter(IO.ComfyNode):
         return IO.Schema(
             node_id="TS_ImageTileSplitter",
             display_name="TS Image Tile Splitter",
-            category="TS/Image",
+            category="TS/Image/Tiles",
             description="Split a large image into overlapping tiles for tile-based processing.",
             inputs=[
                 IO.Image.Input("image", tooltip="Image to split into overlapping tiles."),

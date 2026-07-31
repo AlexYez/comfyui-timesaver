@@ -337,7 +337,7 @@ class TS_Color_Match(IO.ComfyNode):
         return IO.Schema(
             node_id="TS_Color_Match",
             display_name="TS Color Match",
-            category="TS/Image",
+            category="TS/Image/Color",
             description="Transfer the colour palette of a reference image onto a target batch.",
             inputs=[
                 IO.Image.Input("reference", tooltip="Reference whose colors the target is matched to. With batch=1 the statistics can be reused across a whole video."),

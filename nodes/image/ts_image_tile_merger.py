@@ -22,7 +22,7 @@ class TS_ImageTileMerger(IO.ComfyNode):
         return IO.Schema(
             node_id="TS_ImageTileMerger",
             display_name="TS Image Tile Merger",
-            category="TS/Image",
+            category="TS/Image/Tiles",
             description="Stitch processed tiles back into one image, blending the overlaps.",
             inputs=[
                 IO.Image.Input(

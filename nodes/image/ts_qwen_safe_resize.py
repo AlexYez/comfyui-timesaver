@@ -37,7 +37,7 @@ class TS_QwenSafeResize(IO.ComfyNode):
         return IO.Schema(
             node_id="TS_QwenSafeResize",
             display_name="TS Qwen Safe Resize",
-            category="TS/Image",
+            category="TS/Image/Size",
             description="Resize to the nearest official Qwen-Image resolution.",
             inputs=[
                 IO.Image.Input(

@@ -20,7 +20,7 @@ class TS_ImageListToImageBatch(IO.ComfyNode):
         return IO.Schema(
             node_id="TS_ImageListToImageBatch",
             display_name="TS Image List to Image Batch",
-            category="TS/Image",
+            category="TS/Image/Batch",
             description="Convert an image list back into a single image batch.",
             is_input_list=True,
             inputs=[

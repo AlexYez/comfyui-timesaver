@@ -111,7 +111,7 @@ class TS_SAM_MediaLoader(IO.ComfyNode):
         return IO.Schema(
             node_id="TS_SAM_MediaLoader",
             display_name="TS SAM Media Loader",
-            category="TS/Image",
+            category="TS/Image/Cutout",
             description=(
                 "Load an image or video and click positive (green) / negative "
                 "(red) points directly on the first frame. Outputs IMAGE "
