@@ -125,12 +125,28 @@ export function fracToBbox(x, y, w, h) {
  * bare JSON.parse throws away perfectly good captions. The scan is
  * string-aware, so braces inside a description do not fool it.
  */
+/** Does this object look like a caption rather than one of its sub-objects? */
+function looksLikeCaption(value) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+    return Boolean(
+        value.compositional_deconstruction || value.high_level_description || value.style_description,
+    );
+}
+
 export function parseCaptionObject(text) {
     const raw = String(text || "").trim();
     if (!raw) return null;
     try {
-        return JSON.parse(raw);
+        const whole = JSON.parse(raw);
+        if (looksLikeCaption(whole)) return whole;
     } catch { /* fall through to the scan */ }
+
+    // Repair before descending. When the reply is a brace short, scanning on to
+    // the NEXT "{" happily balances on an inner object — style_description
+    // parses perfectly and is not a caption at all, which is how a recoverable
+    // reply turned into "the model returned nothing usable".
+    const repaired = closeUnbalanced(raw);
+    if (looksLikeCaption(repaired)) return repaired;
 
     let start = raw.indexOf("{");
     while (start !== -1) {
@@ -151,21 +167,29 @@ export function parseCaptionObject(text) {
                 depth -= 1;
                 if (depth === 0) {
                     try {
-                        return JSON.parse(raw.slice(start, i + 1));
-                    } catch {
-                        break;  // malformed — try the next opening brace
-                    }
+                        const candidate = JSON.parse(raw.slice(start, i + 1));
+                        // An inner object can parse cleanly without being the
+                        // caption; only accept something that carries one.
+                        if (looksLikeCaption(candidate)) return candidate;
+                    } catch { /* malformed — try the next opening brace */ }
+                    break;
                 }
             }
         }
         start = raw.indexOf("{", start + 1);
     }
+    return null;
+}
 
-    // Still nothing: the reply ends before the object closes. A small model
-    // stops one or two brackets short often enough that throwing the whole
-    // caption away is the wrong answer — everything up to that point is valid,
-    // so close what is still open and keep it. Only closers are ever appended;
-    // no content is invented.
+/**
+ * Close an object the model stopped short of finishing.
+ *
+ * Small models drop the last bracket or two often enough that discarding the
+ * whole caption is the wrong answer — everything before that point is valid.
+ * Only closing brackets are ever appended; no content is invented, and a
+ * half-written key at the tail is cut back to the last complete value.
+ */
+function closeUnbalanced(raw) {
     const first = raw.indexOf("{");
     if (first === -1) return null;
     const stack = [];
