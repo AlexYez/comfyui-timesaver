@@ -45,6 +45,8 @@ MAX_REPOS_PER_FILENAME = 6
 MAX_MATCHES_PER_FILENAME = 5
 SEARCH_TIMEOUT = (5, 12)
 MAX_QUERY_LEN = 120
+# Queries per filename, from the most specific form down to the family name.
+MAX_QUERIES_PER_FILENAME = 4
 
 
 def _log_warning(message: str) -> None:
@@ -61,19 +63,28 @@ def _session() -> requests.Session:
     return session
 
 
-def _search_query(filename: str) -> str:
-    """Turn a model filename into something HuggingFace's search understands.
+def _search_queries(filename: str) -> list[str]:
+    """Search terms for a model filename, most specific first.
 
-    Search matches repo names and metadata, not file names, so the extension
-    and the packaging noise around the actual model name only hurt: querying
-    "qwen_image_vae.safetensors" finds nothing, "qwen image vae" finds the repo
-    that holds it.
+    HuggingFace search matches repo names and metadata, never file names, so a
+    filename is usually too specific to match anything:
+    "mage_flow_turbo_int8_convrot" returns nothing while "mage flow" returns the
+    repo that actually holds that file. Quantisation and packaging suffixes are
+    dropped outright, and what remains is tried from the longest form down to
+    the first two words — the shortest form is what finds a repo whose name is
+    just the model family.
     """
     stem = filename.rsplit(".", 1)[0]
-    for noise in ("fp8_e4m3fn", "fp8_e5m2", "bf16", "fp16", "fp32", "e4m3fn", "scaled"):
+    for noise in ("fp8_e4m3fn", "fp8_e5m2", "bf16", "fp16", "fp32", "e4m3fn",
+                  "int8", "int4", "nf4", "scaled", "convrot", "quantized"):
         stem = stem.replace(noise, " ")
-    stem = stem.replace("_", " ").replace("-", " ").replace(".", " ")
-    return " ".join(stem.split())[:MAX_QUERY_LEN]
+    tokens = [t for t in stem.replace("_", " ").replace("-", " ").replace(".", " ").split() if t]
+    queries: list[str] = []
+    for count in range(len(tokens), 0, -1):
+        query = " ".join(tokens[:count])[:MAX_QUERY_LEN]
+        if query and query not in queries:
+            queries.append(query)
+    return queries[:MAX_QUERIES_PER_FILENAME]
 
 
 def _get_json(session: requests.Session, url: str):
@@ -84,17 +95,25 @@ def _get_json(session: requests.Session, url: str):
 
 def _find_one(session: requests.Session, filename: str) -> list[dict]:
     """Repos containing a file named exactly ``filename``, best first."""
-    query = _search_query(filename)
-    if not query:
-        return []
     wanted = filename.strip().lower()
+    seen_repos: set[str] = set()
+    for query in _search_queries(filename):
+        matches = _search_one_query(session, query, wanted, seen_repos)
+        if matches:
+            return matches
+    return []
+
+
+def _search_one_query(
+    session: requests.Session, query: str, wanted: str, seen_repos: set[str]
+) -> list[dict]:
     encoded = urllib.parse.quote(query)
     try:
         models = _get_json(
             session, f"{HF_API}/models?search={encoded}&limit={MAX_REPOS_PER_FILENAME}&sort=downloads&direction=-1"
         )
     except Exception as exc:
-        _log_warning(f"Search for {filename!r} failed: {exc}")
+        _log_warning(f"Search for {query!r} failed: {exc}")
         return []
     if not isinstance(models, list):
         return []
@@ -109,6 +128,9 @@ def _find_one(session: requests.Session, filename: str) -> list[dict]:
         # URL from.
         if not repo or repo.count("/") != 1 or ":" in repo or repo.startswith("/"):
             continue
+        if repo in seen_repos:
+            continue  # a broader query re-lists repos the narrower one already read
+        seen_repos.add(repo)
         try:
             tree = _get_json(
                 session, f"{HF_API}/models/{urllib.parse.quote(repo)}/tree/main?recursive=true"

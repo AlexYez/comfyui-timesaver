@@ -345,9 +345,14 @@ function parseNote(text) {
     const bareRe = /(https?:\/\/[^\s)<>"']+)/g;
 
     for (const line of String(text || "").split(/\r?\n/)) {
-        const bold = line.match(/^\s*(?:#+\s*)?\*\*([^*]+)\*\*\s*$/);
-        if (bold) {
-            folder = bold[1].trim();
+        // A folder heading is the bold (or ##) word that OPENS the line. The old
+        // pattern demanded the line end right after the bold run, so a heading
+        // that carries a qualifier — "**diffusion_models** (Mage-Flow-Turbo)",
+        // which is how ComfyUI's own templates write them — matched nothing and
+        // every link under it lost its folder.
+        const heading = line.match(/^\s*(?:#+\s*)?\*\*([^*]+)\*\*.*$/) || line.match(/^\s*#+\s+([A-Za-z0-9_]+)\s*$/);
+        if (heading) {
+            folder = heading[1].trim();
             continue;
         }
         const seenUrls = new Set();
@@ -369,11 +374,103 @@ function parseNote(text) {
     return found;
 }
 
+/** Widget names on this node whose value is driven from outside by a link. */
+function externallyDrivenWidgets(node) {
+    return new Set(
+        (node.inputs || [])
+            .filter((input) => input?.widget?.name && input.link !== null && input.link !== undefined)
+            .map((input) => String(input.widget.name)),
+    );
+}
+
+/**
+ * A node's widget values as {name: value}, EXCLUDING the ones a link overrides.
+ *
+ * A widget whose input is connected no longer shows its stored value — the
+ * value comes down the wire. Inside a subgraph that is the normal case: the
+ * loader keeps whatever default it was saved with while the real choice lives
+ * on the subgraph's own widget, one level up. Reading the stale default is how
+ * a model nobody uses ended up in the download list.
+ */
+function liveWidgetValues(node) {
+    const driven = externallyDrivenWidgets(node);
+    const named = node.widgets_values_named;
+    if (named && typeof named === "object" && !Array.isArray(named)) {
+        return Object.fromEntries(
+            Object.entries(named).filter(([name, value]) => typeof value === "string" && !driven.has(name)),
+        );
+    }
+    // Older graphs have no name map; positional values cannot be matched to an
+    // input, so they are all kept (the pre-subgraph behaviour).
+    const out = {};
+    (node.widgets_values || []).forEach((value, index) => {
+        if (typeof value === "string") out[`#${index}`] = value;
+    });
+    return out;
+}
+
+/**
+ * Every model filename the workflow ACTUALLY uses, with the folder it belongs
+ * in when that can be resolved.
+ *
+ * Three sources, all of them "what the user sees on the canvas":
+ *   - a loader's own widget, when no link overrides it;
+ *   - a widget promoted onto a subgraph instance, mapped back through the
+ *     subgraph's links to the loader that consumes it (that is where the folder
+ *     comes from);
+ *   - any other node's widget that names a model file, so custom loaders count.
+ */
+export function visibleModelValues(serialised) {
+    const definitions = new Map(
+        (serialised.definitions?.subgraphs || []).map((def) => [String(def.id), def]),
+    );
+    const found = [];
+
+    const walk = (container) => {
+        for (const node of container.nodes || []) {
+            if (!node || typeof node !== "object") continue;
+            const definition = definitions.get(String(node.type));
+            if (definition) {
+                // A subgraph instance: its widgets are the promoted inputs, in
+                // the order the definition declares them.
+                const values = liveWidgetValues(node);
+                const positional = Object.keys(values).every((key) => key.startsWith("#"));
+                const inputs = definition.inputs || [];
+                const nodeById = new Map((definition.nodes || []).map((n) => [Number(n.id), n]));
+                const targetBySlot = new Map();
+                for (const link of definition.links || []) {
+                    // -10 is the subgraph's input node: slot -> the node it feeds.
+                    if (String(link.origin_id) !== "-10") continue;
+                    targetBySlot.set(Number(link.origin_slot), Number(link.target_id));
+                }
+                const entries = positional
+                    ? inputs.map((input, index) => [String(input.name), values[`#${index}`]])
+                    : Object.entries(values);
+                for (const [name, value] of entries) {
+                    if (typeof value !== "string" || !MODEL_EXT.test(value)) continue;
+                    const slot = inputs.findIndex((input) => String(input.name) === name);
+                    const consumer = slot >= 0 ? nodeById.get(targetBySlot.get(slot)) : null;
+                    found.push({ value, folder: consumer ? TYPE_TO_FOLDER[consumer.type] : undefined });
+                }
+                continue;
+            }
+            const folder = TYPE_TO_FOLDER[node.type];
+            for (const value of Object.values(liveWidgetValues(node))) {
+                if (MODEL_EXT.test(value)) found.push({ value, folder });
+            }
+        }
+        for (const sub of container.definitions?.subgraphs || []) walk(sub);
+    };
+
+    walk(serialised);
+    return found;
+}
+
 /**
  * Walk the current workflow and merge the three sources into one map keyed by
  * filename. Returns entries shaped {name, url, directory, sources:Set}.
  */
-function scanWorkflow(graph) {
+export function scanWorkflow(graph) {
     let serialised;
     try {
         serialised = graph.serialize();
@@ -433,36 +530,29 @@ function scanWorkflow(graph) {
         }
     }
 
-    // 3. Loader widgets. This pass runs LAST and OVERRIDES the folder, because
-    //    the widget is the only statement of where the workflow actually looks:
-    //    it carries the subfolder the user organised the model into, and the
-    //    template metadata above knows nothing about it. Downloading to the
-    //    metadata's bare folder leaves the file invisible to the loader.
-    for (const node of nodes) {
-        const folder = TYPE_TO_FOLDER[node.type];
+    // 3. What the canvas actually selects. This pass runs LAST and OVERRIDES the
+    //    folder, because the widget is the only statement of where the workflow
+    //    really looks: it carries the subfolder the user organised the model
+    //    into, and the template metadata above knows nothing about it.
+    //    Downloading to the metadata's bare folder leaves the file invisible.
+    const visible = visibleModelValues(serialised);
+    for (const { value, folder } of visible) {
         if (!folder) continue;
-        for (const value of node.widgets_values || []) {
-            if (typeof value !== "string" || !MODEL_EXT.test(value)) continue;
-            const { base, sub } = splitRelativePath(value);
-            const entry = upsert(base, "widget", {});
-            if (!entry) continue;
-            entry.directory = joinTarget(folder, sub);
-            entry.fromLoader = true;
-        }
+        const { base, sub } = splitRelativePath(value);
+        const entry = upsert(base, "widget", {});
+        if (!entry) continue;
+        entry.directory = joinTarget(folder, sub);
+        entry.fromLoader = true;
     }
 
-    // 4. Anything the graph actually mentions. Template metadata outlives the
-    //    model it described -- swap in your own checkpoint and the old
-    //    {name, url} stays behind forever -- so an entry whose file name appears
-    //    in NO widget anywhere is a leftover, not a requirement. Scanning every
-    //    node, not just the loader types we know, keeps custom loaders working.
-    const referenced = new Set();
-    for (const node of nodes) {
-        for (const value of node.widgets_values || []) {
-            if (typeof value !== "string" || !MODEL_EXT.test(value)) continue;
-            referenced.add(keyOf(splitRelativePath(value).base));
-        }
-    }
+    // 4. Anything the graph actually uses. Template metadata outlives the model
+    //    it described — swap in your own checkpoint and the old {name, url}
+    //    stays behind forever — so an entry no visible widget selects is a
+    //    leftover, not a requirement. `visible` deliberately excludes a value a
+    //    link overrides: inside a subgraph that stale default is exactly the
+    //    "left over" model, and counting it made the node offer a download for
+    //    a file the workflow never loads.
+    const referenced = new Set(visible.map(({ value }) => keyOf(splitRelativePath(value).base)));
     for (const [key, entry] of byName) entry.referenced = referenced.has(key);
 
     return [...byName.values()].sort((a, b) =>
@@ -489,7 +579,7 @@ function parseFileList(text) {
  * A model that is already downloaded is NOT filtered out: the point of the list
  * is to travel with the workflow, so the next person gets the file too.
  */
-function classify(entries, existingText) {
+export function classify(entries, existingText) {
     // The list itself is a source of URLs: anything already in it was curated
     // by hand, and for a model no template describes it is the ONLY link there
     // is. Ignoring it reported hand-added models as "no download link".
