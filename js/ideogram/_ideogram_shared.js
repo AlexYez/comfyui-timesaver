@@ -268,9 +268,11 @@ function elementToBlock(element, index, design) {
     const palette = cleanPalette(element.color_palette || [], ELEMENT_PALETTE_CAP);
     const desc = String(element.desc || "").trim();
 
-    if (String(element.type) === "text") {
-        const text = String(element.text ?? "");
-        if (!text.trim()) return null;
+    // A small model sometimes labels an object "text" and then describes it in
+    // `desc` without ever giving a `text` field. Dropping it would silently
+    // lose a block the model did place, so it becomes what it actually is.
+    const text = String(element.text ?? "");
+    if (String(element.type) === "text" && text.trim()) {
         return {
             id: makeBlockId(),
             type: "text",
