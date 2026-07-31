@@ -406,8 +406,8 @@ export function setupIdeogramNode(node) {
             MEGAPIXEL_STEPS[0],
         );
         mpSelect.value = String(nearest);
-        const [width, height] = dimsFromAspectMp(aspectSelect.value, Number(mpSelect.value));
-        dimsLabel.textContent = `${width}×${height}`;
+        const dims = dimsFromAspectMp(aspectSelect.value, Number(mpSelect.value));
+        dimsLabel.textContent = `${dims.w}×${dims.h}`;
     }
     node._tsIdeoSyncAutoDims = syncAutoDims;
 
