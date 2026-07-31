@@ -117,6 +117,52 @@ export function fracToBbox(x, y, w, h) {
     return [y0, x0, y1, x1];
 }
 
+/**
+ * Pull the caption object out of whatever the model actually replied with.
+ *
+ * Mirror of `_extract_json_object` in nodes/ideogram/_ideogram_helpers.py: a
+ * small VL model wraps the object in prose or code fences often enough that a
+ * bare JSON.parse throws away perfectly good captions. The scan is
+ * string-aware, so braces inside a description do not fool it.
+ */
+export function parseCaptionObject(text) {
+    const raw = String(text || "").trim();
+    if (!raw) return null;
+    try {
+        return JSON.parse(raw);
+    } catch { /* fall through to the scan */ }
+
+    let start = raw.indexOf("{");
+    while (start !== -1) {
+        let depth = 0;
+        let inString = false;
+        let escaped = false;
+        for (let i = start; i < raw.length; i += 1) {
+            const ch = raw[i];
+            if (inString) {
+                if (escaped) escaped = false;
+                else if (ch === "\\") escaped = true;
+                else if (ch === '"') inString = false;
+                continue;
+            }
+            if (ch === '"') inString = true;
+            else if (ch === "{") depth += 1;
+            else if (ch === "}") {
+                depth -= 1;
+                if (depth === 0) {
+                    try {
+                        return JSON.parse(raw.slice(start, i + 1));
+                    } catch {
+                        break;  // malformed — try the next opening brace
+                    }
+                }
+            }
+        }
+        start = raw.indexOf("{", start + 1);
+    }
+    return null;
+}
+
 // [y_min,x_min,y_max,x_max] 0-1000 -> editor rect (fractions 0..1). The inverse
 // of fracToBbox, and the one place the y-first order is undone: the caption
 // grid is ROW-MAJOR, which is the documented #1 bug risk in this format.
@@ -167,11 +213,7 @@ function fallbackRect(index) {
 export function captionToDesign(caption, base = null) {
     let data = caption;
     if (typeof data === "string") {
-        try {
-            data = JSON.parse(data);
-        } catch {
-            return null;
-        }
+        data = parseCaptionObject(data);
     }
     if (!data || typeof data !== "object" || Array.isArray(data)) return null;
 
