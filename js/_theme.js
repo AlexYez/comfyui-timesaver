@@ -212,6 +212,22 @@ function themeCss() {
 /* ── Fullscreen editor shell ─────────────────────────────────────────── */
 .ts-ui-modal{position:fixed;inset:0;z-index:11000;display:flex;background:var(--ts-modal-bg);
   color:var(--ts-text);font-family:var(--ts-font)}
+/* Two different shapes share this shell. An EDITOR fills the viewport, so the
+   default flex-start/stretch is exactly right. A DIALOG (a report, a summary,
+   a confirmation) is a panel of its own size — left unaligned it pins itself to
+   the top-left corner and reads as a stray tooltip, while the node the user
+   just clicked sits in the middle of the screen. Centring is opt-in via
+   openFullscreenOverlay's "center" option so the editors keep their full bleed.
+   NOTE: this whole stylesheet is a JS template literal — never put a backtick
+   in a comment here, it ends the string and breaks the module. */
+.ts-ui-modal--center{align-items:center;justify-content:center;padding:24px}
+/* Sized to the panel it wraps, purely so the close button has something its
+   own size to sit on instead of the far corner of the screen. */
+.ts-ui-fs-frame{position:relative;display:flex;min-height:0;max-width:100%;max-height:100%;
+  animation:ts-ui-dialog-in .16s ease-out}
+.ts-ui-modal--center .ts-ui-fs-close{position:absolute;top:10px;right:10px;box-shadow:none}
+@keyframes ts-ui-dialog-in{from{opacity:0;transform:translateY(8px) scale(.985)}
+  to{opacity:1;transform:none}}
 /* Unified fullscreen close button — every editor opened via openFullscreenOverlay
    gets the SAME control in the SAME spot (top-right). Nodes must keep their top
    toolbar's right edge clear of this corner (see their right inset). */

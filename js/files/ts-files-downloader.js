@@ -626,8 +626,29 @@ export function classify(entries, existingText) {
 }
 
 /** Rewrite only the target of lines whose model is aimed at the wrong folder. */
+/**
+ * The target as this node writes it into the list: `models/<folder>/<sub>`.
+ *
+ * Everything the scan produces is a MODEL folder, so spelling the full path
+ * says where the file goes without the reader having to know that a bare
+ * `diffusion_models` is resolved against the models directory rather than
+ * ComfyUI's root. The backend accepts every spelling, but only one of them
+ * should be the one we generate.
+ */
+export function displayTarget(directory) {
+    const parts = String(directory || "")
+        .replace(/\\/g, "/")
+        .split("/")
+        .map((part) => part.trim())
+        .filter(Boolean);
+    if (!parts.length) return "";
+    if (parts[0].toLowerCase() === "models") parts.shift();
+    if (!parts.length) return "models";
+    return ["models", ...parts].join("/");
+}
+
 function fixTargets(text, entries) {
-    const wanted = new Map(entries.map((e) => [keyOf(e.name), e.directory]));
+    const wanted = new Map(entries.map((e) => [keyOf(e.name), displayTarget(e.directory)]));
     let fixed = 0;
     const lines = String(text || "").split(/\r?\n/).map((line) => {
         const trimmed = line.trim();
@@ -642,8 +663,8 @@ function fixTargets(text, entries) {
     return { text: lines.join("\n"), fixed };
 }
 
-function toLine(entry) {
-    return `${entry.url} ${entry.directory}`;
+export function toLine(entry) {
+    return `${entry.url} ${displayTarget(entry.directory)}`;
 }
 
 /**
@@ -687,7 +708,9 @@ function ensureStyles() {
 .ts-fdl{display:flex;flex-direction:column;gap:12px;width:min(760px,92vw);max-height:82vh;
     padding:18px;border-radius:var(--ts-radius-lg);background:var(--ts-elevated);
     border:1px solid var(--ts-border);box-shadow:var(--ts-shadow);color:var(--ts-text)}
-.ts-fdl__head{display:flex;flex-direction:column;gap:4px}
+/* Right inset keeps the title and the summary clear of the overlay's close
+   button, which sits on the panel's own corner in the centred variant. */
+.ts-fdl__head{display:flex;flex-direction:column;gap:4px;padding-right:38px}
 .ts-fdl__scroll{overflow:auto;display:flex;flex-direction:column;gap:14px;padding-right:4px}
 .ts-fdl__group{display:flex;flex-direction:column;gap:6px}
 .ts-fdl__grouphead{display:flex;align-items:baseline;gap:8px;
@@ -916,6 +939,9 @@ function showReport(node, widget, buckets, t) {
     const overlay = openFullscreenOverlay(panel, {
         // A report holds no unsaved work, so dismissing it costs nothing.
         closeOnBackdrop: true,
+        // It is a dialog, not an editor: the user clicked a node in the middle
+        // of the canvas, so the panel belongs in the middle of the screen.
+        center: true,
         extraClass: "ts-fdl-overlay",
         closeTitle: t.close,
         onClose: () => {

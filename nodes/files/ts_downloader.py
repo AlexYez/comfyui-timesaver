@@ -109,6 +109,10 @@ def _redact_proxy_url(proxy_url: str) -> str:
 # check and be accepted as a model. The lock serialises them instead — the
 # second writer then finds the finished file and skips it. Locking the path
 # rather than renaming the partial keeps resume-after-restart working.
+# Mirrors folder_paths.map_legacy for ComfyUI builds that predate that helper.
+# The live map always wins when it exists — see _known_model_folder_root.
+_LEGACY_MODEL_FOLDER_ALIASES = {"unet": "diffusion_models", "clip": "text_encoders"}
+
 _DOWNLOAD_LOCKS: dict[str, threading.Lock] = {}
 _DOWNLOAD_LOCKS_GUARD = threading.Lock()
 
@@ -375,23 +379,58 @@ class TS_DownloadFilesNode(IO.ComfyNode):
                 return url + ("&dl=1" if "?" in url else "?dl=1")
         return url
 
-    @staticmethod
-    def _known_model_folder_root(folder_name: str) -> str | None:
-        """Absolute root registered in ComfyUI for a model-folder name
-        ("checkpoints", "loras", "vae", "diffusion_models", ...) — honouring
-        extra_model_paths.yaml. None when the name is not a registered folder.
+    @classmethod
+    def _known_model_folder_root(cls, folder_name: str) -> str | None:
+        """The directory ComfyUI actually uses for a model-folder name.
+
+        Two traps live here, and each one sent real downloads to the wrong
+        place:
+
+        * ``clip`` and ``unet`` are not registered names at all. ComfyUI keeps
+          them as legacy aliases of ``text_encoders`` and ``diffusion_models``
+          (``folder_paths.map_legacy``), so a plain key lookup finds nothing
+          and the target then leaks into ComfyUI's root as a stray ``clip/``.
+        * A registered name can carry SEVERAL directories, and the legacy one
+          is listed FIRST — ``diffusion_models`` is
+          ``[models/unet, models/diffusion_models]``. Taking ``paths[0]`` files
+          every new download under ``unet``.
+
+        So: resolve the alias through ComfyUI's own map, then pick the
+        directory that is really named after the folder, preferring the one
+        under the models dir. When nothing matches by name the first
+        registered path wins — that is the extra_model_paths.yaml case, where
+        the root is deliberately somewhere else entirely.
+
+        Returns None when the name is not a model folder at all.
         """
         if not folder_paths:
             return None
         try:
+            wanted = str(folder_name).strip().lower()
+            if not wanted:
+                return None
+            # Prefer ComfyUI's own table: it is the one that stays correct as
+            # more legacy names are retired upstream.
+            mapper = getattr(folder_paths, "map_legacy", None)
+            if callable(mapper):
+                wanted = str(mapper(wanted)).strip().lower()
+            else:
+                wanted = _LEGACY_MODEL_FOLDER_ALIASES.get(wanted, wanted)
+
             registered = getattr(folder_paths, "folder_names_and_paths", {}) or {}
-            wanted = folder_name.lower()
-            for name in registered.keys():
-                if str(name).lower() != wanted:
-                    continue
-                paths = folder_paths.get_folder_paths(name)
-                if paths:
-                    return str(paths[0])
+            name = next((n for n in registered if str(n).strip().lower() == wanted), None)
+            if name is None:
+                return None
+            paths = [str(p) for p in (folder_paths.get_folder_paths(name) or []) if p]
+            if not paths:
+                return None
+
+            models_dir = getattr(folder_paths, "models_dir", None)
+            named = [p for p in paths if os.path.basename(os.path.normpath(p)).lower() == wanted]
+            under_models = [p for p in named if cls._is_within(models_dir, p)]
+            for group in (under_models, named, paths):
+                if group:
+                    return str(group[0])
         except Exception as exc:
             logger.debug(f"{LOG_PREFIX} Known-folder lookup failed for '{folder_name}': {exc}")
         return None
@@ -505,28 +544,48 @@ class TS_DownloadFilesNode(IO.ComfyNode):
                 )
             return resolved
 
-        normalized = expanded.replace("\\", "/").lstrip("/")
-        while normalized.startswith("./"):
-            normalized = normalized[2:].lstrip("/")
-        if not normalized:
+        # One list of segments, whatever the separators were. Empty and "."
+        # parts drop out; ".." is deliberately KEPT so the containment checks
+        # below can refuse it instead of it quietly cancelling a real folder.
+        segments = [s for s in expanded.replace("\\", "/").split("/") if s and s != "."]
+        if not segments:
             return None
 
-        first, _, rest = normalized.partition("/")
-        first_lower = first.lower()
+        # A leading "models" is a prefix people add out of habit, and the same
+        # destination gets written every possible way: "clip/krea2",
+        # "models/clip/krea2", "\\models\\clip\\krea2", "/clip\\krea2". Strip
+        # the prefix so all of them name ONE folder, resolved by ComfyUI.
+        model_segments = segments[1:] if segments[0].lower() == "models" else segments
 
-        # models[/...] -> the real ComfyUI models directory, never base_path.
-        if first_lower == "models":
+        # A model-folder name — registered, or one of ComfyUI's legacy aliases
+        # — resolves into the directory ComfyUI itself reads, honouring
+        # extra_model_paths.yaml, instead of becoming a stray sibling folder.
+        if model_segments:
+            known_root = cls._known_model_folder_root(model_segments[0])
+            if known_root:
+                resolved = os.path.abspath(os.path.join(known_root, *model_segments[1:]))
+                # A relative target names a folder INSIDE the root it picked;
+                # anything climbing back out is refused, not clamped, so the
+                # line gets reported rather than silently retargeted.
+                if not cls._is_within(known_root, resolved):
+                    logger.warning(
+                        f"{LOG_PREFIX} Target '{target_path}' escapes the "
+                        f"'{model_segments[0]}' model folder. Skipping this line."
+                    )
+                    return None
+                logger.info(f"{LOG_PREFIX} Target '{target_path}' -> '{resolved}' (ComfyUI model folder)")
+                return resolved
+
+        # "models/<something ComfyUI does not register>" still belongs under
+        # the real models directory, never base_path.
+        if segments[0].lower() == "models":
             models_root = None
             if folder_paths and getattr(folder_paths, "models_dir", None):
                 models_root = folder_paths.models_dir
             if not models_root and folder_paths and getattr(folder_paths, "base_path", None):
                 models_root = os.path.join(folder_paths.base_path, "models")
             if models_root:
-                resolved = os.path.abspath(os.path.join(models_root, rest)) if rest else os.path.abspath(models_root)
-                # "models/../../elsewhere" normalises straight out of the models
-                # directory. A relative target names a folder INSIDE the root it
-                # picked — anything that climbs back out is refused, not clamped,
-                # so the line is reported instead of silently retargeted.
+                resolved = os.path.abspath(os.path.join(models_root, *model_segments))
                 if not cls._is_within(models_root, resolved):
                     logger.warning(
                         f"{LOG_PREFIX} Target '{target_path}' escapes the models directory. Skipping this line."
@@ -535,23 +594,8 @@ class TS_DownloadFilesNode(IO.ComfyNode):
                 logger.info(f"{LOG_PREFIX} Target '{target_path}' -> '{resolved}'")
                 return resolved
 
-        # A registered model-folder name used directly ("checkpoints",
-        # "loras/flux", "vae", ...) resolves into that model folder —
-        # honouring extra_model_paths.yaml — instead of leaking into
-        # ComfyUI's root as a stray sibling directory.
-        known_root = cls._known_model_folder_root(first_lower)
-        if known_root:
-            resolved = os.path.abspath(os.path.join(known_root, rest)) if rest else os.path.abspath(known_root)
-            if not cls._is_within(known_root, resolved):
-                logger.warning(
-                    f"{LOG_PREFIX} Target '{target_path}' escapes the '{first_lower}' model folder. Skipping this line."
-                )
-                return None
-            logger.info(f"{LOG_PREFIX} Target '{target_path}' -> '{resolved}' (registered model folder)")
-            return resolved
-
         if folder_paths and getattr(folder_paths, "base_path", None):
-            resolved = os.path.abspath(os.path.join(folder_paths.base_path, normalized))
+            resolved = os.path.abspath(os.path.join(folder_paths.base_path, *segments))
             if not cls._is_within(folder_paths.base_path, resolved):
                 logger.warning(
                     f"{LOG_PREFIX} Target '{target_path}' escapes the ComfyUI directory. Skipping this line."
@@ -560,7 +604,7 @@ class TS_DownloadFilesNode(IO.ComfyNode):
             logger.info(f"{LOG_PREFIX} Target '{target_path}' -> '{resolved}'")
             return resolved
 
-        return os.path.abspath(normalized)
+        return os.path.abspath(os.path.join(*segments))
 
     @classmethod
     def _parse_file_list(cls, file_list_text):

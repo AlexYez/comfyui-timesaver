@@ -50,6 +50,10 @@ const CLOSE_ICON_SVG =
  *   real text field is focused.
  * @param {boolean} [options.closeOnBackdrop=false] Close when the dimmed area
  *   outside the content is clicked. Leave false for editors that could lose work.
+ * @param {boolean} [options.center=false] Centre the content in the viewport
+ *   instead of letting it fill the shell. Set it for DIALOGS (reports,
+ *   summaries) whose content sizes itself; leave it off for editors that are
+ *   meant to be full-bleed.
  * @param {string} [options.extraClass] Extra class on the overlay root.
  * @param {boolean} [options.showClose=true] Render the unified top-right × close
  *   button. Turn off only if the editor supplies its own equivalent control.
@@ -60,13 +64,14 @@ const CLOSE_ICON_SVG =
 export function openFullscreenOverlay(content, options = {}) {
     const {
         onClose, onOpen, onKey, closeOnBackdrop = false, extraClass = "",
-        showClose = true, closeTitle = "Close (Esc)", label = "",
+        showClose = true, closeTitle = "Close (Esc)", label = "", center = false,
     } = options;
     const doc = content?.ownerDocument || document;
     let open = true;
 
     const modal = doc.createElement("div");
-    modal.className = `${TS_UI_CLASS} ts-ui-modal${extraClass ? ` ${extraClass}` : ""}`;
+    modal.className = `${TS_UI_CLASS} ts-ui-modal${center ? " ts-ui-modal--center" : ""}` +
+        `${extraClass ? ` ${extraClass}` : ""}`;
     // Announce it as what it is. Assistive technology otherwise reads a
     // fullscreen editor as an ordinary <div> stacked over the page, with no
     // signal that the content behind it is inert.
@@ -75,7 +80,20 @@ export function openFullscreenOverlay(content, options = {}) {
     // `label` names the dialog itself. closeTitle is deliberately NOT used for
     // it: that string names the close button, not the window it lives in.
     if (label) modal.setAttribute("aria-label", label);
-    modal.append(content);
+
+    // A centred dialog wants its close control on its OWN corner; the shared
+    // button is position:fixed, so it needs a positioned ancestor that is the
+    // size of the panel. That is all this frame is. It is built per open and
+    // dropped with the modal, so `content` is still only detached on close and
+    // keeps its state for a reopen.
+    const frame = center ? doc.createElement("div") : null;
+    if (frame) {
+        frame.className = "ts-ui-fs-frame";
+        frame.append(content);
+        modal.append(frame);
+    } else {
+        modal.append(content);
+    }
 
     const keyAnchor = doc.createElement("textarea");
     keyAnchor.className = "ts-ui-keyanchor";
@@ -98,7 +116,7 @@ export function openFullscreenOverlay(content, options = {}) {
             event.stopPropagation();
             close();
         });
-        modal.append(closeButton);
+        (frame || modal).append(closeButton);
     }
 
     const parkFocus = () => { try { keyAnchor.focus(); } catch { /* not focusable yet */ } };
