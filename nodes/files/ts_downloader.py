@@ -24,6 +24,10 @@ except ImportError:
 
 from comfy_api.v0_0_2 import IO
 
+# Registers POST /ts_downloader/hf_search at import time: the scan report's
+# "no download link" column calls it to find a URL on HuggingFace.
+from . import _downloader_search  # noqa: F401
+
 logger = logging.getLogger("comfyui_timesaver.ts_downloader")
 LOG_PREFIX = "[TS Downloader]"
 

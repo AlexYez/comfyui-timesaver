@@ -35,6 +35,7 @@
 // (CLAUDE.md §12.5, project_memory/reference_widgets_values_positional.md).
 
 import { app } from "/scripts/app.js";
+import { api } from "/scripts/api.js";
 
 import { TS_UI_CLASS, ensureThemeStyles, pickLocaleStrings } from "../_theme.js";
 import { openFullscreenOverlay } from "../_fullscreen.js";
@@ -100,8 +101,8 @@ const STRINGS = {
             "Model links live in each loader's properties, or in a Markdown note. " +
             "This workflow has neither.",
         noLinkHint:
-            "These are used by the workflow but no URL was found. Add them by hand, " +
-            "or wait for the HuggingFace lookup.",
+            "The workflow uses these but named no URL. Search Hugging Face for them, " +
+            "or add the links by hand.",
         appended: (n) => `Appended ${n} line(s) to file_list.`,
         fixedPaths: (n) => `Corrected the folder on ${n} line(s).`,
         mismatchHint:
@@ -112,6 +113,11 @@ const STRINGS = {
             "Usually a model that was swapped out. Not offered for download.",
         replaced: (n) => `file_list replaced with ${n} line(s).`,
         nothing: "Nothing to add — every model is already in the list.",
+        hfSearch: "Find on Hugging Face",
+        hfSearching: "Searching Hugging Face...",
+        hfNothing: "No repository on Hugging Face contains these files under that exact name.",
+        hfFound: (n) => `Found ${n} of them — adding to the list.`,
+        hfFailed: (m) => `Search failed: ${m}`,
     },
     ru: {
         button: "Взять модели из workflow",
@@ -137,8 +143,8 @@ const STRINGS = {
             "Ссылки на модели лежат в свойствах нод-загрузчиков либо в Markdown-заметке. " +
             "Здесь нет ни того, ни другого.",
         noLinkHint:
-            "Эти модели workflow использует, но ссылки на них не нашлось. Добавьте вручную " +
-            "или дождитесь поиска по HuggingFace.",
+            "Эти модели workflow использует, но ссылок не назвал. Найдите их на Hugging Face " +
+            "или добавьте ссылки вручную.",
         appended: (n) => `В file_list дописано строк: ${n}.`,
         fixedPaths: (n) => `Папка исправлена в строках: ${n}.`,
         mismatchHint:
@@ -149,6 +155,11 @@ const STRINGS = {
             "Обычно это подменённая модель. К скачиванию не предлагается.",
         replaced: (n) => `file_list заменён, строк: ${n}.`,
         nothing: "Добавлять нечего — все модели уже в списке.",
+        hfSearch: "Найти на Hugging Face",
+        hfSearching: "Ищем на Hugging Face...",
+        hfNothing: "Ни в одном репозитории Hugging Face нет файлов с такими именами.",
+        hfFound: (n) => `Найдено: ${n} — добавляем в список.`,
+        hfFailed: (m) => `Поиск не удался: ${m}`,
     },
 };
 
@@ -597,6 +608,7 @@ function ensureStyles() {
 .ts-fdl__dir{font-weight:700;color:var(--ts-accent);font-size:var(--ts-fs-sm)}
 .ts-fdl__name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ts-fdl__src{font-size:var(--ts-fs-sm);color:var(--ts-muted);white-space:nowrap}
+.ts-fdl__action{display:flex;align-items:center;gap:10px;margin:2px 0 8px}
 .ts-fdl__hint{font-size:var(--ts-fs-sm);color:var(--ts-muted)}
 .ts-fdl__foot{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}
 `;
@@ -616,7 +628,7 @@ function sourceLabel(entry, t) {
     return origin;
 }
 
-function buildGroup(title, entries, t, hint) {
+function buildGroup(title, entries, t, hint, action) {
     if (!entries.length) return null;
     const group = document.createElement("div");
     group.className = "ts-fdl__group";
@@ -625,6 +637,8 @@ function buildGroup(title, entries, t, hint) {
     head.className = "ts-fdl__grouphead";
     head.textContent = `${title} — ${entries.length}`;
     group.appendChild(head);
+
+    if (action) group.appendChild(action);
 
     if (hint) {
         const note = document.createElement("div");
@@ -656,6 +670,59 @@ function buildGroup(title, entries, t, hint) {
         group.appendChild(row);
     }
     return group;
+}
+
+/**
+ * "Find on Hugging Face" for the models the graph names but carries no link
+ * for. The backend matches the exact filename inside candidate repos and
+ * builds the download URL itself; this only presents what came back.
+ */
+function buildHfSearchAction(entries, t, onFound) {
+    const wrap = document.createElement("div");
+    wrap.className = "ts-fdl__action";
+
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "ts-ui-btn";
+    button.textContent = t.hfSearch;
+
+    const status = document.createElement("span");
+    status.className = "ts-fdl__hint";
+
+    button.addEventListener("click", async () => {
+        button.disabled = true;
+        status.textContent = t.hfSearching;
+        try {
+            const response = await api.fetchApi("/ts_downloader/hf_search", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ filenames: entries.map((e) => e.name) }),
+            });
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok || payload?.error) throw new Error(payload?.error || `HTTP ${response.status}`);
+
+            const results = payload.results || {};
+            const found = [];
+            for (const entry of entries) {
+                const best = (results[entry.name] || [])[0];
+                if (!best?.url) continue;
+                found.push({ ...entry, url: best.url, hfRepo: best.repo, hfSize: best.size });
+            }
+            if (!found.length) {
+                status.textContent = t.hfNothing;
+                button.disabled = false;
+                return;
+            }
+            status.textContent = t.hfFound(found.length);
+            onFound(found);
+        } catch (error) {
+            status.textContent = t.hfFailed(error?.message || error);
+            button.disabled = false;
+        }
+    });
+
+    wrap.append(button, status);
+    return wrap;
 }
 
 // Only ever one report on screen: a second press while the first is still open
@@ -692,7 +759,18 @@ function showReport(node, widget, buckets, t) {
         buildGroup(t.colAdd, buckets.add, t),
         buildGroup(t.colMismatch, buckets.mismatch, t, t.mismatchHint),
         buildGroup(t.colPresent, buckets.present, t),
-        buildGroup(t.colNoLink, buckets.noLink, t, t.noLinkHint),
+        buildGroup(
+            t.colNoLink, buckets.noLink, t, t.noLinkHint,
+            buckets.noLink.length
+                ? buildHfSearchAction(buckets.noLink, t, (found) => {
+                    const current = String(widget.value || "");
+                    const prefix = current && !current.endsWith("\n") ? "\n" : "";
+                    writeFileList(node, widget, current + prefix + found.map(toLine).join("\n") + "\n");
+                    toast("success", t.appended(found.length));
+                    openReport?.close();
+                })
+                : null,
+        ),
         buildGroup(t.colOrphan, buckets.orphan, t, t.orphanHint),
     ].filter(Boolean);
     if (!groups.length) {
