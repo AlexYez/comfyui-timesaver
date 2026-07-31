@@ -160,7 +160,41 @@ export function parseCaptionObject(text) {
         }
         start = raw.indexOf("{", start + 1);
     }
-    return null;
+
+    // Still nothing: the reply ends before the object closes. A small model
+    // stops one or two brackets short often enough that throwing the whole
+    // caption away is the wrong answer — everything up to that point is valid,
+    // so close what is still open and keep it. Only closers are ever appended;
+    // no content is invented.
+    const first = raw.indexOf("{");
+    if (first === -1) return null;
+    const stack = [];
+    let inString = false;
+    let escaped = false;
+    let lastComplete = -1;
+    for (let i = first; i < raw.length; i += 1) {
+        const ch = raw[i];
+        if (inString) {
+            if (escaped) escaped = false;
+            else if (ch === "\\") escaped = true;
+            else if (ch === '"') inString = false;
+            continue;
+        }
+        if (ch === '"') inString = true;
+        else if (ch === "{" || ch === "[") stack.push(ch === "{" ? "}" : "]");
+        else if (ch === "}" || ch === "]") stack.pop();
+        // Remember the last position where a value ended cleanly, so a half
+        // written key/value at the tail can be cut off.
+        if (!inString && (ch === "}" || ch === "]" || ch === '"')) lastComplete = i;
+    }
+    if (!stack.length || inString) return null;
+    const head = raw.slice(first, lastComplete + 1);
+    const closed = head + stack.reverse().join("");
+    try {
+        return JSON.parse(closed);
+    } catch {
+        return null;
+    }
 }
 
 // [y_min,x_min,y_max,x_max] 0-1000 -> editor rect (fractions 0..1). The inverse
