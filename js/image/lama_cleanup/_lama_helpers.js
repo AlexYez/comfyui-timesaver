@@ -71,6 +71,10 @@ const MEDIA_UPLOAD_ACCEPT = ["image/*", ".png", ".jpg", ".jpeg", ".webp", ".bmp"
 const STRINGS = {
     en: {
         clickToBegin: "Click “Load Image” to begin.",
+        // The editor has always accepted a dropped file and a pasted image, but
+        // said so nowhere — the empty canvas only ever named the button.
+        dropTitle: "Drop an image here",
+        dropHint: "or paste with Ctrl+V, or click “Load Image”",
         processing: "Processing...",
         load: "Load Image",
         save: "Save Image",
@@ -120,6 +124,8 @@ const STRINGS = {
     },
     ru: {
         clickToBegin: "Нажмите «Загрузить изображение», чтобы начать.",
+        dropTitle: "Перетащите изображение сюда",
+        dropHint: "или вставьте через Ctrl+V, или нажмите «Загрузить изображение»",
         processing: "Обработка...",
         load: "Загрузить изображение",
         save: "Сохранить изображение",
@@ -200,9 +206,17 @@ function ensureStyles() {
 /* ---- Editor canvas + floating chrome ---- */
 .ts-lama__canvas{position:absolute;inset:0;display:block;width:100%;height:100%;cursor:default;touch-action:none}
 .ts-lama__canvas.has-image{cursor:none}
-.ts-lama__empty{position:absolute;left:8px;right:8px;top:56px;bottom:44px;display:flex;align-items:center;
-  justify-content:center;text-align:center;padding:16px;color:var(--ts-muted);font-size:var(--ts-fs);
-  pointer-events:none;background:var(--ts-scrim);border-radius:var(--ts-radius)}
+.ts-lama__empty{position:absolute;left:8px;right:8px;top:56px;bottom:44px;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:10px;text-align:center;padding:16px;color:var(--ts-muted);
+  font-size:var(--ts-fs);pointer-events:none;background:var(--ts-scrim);border-radius:var(--ts-radius)}
+/* Inset dashed frame: the empty canvas is a drop target, and it should look
+   like one instead of only naming the toolbar button. */
+.ts-lama__empty::before{content:"";position:absolute;inset:14px;border:2px dashed var(--ts-border);
+  border-radius:var(--ts-radius-lg);opacity:.55;pointer-events:none}
+.ts-lama__empty-icon{width:44px;height:44px;opacity:.7}
+.ts-lama__empty-icon svg{width:100%;height:100%;fill:currentColor}
+.ts-lama__empty-title{font-size:var(--ts-fs-lg);font-weight:600;color:var(--ts-text)}
+.ts-lama__empty-hint{font-size:var(--ts-fs);color:var(--ts-muted)}
 .ts-lama__overlay{z-index:22}
 /* right inset leaves the top-right corner free for the shared fullscreen close
    button (.ts-ui-fs-close). */
@@ -359,6 +373,10 @@ function buildAnnotatedPath(uploadPayload) {
     if (!filename) return "";
     return subfolder ? `${subfolder}/${filename} [${uploadType}]` : `${filename} [${uploadType}]`;
 }
+function dropIconSvg() {
+    // Material Design "add_photo_alternate": reads as "put an image here".
+    return `<svg viewBox="0 0 24 24"><path d="M21 15V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h10v-2H5l3.5-4.5 2.5 3.01L14.5 12l3.15 4.2L21 15zm2 2h-3v3h-2v-3h-3v-2h3v-3h2v3h3v2z"/></svg>`;
+}
 function gearIconSvg() {
     // Material Design "settings" icon (filled). Single clean path.
     return `<svg viewBox="0 0 24 24"><path d="M19.43 12.98c.04-.32.07-.64.07-.98 0-.34-.03-.66-.07-.98l2.11-1.65c.19-.15.24-.42.12-.64l-2-3.46c-.12-.22-.39-.3-.61-.22l-2.49 1c-.52-.4-1.08-.73-1.69-.98l-.38-2.65c-.04-.24-.24-.42-.49-.42h-4c-.25 0-.45.18-.49.42l-.38 2.65c-.61.25-1.17.59-1.69.98l-2.49-1c-.23-.09-.49 0-.61.22l-2 3.46c-.13.22-.07.49.12.64l2.11 1.65c-.04.32-.07.65-.07.98 0 .33.03.66.07.98l-2.11 1.65c-.19.15-.24.42-.12.64l2 3.46c.12.22.39.3.61.22l2.49-1c.52.4 1.08.73 1.69.98l.38 2.65c.04.24.24.42.49.42h4c.25 0 .45-.18.49-.42l.38-2.65c.61-.25 1.17-.59 1.69-.98l2.49 1c.23.09.49 0 .61-.22l2-3.46c.12-.22.07-.49-.12-.64l-2.11-1.65zM12 15.5c-1.93 0-3.5-1.57-3.5-3.5s1.57-3.5 3.5-3.5 3.5 1.57 3.5 3.5-1.57 3.5-3.5 3.5z"/></svg>`;
@@ -500,9 +518,20 @@ export function setupLamaCleanup(node) {
     const canvas = document.createElement("canvas");
     canvas.className = "ts-lama__canvas";
 
+    // An invitation, not a caption: the three ways in are all stated, and the
+    // dashed frame reads as a target for a dragged file.
     const empty = document.createElement("div");
     empty.className = "ts-lama__empty";
-    empty.textContent = L.clickToBegin;
+    const emptyIcon = document.createElement("div");
+    emptyIcon.className = "ts-lama__empty-icon";
+    emptyIcon.innerHTML = dropIconSvg();
+    const emptyTitle = document.createElement("div");
+    emptyTitle.className = "ts-lama__empty-title";
+    emptyTitle.textContent = L.dropTitle;
+    const emptyHint = document.createElement("div");
+    emptyHint.className = "ts-lama__empty-hint";
+    emptyHint.textContent = L.dropHint;
+    empty.append(emptyIcon, emptyTitle, emptyHint);
 
     const overlay = document.createElement("div");
     overlay.className = "ts-ui-scrim ts-lama__overlay";
@@ -1504,6 +1533,10 @@ export function setupLamaCleanup(node) {
                 // The container was detached (zero-size rects) while closed, so
                 // every cached layout value is stale.
                 imageCacheValid = false;
+                // The status bar travels into the overlay with the container,
+                // carrying the shell's advice to "open the interface" — which
+                // the user has just done. Restate it for where they now are.
+                if (!state.image) setStatus(L.dropHint, "info");
                 updateMeta();
                 requestRedraw();
             },

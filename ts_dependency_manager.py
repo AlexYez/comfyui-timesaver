@@ -74,14 +74,29 @@ class TSDependencyManager:
         if getattr(original, "_ts_runtime_guard_wrapped", False):
             return
 
-        @functools.wraps(original)
-        def wrapped(inner_cls, *args, **kwargs):
-            try:
-                return original(inner_cls, *args, **kwargs)
-            except Exception as exc:
-                message = cls.build_error_message(node_name, method_name, exc)
-                logger.exception(message)
-                raise RuntimeError(message) from exc
+        if inspect.iscoroutinefunction(original):
+            # An async node must stay async through the guard. ComfyUI decides
+            # whether to await a node by calling inspect.iscoroutinefunction on
+            # the bound function (execution.py), and that check does NOT follow
+            # functools.wraps' __wrapped__ link — a sync wrapper would hand the
+            # engine an un-awaited coroutine object as the node's output.
+            @functools.wraps(original)
+            async def wrapped(inner_cls, *args, **kwargs):
+                try:
+                    return await original(inner_cls, *args, **kwargs)
+                except Exception as exc:
+                    message = cls.build_error_message(node_name, method_name, exc)
+                    logger.exception(message)
+                    raise RuntimeError(message) from exc
+        else:
+            @functools.wraps(original)
+            def wrapped(inner_cls, *args, **kwargs):
+                try:
+                    return original(inner_cls, *args, **kwargs)
+                except Exception as exc:
+                    message = cls.build_error_message(node_name, method_name, exc)
+                    logger.exception(message)
+                    raise RuntimeError(message) from exc
 
         wrapped._ts_runtime_guard_wrapped = True
         setattr(node_cls, method_name, classmethod(wrapped))

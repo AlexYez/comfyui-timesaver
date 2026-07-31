@@ -1,4 +1,5 @@
 # Standard library imports
+import asyncio
 import hashlib
 import json
 import logging
@@ -30,6 +31,11 @@ try:
     from comfy.utils import ProgressBar
 except ImportError:
     ProgressBar = None
+
+try:
+    import comfy.model_management as model_management
+except ImportError:
+    model_management = None
 
 try:
     import folder_paths
@@ -384,6 +390,19 @@ class TS_DownloadFilesNode(IO.ComfyNode):
         except Exception as exc:
             logger.debug(f"{LOG_PREFIX} Known-folder lookup failed for '{folder_name}': {exc}")
         return None
+
+    @staticmethod
+    def _raise_if_interrupted() -> None:
+        """Abort the run when the user pressed Cancel.
+
+        ComfyUI raises InterruptProcessingException, which derives from
+        BaseException — so it travels straight through the broad
+        ``except Exception`` handlers around the download without being
+        mistaken for a failed file.
+        """
+        if model_management is None:
+            return
+        model_management.throw_exception_if_processing_interrupted()
 
     @staticmethod
     def _is_within(root, candidate) -> bool:
@@ -1092,6 +1111,12 @@ class TS_DownloadFilesNode(IO.ComfyNode):
                 if comfy_pbar and resume_byte_pos > 0:
                     comfy_pbar.update(resume_byte_pos)
                 for chunk in response_get.iter_content(chunk_size=chunk_size_bytes):
+                    # Cancel used to do nothing here: a multi-gigabyte download
+                    # ran to completion no matter what the user pressed, because
+                    # nothing in this loop ever asked whether the run was still
+                    # wanted. The partial file and its meta stay on disk, so the
+                    # next run resumes instead of starting over.
+                    cls._raise_if_interrupted()
                     if not chunk:
                         continue
                     f.write(chunk)
@@ -1155,7 +1180,92 @@ class TS_DownloadFilesNode(IO.ComfyNode):
                 download_lock.release()
 
     @classmethod
-    def execute(
+    def fingerprint_inputs(
+        cls,
+        file_list: str = "",
+        skip_existing: bool = True,
+        verify_size: bool = True,
+        chunk_size_kb: int = 4096,
+        hf_token: str = "",
+        hf_domain: str = "huggingface.co, hf-mirror.com",
+        proxy_url: str = "",
+        modelscope_token: str = "",
+        unzip_after_download: bool = False,
+        enable: bool = True,
+        integrity_mode: str = "hf_sha256_auto",
+    ) -> str:
+        """Re-run when the files on disk no longer match the list.
+
+        The node's job is a statement about the filesystem, but its inputs only
+        describe the wanted state. With the inputs alone in the cache key,
+        deleting a model and re-queueing the same graph did nothing at all —
+        ComfyUI served the cached "done" and never looked. Hashing what is
+        actually present alongside the list fixes that without paying for a
+        network round-trip on every run: an untouched models folder still hits
+        the cache.
+        """
+        if not enable:
+            return "disabled"
+        digest = hashlib.blake2b(digest_size=16)
+        digest.update(str(file_list or "").encode("utf-8", "replace"))
+        digest.update(f"|{skip_existing}|{verify_size}|{integrity_mode}".encode("utf-8"))
+        for item in cls._parse_file_list(file_list or ""):
+            target = item.get("target_dir") or ""
+            name = os.path.basename(urlparse(item.get("url") or "").path)
+            state = "missing"
+            try:
+                candidate = os.path.join(target, name)
+                if name and os.path.isfile(candidate):
+                    state = str(os.path.getsize(candidate))
+                elif os.path.isdir(target):
+                    # The saved name can differ from the URL's (Content-Disposition),
+                    # so fall back to the folder's own fingerprint.
+                    state = str(len(os.listdir(target)))
+            except OSError:
+                state = "unreadable"
+            digest.update(f"|{item.get('url')}|{target}|{state}".encode("utf-8", "replace"))
+        return digest.hexdigest()
+
+    @classmethod
+    async def execute(
+        cls,
+        file_list: str,
+        skip_existing: bool = True,
+        verify_size: bool = True,
+        chunk_size_kb: int = 4096,
+        hf_token: str = "",
+        hf_domain: str = "huggingface.co, hf-mirror.com",
+        proxy_url: str = "",
+        modelscope_token: str = "",
+        unzip_after_download: bool = False,
+        enable: bool = True,
+        integrity_mode: str = "hf_sha256_auto",
+    ) -> IO.NodeOutput:
+        """Async so a long download does not freeze the rest of the run.
+
+        Downloading is blocking, socket-bound work that can last for hours. Held
+        directly, it stalled the executor for its whole duration; handed to a
+        worker thread and awaited, ComfyUI keeps serving progress and can run
+        the graph's independent branches meanwhile. The download code itself
+        stays synchronous — the thread is the only thing that changed.
+        """
+        return await asyncio.to_thread(
+            cls._execute_blocking,
+            file_list,
+            skip_existing,
+            verify_size,
+            chunk_size_kb,
+            hf_token,
+            hf_domain,
+            proxy_url,
+            modelscope_token,
+            unzip_after_download,
+            enable,
+            integrity_mode,
+        )
+
+    @classmethod
+    def _execute_blocking(
         cls,
         file_list: str,
         skip_existing: bool = True,
@@ -1203,6 +1313,7 @@ class TS_DownloadFilesNode(IO.ComfyNode):
         failed = 0
         with cls._create_session_with_retries(proxy_url) as session:
             for file_info in files_to_download:
+                cls._raise_if_interrupted()
                 if cls._download_single_file(session, file_info['url'], file_info['target_dir'], skip_existing, verify_size, chunk_size_bytes, active_mirror, hf_token, modelscope_token, unzip_after_download, integrity_mode_value):
                     success += 1
                 else:
