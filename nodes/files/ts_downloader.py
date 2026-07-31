@@ -381,56 +381,70 @@ class TS_DownloadFilesNode(IO.ComfyNode):
 
     @classmethod
     def _known_model_folder_root(cls, folder_name: str) -> str | None:
-        """The directory ComfyUI actually uses for a model-folder name.
+        """The directory ComfyUI actually reads for a written folder name.
 
-        Two traps live here, and each one sent real downloads to the wrong
-        place:
+        ComfyUI reads SEVERAL directories per category and keeps both names
+        alive: a text encoder is looked for in ``models/text_encoders`` AND
+        ``models/clip``, a UNET in ``models/diffusion_models`` AND
+        ``models/unet``. Which one a model sits in is the user's call, so the
+        name they wrote picks the directory — write ``clip`` and the file goes
+        to ``models/clip``, write ``text_encoders`` and it goes there instead.
 
-        * ``clip`` and ``unet`` are not registered names at all. ComfyUI keeps
-          them as legacy aliases of ``text_encoders`` and ``diffusion_models``
-          (``folder_paths.map_legacy``), so a plain key lookup finds nothing
-          and the target then leaks into ComfyUI's root as a stray ``clip/``.
-        * A registered name can carry SEVERAL directories, and the legacy one
-          is listed FIRST — ``diffusion_models`` is
-          ``[models/unet, models/diffusion_models]``. Taking ``paths[0]`` files
-          every new download under ``unet``.
+        What this must never do is what it used to: ``clip`` and ``unet`` are
+        not registered KEYS (ComfyUI keeps them in ``folder_paths.map_legacy``),
+        so a plain key lookup found nothing and the target leaked into
+        ComfyUI's root as a stray ``clip/`` folder outside models/ entirely.
+        The alias is resolved only to find the category; the directory is then
+        chosen by the written name.
 
-        So: resolve the alias through ComfyUI's own map, then pick the
-        directory that is really named after the folder, preferring the one
-        under the models dir. When nothing matches by name the first
-        registered path wins — that is the extra_model_paths.yaml case, where
-        the root is deliberately somewhere else entirely.
+        Order: the directory named exactly as written, then the one named
+        after the category, then the first registered path — that last one is
+        the extra_model_paths.yaml case, where the root is deliberately called
+        something else. A name that is not a key at all is still looked for
+        among every category's directories, which is how secondary names like
+        ``t2i_adapter`` resolve.
 
-        Returns None when the name is not a model folder at all.
+        Returns None when the name is not a model directory anywhere.
         """
         if not folder_paths:
             return None
         try:
-            wanted = str(folder_name).strip().lower()
-            if not wanted:
+            written = str(folder_name).strip().lower()
+            if not written:
                 return None
-            # Prefer ComfyUI's own table: it is the one that stays correct as
-            # more legacy names are retired upstream.
+            # Prefer ComfyUI's own table: it stays correct as more legacy
+            # names are retired upstream.
             mapper = getattr(folder_paths, "map_legacy", None)
             if callable(mapper):
-                wanted = str(mapper(wanted)).strip().lower()
+                category = str(mapper(written)).strip().lower()
             else:
-                wanted = _LEGACY_MODEL_FOLDER_ALIASES.get(wanted, wanted)
+                category = _LEGACY_MODEL_FOLDER_ALIASES.get(written, written)
 
             registered = getattr(folder_paths, "folder_names_and_paths", {}) or {}
-            name = next((n for n in registered if str(n).strip().lower() == wanted), None)
-            if name is None:
-                return None
-            paths = [str(p) for p in (folder_paths.get_folder_paths(name) or []) if p]
-            if not paths:
-                return None
 
-            models_dir = getattr(folder_paths, "models_dir", None)
-            named = [p for p in paths if os.path.basename(os.path.normpath(p)).lower() == wanted]
-            under_models = [p for p in named if cls._is_within(models_dir, p)]
-            for group in (under_models, named, paths):
-                if group:
-                    return str(group[0])
+            def _paths_for(key) -> list[str]:
+                return [str(p) for p in (folder_paths.get_folder_paths(key) or []) if p]
+
+            def _named(paths: list[str], target: str) -> list[str]:
+                return [p for p in paths if os.path.basename(os.path.normpath(p)).lower() == target]
+
+            key = next((n for n in registered if str(n).strip().lower() == category), None)
+            if key is not None:
+                paths = _paths_for(key)
+                if paths:
+                    # What the user wrote wins; the category name is the
+                    # fallback; paths[0] covers a root named something else.
+                    for group in (_named(paths, written), _named(paths, category), paths):
+                        if group:
+                            return str(group[0])
+
+            # Not a category of its own — but ComfyUI may still read a
+            # directory by this name under another one ("t2i_adapter" lives in
+            # the controlnet list).
+            for other in registered:
+                hit = _named(_paths_for(other), written)
+                if hit:
+                    return str(hit[0])
         except Exception as exc:
             logger.debug(f"{LOG_PREFIX} Known-folder lookup failed for '{folder_name}': {exc}")
         return None
