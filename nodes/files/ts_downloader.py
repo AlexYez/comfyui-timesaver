@@ -1072,7 +1072,7 @@ class TS_DownloadFilesNode(IO.ComfyNode):
                                 "sha256": hf_expected_sha256 if use_hf_sha256 else None,
                                 "verified_at": int(time.time()),
                             })
-                            logger.info(f"{LOG_PREFIX} Saved: {local_file_path}")
+                            logger.info(f"{LOG_PREFIX} Saved: {local_file_path} (completed from a resumed partial)")
                             if unzip_after_download and local_file_path.lower().endswith('.zip'):
                                 cls._extract_zip(local_file_path, target_dir)
                             return True
@@ -1163,6 +1163,14 @@ class TS_DownloadFilesNode(IO.ComfyNode):
 
             downloaded_since_update = 0
             ui_update_threshold = 1 * 1024 * 1024
+            # Hash as the bytes go past. The file was being read back in full
+            # afterwards purely to hash it — a second complete pass over a
+            # multi-gigabyte model, minutes of disk time AFTER the progress bar
+            # already said 100%. Only valid from byte zero: a resumed download
+            # never saw the earlier bytes, so that case still reads the file.
+            live_hash = hashlib.sha256() if (use_hf_sha256 and resume_byte_pos == 0) else None
+            transfer_started = time.time()
+            transferred = 0
 
             with open(temp_file_path, file_mode) as f, tqdm(
                 total=total_size,
@@ -1182,6 +1190,9 @@ class TS_DownloadFilesNode(IO.ComfyNode):
                     if not chunk:
                         continue
                     f.write(chunk)
+                    transferred += len(chunk)
+                    if live_hash is not None:
+                        live_hash.update(chunk)
                     chunk_len = len(chunk)
                     pbar.update(chunk_len)
                     if comfy_pbar:
@@ -1204,8 +1215,13 @@ class TS_DownloadFilesNode(IO.ComfyNode):
 
             verified_sha256 = None
             if use_hf_sha256:
-                logger.info(f"{LOG_PREFIX} Verifying HF SHA256...")
-                verified_sha256 = cls._compute_sha256(temp_file_path).lower()
+                if live_hash is not None:
+                    verified_sha256 = live_hash.hexdigest().lower()
+                else:
+                    # Resumed download: the bytes from the earlier run never
+                    # passed through this process, so the file has to be read.
+                    logger.info(f"{LOG_PREFIX} Verifying HF SHA256 (resumed download)...")
+                    verified_sha256 = cls._compute_sha256(temp_file_path).lower()
                 if verified_sha256 != hf_expected_sha256:
                     logger.error(f"{LOG_PREFIX} HF SHA256 mismatch. Removing corrupted file.")
                     cls._remove_file_silent(temp_file_path)
@@ -1223,7 +1239,15 @@ class TS_DownloadFilesNode(IO.ComfyNode):
                 "sha256": verified_sha256,
                 "verified_at": int(time.time()),
             })
-            logger.info(f"{LOG_PREFIX} Saved: {local_file_path}")
+            # State the rate that was actually achieved. "It feels slow" is hard
+            # to act on; "3.4 MB/s from us.aws.cdn.hf.co" says whether the link
+            # or the tool is the limit.
+            elapsed = max(0.001, time.time() - transfer_started)
+            logger.info(
+                f"{LOG_PREFIX} Saved: {local_file_path} "
+                f"({transferred / 1e6:.0f} MB in {elapsed:.0f}s = {transferred / 1e6 / elapsed:.1f} MB/s "
+                f"from {cls._url_host(final_direct_url) or 'source'})"
+            )
             if unzip_after_download and local_file_path.lower().endswith('.zip'):
                 cls._extract_zip(local_file_path, target_dir)
 
