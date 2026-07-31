@@ -21,6 +21,7 @@ import {
     ROUTE_BASE,
     WEIGHTS,
     applyCase,
+    captionToDesign,
     BACKGROUND_PRESETS,
     LAYOUT_BRIEFS,
     LIGHTING_PRESETS,
@@ -164,6 +165,13 @@ function ensureStyles() {
 .ts-ideoe-mprange::-moz-range-thumb{width:13px;height:13px;border:1px solid var(--ts-accent-strong);border-radius:50%;background:var(--ts-accent);cursor:pointer}
 .ts-ideoe-mpval{font-size:var(--ts-fs-sm);color:var(--ts-text);font-variant-numeric:tabular-nums;min-width:24px;text-align:center}
 .ts-ideoe-btnrow{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.ts-ideoe-auto__idea{width:100%;box-sizing:border-box;resize:vertical;min-height:56px;
+  font-family:var(--ts-font);font-size:var(--ts-fs-sm);color:var(--ts-text);
+  background:var(--ts-sunken);border:1px solid var(--ts-border-soft);border-radius:var(--ts-radius-sm);padding:6px 8px}
+.ts-ideoe-auto__idea:focus-visible{outline:2px solid var(--ts-accent);outline-offset:1px}
+.ts-ideoe-auto__status{min-height:14px;font-size:var(--ts-fs-sm);color:var(--ts-muted)}
+.ts-ideoe-auto__status.is-error{color:var(--ts-danger)}
+.ts-ideoe-auto__status.is-ok{color:var(--ts-success)}
 .ts-ideoe-tip{position:fixed;z-index:12000;max-width:300px;background:var(--ts-elevated);color:var(--ts-text);border:1px solid var(--ts-border);border-radius:8px;padding:7px 10px;font-size:var(--ts-fs);line-height:1.45;box-shadow:var(--ts-shadow);pointer-events:none;opacity:0;transition:opacity .12s ease;white-space:normal}
 .ts-ideoe-empty{color:var(--ts-faint);font-size:var(--ts-fs);text-align:center;padding:24px 8px}
 .ts-ideoe-layers{flex:0 0 252px;display:flex;flex-direction:column;background:var(--ts-bg);min-height:0;min-width:0}
@@ -1330,6 +1338,135 @@ export function openIdeogramEditor(node, { design, presets, onSave, graphRef }) 
 
     // Top-level "Design preset" card: save / load / export / import the WHOLE
     // design (work / design_json) — the one unified import/export.
+    // ── Auto layout ─────────────────────────────────────────────────────── //
+    // The generative half of the editor, living in the same window as the
+    // manual half: describe the image (or hand it an existing one) and the
+    // model writes an Ideogram 4 caption. Because every element of that format
+    // carries a bbox on the 0-1000 grid, captionToDesign can lay the result
+    // back onto the artboard as blocks you then drag — the prompt IS the
+    // layout, in both directions.
+    const AUTO_ROUTE = "/ts_super_prompt/enhance";
+    const AUTO_PRESET_IDEA = "Ideogram Prompt Enhance";
+    const AUTO_PRESET_IMAGE = "Json Image Capture";
+    const AUTO_EVENT = "ts_super_prompt.progress";
+    let autoOperationId = null;
+    let autoStatusEl = null;
+
+    function setAutoStatus(text, kind = "") {
+        if (!autoStatusEl) return;
+        autoStatusEl.textContent = text || "";
+        autoStatusEl.classList.toggle("is-error", kind === "error");
+        autoStatusEl.classList.toggle("is-ok", kind === "ok");
+    }
+
+    function onAutoProgress(event) {
+        const detail = event?.detail || {};
+        if (!autoOperationId || detail.operation_id !== autoOperationId) return;
+        if (detail.text) setAutoStatus(String(detail.text));
+    }
+    api.addEventListener(AUTO_EVENT, onAutoProgress);
+
+    /** Annotated path of the current reference, as /enhance expects it. */
+    function referenceAnnotation() {
+        const ref = work.ref;
+        if (!ref?.filename) return "";
+        const sub = String(ref.subfolder || "").replace(/\\/g, "/").replace(/^\/+|\/+$/g, "");
+        const type = String(ref.type || "input");
+        return sub ? `${sub}/${ref.filename} [${type}]` : `${ref.filename} [${type}]`;
+    }
+
+    async function runAuto({ preset, text, image, busyLabel, buttons }) {
+        for (const button of buttons) button.disabled = true;
+        autoOperationId = `ts_ideo_ed_${Math.random().toString(36).slice(2, 10)}`;
+        setAutoStatus(busyLabel);
+        try {
+            const response = await api.fetchApi(AUTO_ROUTE, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    text,
+                    system_preset: preset,
+                    operation_id: autoOperationId,
+                    attached_image: image || "",
+                    // A fresh sample each press; the engine keeps its fixed seed
+                    // when none is sent, which would return the same caption.
+                    seed: Math.floor(Math.random() * 0x7fffffff),
+                }),
+            });
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok || payload?.error) throw new Error(payload?.error || `HTTP ${response.status}`);
+
+            const design = captionToDesign(String(payload?.text || ""), work);
+            if (!design) {
+                setAutoStatus(tr("auto_unparsed"), "error");
+                return;
+            }
+            // The reference is the user's, not the caption's: keep the underlay
+            // (and their explicit "no underlay" choice) across the rebuild.
+            design.ref = work.ref || null;
+            design.ref_cleared = Boolean(work.ref_cleared);
+            design.auto_idea = String(text || work.auto_idea || "");
+            loadDesignIntoEditor(design);
+            setAutoStatus(tr("auto_applied"), "ok");
+        } catch (error) {
+            setAutoStatus(tr("auto_failed", { msg: error?.message || error }), "error");
+        } finally {
+            autoOperationId = null;
+            for (const button of buttons) button.disabled = false;
+        }
+    }
+
+    function autoCard() {
+        const card = el("div", "ts-ideoe-card");
+        card.appendChild(tip(el("h3", null, tr("card_auto")), "tip_auto_card"));
+
+        const idea = el("textarea", "ts-ideoe-auto__idea");
+        idea.placeholder = tr("auto_idea_ph");
+        idea.rows = 3;
+        idea.value = String(work.auto_idea || "");
+        idea.addEventListener("input", () => { work.auto_idea = idea.value; });
+        card.append(el("label", null, tr("auto_idea")), idea);
+
+        const generateBtn = el("button", "ts-ideoe-btn small", tr("auto_generate"));
+        const fromImageBtn = tip(el("button", "ts-ideoe-btn ghost small", tr("auto_from_image")), "tip_auto_from_image");
+        const buttons = [generateBtn, fromImageBtn];
+
+        generateBtn.addEventListener("click", () => {
+            const text = idea.value.trim();
+            if (!text) { setAutoStatus(tr("auto_need_idea"), "error"); return; }
+            runAuto({
+                preset: AUTO_PRESET_IDEA,
+                text,
+                // An attached reference steers the idea; the preset accepts both.
+                image: referenceAnnotation(),
+                busyLabel: tr("auto_running"),
+                buttons,
+            });
+        });
+
+        fromImageBtn.addEventListener("click", () => {
+            const image = referenceAnnotation();
+            if (!image) { setAutoStatus(tr("auto_need_ref"), "error"); return; }
+            // Reconstruction, not authoring: the preset is told to describe what
+            // is there, so sending the idea alongside would only pull it away.
+            runAuto({
+                preset: AUTO_PRESET_IMAGE,
+                text: "",
+                image,
+                busyLabel: tr("auto_reading"),
+                buttons,
+            });
+        });
+
+        const row = el("div", "ts-ideoe-btnrow");
+        row.append(generateBtn, fromImageBtn);
+        card.appendChild(row);
+
+        autoStatusEl = el("div", "ts-ideoe-auto__status");
+        card.appendChild(autoStatusEl);
+        return card;
+    }
+
     function designCard() {
         const card = el("div", "ts-ideoe-card");
         card.appendChild(tip(el("h3", null, tr("card_design")), "tip_design_card"));
@@ -1811,6 +1948,9 @@ export function openIdeogramEditor(node, { design, presets, onSave, graphRef }) 
 
     function renderInspector() {
         inspectorScroll.innerHTML = "";
+        // Auto first: it is how most sessions now start — describe or read an
+        // image, then refine what lands on the artboard.
+        inspectorScroll.appendChild(autoCard());
         inspectorScroll.appendChild(designCard());
         inspectorScroll.appendChild(templateCard());
         inspectorScroll.appendChild(styleCard());
@@ -1996,6 +2136,9 @@ export function openIdeogramEditor(node, { design, presets, onSave, graphRef }) 
         if (inlineCancel) { try { inlineCancel(); } catch { /* ignore */ } inlineCancel = null; }
         document.removeEventListener("paste", onPaste);
         window.removeEventListener("keydown", onKey, true);
+        // The Auto card subscribes to the engine's progress feed for the life of
+        // the editor; leaving it attached keeps this whole closure alive.
+        api.removeEventListener(AUTO_EVENT, onAutoProgress);
         resizeObserver.disconnect();
         clearInterval(jsonTimer);
         clearTimeout(styleJsonTimer);
