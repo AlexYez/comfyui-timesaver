@@ -93,19 +93,19 @@ def _get_json(session: requests.Session, url: str):
     return response.json()
 
 
-def _find_one(session: requests.Session, filename: str) -> list[dict]:
+def _find_one(session: requests.Session, filename: str, trees: dict) -> list[dict]:
     """Repos containing a file named exactly ``filename``, best first."""
     wanted = filename.strip().lower()
     seen_repos: set[str] = set()
     for query in _search_queries(filename):
-        matches = _search_one_query(session, query, wanted, seen_repos)
+        matches = _search_one_query(session, query, wanted, seen_repos, trees)
         if matches:
             return matches
     return []
 
 
 def _search_one_query(
-    session: requests.Session, query: str, wanted: str, seen_repos: set[str]
+    session: requests.Session, query: str, wanted: str, seen_repos: set[str], trees: dict
 ) -> list[dict]:
     encoded = urllib.parse.quote(query)
     try:
@@ -140,6 +140,8 @@ def _search_one_query(
             continue
         if not isinstance(tree, list):
             continue
+        # Kept for the batch: another filename may live in this same repo.
+        trees[repo] = (tree, model)
         for entry in tree:
             if not isinstance(entry, dict) or entry.get("type") != "file":
                 continue
@@ -165,15 +167,79 @@ def _search_one_query(
     return matches[:MAX_MATCHES_PER_FILENAME]
 
 
-def search_filenames(filenames: list[str]) -> dict[str, list[dict]]:
+def _match_in_seen_trees(wanted: str, trees: dict[str, tuple[list, dict]]) -> list[dict]:
+    """Look for a file in repos already listed for the other names in this batch.
+
+    HuggingFace search matches repo NAMES, so a file whose repo is named after a
+    different family is unfindable on its own: qwen3vl_4b_bf16.safetensors lives
+    in Comfy-Org/Mage-Flow and no query for "qwen3vl" will ever reach it. The
+    models of one workflow, though, almost always ship together — and those
+    repos are already downloaded and cached from the other lookups, so this
+    costs nothing.
+    """
+    matches: list[dict] = []
+    for repo, (tree, model) in trees.items():
+        for entry in tree:
+            if not isinstance(entry, dict) or entry.get("type") != "file":
+                continue
+            path = str(entry.get("path") or "")
+            if path.rsplit("/", 1)[-1].lower() != wanted or ".." in path.split("/"):
+                continue
+            matches.append({
+                "repo": repo,
+                "path": path,
+                "size": int(entry.get("size") or 0),
+                "downloads": int(model.get("downloads") or 0),
+                "likes": int(model.get("likes") or 0),
+                "url": f"{HF_HOST}/{repo}/resolve/main/{urllib.parse.quote(path)}",
+            })
+            break
+    matches.sort(key=lambda m: (-m["downloads"], -m["likes"], len(m["path"])))
+    return matches[:MAX_MATCHES_PER_FILENAME]
+
+
+def send_progress(operation_id: str, text: str, percent: float) -> None:
+    """Report search progress to the browser.
+
+    Looking through several repositories takes tens of seconds, and a button
+    that simply sits there looks broken. Events are addressed to an
+    operation_id so a second node's search cannot move this one's bar.
+    """
+    if not operation_id or _PROMPT_SERVER is None:
+        return
+    try:
+        _PROMPT_SERVER.send_sync(
+            "ts_downloader.search_progress",
+            {"operation_id": operation_id, "text": text, "percent": max(0.0, min(100.0, percent))},
+        )
+    except Exception as exc:  # noqa: BLE001 - progress must never break the search
+        LOGGER.debug("%s Could not send progress: %s", LOG_PREFIX, exc)
+
+
+def search_filenames(filenames: list[str], operation_id: str = "") -> dict[str, list[dict]]:
     results: dict[str, list[dict]] = {}
+    trees: dict[str, tuple[list, dict]] = {}
     session = _session()
     try:
+        names = []
         for raw in filenames:
             name = str(raw or "").strip()
             if not name or "/" in name or "\\" in name:
                 continue
-            results[name] = _find_one(session, name)
+            names.append(name)
+        total = max(1, len(names))
+        for index, name in enumerate(names):
+            # 0-90% for the searches; the sweep below finishes the bar.
+            send_progress(operation_id, f"Searching {name} ({index + 1}/{len(names)})",
+                          index / total * 90.0)
+            results[name] = _find_one(session, name, trees)
+        remaining = [name for name in names if not results[name]]
+        if remaining:
+            send_progress(operation_id, f"Checking {len(trees)} repository(ies) for the rest", 92.0)
+            for name in remaining:
+                results[name] = _match_in_seen_trees(name.lower(), trees)
+        found = sum(1 for hits in results.values() if hits)
+        send_progress(operation_id, f"Found {found} of {len(names)}", 100.0)
     finally:
         session.close()
     return results
@@ -193,7 +259,8 @@ async def hf_search(request: web.Request) -> web.StreamResponse:
     if not filenames:
         return web.json_response({"results": {}})
 
+    operation_id = str(payload.get("operation_id") or "")
     # Network calls in a worker thread: this route is HTTP-triggered and would
     # otherwise stall ComfyUI's event loop for as long as HuggingFace takes.
-    results = await asyncio.to_thread(search_filenames, filenames)
+    results = await asyncio.to_thread(search_filenames, filenames, operation_id)
     return web.json_response({"results": results})

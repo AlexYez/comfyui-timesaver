@@ -698,7 +698,10 @@ function ensureStyles() {
 .ts-fdl__dir{font-weight:700;color:var(--ts-accent);font-size:var(--ts-fs-sm)}
 .ts-fdl__name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ts-fdl__src{font-size:var(--ts-fs-sm);color:var(--ts-muted);white-space:nowrap}
-.ts-fdl__action{display:flex;align-items:center;gap:10px;margin:2px 0 8px}
+.ts-fdl__action{display:flex;align-items:center;gap:10px;margin:2px 0 8px;flex-wrap:wrap}
+.ts-fdl__bar{flex:1 1 120px;min-width:100px;height:3px;border-radius:2px;background:var(--ts-border-soft);overflow:hidden;display:none}
+.ts-fdl__bar.is-active{display:block}
+.ts-fdl__bar div{height:100%;width:0%;background:var(--ts-accent);transition:width .25s ease}
 .ts-fdl__hint{font-size:var(--ts-fs-sm);color:var(--ts-muted)}
 .ts-fdl__foot{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}
 `;
@@ -779,14 +782,42 @@ function buildHfSearchAction(entries, t, onFound) {
     const status = document.createElement("span");
     status.className = "ts-fdl__hint";
 
+    // Looking through several repositories takes tens of seconds. The backend
+    // reports where it is, keyed by an operation id so two nodes searching at
+    // once cannot move each other's bar.
+    const bar = document.createElement("div");
+    bar.className = "ts-fdl__bar";
+    const barFill = document.createElement("div");
+    bar.appendChild(barFill);
+
+    let operationId = null;
+    const onProgress = (event) => {
+        const detail = event?.detail || {};
+        if (!operationId || detail.operation_id !== operationId) return;
+        if (detail.text) status.textContent = String(detail.text);
+        if (typeof detail.percent === "number") {
+            barFill.style.width = `${Math.max(0, Math.min(100, detail.percent))}%`;
+        }
+    };
+    api.addEventListener("ts_downloader.search_progress", onProgress);
+    // Closing the report must take the subscription with it, or every scan
+    // leaves another listener (and this whole closure) alive.
+    wrap._tsTeardown = () => api.removeEventListener("ts_downloader.search_progress", onProgress);
+
     button.addEventListener("click", async () => {
         button.disabled = true;
         status.textContent = t.hfSearching;
+        operationId = `ts_hf_${Math.random().toString(36).slice(2, 10)}`;
+        bar.classList.add("is-active");
+        barFill.style.width = "2%";
         try {
             const response = await api.fetchApi("/ts_downloader/hf_search", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ filenames: entries.map((e) => e.name) }),
+                body: JSON.stringify({
+                    filenames: entries.map((e) => e.name),
+                    operation_id: operationId,
+                }),
             });
             const payload = await response.json().catch(() => ({}));
             if (!response.ok || payload?.error) throw new Error(payload?.error || `HTTP ${response.status}`);
@@ -800,18 +831,23 @@ function buildHfSearchAction(entries, t, onFound) {
             }
             if (!found.length) {
                 status.textContent = t.hfNothing;
+                bar.classList.remove("is-active");
                 button.disabled = false;
+                operationId = null;
                 return;
             }
             status.textContent = t.hfFound(found.length);
             onFound(found);
         } catch (error) {
             status.textContent = t.hfFailed(error?.message || error);
+            bar.classList.remove("is-active");
             button.disabled = false;
+        } finally {
+            operationId = null;
         }
     });
 
-    wrap.append(button, status);
+    wrap.append(button, status, bar);
     return wrap;
 }
 
@@ -883,6 +919,9 @@ function showReport(node, widget, buckets, t) {
         extraClass: "ts-fdl-overlay",
         closeTitle: t.close,
         onClose: () => {
+            for (const el of panel.querySelectorAll(".ts-fdl__action")) {
+                try { el._tsTeardown?.(); } catch { /* already gone */ }
+            }
             if (openReport === overlay) openReport = null;
         },
     });
