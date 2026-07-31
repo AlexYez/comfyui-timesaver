@@ -43,13 +43,40 @@ class TSDependencyManager:
         match = re.search(r"No module named ['\"]([^'\"]+)['\"]", msg)
         return match.group(1) if match else None
 
+    # How to actually install what is missing. An import name is not always the
+    # package name, and several of the pack's optional dependencies come as a
+    # set — telling someone `pip install demucs` alone leaves them stuck on the
+    # next missing import. Extras from pyproject.toml are preferred where they
+    # exist; anything unlisted falls back to its own import name.
+    _INSTALL_HINTS = {
+        "demucs": "pip install comfyui-timesaver[audio-stems]",
+        "geomloss": "pip install comfyui-timesaver[audio-stems]",
+        "pykeops": "pip install comfyui-timesaver[audio-stems]",
+        "bitsandbytes": "pip install comfyui-timesaver[llm-quant]",
+        "silero": "pip install comfyui-timesaver[audio-silero]",
+        "silero_stress": "pip install comfyui-timesaver[audio-silero]",
+        "nvvfx": "pip install nvidia-vfx  (NVIDIA RTX GPUs only)",
+        "cv2": "pip install opencv-python",
+        "PIL": "pip install Pillow",
+        "spandrel": "pip install spandrel",
+        "py360convert": "pip install py360convert",
+        "importlib_resources": "pip install importlib_resources",
+    }
+
+    @classmethod
+    def install_hint(cls, module_name: str) -> str:
+        root = str(module_name or "").split(".", 1)[0]
+        return cls._INSTALL_HINTS.get(root, f"pip install {root}" if root else "")
+
     @classmethod
     def build_error_message(cls, node_name: str, method_name: str, exc: Exception) -> str:
         missing = cls.extract_missing_dependency(exc)
         if missing:
+            hint = cls.install_hint(missing)
+            hint_text = f" Install it with: {hint}." if hint else ""
             return (
                 f"[TS RuntimeGuard] Node '{node_name}' failed in '{method_name}'. "
-                f"Missing dependency: '{missing}'. Original error: {exc}"
+                f"Missing dependency: '{missing}'.{hint_text} Original error: {exc}"
             )
         return (
             f"[TS RuntimeGuard] Node '{node_name}' failed in '{method_name}'. "

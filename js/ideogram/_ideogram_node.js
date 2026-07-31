@@ -126,7 +126,7 @@ function ensureStyles() {
 .ts-ideo-node__auto.is-active{display:flex}
 .ts-ideo-node__auto-text{flex:1 1 55%;min-height:0;resize:none}
 .ts-ideo-node__auto-result{flex:1 1 45%;min-height:0;overflow:auto;font-size:var(--ts-fs-xs);white-space:pre-wrap;word-break:break-word;background:var(--ts-sunken);border:1px solid var(--ts-border-soft);border-radius:var(--ts-radius-sm);padding:4px 6px;color:var(--ts-muted)}
-.ts-ideo-node__auto-status{flex:0 0 auto;min-height:14px;font-size:var(--ts-fs-xs);text-align:center}
+.ts-ideo-node__auto-status{flex:0 0 auto;min-height:14px;font-size:var(--ts-fs-sm);text-align:center}
 .ts-ideo-node__auto-bar{flex:0 0 auto;height:3px;border-radius:2px;background:var(--ts-border-soft);overflow:hidden;display:none}
 .ts-ideo-node__auto-bar.is-active{display:block}
 .ts-ideo-node__auto-bar div{height:100%;width:0%;background:var(--ts-accent);transition:width .25s ease}

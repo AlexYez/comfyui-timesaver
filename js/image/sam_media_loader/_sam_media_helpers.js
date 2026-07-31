@@ -212,7 +212,7 @@ function ensureStyles() {
   text-align:center;padding:10px;font-size:var(--ts-fs-sm);color:var(--tsm-muted);pointer-events:none}
 .ts-sml-shell__placeholder.is-hidden{display:none}
 .ts-sml-shell__row{display:flex;align-items:center;gap:6px;flex:0 0 auto}
-.ts-sml-shell__status{flex:0 0 auto;width:100%;min-width:0;font-size:var(--ts-fs-xs);color:var(--tsm-muted);
+.ts-sml-shell__status{flex:0 0 auto;width:100%;min-width:0;font-size:var(--ts-fs-sm);color:var(--tsm-muted);
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 `;
     document.head.appendChild(style);

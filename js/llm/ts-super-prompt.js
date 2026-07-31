@@ -119,7 +119,7 @@ const STYLE_TEXT = `
 .ts-sp__select:focus{border-color:var(--ts-accent-line)}
 .ts-sp__select option{background:var(--ts-surface);color:var(--ts-text)}
 .ts-sp__status{display:flex;align-items:center;gap:6px;min-height:14px;flex:0 0 auto;
-    font-size:var(--ts-fs-xs);color:var(--ts-muted)}
+    font-size:var(--ts-fs-sm);color:var(--ts-muted)}
 .ts-sp__status-text{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ts-sp__status.is-error .ts-sp__status-text{color:var(--ts-danger)}
 .ts-sp__progress{flex:0 0 70px;height:3px;border-radius:2px;background:var(--ts-border-soft);
@@ -149,6 +149,7 @@ const STRINGS = {
         attachedTitle: (name) => `Attached: ${name} (click × to remove)`,
         hqTitle: "High Quality voice: Whisper turbo (large-v3 turbo). Off: fast base model.",
         recordTitle: "Record from the microphone. Click again while recording to stop and transcribe.",
+        aiLabel: "Enhance",
         aiTitle: "Enhances the text via Huihui-Qwen3.5-2B-abliterated. If an image is attached, it is used as a reference.",
         presetTitle: "System preset for prompt enhancement.",
         placeholder: "Prompt. Use the microphone, attach an image and press AI prompt to enhance.",
@@ -203,6 +204,7 @@ const STRINGS = {
         attachedTitle: (name) => `Прикреплено: ${name} (нажмите ×, чтобы убрать)`,
         hqTitle: "Качество распознавания: вкл — Whisper turbo (large-v3), выкл — быстрая базовая модель.",
         recordTitle: "Запись с микрофона. Нажмите ещё раз во время записи, чтобы остановить и распознать.",
+        aiLabel: "Улучшить",
         aiTitle: "Улучшает текст через Huihui-Qwen3.5-2B-abliterated. Если прикреплена картинка — она используется как референс.",
         presetTitle: "Системный пресет для улучшения промпта.",
         placeholder: "Промпт. Используйте микрофон, прикрепите картинку и нажмите AI prompt для улучшения.",
@@ -441,7 +443,10 @@ function setupSuperPrompt(node) {
     aiBtn.type = "button";
     aiBtn.className = "ts-sp__pill ts-sp__pill--ai";
     aiBtn.title = L.aiTitle;
-    aiBtn.textContent = "AI";
+    // The primary action names itself. "AI" sat between two icon buttons as
+    // an abbreviation nobody can decode without hovering, and it is the one
+    // control in this toolbar that does the node's actual work.
+    aiBtn.textContent = L.aiLabel;
 
     // ---- Preset select (fills remaining toolbar space). ----
     const presetSelect = doc.createElement("select");

@@ -73,8 +73,8 @@ const STRINGS = {
         clickToBegin: "Click “Load Image” to begin.",
         // The editor has always accepted a dropped file and a pasted image, but
         // said so nowhere — the empty canvas only ever named the button.
-        dropTitle: "Drop an image here",
-        dropHint: "or paste with Ctrl+V, or click “Load Image”",
+        startTitle: "Drop an image here",
+        startHint: "or paste with Ctrl+V, or click “Load Image”",
         processing: "Processing...",
         load: "Load Image",
         save: "Save Image",
@@ -124,8 +124,8 @@ const STRINGS = {
     },
     ru: {
         clickToBegin: "Нажмите «Загрузить изображение», чтобы начать.",
-        dropTitle: "Перетащите изображение сюда",
-        dropHint: "или вставьте через Ctrl+V, или нажмите «Загрузить изображение»",
+        startTitle: "Перетащите изображение сюда",
+        startHint: "или вставьте через Ctrl+V, или нажмите «Загрузить изображение»",
         processing: "Обработка...",
         load: "Загрузить изображение",
         save: "Сохранить изображение",
@@ -201,7 +201,7 @@ function ensureStyles() {
 .ts-lama-shell__placeholder{padding:10px;text-align:center;font-size:var(--ts-fs-sm);
   color:var(--ts-muted);pointer-events:none}
 .ts-lama-shell__row{display:flex;align-items:center;gap:6px;flex:0 0 auto}
-.ts-lama-shell__status{flex:0 0 auto;width:100%;min-width:0;font-size:var(--ts-fs-xs);
+.ts-lama-shell__status{flex:0 0 auto;width:100%;min-width:0;font-size:var(--ts-fs-sm);
   color:var(--ts-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:center}
 /* ---- Editor canvas + floating chrome ---- */
 .ts-lama__canvas{position:absolute;inset:0;display:block;width:100%;height:100%;cursor:default;touch-action:none}
@@ -527,10 +527,10 @@ export function setupLamaCleanup(node) {
     emptyIcon.innerHTML = dropIconSvg();
     const emptyTitle = document.createElement("div");
     emptyTitle.className = "ts-lama__empty-title";
-    emptyTitle.textContent = L.dropTitle;
+    emptyTitle.textContent = L.startTitle;
     const emptyHint = document.createElement("div");
     emptyHint.className = "ts-lama__empty-hint";
-    emptyHint.textContent = L.dropHint;
+    emptyHint.textContent = L.startHint;
     empty.append(emptyIcon, emptyTitle, emptyHint);
 
     const overlay = document.createElement("div");
@@ -1536,7 +1536,7 @@ export function setupLamaCleanup(node) {
                 // The status bar travels into the overlay with the container,
                 // carrying the shell's advice to "open the interface" — which
                 // the user has just done. Restate it for where they now are.
-                if (!state.image) setStatus(L.dropHint, "info");
+                if (!state.image) setStatus(L.startHint, "info");
                 updateMeta();
                 requestRedraw();
             },
