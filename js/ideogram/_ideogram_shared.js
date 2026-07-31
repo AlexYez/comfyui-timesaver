@@ -117,6 +117,147 @@ export function fracToBbox(x, y, w, h) {
     return [y0, x0, y1, x1];
 }
 
+// [y_min,x_min,y_max,x_max] 0-1000 -> editor rect (fractions 0..1). The inverse
+// of fracToBbox, and the one place the y-first order is undone: the caption
+// grid is ROW-MAJOR, which is the documented #1 bug risk in this format.
+export function bboxToRect(bbox) {
+    if (!Array.isArray(bbox) || bbox.length !== 4) return null;
+    const nums = bbox.map((v) => Number(v));
+    if (nums.some((v) => !Number.isFinite(v))) return null;
+    const [y0, x0, y1, x1] = nums.map((v) => Math.max(0, Math.min(1000, v)));
+    const left = Math.min(x0, x1) / 1000;
+    const top = Math.min(y0, y1) / 1000;
+    const width = Math.abs(x1 - x0) / 1000;
+    const height = Math.abs(y1 - y0) / 1000;
+    // A degenerate box would be invisible and unselectable on the artboard.
+    return {
+        x: Math.min(left, 0.99),
+        y: Math.min(top, 0.99),
+        w: Math.max(width, 0.01),
+        h: Math.max(height, 0.01),
+    };
+}
+
+// Sensible placement for an element that arrived without a bbox: stack the
+// boxes down the artboard instead of piling them all on the same spot.
+function fallbackRect(index) {
+    const row = index % 6;
+    return { x: 0.08 + (index % 2) * 0.46, y: 0.06 + row * 0.14, w: 0.42, h: 0.12 };
+}
+
+/**
+ * Ideogram 4 caption -> editor design document.
+ *
+ * The inverse of `build_caption` (nodes/ideogram/_ideogram_helpers.py), which
+ * makes a generated or image-derived caption editable: every element carries a
+ * bbox on the 0-1000 grid, so the layout the model described can be laid back
+ * onto the artboard and dragged.
+ *
+ * Fields the caption has no room for (font preset, weight, case, layout id) get
+ * the editor's defaults — they are lettering controls, and the caption only
+ * carries the prose they produced. That prose is preserved verbatim in
+ * `desc_override`, the slot compose_text_desc appends last, so nothing the
+ * model said is lost or silently rewritten.
+ *
+ * @param {string|object} caption Caption JSON (string or parsed object).
+ * @param {object} [base] Design to inherit non-caption settings from
+ *                        (aspect_ratio, megapixels, language, font preset).
+ * @returns {object|null} A design document, or null if the caption is unusable.
+ */
+export function captionToDesign(caption, base = null) {
+    let data = caption;
+    if (typeof data === "string") {
+        try {
+            data = JSON.parse(data);
+        } catch {
+            return null;
+        }
+    }
+    if (!data || typeof data !== "object" || Array.isArray(data)) return null;
+
+    const source = base && typeof base === "object" ? base : makeDefaultDesign();
+    const design = makeDefaultDesign();
+    // Carry over what describes the CANVAS rather than its content: the caption
+    // says nothing about either, and silently resetting them would resize the
+    // user's output behind their back.
+    design.aspect_ratio = source.aspect_ratio || design.aspect_ratio;
+    design.megapixels = source.megapixels ?? design.megapixels;
+    design.language = source.language || design.language;
+    design.style.font_preset_id = source.style?.font_preset_id || "";
+    design.style.preset_id = source.style?.preset_id || "";
+
+    design.high_level_description = String(data.high_level_description || "").trim();
+
+    const style = data.style_description;
+    if (style && typeof style === "object") {
+        design.style.aesthetics = String(style.aesthetics || "").trim();
+        design.style.lighting = String(style.lighting || "").trim();
+        design.style.color_palette = cleanPalette(style.color_palette || [], IMAGE_PALETTE_CAP);
+        // photo XOR art_style decides the medium, exactly as _build_style_description
+        // chose between them on the way out.
+        const photo = String(style.photo || "").trim();
+        if (photo) {
+            design.style.photo = photo;
+            design.style.medium = "photograph";
+        } else {
+            design.style.art_style = String(style.art_style || "").trim();
+            design.style.medium = String(style.medium || "").trim() || design.style.medium;
+        }
+    }
+
+    const comp = data.compositional_deconstruction;
+    if (comp && typeof comp === "object") {
+        design.background = String(comp.background || "").trim();
+        const elements = Array.isArray(comp.elements) ? comp.elements : [];
+        design.blocks = elements
+            .map((element, index) => elementToBlock(element, index, design))
+            .filter(Boolean);
+    }
+
+    const hasContent =
+        design.blocks.length || design.background || design.high_level_description ||
+        design.style.aesthetics || design.style.lighting;
+    return hasContent ? design : null;
+}
+
+function elementToBlock(element, index, design) {
+    if (!element || typeof element !== "object") return null;
+    const rect = bboxToRect(element.bbox) || fallbackRect(index);
+    const palette = cleanPalette(element.color_palette || [], ELEMENT_PALETTE_CAP);
+    const desc = String(element.desc || "").trim();
+
+    if (String(element.type) === "text") {
+        const text = String(element.text ?? "");
+        if (!text.trim()) return null;
+        return {
+            id: makeBlockId(),
+            type: "text",
+            rect,
+            text,
+            font_preset_id: design.style.font_preset_id || "",
+            weight: "Bold",
+            // The text arrives exactly as it must be rendered, so re-casing it
+            // in the editor would change what the image says.
+            case: "As-typed",
+            legibility: { outline: true, solid_block: false },
+            visual_only: false,
+            color: palette[0] || "#FFFFFF",
+            outline_color: "#000000",
+            plate_color: "#1A1A1A",
+            desc_override: desc,
+        };
+    }
+
+    if (!desc) return null;
+    return {
+        id: makeBlockId(),
+        type: "obj",
+        rect,
+        desc,
+        color_palette: palette,
+    };
+}
+
 export function applyCase(text, mode) {
     if (mode === "UPPERCASE") return (text || "").toUpperCase();
     if (mode === "Title") {
