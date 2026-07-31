@@ -8,8 +8,13 @@
 // canvas, ResizeObserver, syncDomSize, cleanup on removal.
 
 import {
+    ASPECT_RATIOS,
+    DEFAULT_ASPECT_RATIO,
     DEFAULT_LANG,
+    DEFAULT_MEGAPIXELS,
     DESIGN_INPUT,
+    MAX_MEGAPIXELS,
+    MIN_MEGAPIXELS,
     MESH_POSITIONS,
     NODE_NAME,
     WEIGHT_CSS,
@@ -70,6 +75,14 @@ const ENHANCE_ROUTE = "/ts_super_prompt/enhance";
 const ENHANCE_PRESET = "Ideogram Prompt Enhance";
 const AI_EVENT_PREFIX = "ts_super_prompt";
 
+// The fullscreen editor drives megapixels with a continuous slider; the node
+// panel has room for a dropdown, so offer the same range in 0.1 steps and snap
+// whatever the editor left behind to the nearest one.
+const MEGAPIXEL_STEPS = Array.from(
+    { length: Math.round((MAX_MEGAPIXELS - MIN_MEGAPIXELS) * 10) + 1 },
+    (_, i) => Math.round((MIN_MEGAPIXELS + i * 0.1) * 10) / 10,
+);
+
 // Node-chrome strings follow the ComfyUI UI locale (the design document keeps
 // its own language; this is interface, not content).
 const CHROME_STRINGS = {
@@ -84,6 +97,8 @@ const CHROME_STRINGS = {
         needPrompt: "Type an idea first.",
         queueFailed: (m) => `Queue failed: ${m}`,
         runFailed: (m) => `Generation failed: ${m}`,
+        aspectTitle: "Aspect ratio of the generated image. Shared with the fullscreen editor.",
+        mpTitle: "Output size in megapixels. Shared with the fullscreen editor.",
     },
     ru: {
         modeDesigner: "Дизайнер",
@@ -96,6 +111,8 @@ const CHROME_STRINGS = {
         needPrompt: "Сначала введите идею.",
         queueFailed: (m) => `Не удалось поставить в очередь: ${m}`,
         runFailed: (m) => `Генерация не удалась: ${m}`,
+        aspectTitle: "Соотношение сторон. Общее с полноэкранным редактором.",
+        mpTitle: "Размер вывода в мегапикселях. Общий с полноэкранным редактором.",
     },
 };
 
@@ -126,6 +143,9 @@ function ensureStyles() {
 .ts-ideo-node__auto.is-active{display:flex}
 .ts-ideo-node__auto-text{flex:1 1 55%;min-height:0;resize:none}
 .ts-ideo-node__auto-result{flex:1 1 45%;min-height:0;overflow:auto;font-size:var(--ts-fs-xs);white-space:pre-wrap;word-break:break-word;background:var(--ts-sunken);border:1px solid var(--ts-border-soft);border-radius:var(--ts-radius-sm);padding:4px 6px;color:var(--ts-muted)}
+.ts-ideo-node__auto-dims{flex:0 0 auto;display:flex;align-items:center;gap:6px}
+.ts-ideo-node__auto-dims .ts-ui-select{flex:1 1 0;min-width:0;font-size:var(--ts-fs-sm);padding:2px 4px}
+.ts-ideo-node__auto-dimslabel{flex:0 0 auto;font-size:var(--ts-fs-xs);color:var(--ts-faint);font-variant-numeric:tabular-nums;white-space:nowrap}
 .ts-ideo-node__auto-status{flex:0 0 auto;min-height:14px;font-size:var(--ts-fs-sm);text-align:center}
 .ts-ideo-node__auto-bar{flex:0 0 auto;height:3px;border-radius:2px;background:var(--ts-border-soft);overflow:hidden;display:none}
 .ts-ideo-node__auto-bar.is-active{display:block}
@@ -343,7 +363,67 @@ export function setupIdeogramNode(node) {
     const autoResult = document.createElement("div");
     autoResult.className = "ts-ideo-node__auto-result";
     autoResult.textContent = String(readPersisted(AUTO_CAPTION_INPUT, "") || "") || C.resultHint;
-    autoPanel.append(autoText, generateBtn, autoBar, autoStatus, autoResult);
+    // Output size lives in the design document, which is also what the
+    // fullscreen editor edits and what execute() reads through
+    // dims_from_design. Editing it here therefore IS the synchronisation —
+    // there is no second copy to keep in step.
+    const dimsRow = document.createElement("div");
+    dimsRow.className = "ts-ideo-node__auto-dims";
+
+    const aspectSelect = document.createElement("select");
+    aspectSelect.className = "ts-ui-select";
+    aspectSelect.title = C.aspectTitle;
+    for (const ratio of ASPECT_RATIOS) {
+        const option = document.createElement("option");
+        option.value = ratio;
+        option.textContent = ratio.replace("x", ":");
+        aspectSelect.appendChild(option);
+    }
+
+    const mpSelect = document.createElement("select");
+    mpSelect.className = "ts-ui-select";
+    mpSelect.title = C.mpTitle;
+    for (const mp of MEGAPIXEL_STEPS) {
+        const option = document.createElement("option");
+        option.value = String(mp);
+        option.textContent = `${mp} MP`;
+        mpSelect.appendChild(option);
+    }
+
+    const dimsLabel = document.createElement("span");
+    dimsLabel.className = "ts-ideo-node__auto-dimslabel";
+
+    dimsRow.append(aspectSelect, mpSelect, dimsLabel);
+
+    // Reflect the design — the editor may have changed it while this panel was
+    // hidden, and a stale dropdown would lie about what the node will output.
+    function syncAutoDims() {
+        const aspect = String(state.design?.aspect_ratio || DEFAULT_ASPECT_RATIO);
+        const mp = Number(state.design?.megapixels ?? DEFAULT_MEGAPIXELS);
+        aspectSelect.value = ASPECT_RATIOS.includes(aspect) ? aspect : DEFAULT_ASPECT_RATIO;
+        const nearest = MEGAPIXEL_STEPS.reduce(
+            (best, step) => (Math.abs(step - mp) < Math.abs(best - mp) ? step : best),
+            MEGAPIXEL_STEPS[0],
+        );
+        mpSelect.value = String(nearest);
+        const [width, height] = dimsFromAspectMp(aspectSelect.value, Number(mpSelect.value));
+        dimsLabel.textContent = `${width}×${height}`;
+    }
+    node._tsIdeoSyncAutoDims = syncAutoDims;
+
+    aspectSelect.addEventListener("change", () => {
+        applyDesign({ ...state.design, aspect_ratio: aspectSelect.value });
+        syncAutoDims();
+    });
+    mpSelect.addEventListener("change", () => {
+        applyDesign({ ...state.design, megapixels: Number(mpSelect.value) });
+        syncAutoDims();
+    });
+    for (const control of [aspectSelect, mpSelect]) {
+        control.addEventListener("pointerdown", stopPropagation);
+    }
+
+    autoPanel.append(autoText, dimsRow, generateBtn, autoBar, autoStatus, autoResult);
 
     const spacer = document.createElement("div");
     spacer.className = "ts-ideo-node__spacer";
@@ -680,6 +760,9 @@ export function setupIdeogramNode(node) {
         }
         ensureRefImage();
         updateSummary();
+        // The editor writes through here too, so the Auto panel's dropdowns
+        // follow whatever it changed.
+        node._tsIdeoSyncAutoDims?.();
         requestRedraw();
         node.setDirtyCanvas(true, true);
     }
@@ -728,6 +811,7 @@ export function setupIdeogramNode(node) {
         state.design = parseDesign(readPersistedDesign(node));
         ensureRefImage();
         updateSummary();
+        syncAutoDims();
         requestRedraw();
     };
     node._tsIdeoCleanup = () => {
@@ -750,6 +834,7 @@ export function setupIdeogramNode(node) {
     applyMode(mode, false);
     syncDomSize();
     updateSummary();
+    syncAutoDims();
     ensureRefImage();
     requestRedraw();
     loadPresets().then((presets) => {
