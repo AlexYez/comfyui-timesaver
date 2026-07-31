@@ -9,15 +9,14 @@ import os
 import uuid
 from collections import OrderedDict
 
-import torch
-from tqdm import tqdm
-
-import folder_paths
-import comfy.sd
 import comfy.model_management as mm
+import comfy.sd
+import folder_paths
+import torch
 from comfy_api.v0_0_2 import IO
-from safetensors.torch import save_file
 from safetensors import safe_open
+from safetensors.torch import save_file
+from tqdm import tqdm
 
 logger = logging.getLogger("comfyui_timesaver.ts_model_converter_advanced")
 LOG_PREFIX = "[TS Model Converter Advanced]"

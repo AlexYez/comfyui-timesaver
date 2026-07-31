@@ -54,13 +54,11 @@ import logging
 import math
 from typing import Optional
 
-import torch
-
 import comfy.utils
 import node_helpers
+import torch
 from comfy_api.v0_0_2 import IO
 from comfy_execution.graph_utils import ExecutionBlocker
-
 
 logger = logging.getLogger(__name__)
 

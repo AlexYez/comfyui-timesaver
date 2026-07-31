@@ -5,11 +5,10 @@ node_id: TS_ImageResize
 
 import math
 
-import torch
 import numpy as np
-from PIL import Image
-
+import torch
 from comfy_api.v0_0_2 import IO
+from PIL import Image
 
 try:
     import torchvision.transforms.functional as TF  # noqa: F401
@@ -32,6 +31,7 @@ class TS_ImageResize(IO.ComfyNode):
             node_id="TS_ImageResize",
             display_name="TS Image Resize",
             category="TS/Image",
+            essentials_category="Image",
             description="Resize by exact size, one side, megapixels or scale, with divisor snapping and an optional no-enlarge guard.",
             inputs=[
                 IO.Image.Input("pixels", tooltip="Image to resize."),

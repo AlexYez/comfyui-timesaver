@@ -34,9 +34,8 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from aiohttp import web
-
 import folder_paths
+from aiohttp import web
 from comfy_api.v0_0_2 import IO
 
 from ._helpers import (
@@ -79,7 +78,6 @@ from ._voice import (
     load_model,
     transcribe_audio,
 )
-
 
 # One transcription at a time per process. Whisper decoding is GPU work, and
 # nothing else bounded it: several browser tabs (or one impatient user) could
@@ -417,6 +415,7 @@ class TS_SuperPrompt(IO.ComfyNode):
             node_id="TS_SuperPrompt",
             display_name="TS Super Prompt",
             category="TS/LLM",
+            essentials_category="Text",
             description=(
                 "Voice prompt field with optional Qwen3.5 AI prompt enhancement for image, video, and music prompts. "
                 "Attach an optional reference image right in the node (drag-drop / paste / file picker) — "

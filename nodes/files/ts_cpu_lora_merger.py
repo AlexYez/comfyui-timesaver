@@ -11,13 +11,11 @@ import re as _ts_re
 import traceback as _ts_traceback
 from collections import OrderedDict
 
-import torch
-
 import comfy.sd
 import comfy.utils as _ts_comfy_utils
 import folder_paths
+import torch
 from comfy_api.v0_0_2 import IO
-
 
 _SUPPORTED_MODEL_EXTENSIONS = (".safetensors", ".ckpt", ".pt", ".pth")
 _LORA_NONE = "None"

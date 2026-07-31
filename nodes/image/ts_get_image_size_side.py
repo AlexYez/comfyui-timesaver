@@ -3,13 +3,11 @@
 node_id: TS_GetImageSizeSide
 """
 
-from typing import Optional
 import logging
+from typing import Optional
 
 import torch
-
 from comfy_api.v0_0_2 import IO
-
 
 logger = logging.getLogger("comfyui_timesaver.ts_get_image_size_side")
 LOG_PREFIX = "[TS Get Image Size Side]"

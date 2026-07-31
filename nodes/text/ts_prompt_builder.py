@@ -12,7 +12,6 @@ from comfy_api.v0_0_2 import IO
 
 from .._shared import make_route_registrars, resolve_prompt_server
 
-
 ts_logger = logging.getLogger("TimesaverVFX_Pack")
 TS_PROMPTS_DIRNAME = "prompts"
 TS_PROMPT_BUILDER_CONFIG_FILENAME = "ts-prompt-builder-config.json"
@@ -89,7 +88,7 @@ def ts_list_prompt_files():
 
 def ts_read_prompt_lines(file_path):
     try:
-        with open(file_path, "r", encoding="utf-8") as handle:
+        with open(file_path, encoding="utf-8") as handle:
             lines = []
             for raw in handle:
                 cleaned = raw.strip().lstrip("﻿")
@@ -134,7 +133,7 @@ def ts_parse_config(config_json):
 
 
 def ts_block_seed(seed_value, file_name):
-    payload = f"{seed_value}:{file_name}".encode("utf-8")
+    payload = f"{seed_value}:{file_name}".encode()
     digest = hashlib.blake2b(payload, digest_size=8).digest()
     return int.from_bytes(digest, "big")
 
@@ -161,7 +160,7 @@ def ts_load_prompt_builder_config():
     if not os.path.isfile(path):
         return None
     try:
-        with open(path, "r", encoding="utf-8") as handle:
+        with open(path, encoding="utf-8") as handle:
             data = json.load(handle)
         return ts_parse_config_data(data)
     except Exception as exc:

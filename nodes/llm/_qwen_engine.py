@@ -30,7 +30,6 @@ import numpy as np
 import torch
 from PIL import Image
 
-
 _DEFAULT_LOG_PREFIX = "[TS Qwen Engine]"
 _DEFAULT_LOGGER_NAME = "comfyui_timesaver.qwen_engine"
 
@@ -68,7 +67,7 @@ def load_presets(path: str | None = None) -> tuple[dict[str, Any], list[str]]:
     if not os.path.exists(path):
         return {}, []
     try:
-        with open(path, "r", encoding="utf-8") as handle:
+        with open(path, encoding="utf-8") as handle:
             data = json.load(handle)
         if not isinstance(data, dict):
             data = {}
@@ -301,8 +300,8 @@ class QwenEngine:
         tw, th = w - (w % multiple_of), h - (h % multiple_of)
         if tw == 0 or th == 0:
             return image
-        l, t = (w - tw) / 2, (h - th) / 2
-        return image.crop((l, t, l + tw, t + th))
+        left, top = (w - tw) / 2, (h - th) / 2
+        return image.crop((left, top, left + tw, top + th))
 
     # ------------------------------------------------------------------
     # Device management
@@ -1050,7 +1049,7 @@ class QwenEngine:
         if not os.path.exists(config_path):
             return []
         try:
-            with open(config_path, "r", encoding="utf-8") as f:
+            with open(config_path, encoding="utf-8") as f:
                 data = json.load(f)
             architectures = data.get("architectures", [])
             if isinstance(architectures, list):
@@ -1218,7 +1217,7 @@ class QwenEngine:
             idx_path = os.path.join(local_dir, idx)
             if os.path.exists(idx_path):
                 try:
-                    with open(idx_path, "r", encoding="utf-8") as f:
+                    with open(idx_path, encoding="utf-8") as f:
                         data = json.load(f)
                     weight_map = data.get("weight_map", {})
                     for shard in set(weight_map.values()):

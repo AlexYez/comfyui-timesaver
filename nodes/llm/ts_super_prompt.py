@@ -29,8 +29,8 @@ from .super_prompt._helpers import (  # noqa: F401
     ACTIVE_MODEL,
     AI_EVENT_PREFIX,
     AI_ROUTE_BASE,
-    ALLOWED_AUDIO_SUFFIXES,
     ALL_MODELS,
+    ALLOWED_AUDIO_SUFFIXES,
     AUDIO_EDGE_FADE_MS,
     AUDIO_NORMALIZE_ENABLED,
     AUDIO_NORMALIZE_MAX_GAIN_DB,
@@ -50,8 +50,6 @@ from .super_prompt._helpers import (  # noqa: F401
     DEFAULT_MODEL_ID,
     DEFAULT_PRESET,
     DEVICE,
-    DOWNLOAD_LOCK as _DOWNLOAD_LOCK,
-    ENHANCE_MAX_TEXT_LEN as _ENHANCE_MAX_TEXT_LEN,
     GPU_PRECISION,
     INITIAL_PROMPT,
     INITIAL_PROMPT_ENABLED,
@@ -59,7 +57,6 @@ from .super_prompt._helpers import (  # noqa: F401
     LOG_PREFIX,
     LOGGER,
     MODEL_FILE_NAMES,
-    MODEL_LOCK as _MODEL_LOCK,
     MODEL_SIZES,
     MODELS_WITHOUT_TRANSLATE,
     PROMPT_TARGETS,
@@ -85,10 +82,8 @@ from .super_prompt._helpers import (  # noqa: F401
     VOICE_EVENT_PREFIX,
     VOICE_LOG_PREFIX,
     VOICE_MODEL_BASE,
-    VOICE_MODEL_CACHE as _VOICE_MODEL_CACHE,
     VOICE_MODEL_HIGH_QUALITY,
     VOICE_ROUTE_BASE,
-    VOICE_UPLOAD_MAX_BYTES as _VOICE_UPLOAD_MAX_BYTES,
     WHISPER_COMPRESSION_RATIO_THRESHOLD,
     WHISPER_DIR,
     WHISPER_LOGPROB_THRESHOLD,
@@ -100,56 +95,63 @@ from .super_prompt._helpers import (  # noqa: F401
     WHISPER_SCRIPT_OTHER_MIN_CHARS,
     WHISPER_SCRIPT_VALIDATION_ENABLED,
     WHISPER_TEMPERATURE_FALLBACK,
-    directory_size as _directory_size,
-    format_bytes as _format_bytes,
-    log_info as _log_info,
-    log_warning as _log_warning,
-    register_get as _register_get,
-    register_post as _register_post,
-    send_ai_event as _send_ai_event,
-    send_done as _send_done,
-    send_error as _send_error,
-    send_progress as _send_progress,
-    send_voice_event as _send_voice_event,
-    send_voice_status as _send_voice_status,
-    voice_log_info as _voice_log_info,
-    voice_log_warning as _voice_log_warning,
 )
-
-# ---------------------------------------------------------------------------
-# Re-exports: voice pipeline
-# ---------------------------------------------------------------------------
-from .super_prompt._voice import (  # noqa: F401
-    AudioPreprocessResult,
-    ProgressBroadcaster,
-    _adaptive_vad_thresholds,
-    _apply_edge_fade,
-    _as_float32_audio,
-    _audio_metadata,
-    _audio_tmp_dir,
-    _clean_transcription_text,
-    _collapse_near_duplicate_sentences,
-    _configured_initial_prompt,
-    _detect_speech_bounds,
-    _DUPLICATE_TRANSCRIPTION_WORDS,
-    _ensure_runtime_dirs,
-    _frame_rms,
-    _get_ffmpeg_executable,
-    _is_inflection_variant,
-    _load_whisper_runtime,
-    _looks_like_multilingual_hallucination,
-    _missing_runtime_packages,
-    _model_file_path,
-    _normalize_audio,
-    _parse_bool,
-    _preprocess_audio,
-    _read_audio,
-    _resolve_voice_model,
-    _sentence_similarity,
-    ensure_model,
-    is_model_cached,
-    load_model,
-    transcribe_audio,
+from .super_prompt._helpers import (
+    DOWNLOAD_LOCK as _DOWNLOAD_LOCK,
+)
+from .super_prompt._helpers import (
+    ENHANCE_MAX_TEXT_LEN as _ENHANCE_MAX_TEXT_LEN,
+)
+from .super_prompt._helpers import (
+    MODEL_LOCK as _MODEL_LOCK,
+)
+from .super_prompt._helpers import (
+    VOICE_MODEL_CACHE as _VOICE_MODEL_CACHE,
+)
+from .super_prompt._helpers import (
+    VOICE_UPLOAD_MAX_BYTES as _VOICE_UPLOAD_MAX_BYTES,
+)
+from .super_prompt._helpers import (
+    directory_size as _directory_size,
+)
+from .super_prompt._helpers import (
+    format_bytes as _format_bytes,
+)
+from .super_prompt._helpers import (
+    log_info as _log_info,
+)
+from .super_prompt._helpers import (
+    log_warning as _log_warning,
+)
+from .super_prompt._helpers import (
+    register_get as _register_get,
+)
+from .super_prompt._helpers import (
+    register_post as _register_post,
+)
+from .super_prompt._helpers import (
+    send_ai_event as _send_ai_event,
+)
+from .super_prompt._helpers import (
+    send_done as _send_done,
+)
+from .super_prompt._helpers import (
+    send_error as _send_error,
+)
+from .super_prompt._helpers import (
+    send_progress as _send_progress,
+)
+from .super_prompt._helpers import (
+    send_voice_event as _send_voice_event,
+)
+from .super_prompt._helpers import (
+    send_voice_status as _send_voice_status,
+)
+from .super_prompt._helpers import (
+    voice_log_info as _voice_log_info,
+)
+from .super_prompt._helpers import (
+    voice_log_warning as _voice_log_warning,
 )
 
 # ---------------------------------------------------------------------------
@@ -176,8 +178,48 @@ from .super_prompt._qwen import (  # noqa: F401
     _target_instruction,
     _template_accepts_kwargs,
     _unused_model_kwargs_from_error,
+)
+from .super_prompt._qwen import (
     default_preset as _default_preset,
+)
+from .super_prompt._qwen import (
     preset_options as _preset_options,
+)
+
+# ---------------------------------------------------------------------------
+# Re-exports: voice pipeline
+# ---------------------------------------------------------------------------
+from .super_prompt._voice import (  # noqa: F401
+    _DUPLICATE_TRANSCRIPTION_WORDS,
+    AudioPreprocessResult,
+    ProgressBroadcaster,
+    _adaptive_vad_thresholds,
+    _apply_edge_fade,
+    _as_float32_audio,
+    _audio_metadata,
+    _audio_tmp_dir,
+    _clean_transcription_text,
+    _collapse_near_duplicate_sentences,
+    _configured_initial_prompt,
+    _detect_speech_bounds,
+    _ensure_runtime_dirs,
+    _frame_rms,
+    _get_ffmpeg_executable,
+    _is_inflection_variant,
+    _load_whisper_runtime,
+    _looks_like_multilingual_hallucination,
+    _missing_runtime_packages,
+    _model_file_path,
+    _normalize_audio,
+    _parse_bool,
+    _preprocess_audio,
+    _read_audio,
+    _resolve_voice_model,
+    _sentence_similarity,
+    ensure_model,
+    is_model_cached,
+    load_model,
+    transcribe_audio,
 )
 
 # ---------------------------------------------------------------------------
@@ -196,7 +238,6 @@ from .super_prompt.ts_super_prompt import (  # noqa: F401
     status_endpoint,
     transcribe_endpoint,
 )
-
 
 # NODE_CLASS_MAPPINGS deliberately left empty here. The real registration lives
 # in nodes/llm/super_prompt/ts_super_prompt.py and is discovered by the loader's

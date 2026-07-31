@@ -12,10 +12,9 @@ import shutil
 import threading
 from typing import Any
 
-import torch
-
 import comfy.model_management
 import folder_paths
+import torch
 from comfy_api.v0_0_2 import IO
 
 

@@ -22,7 +22,6 @@ import xml.etree.ElementTree as ET
 
 import folder_paths
 import srt
-
 from comfy_api.v0_0_2 import IO
 
 from .. import _whisper_engine as engine
@@ -211,6 +210,7 @@ class TSWhisper(IO.ComfyNode):
             node_id="TSWhisper",
             display_name="TS Whisper",
             category="TS/Audio",
+            essentials_category="Audio",
             description="Transcribe speech to text, with optional SRT subtitles, on the local OpenAI Whisper engine.",
             inputs=[
                 IO.Audio.Input("audio", tooltip=tt["audio"]),

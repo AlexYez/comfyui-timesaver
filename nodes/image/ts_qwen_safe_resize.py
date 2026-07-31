@@ -3,12 +3,10 @@
 node_id: TS_QwenSafeResize
 """
 
-import torch
 import numpy as np
-from PIL import Image
-
+import torch
 from comfy_api.v0_0_2 import IO
-
+from PIL import Image
 
 QWEN_IMAGE_SUPPORTED_RESOLUTIONS = [
     (1344, 1344, 1.0),

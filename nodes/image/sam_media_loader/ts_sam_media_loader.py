@@ -28,7 +28,6 @@ import os
 
 import torch
 from comfy.utils import ProgressBar
-
 from comfy_api.v0_0_2 import IO
 
 from ._sam_media_helpers import (
@@ -224,7 +223,7 @@ class TS_SAM_MediaLoader(IO.ComfyNode):
         hasher.update(str(media_type or "").encode("utf-8"))
         hasher.update(str(coordinates or "[]").encode("utf-8"))
         hasher.update(str(neg_coordinates or "[]").encode("utf-8"))
-        hasher.update(f"{int(max_frames)}|{int(frame_stride)}".encode("utf-8"))
+        hasher.update(f"{int(max_frames)}|{int(frame_stride)}".encode())
         resolved = _resolve_media_path(source_path)
         hasher.update(_working_file_signature(resolved).encode("utf-8"))
         # ``model`` and ``sam3_checkpoint`` only influence the in-node preview
@@ -351,11 +350,11 @@ class TS_SAM_MediaLoader(IO.ComfyNode):
 
 def _compute_initial_mask(
     model,
-    images: "torch.Tensor",
+    images: torch.Tensor,
     positive_coords: str,
     negative_coords: str,
     has_any_point: bool,
-) -> "torch.Tensor":
+) -> torch.Tensor:
     """Run SAM3 Detect on the first frame to produce a seed mask.
 
     Returns ``[1, H, W]`` float32 ``MASK`` in ``[0, 1]``. Falls back to zeros

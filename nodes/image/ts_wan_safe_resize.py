@@ -3,12 +3,10 @@
 node_id: TS_WAN_SafeResize
 """
 
-import torch
 import numpy as np
-from PIL import Image
-
+import torch
 from comfy_api.v0_0_2 import IO
-
+from PIL import Image
 
 _WAN_RESOLUTIONS = {
     "high quality": {

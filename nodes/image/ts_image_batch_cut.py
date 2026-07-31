@@ -3,13 +3,11 @@
 node_id: TS_ImageBatchCut
 """
 
-from typing import Optional
 import logging
+from typing import Optional
 
 import torch
-
 from comfy_api.v0_0_2 import IO
-
 
 logger = logging.getLogger("comfyui_timesaver.ts_image_batch_cut")
 LOG_PREFIX = "[TS Image Batch Cut]"

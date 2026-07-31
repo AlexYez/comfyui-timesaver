@@ -3,13 +3,11 @@
 node_id: TS_ImageTileMerger
 """
 
-from typing import Any, Dict, Optional
 import logging
+from typing import Any, Optional
 
 import torch
-
 from comfy_api.v0_0_2 import IO
-
 
 logger = logging.getLogger("comfyui_timesaver.ts_image_tile_merger")
 LOG_PREFIX = "[TS Image Tile Merger]"
@@ -102,7 +100,7 @@ class TS_ImageTileMerger(IO.ComfyNode):
         return mask
 
     @classmethod
-    def execute(cls, images: torch.Tensor, tile_data: Dict[str, Any]) -> IO.NodeOutput:
+    def execute(cls, images: torch.Tensor, tile_data: dict[str, Any]) -> IO.NodeOutput:
         cls._log_tensor("Input tiles", images)
 
         if images is None or not isinstance(images, torch.Tensor):
@@ -182,7 +180,7 @@ class TS_ImageTileMerger(IO.ComfyNode):
         return IO.NodeOutput(output)
 
     @classmethod
-    def fingerprint_inputs(cls, images: torch.Tensor, tile_data: Dict[str, Any]) -> str:
+    def fingerprint_inputs(cls, images: torch.Tensor, tile_data: dict[str, Any]) -> str:
         if images is None or not isinstance(images, torch.Tensor):
             return "none"
         if tile_data is None or not isinstance(tile_data, dict):

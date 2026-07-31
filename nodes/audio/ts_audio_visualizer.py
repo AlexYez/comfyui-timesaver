@@ -27,11 +27,9 @@ import hashlib
 import logging
 from typing import Any
 
+import comfy.model_management as mm
 import torch
 import torch.nn.functional as F
-
-import comfy.model_management as mm
-
 from comfy_api.v0_0_2 import IO
 
 logger = logging.getLogger("comfyui_timesaver.ts_audio_visualizer")
@@ -509,7 +507,7 @@ class TS_AudioVisualizer(IO.ComfyNode):
     ) -> str:
         mono, sample_rate = cls._coerce_audio(audio)
         hasher = hashlib.sha256()
-        hasher.update(f"{sample_rate}|{int(mono.shape[-1])}".encode("utf-8"))
+        hasher.update(f"{sample_rate}|{int(mono.shape[-1])}".encode())
         # Torch-only signature: coarse 64-bin envelope + global stats (no numpy,
         # no hashing of the full multi-megabyte clip).
         env = F.adaptive_avg_pool1d(mono.abs().view(1, 1, -1), min(64, max(1, mono.shape[-1]))).view(-1)

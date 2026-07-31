@@ -15,6 +15,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
+from ..._shared import make_route_registrars, resolve_prompt_server
 
 # Whisper model registry, on-disk dir, download lock and in-memory model cache
 # now live in the shared engine (nodes/_whisper_engine.py). Re-exported here so
@@ -27,11 +28,10 @@ from ..._whisper_engine import (  # noqa: F401 - re-exported
     MODEL_SIZES,
     MODELS_WITHOUT_TRANSLATE,
     WHISPER_DIR,
+)
+from ..._whisper_engine import (
     MODEL_CACHE as VOICE_MODEL_CACHE,
 )
-
-from ..._shared import make_route_registrars, resolve_prompt_server
-
 
 LOGGER = logging.getLogger("comfyui_timesaver.ts_super_prompt")
 LOG_PREFIX = "[TS Super Prompt]"

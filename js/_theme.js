@@ -192,6 +192,10 @@ function themeCss() {
   border:1px solid var(--ts-border-soft);border-radius:var(--ts-radius-sm);padding:5px 8px;
   font-family:var(--ts-font);font-size:var(--ts-fs-sm);outline:none;width:100%}
 .ts-ui-input:focus,.ts-ui-select:focus,.ts-ui-textarea:focus{border-color:var(--ts-accent-line)}
+/* Keyboard users need to SEE the caret's home. A border tint alone is easy to
+   miss on a dark surface, so give fields the same ring the buttons get. */
+.ts-ui-input:focus-visible,.ts-ui-select:focus-visible,.ts-ui-textarea:focus-visible{
+  outline:2px solid var(--ts-accent);outline-offset:1px}
 .ts-ui-textarea{resize:vertical;line-height:1.45}
 .ts-ui-label{font-size:var(--ts-fs-xs);color:var(--ts-muted);text-transform:uppercase;
   letter-spacing:.06em;white-space:nowrap}
@@ -259,6 +263,16 @@ function themeCss() {
     background-clip:content-box}
   .${TS_UI_CLASS} ::-webkit-scrollbar-thumb:hover,.${TS_UI_CLASS}::-webkit-scrollbar-thumb:hover{
     background:var(--ts-scrollbar-hover);background-clip:content-box}
+}
+
+/* Motion is a preference, not a given: vestibular disorders make sliding and
+   spinning genuinely unpleasant. Everything here is decoration — the spinner
+   keeps a slow turn so "busy" still reads, and nothing else moves. */
+@media (prefers-reduced-motion: reduce){
+  .${TS_UI_CLASS} *,.${TS_UI_CLASS}::before,.${TS_UI_CLASS}::after{
+    transition-duration:.01ms !important;animation-duration:.01ms !important;
+    animation-iteration-count:1 !important;scroll-behavior:auto !important}
+  .${TS_UI_CLASS} .ts-ui-spinner{animation:ts-ui-spin 1.8s linear infinite !important}
 }
 `;
 }

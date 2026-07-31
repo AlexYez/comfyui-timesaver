@@ -24,6 +24,10 @@ from typing import Any
 
 import folder_paths
 
+# Native Whisper model lifecycle + audio decoding live in the shared engine.
+# This module keeps the dictation-specific layer (VAD/normalize, hallucination
+# cleanup, transcribe_audio) and the Super Prompt UI events.
+from ... import _whisper_engine as _engine
 from ._helpers import (
     ACTIVE_MODEL,
     AUDIO_EDGE_FADE_MS,
@@ -68,11 +72,6 @@ from ._helpers import (
     voice_log_info,
     voice_log_warning,
 )
-
-# Native Whisper model lifecycle + audio decoding live in the shared engine.
-# This module keeps the dictation-specific layer (VAD/normalize, hallucination
-# cleanup, transcribe_audio) and the Super Prompt UI events.
-from ... import _whisper_engine as _engine
 
 
 def _audio_tmp_dir() -> Path:

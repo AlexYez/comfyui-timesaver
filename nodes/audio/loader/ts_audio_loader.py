@@ -74,8 +74,8 @@ class TS_AudioLoader(IO.ComfyNode):
     def fingerprint_inputs(cls, mode: str, source_path: str, crop_start_seconds: float, crop_end_seconds: float) -> str:
         hasher = hashlib.sha256()
         hasher.update(str(mode).encode("utf-8"))
-        hasher.update(f"{float(crop_start_seconds):.6f}".encode("utf-8"))
-        hasher.update(f"{float(crop_end_seconds):.6f}".encode("utf-8"))
+        hasher.update(f"{float(crop_start_seconds):.6f}".encode())
+        hasher.update(f"{float(crop_end_seconds):.6f}".encode())
         normalized = _normalize_selected_path(source_path)
         hasher.update(_normalize_path(normalized).encode("utf-8"))
         if os.path.isfile(normalized):

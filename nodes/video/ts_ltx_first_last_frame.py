@@ -1,7 +1,6 @@
 import logging
 
 import torch
-
 from comfy_api.v0_0_2 import IO
 from comfy_extras.nodes_lt import LTXVAddGuide
 

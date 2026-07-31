@@ -5,11 +5,10 @@ node_id: TS_ModelScanner
 
 import os
 
-import folder_paths
 import comfy.model_patcher
+import folder_paths
 from comfy_api.v0_0_2 import IO
 from safetensors import safe_open
-
 
 # safetensors header dtype tags -> the torch-style labels this node has
 # always printed (keeps stats keys stable for users parsing the report).

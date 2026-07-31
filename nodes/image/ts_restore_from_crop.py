@@ -5,11 +5,9 @@ node_id: TSRestoreFromCrop
 
 import logging
 
+import comfy
 import torch
 import torch.nn.functional as F
-
-import comfy
-
 from comfy_api.v0_0_2 import IO
 
 logger = logging.getLogger("comfyui_timesaver.ts_restore_from_crop")

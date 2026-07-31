@@ -42,7 +42,6 @@ from ._image_utils import (
     tensor2pil,
 )
 
-
 logger = logging.getLogger(__name__)
 _LOG_PREFIX = "[TS Matting ViTMatte]"
 
@@ -634,8 +633,8 @@ class TS_Matting_ViTMatte(IO.ComfyNode):
     @classmethod
     def execute(
         cls,
-        image: "torch.Tensor",
-        mask: "torch.Tensor",
+        image: torch.Tensor,
+        mask: torch.Tensor,
         model: str = "vitmatte-base-composition-1k",
         trimap_erode_px: int = 10,
         trimap_dilate_px: int = 20,
@@ -856,8 +855,8 @@ class TS_Matting_ViTMatte(IO.ComfyNode):
         cls,
         net,
         processor,
-        image_frame: "torch.Tensor",
-        mask_frame: "torch.Tensor",
+        image_frame: torch.Tensor,
+        mask_frame: torch.Tensor,
         *,
         trimap_erode_px: int,
         trimap_dilate_px: int,

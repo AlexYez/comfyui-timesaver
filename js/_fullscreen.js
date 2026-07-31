@@ -60,13 +60,21 @@ const CLOSE_ICON_SVG =
 export function openFullscreenOverlay(content, options = {}) {
     const {
         onClose, onOpen, onKey, closeOnBackdrop = false, extraClass = "",
-        showClose = true, closeTitle = "Close (Esc)",
+        showClose = true, closeTitle = "Close (Esc)", label = "",
     } = options;
     const doc = content?.ownerDocument || document;
     let open = true;
 
     const modal = doc.createElement("div");
     modal.className = `${TS_UI_CLASS} ts-ui-modal${extraClass ? ` ${extraClass}` : ""}`;
+    // Announce it as what it is. Assistive technology otherwise reads a
+    // fullscreen editor as an ordinary <div> stacked over the page, with no
+    // signal that the content behind it is inert.
+    modal.setAttribute("role", "dialog");
+    modal.setAttribute("aria-modal", "true");
+    // `label` names the dialog itself. closeTitle is deliberately NOT used for
+    // it: that string names the close button, not the window it lives in.
+    if (label) modal.setAttribute("aria-label", label);
     modal.append(content);
 
     const keyAnchor = doc.createElement("textarea");

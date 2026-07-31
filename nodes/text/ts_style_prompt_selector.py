@@ -8,7 +8,6 @@ from comfy_api.v0_0_2 import IO
 
 from .._shared import make_route_registrars, resolve_prompt_server
 
-
 logger = logging.getLogger("TimesaverVFX_Pack")
 _NO_STYLE_OPTION = "None"
 _LOG_PREFIX = "[TS Style Prompt Selector]"
@@ -144,6 +143,7 @@ class TS_StylePromptSelector(IO.ComfyNode):
             node_id="TS_StylePromptSelector",
             display_name="TS Style Prompt Selector",
             category="TS/Text",
+            essentials_category="Text",
             description="Pick an art style from a browsable library of 157 previews and output its prompt modifier.",
             inputs=[
                 IO.String.Input(

@@ -871,6 +871,7 @@ class TS_BGRM_BiRefNet(IO.ComfyNode):
             node_id="TS_BGRM_BiRefNet",
             display_name="TS Remove Background",
             category="TS/Image",
+            essentials_category="Image",
             description="Remove the background with BiRefNet and return the cutout together with its mask.",
             inputs=[
                 IO.Image.Input("image", tooltip=tooltips["image"]),

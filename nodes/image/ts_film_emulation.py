@@ -7,7 +7,6 @@ import logging
 import os
 
 import torch
-
 from comfy_api.v0_0_2 import IO
 
 logger = logging.getLogger(__name__)
@@ -89,7 +88,7 @@ class TS_Film_Emulation(IO.ComfyNode):
             return None, None
         size = 0
         data = []
-        with open(path, "r", encoding="utf-8", errors="ignore") as f:
+        with open(path, encoding="utf-8", errors="ignore") as f:
             for line in f:
                 line = line.strip()
                 if not line or line.startswith("#"):

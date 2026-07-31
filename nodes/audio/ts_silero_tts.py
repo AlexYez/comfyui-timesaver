@@ -4,11 +4,10 @@ import re
 import threading
 from typing import Any
 
-import torch
-
 import comfy.model_management
-from comfy.utils import ProgressBar
 import folder_paths
+import torch
+from comfy.utils import ProgressBar
 from comfy_api.v0_0_2 import IO
 
 

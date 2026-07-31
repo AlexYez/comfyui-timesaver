@@ -6,7 +6,6 @@ node_id: TS_Color_Grade
 import math
 
 import torch
-
 from comfy_api.v0_0_2 import IO
 
 
@@ -17,6 +16,7 @@ class TS_Color_Grade(IO.ComfyNode):
             node_id="TS_Color_Grade",
             display_name="TS Color Grade",
             category="TS/Image",
+            essentials_category="Image",
             description="Eight-knob colour correction: hue, temperature, saturation, contrast, gain, lift, gamma and brightness.",
             inputs=[
                 IO.Image.Input("image", tooltip="Image to color grade."),

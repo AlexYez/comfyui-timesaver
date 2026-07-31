@@ -104,7 +104,7 @@ def _preset_path(filename: str) -> str:
 
 def _load_json_file(path: str):
     try:
-        with open(path, "r", encoding="utf-8") as handle:
+        with open(path, encoding="utf-8") as handle:
             return json.load(handle)
     except Exception as exc:  # noqa: BLE001 - best-effort, never crash the node
         ts_logger.warning("%s Failed to read %s: %s", LOG_PREFIX, path, exc)
@@ -772,9 +772,9 @@ def save_graph_reference(image_tensor, node_id) -> str | None:
     if image_tensor is None:
         return None
     try:
+        import folder_paths  # noqa: PLC0415
         import numpy as np  # noqa: PLC0415 - lazy, optional at import time
         from PIL import Image  # noqa: PLC0415
-        import folder_paths  # noqa: PLC0415
     except Exception as exc:  # noqa: BLE001
         ts_logger.debug("%s Graph-ref save unavailable: %s", LOG_PREFIX, exc)
         return None
@@ -822,8 +822,8 @@ def register_routes() -> None:
     if _ROUTES_REGISTERED:
         return
     try:
-        from server import PromptServer  # noqa: PLC0415
         from aiohttp import web  # noqa: PLC0415
+        from server import PromptServer  # noqa: PLC0415
         instance = PromptServer.instance
         if instance is None:
             raise RuntimeError("PromptServer.instance is None")

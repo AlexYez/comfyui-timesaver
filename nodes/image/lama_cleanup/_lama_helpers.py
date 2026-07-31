@@ -61,7 +61,6 @@ except ImportError:
 from ..._shared import make_route_registrars, resolve_prompt_server
 from ._lama_arch import build_lama_inpainter
 
-
 LOGGER = logging.getLogger("comfyui_timesaver.ts_lama_cleanup")
 LOG_PREFIX = "[TS Lama Cleanup]"
 
@@ -367,7 +366,7 @@ def _load_image_tensor(filepath: str) -> torch.Tensor:
     return tensor
 
 
-def _save_image_atomic(image: "Image.Image", destination: Path) -> None:
+def _save_image_atomic(image: Image.Image, destination: Path) -> None:
     """Write a PIL image to disk atomically (write to .tmp then rename)."""
     destination.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = destination.with_suffix(destination.suffix + ".tmp")
@@ -390,7 +389,7 @@ def _save_image_atomic(image: "Image.Image", destination: Path) -> None:
 class _LamaModel:
     """Thread-safe singleton wrapper around the LaMa JIT-scripted model."""
 
-    _instance: "_LamaModel | None" = None
+    _instance: _LamaModel | None = None
     _instance_lock = threading.Lock()
 
     def __init__(self) -> None:
@@ -407,7 +406,7 @@ class _LamaModel:
         self._status_lock = threading.Lock()
 
     @classmethod
-    def instance(cls) -> "_LamaModel":
+    def instance(cls) -> _LamaModel:
         with cls._instance_lock:
             if cls._instance is None:
                 cls._instance = cls()

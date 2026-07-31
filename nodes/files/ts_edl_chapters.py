@@ -76,7 +76,7 @@ class TS_EDLToYouTubeChaptersNode(IO.ComfyNode):
         edl_file_path = edl_file_path.strip('"')
         if not os.path.exists(edl_file_path):
             raise ValueError(f"TS_EDLToYouTubeChaptersNode: File not found: {edl_file_path}")
-        with open(edl_file_path, "r", encoding="utf-8") as file:
+        with open(edl_file_path, encoding="utf-8") as file:
             edl_text = file.read()
         youtube_chapters_output = cls._events_to_chapters(cls._parse_events(edl_text))
         logger.info("%s YouTube Chapters Output:\n%s", LOG_PREFIX, youtube_chapters_output)

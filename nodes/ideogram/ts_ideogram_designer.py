@@ -195,7 +195,7 @@ class TS_IdeogramDesigner(IO.ComfyNode):
                            auto_prompt: str = "", auto_caption: str = "", auto_seed: int = 0) -> str:
         design_sig = hashlib.blake2b((design_json or "").encode("utf-8"), digest_size=16).hexdigest()
         auto_sig = hashlib.blake2b(
-            f"{mode}|{auto_prompt}|{auto_caption}|{auto_seed}".encode("utf-8"), digest_size=16
+            f"{mode}|{auto_prompt}|{auto_caption}|{auto_seed}".encode(), digest_size=16
         ).hexdigest()
         if image is not None and hasattr(image, "shape"):
             try:

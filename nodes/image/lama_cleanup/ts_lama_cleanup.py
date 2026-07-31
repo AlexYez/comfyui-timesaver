@@ -28,6 +28,7 @@ class TS_LamaCleanup(IO.ComfyNode):
             node_id="TS_LamaCleanup",
             display_name="TS Lama Cleanup",
             category="TS/Image",
+            essentials_category="Image",
             description=(
                 "Interactive defect removal with the LaMa inpainting model. "
                 "Open an image with the in-node Load Image button, paint over "
@@ -123,7 +124,7 @@ class TS_LamaCleanup(IO.ComfyNode):
         hasher.update(str(source_path).encode("utf-8"))
         hasher.update(str(session_id).encode("utf-8"))
         hasher.update(str(working_path).encode("utf-8"))
-        hasher.update(f"{int(max_resolution)}|{int(mask_padding)}|{int(feather)}".encode("utf-8"))
+        hasher.update(f"{int(max_resolution)}|{int(mask_padding)}|{int(feather)}".encode())
         active_path = _select_active_path(source_path, working_path, session_id)
         hasher.update(_working_file_signature(active_path).encode("utf-8"))
         return hasher.hexdigest()

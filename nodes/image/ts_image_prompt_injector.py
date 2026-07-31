@@ -3,14 +3,12 @@
 node_id: TS_ImagePromptInjector
 """
 
-from typing import Optional
-import time
 import logging
+import time
+from typing import Optional
 
 import torch
-
 from comfy_api.v0_0_2 import IO
-
 
 logger = logging.getLogger("comfyui_timesaver.ts_image_prompt_injector")
 LOG_PREFIX = "[TS Image Prompt Injector]"

@@ -44,8 +44,12 @@ from .._qwen_engine import (
     _flatten_text_messages,
     _messages_have_visuals,
     _template_accepts_kwargs,
-    apply_chat_template_no_thinking as _engine_apply_chat_template_no_thinking,
     get_qwen_engine,
+)
+from .._qwen_engine import (
+    apply_chat_template_no_thinking as _engine_apply_chat_template_no_thinking,
+)
+from .._qwen_engine import (
     load_presets as _qwen_load_presets,
 )
 from ._helpers import (
@@ -74,7 +78,6 @@ from ._helpers import (
     log_warning,
     send_progress,
 )
-
 
 # ---------------------------------------------------------------------------
 # Engine access

@@ -54,8 +54,8 @@ class TS_AudioPreview(IO.ComfyNode):
         waveform, sample_rate = _coerce_audio_tensor(audio)
         hasher = hashlib.sha256()
         hasher.update(_hash_audio_tensor(waveform, sample_rate, "TS_AudioPreview").encode("utf-8"))
-        hasher.update(f"{float(crop_start_seconds):.6f}".encode("utf-8"))
-        hasher.update(f"{float(crop_end_seconds):.6f}".encode("utf-8"))
+        hasher.update(f"{float(crop_start_seconds):.6f}".encode())
+        hasher.update(f"{float(crop_end_seconds):.6f}".encode())
         return hasher.hexdigest()
 
     @classmethod

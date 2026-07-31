@@ -84,6 +84,63 @@ Icon = "https://raw.githubusercontent.com/AlexYez/comfyui-timesaver/refs/heads/m
 # this pack relies on (IO.ComfyNode, IO.Schema, IO.NodeOutput, IO.Color, etc.).
 requires-comfyui = ">=0.20.1"
 
+[tool.ruff]
+# Matches the runtime floor in requires-python.
+target-version = "py310"
+line-length = 120
+# Vendored upstream model code is carried as-is: reformatting it would make
+# every future sync with its origin a merge conflict for no benefit.
+extend-exclude = [
+    "nodes/video_depth_anything",
+    "nodes/frame_interpolation_models",
+]
+
+[tool.ruff.lint]
+# A deliberately small, high-signal set. The pack's own conventions (one node
+# per file, god-files are fine, comments carry reasoning) are enforced by
+# review and the guard tests in tests/, not by a linter — so style rules that
+# would fight them stay off.
+select = [
+    "E",    # pycodestyle errors
+    "F",    # pyflakes: undefined names, unused imports
+    "B",    # bugbear: mutable defaults, shadowed loop vars, except pitfalls
+    "UP",   # pyupgrade: syntax that 3.10 made obsolete
+    "I",    # import sorting
+    "T20",  # print() — already frozen by tests/test_no_print_logging.py
+]
+ignore = [
+    "E501",  # line length is advisory here; tooltips and URLs are long by nature
+    "B008",  # call-in-default is how several ComfyUI IO helpers are written
+    # zip(..., strict=) is a behaviour change, not a cleanup: it turns a
+    # length mismatch into an exception. Each site needs its own decision, so
+    # it does not belong in a lint that must stay green.
+    "B905",
+    # Typing modernisation only. Ruff marks both as unsafe fixes because the
+    # rewrite can change how annotations evaluate at runtime, and ComfyUI
+    # introspects node signatures — not worth the risk for a cosmetic gain.
+    "UP045",
+    "UP035",
+    # Two loops read their index for logging context only; renaming the
+    # variable would say less, not more.
+    "B007",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests stub modules into sys.modules before importing the pack, so imports
+# legitimately happen below other statements.
+"tests/*" = ["E402"]
+# These modules re-export engine symbols on purpose: the test suite patches
+# them by that name (project_memory/reference_node_import_paths.md). "Unused"
+# here means "used from outside".
+"nodes/llm/super_prompt/_qwen.py" = ["F401"]
+"nodes/llm/super_prompt/_voice.py" = ["F401"]
+"nodes/llm/super_prompt/_helpers.py" = ["F401", "E402"]
+# Backward-compatibility shim: it exists to re-export the split-out module's
+# names for anything that still imports the old path.
+"nodes/llm/ts_super_prompt.py" = ["F401"]
+# Standalone self-test block, already allowlisted by tests/test_no_print_logging.py.
+"nodes/ideogram/_ideogram_helpers.py" = ["T201"]
+
 [tool.bandit]
 # Two rules are silenced project-wide with an explicit justification so the
 # Comfy registry security scanner (bandit-based) stops false-flagging legit

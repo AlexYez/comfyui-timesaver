@@ -83,16 +83,13 @@ from __future__ import annotations
 import logging
 import math
 
-import torch
-
 import comfy.sample
 import comfy.samplers
 import comfy.utils
 import latent_preview
 import node_helpers
-
+import torch
 from comfy_api.v0_0_2 import IO
-
 
 _FINE_UPSCALE_RESIZE_METHODS = ["nearest-exact", "bilinear", "area", "bicubic", "bislerp", "lanczos"]
 

@@ -259,7 +259,7 @@ def _video_meta(filepath: str) -> dict:
     }
 
 
-def _first_video_frame_rgb(filepath: str) -> "Image.Image | None":
+def _first_video_frame_rgb(filepath: str) -> Image.Image | None:
     """Return the first decodable frame of ``filepath`` as a PIL RGB image."""
     if Image is None:
         return None
@@ -275,7 +275,7 @@ def _first_video_frame_rgb(filepath: str) -> "Image.Image | None":
     return Image.fromarray(rgb)
 
 
-def _video_meta_and_first_frame(filepath: str) -> tuple[dict, "Image.Image | None"]:
+def _video_meta_and_first_frame(filepath: str) -> tuple[dict, Image.Image | None]:
     """Return ``(_video_meta(...)-shaped dict, first frame)`` from a single open.
 
     Opening a capture pays the container's demux/probe cost, so the probe path
@@ -427,7 +427,7 @@ def _extract_video_audio(filepath: str) -> dict:
 # ---------------------------------------------------------------------------
 
 
-def _downscale_for_preview(image: "Image.Image") -> "Image.Image":
+def _downscale_for_preview(image: Image.Image) -> Image.Image:
     if Image is None:
         return image
     width, height = image.size
@@ -439,7 +439,7 @@ def _downscale_for_preview(image: "Image.Image") -> "Image.Image":
     return image.resize(new_size, Image.LANCZOS)
 
 
-def _image_to_base64_jpeg(image: "Image.Image", quality: int = 88) -> str:
+def _image_to_base64_jpeg(image: Image.Image, quality: int = 88) -> str:
     if Image is None:
         return ""
     preview = _downscale_for_preview(image)
@@ -452,7 +452,7 @@ class _PreviewUnavailable(RuntimeError):
     """Raised when a preview cannot be produced for a reportable reason."""
 
 
-def _first_frame_full_rgb(filepath: str, media_type: str) -> "Image.Image | None":
+def _first_frame_full_rgb(filepath: str, media_type: str) -> Image.Image | None:
     """First frame of ``filepath`` as a full-resolution PIL RGB image.
 
     Blocking (decode); call it through a thread from async handlers.
@@ -749,7 +749,7 @@ class _patched_prompt_server:
         self._had_node = False
         self._had_client = False
 
-    def __enter__(self) -> "_patched_prompt_server":
+    def __enter__(self) -> _patched_prompt_server:
         if server is None:
             return self
         try:
@@ -762,11 +762,11 @@ class _patched_prompt_server:
         self._had_node = hasattr(inst, "last_node_id")
         self._had_client = hasattr(inst, "client_id")
         if self._had_prompt:
-            self._prev_prompt = getattr(inst, "last_prompt_id")
+            self._prev_prompt = inst.last_prompt_id
         if self._had_node:
-            self._prev_node = getattr(inst, "last_node_id")
+            self._prev_node = inst.last_node_id
         if self._had_client:
-            self._prev_client = getattr(inst, "client_id")
+            self._prev_client = inst.client_id
         try:
             inst.last_prompt_id = self.PROMPT_ID
             inst.last_node_id = self.NODE_ID
@@ -811,7 +811,7 @@ class _Sam3PreviewModel:
     first call (which can take ~10 seconds for a multi-GB SAM3 checkpoint).
     """
 
-    _instance: "_Sam3PreviewModel | None" = None
+    _instance: _Sam3PreviewModel | None = None
     _instance_lock = threading.Lock()
 
     def __init__(self) -> None:
@@ -829,7 +829,7 @@ class _Sam3PreviewModel:
         self._status_lock = threading.Lock()
 
     @classmethod
-    def instance(cls) -> "_Sam3PreviewModel":
+    def instance(cls) -> _Sam3PreviewModel:
         with cls._instance_lock:
             if cls._instance is None:
                 cls._instance = cls()
@@ -932,11 +932,11 @@ class _Sam3PreviewModel:
 
     def segment_first_frame(
         self,
-        image_pil: "Image.Image",
+        image_pil: Image.Image,
         positive_pts: list[dict[str, float]],
         negative_pts: list[dict[str, float]],
         refine_iterations: int = 2,
-    ) -> "np.ndarray":
+    ) -> np.ndarray:
         """Run the native ``SAM3_Detect`` node on a single PIL frame.
 
         Delegating to the upstream node keeps the preview in lock-step with
@@ -1066,8 +1066,8 @@ def _get_preview_lock(checkpoint: str) -> asyncio.Lock:
 
 
 def _remove_small_regions(
-    mask_bool: "np.ndarray", area_thresh: int, mode: str
-) -> tuple["np.ndarray", bool]:
+    mask_bool: np.ndarray, area_thresh: int, mode: str
+) -> tuple[np.ndarray, bool]:
     """Meta's SAM ``remove_small_regions`` (segment_anything/utils/amg.py).
 
     ``mode="holes"``: fill background holes SMALLER than ``area_thresh`` — large,
@@ -1107,11 +1107,11 @@ def _remove_small_regions(
 
 
 def _postprocess_mask(
-    mask_u8: "np.ndarray",
+    mask_u8: np.ndarray,
     *,
     min_region_area_px: int = 32,
     min_region_area_ratio: float = 0.0004,
-) -> "np.ndarray":
+) -> np.ndarray:
     """Clean the raw SAM3 mask exactly the way Meta's SAM demo does.
 
     Two size-aware connected-component passes — the precise algorithm from
@@ -1162,7 +1162,7 @@ def _postprocess_mask(
     return m.astype(np.uint8) * 255
 
 
-def refine_sam_mask_tensor(mask_tensor: "torch.Tensor") -> "torch.Tensor":
+def refine_sam_mask_tensor(mask_tensor: torch.Tensor) -> torch.Tensor:
     """Apply :func:`_postprocess_mask` to a SAM3 ``MASK`` tensor.
 
     Accepts a ``[H, W]`` or ``[B, H, W]`` float tensor in ``[0, 1]`` (the shape
@@ -1187,7 +1187,7 @@ def refine_sam_mask_tensor(mask_tensor: "torch.Tensor") -> "torch.Tensor":
     return out.unsqueeze(0).contiguous()
 
 
-def _mask_to_base64_png(mask: "np.ndarray") -> str:
+def _mask_to_base64_png(mask: np.ndarray) -> str:
     """Encode a binary mask as a blue-tinted RGBA PNG.
 
     The frontend expects an RGBA bitmap that it can blit straight on top of

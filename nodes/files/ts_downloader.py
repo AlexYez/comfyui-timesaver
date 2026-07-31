@@ -14,8 +14,8 @@ from urllib.parse import urlparse
 # Third-party imports
 import requests
 from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
 from tqdm import tqdm
+from urllib3.util.retry import Retry
 
 try:
     from requests.utils import unquote as requests_unquote
@@ -138,6 +138,7 @@ class TS_DownloadFilesNode(IO.ComfyNode):
             node_id="TS Files Downloader",
             display_name="TS Files Downloader (Ultimate)",
             category="TS/Files",
+            essentials_category="Files",
             description="Download every model a workflow needs from a list of URL + target-folder lines, with resume, mirrors and integrity checks.",
             is_output_node=True,
             inputs=[
@@ -646,7 +647,7 @@ class TS_DownloadFilesNode(IO.ComfyNode):
         if not os.path.exists(path):
             return None
         try:
-            with open(path, "r", encoding="utf-8") as f:
+            with open(path, encoding="utf-8") as f:
                 data = json.load(f)
             if isinstance(data, dict):
                 return data
@@ -1208,7 +1209,7 @@ class TS_DownloadFilesNode(IO.ComfyNode):
             return "disabled"
         digest = hashlib.blake2b(digest_size=16)
         digest.update(str(file_list or "").encode("utf-8", "replace"))
-        digest.update(f"|{skip_existing}|{verify_size}|{integrity_mode}".encode("utf-8"))
+        digest.update(f"|{skip_existing}|{verify_size}|{integrity_mode}".encode())
         for item in cls._parse_file_list(file_list or ""):
             target = item.get("target_dir") or ""
             name = os.path.basename(urlparse(item.get("url") or "").path)

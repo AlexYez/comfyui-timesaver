@@ -9,7 +9,6 @@ from comfy_api.v0_0_2 import IO
 
 from .._shared import TS_Logger
 
-
 _OPERATIONS = [
     "add (+)",
     "subtract (-)",

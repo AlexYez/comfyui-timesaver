@@ -85,7 +85,7 @@ def pil2tensor(image):
     return torch.from_numpy(np.array(image).astype(np.float32) / 255.0).unsqueeze(0)
 
 
-def _resolve_dtype(target_device, precision: str) -> "torch.dtype":
+def _resolve_dtype(target_device, precision: str) -> torch.dtype:
     """Map the user-facing precision combo to a torch dtype.
 
     'auto' picks bf16 when the GPU supports it (Ampere+ with Tensor Core

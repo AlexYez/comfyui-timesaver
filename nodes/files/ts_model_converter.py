@@ -7,7 +7,6 @@ import copy
 import logging
 
 import torch
-
 from comfy.model_patcher import ModelPatcher
 from comfy_api.v0_0_2 import IO
 

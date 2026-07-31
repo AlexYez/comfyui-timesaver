@@ -3,14 +3,12 @@
 node_id: TS_ImageListToImageBatch
 """
 
-from typing import Optional
 import logging
+from typing import Optional
 
-import torch
 import comfy.utils
-
+import torch
 from comfy_api.v0_0_2 import IO
-
 
 logger = logging.getLogger("comfyui_timesaver.ts_image_list_to_batch")
 LOG_PREFIX = "[TS Image List to Image Batch]"

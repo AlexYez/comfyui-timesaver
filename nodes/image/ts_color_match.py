@@ -3,10 +3,9 @@ import math
 import os
 from concurrent.futures import ThreadPoolExecutor
 
-import torch
 import comfy.model_management as model_management
+import torch
 from comfy.utils import ProgressBar
-
 from comfy_api.v0_0_2 import IO
 
 logger = logging.getLogger("comfyui_timesaver.ts_color_match")

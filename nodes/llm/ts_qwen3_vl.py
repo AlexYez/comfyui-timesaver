@@ -17,17 +17,19 @@ from typing import Any
 
 import numpy as np
 import torch
-
 from comfy_api.v0_0_2 import IO
 
 from ._qwen_engine import (
     QWEN_MODEL_LOCK,
     QwenEngine,
     get_qwen_engine,
+)
+from ._qwen_engine import (
     load_presets as engine_load_presets,
+)
+from ._qwen_engine import (
     presets_path as engine_presets_path,
 )
-
 
 _LOGGER = logging.getLogger("comfyui_timesaver.ts_qwen3_vl")
 _LOG_PREFIX = "[TS Qwen3 VL V3]"

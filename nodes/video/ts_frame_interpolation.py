@@ -9,12 +9,10 @@ from pathlib import Path
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 
-import torch
-
 import comfy.model_management as model_management
 import comfy.utils
 import folder_paths
-
+import torch
 from comfy_api.v0_0_2 import IO
 
 from ..frame_interpolation_models import FILMNet, IFNet, detect_rife_config
@@ -479,6 +477,7 @@ class TS_Frame_Interpolation(IO.ComfyNode):
             node_id="TS_Frame_Interpolation",
             display_name="TS Frame Interpolation",
             category="TS/Video",
+            essentials_category="Video",
             description="Interpolate intermediate frames with RIFE or FILM to smooth or slow down a clip.",
             inputs=[
                 IO.Image.Input(

@@ -3,14 +3,12 @@ import logging
 import math
 import os
 
+import comfy.model_management as mm
+import folder_paths
 import numpy as np
 import torch
 import torch.nn.functional as F
-
-import comfy.model_management as mm
-import folder_paths
 from comfy.utils import ProgressBar, load_torch_file
-
 from comfy_api.v0_0_2 import IO
 
 from .._hf_download import snapshot_download_resilient
@@ -312,7 +310,6 @@ def _guided_upsample_chunk(
     The implementation is fully separable (box filters via avg_pool2d) so a
     1280×720 → 4K upsample stays under ~150 MB peak, regardless of N.
     """
-    n = depth_low.shape[0]
     # Bicubic-upsample depth to target resolution first.
     depth_up = F.interpolate(depth_low.unsqueeze(1), size=(target_h, target_w), mode="bicubic", align_corners=False, antialias=True)
     # Luma guide.
@@ -479,6 +476,7 @@ class TS_VideoDepth(IO.ComfyNode):
             node_id="TS_VideoDepthNode",
             display_name="TS Video Depth",
             category="TS/Video",
+            essentials_category="Video",
             description="Estimate per-frame depth with Depth-Anything, tuned for temporal consistency on video.",
             inputs=[
                 IO.Image.Input(
@@ -909,7 +907,10 @@ class TS_VideoDepth(IO.ComfyNode):
                         raise
                     last_error = exc
                     try:
-                        del frames_gpu
+                        # Deliberate: the name may never have been bound if the
+                        # failure happened before the upload, and the whole point
+                        # is to drop the VRAM reference when it WAS.
+                        del frames_gpu  # noqa: F821
                     except UnboundLocalError:
                         pass
                     _hard_reclaim_vram()

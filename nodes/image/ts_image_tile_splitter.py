@@ -3,14 +3,12 @@
 node_id: TS_ImageTileSplitter
 """
 
-import math
-from typing import Any, Dict, List, Optional
 import logging
+import math
+from typing import Any, Optional
 
 import torch
-
 from comfy_api.v0_0_2 import IO
-
 
 logger = logging.getLogger("comfyui_timesaver.ts_image_tile_splitter")
 LOG_PREFIX = "[TS Image Tile Splitter]"
@@ -125,7 +123,7 @@ class TS_ImageTileSplitter(IO.ComfyNode):
         cols = max(1, math.ceil((img_w - overlap) / stride_w))
         rows = max(1, math.ceil((img_h - overlap) / stride_h))
 
-        tile_data: Dict[str, Any] = {
+        tile_data: dict[str, Any] = {
             "original_height": img_h,
             "original_width": img_w,
             "tile_width": tile_width,
@@ -138,7 +136,7 @@ class TS_ImageTileSplitter(IO.ComfyNode):
             "positions": [],
         }
 
-        results_tiles: List[torch.Tensor] = []
+        results_tiles: list[torch.Tensor] = []
 
         for b in range(batch_size):
             for r in range(rows):

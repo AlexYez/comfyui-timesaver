@@ -4,11 +4,9 @@ node_id: TS_Smart_Switch
 """
 
 import torch
-
 from comfy_api.v0_0_2 import IO
 
 from .._shared import TS_Logger
-
 
 _DATA_TYPES = ["images", "video", "audio", "mask", "string", "int", "float"]
 

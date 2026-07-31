@@ -5,11 +5,10 @@ node_id: TS_QwenCanvas
 
 import logging
 
-import torch
 import numpy as np
-from PIL import Image
-
+import torch
 from comfy_api.v0_0_2 import IO
+from PIL import Image
 
 logger = logging.getLogger("comfyui_timesaver.ts_qwen_canvas")
 LOG_PREFIX = "[TS Qwen Canvas]"
