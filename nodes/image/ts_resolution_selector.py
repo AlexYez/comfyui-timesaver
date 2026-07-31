@@ -35,6 +35,7 @@ class TS_ResolutionSelector(IO.ComfyNode):
             node_id="TS_ResolutionSelector",
             display_name="TS Resolution Selector",
             category="TS/Image",
+            description="Pick an aspect ratio and a megapixel budget and get a canvas snapped to multiples of 32.",
             inputs=[
                 IO.Combo.Input(
                     "aspect_ratio",

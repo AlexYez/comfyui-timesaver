@@ -15,6 +15,7 @@ class TS_EDLToYouTubeChaptersNode(IO.ComfyNode):
             node_id="TS Youtube Chapters",
             display_name="TS YouTube Chapters",
             category="TS/Files",
+            description="Turn a DaVinci Resolve EDL export into a ready-to-paste YouTube chapter list.",
             inputs=[
                 IO.String.Input("edl_file_path", default="", multiline=False, tooltip="Absolute path to a CMX3600 EDL file exported with markers (e.g. from DaVinci Resolve). Marker names become chapter titles."),
             ],

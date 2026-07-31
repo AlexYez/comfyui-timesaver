@@ -211,6 +211,7 @@ class TSWhisper(IO.ComfyNode):
             node_id="TSWhisper",
             display_name="TS Whisper",
             category="TS/Audio",
+            description="Transcribe speech to text, with optional SRT subtitles, on the local OpenAI Whisper engine.",
             inputs=[
                 IO.Audio.Input("audio", tooltip=tt["audio"]),
                 IO.Combo.Input("model", options=MODEL_OPTIONS, default="large-v3", tooltip=tt["model"]),

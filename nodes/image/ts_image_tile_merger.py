@@ -25,6 +25,7 @@ class TS_ImageTileMerger(IO.ComfyNode):
             node_id="TS_ImageTileMerger",
             display_name="TS Image Tile Merger",
             category="TS/Image",
+            description="Stitch processed tiles back into one image, blending the overlaps.",
             inputs=[
                 IO.Image.Input(
                     "images",

@@ -144,6 +144,7 @@ class TS_StylePromptSelector(IO.ComfyNode):
             node_id="TS_StylePromptSelector",
             display_name="TS Style Prompt Selector",
             category="TS/Text",
+            description="Pick an art style from a browsable library of 157 previews and output its prompt modifier.",
             inputs=[
                 IO.String.Input(
                     "style_id",

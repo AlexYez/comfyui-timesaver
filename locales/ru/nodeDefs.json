@@ -1,5 +1,6 @@
 {
   "TS Cube to Equirectangular": {
+    "description": "Шесть граней куба (front/right/back/left/top/bottom) → одна эквиректангулярная 360° панорама нужного размера.",
     "inputs": {
       "front": {
         "name": "передняя грань",
@@ -42,6 +43,7 @@
     }
   },
   "TS Equirectangular to Cube": {
+    "description": "Обратное преобразование: эквиректангулярная панорама → шесть граней куба заданного cube_size.",
     "inputs": {
       "image": {
         "name": "изображение",
@@ -80,6 +82,7 @@
     }
   },
   "TS Files Downloader": {
+    "description": "Multi-file загрузчик, который принимает список строк формата URL <пробел> target_path и скачивает их последовательно.",
     "inputs": {
       "file_list": {
         "name": "список файлов",
@@ -129,6 +132,7 @@
     "outputs": {}
   },
   "TS Youtube Chapters": {
+    "description": "Конвертирует EDL (Edit Decision List) экспорт DaVinci Resolve в YouTube-friendly список глав.",
     "inputs": {
       "edl_file_path": {
         "name": "путь к файлу EDL",
@@ -143,6 +147,7 @@
     }
   },
   "TSAutoTileSize": {
+    "description": "Выберите tile_count (4, 8, 16) — нода вычислит оптимальные tile_width × tile_height с учётом padding'а и divide_by.",
     "inputs": {
       "tile_count": {
         "name": "число тайлов",
@@ -181,6 +186,7 @@
     }
   },
   "TSCropToMask": {
+    "description": "Кропит батч изображений вокруг маски с настраиваемым padding'ом, ограничением максимального разрешения, фиксированным aspect и межкадровым сглаживанием для стабильности видео.",
     "inputs": {
       "images": {
         "name": "изображения",
@@ -251,6 +257,7 @@
     }
   },
   "TSRestoreFromCrop": {
+    "description": "…этой ноды, которая возвращает обработанный кроп обратно в исходный кадр с feathered Gaussian/box blur'ом по швам.",
     "inputs": {
       "original_images": {
         "name": "исходные изображения",
@@ -285,6 +292,7 @@
     }
   },
   "TSSmartInpaint": {
+    "description": "Перерисовка или уточнение по маске в одной ноде: подайте полное изображение + нарисованную маску — нода вырежет регион (+ контекстный отступ), апскейлит кроп до бюджета в мегапикселях, VAE-энкодит, сэмплит, затем с фезером композитит и блендит результат обратно в латенте, так что нетронутые пиксели остаются бит-в-бит.",
     "inputs": {
       "model": {
         "name": "модель",
@@ -367,6 +375,7 @@
     }
   },
   "TSWhisper": {
+    "description": "Speech-to-text на нативном движке OpenAI Whisper, общем с голосом TS Super Prompt (общие веса + кэш моделей в памяти).",
     "inputs": {
       "audio": {
         "name": "аудио",
@@ -453,6 +462,7 @@
     }
   },
   "TS_Animation_Preview": {
+    "description": "Готовая нода-превью для батчей изображений.",
     "inputs": {
       "images": {
         "name": "изображения",
@@ -470,6 +480,7 @@
     "outputs": {}
   },
   "TS_AudioLoader": {
+    "description": "Аудио-загрузчик, который вы бы написали сами, будь у вас время.",
     "inputs": {
       "mode": {
         "name": "режим",
@@ -500,6 +511,7 @@
     }
   },
   "TS_AudioPreview": {
+    "description": "Та же waveform-UI, что и у Audio Loader, но для прослушивания аудио-выхода upstream-ноды.",
     "inputs": {
       "audio": {
         "name": "аудио",
@@ -521,6 +533,7 @@
     "outputs": {}
   },
   "TS_AudioVisualizer": {
+    "description": "Превращает любой AUDIO-клип в стильную waveform-картинку в духе SoundCloud в заданном разрешении.",
     "inputs": {
       "audio": {
         "name": "аудио",
@@ -603,6 +616,7 @@
     }
   },
   "TS_BGRM_BiRefNet": {
+    "description": "State-of-the-art удаление фона через BiRefNet.",
     "inputs": {
       "image": {
         "name": "изображение",
@@ -673,6 +687,7 @@
     }
   },
   "TS_BatchPromptLoader": {
+    "description": "Вставьте многострочный текст, где промпты разделены пустыми строками — на выходе список промптов и их количество.",
     "inputs": {
       "text": {
         "name": "текст",
@@ -691,6 +706,7 @@
     }
   },
   "TS_CPULoraMerger": {
+    "description": "Слияние LoRA-весов в базовую модель на CPU — VRAM не нужна, подходит для огромных моделей, не помещающихся в GPU.",
     "inputs": {
       "base_model": {
         "name": "базовая модель",
@@ -745,6 +761,7 @@
     }
   },
   "TS_Color_Grade": {
+    "description": "Восемь ручек цветокоррекции в одной ноде: hue, temperature, saturation, contrast, gain, lift, gamma, brightness.",
     "inputs": {
       "image": {
         "name": "изображение",
@@ -791,6 +808,7 @@
     }
   },
   "TS_Color_Match": {
+    "description": "Перенос цветовой палитры с reference на target батч.",
     "inputs": {
       "reference": {
         "name": "референс",
@@ -861,6 +879,7 @@
     }
   },
   "TS_Despill": {
+    "description": "Отдельный despill с четырьмя алгоритмами: classic, balanced, adaptive (edge-aware), hue_preserve.",
     "inputs": {
       "image": {
         "name": "изображение",
@@ -943,6 +962,7 @@
     }
   },
   "TS_FilePathLoader": {
+    "description": "Берёт N-й файл из папки в порядке сортировки.",
     "inputs": {
       "folder_path": {
         "name": "путь к папке",
@@ -965,6 +985,7 @@
     }
   },
   "TS_FilmGrain": {
+    "description": "Трёхоктавное органичное плёночное зерно.",
     "inputs": {
       "images": {
         "name": "изображения",
@@ -1011,6 +1032,7 @@
     }
   },
   "TS_Film_Emulation": {
+    "description": "Встроенные пресеты плёнки (Kodak Portra/Vision3, Fuji, Cineon-style, …) плюс возможность подгрузить свой .cube LUT из models/luts/.",
     "inputs": {
       "image": {
         "name": "изображение",
@@ -1077,6 +1099,7 @@
     }
   },
   "TS_FloatSlider": {
+    "description": "Float-аналог, диапазон −1e9 … +1e9 с точностью 0.01 по умолчанию.",
     "inputs": {
       "value": {
         "name": "значение",
@@ -1091,6 +1114,7 @@
     }
   },
   "TS_Frame_Interpolation": {
+    "description": "Плавная интерполяция кадров через RIFE / FILM.",
     "inputs": {
       "images": {
         "name": "изображения",
@@ -1137,6 +1161,7 @@
     }
   },
   "TS_GetImageMegapixels": {
+    "description": "Возвращает количество мегапикселей IMAGE как FLOAT.",
     "inputs": {
       "image": {
         "name": "изображение",
@@ -1151,6 +1176,7 @@
     }
   },
   "TS_GetImageSizeSide": {
+    "description": "Возвращает большую или меньшую сторону изображения как INT.",
     "inputs": {
       "image": {
         "name": "изображение",
@@ -1169,6 +1195,7 @@
     }
   },
   "TS_IdeogramDesigner": {
+    "description": "Визуальный дизайнер JSON-промптов для Ideogram 4.",
     "inputs": {
       "image": {
         "name": "изображение",
@@ -1211,6 +1238,7 @@
     }
   },
   "TS_ImageBatchCut": {
+    "description": "Обрежьте N кадров с начала (first_cut) и N кадров с конца (last_cut) у батча изображений.",
     "inputs": {
       "image": {
         "name": "изображение",
@@ -1233,6 +1261,7 @@
     }
   },
   "TS_ImageBatchToImageList": {
+    "description": "Превращает батч изображений в список изображений.",
     "inputs": {
       "image": {
         "name": "изображение",
@@ -1247,6 +1276,7 @@
     }
   },
   "TS_ImageListToImageBatch": {
+    "description": "Собирает список изображений обратно в один батч.",
     "inputs": {
       "images": {
         "name": "изображения",
@@ -1261,6 +1291,7 @@
     }
   },
   "TS_ImagePromptInjector": {
+    "description": "Вставляет произвольную строку в позитивный промпт workflow'а во время выполнения — полезно, когда промпт генерируется динамически (LLM-ноды) и должен попасть в реальный CLIPTextEncode, подключённый к семплеру.",
     "inputs": {
       "image": {
         "name": "изображение",
@@ -1279,6 +1310,7 @@
     }
   },
   "TS_ImageResize": {
+    "description": "Тот самый ресайз, который вам действительно нужен.",
     "inputs": {
       "pixels": {
         "name": "изображение",
@@ -1349,6 +1381,7 @@
     }
   },
   "TS_ImageTileMerger": {
+    "description": "Вторая половинка пары: берёт обработанные тайлы и TILE_INFO, склеивает обратно в одно изображение с feathered-смешиванием в зонах перекрытия.",
     "inputs": {
       "images": {
         "name": "изображения",
@@ -1367,6 +1400,7 @@
     }
   },
   "TS_ImageTileSplitter": {
+    "description": "Режет большое изображение на перекрывающиеся тайлы для тайловой обработки.",
     "inputs": {
       "image": {
         "name": "изображение",
@@ -1401,6 +1435,7 @@
     }
   },
   "TS_Int_Slider": {
+    "description": "Чистый integer-слайдер, возвращающий INT.",
     "inputs": {
       "value": {
         "name": "значение",
@@ -1415,6 +1450,7 @@
     }
   },
   "TS_Keyer": {
+    "description": "Профессиональный chroma keyer для зелёного/синего/красного фона.",
     "inputs": {
       "image": {
         "name": "изображение",
@@ -1493,6 +1529,7 @@
     }
   },
   "TS_LTX_FirstLastFrame": {
+    "description": "Применяет LTX-Video keyframe conditioning для первого и (опционально) последнего кадра в одной ноде — эквивалент цепочки из двух LTXVAddGuide, но без визуальной каши.",
     "inputs": {
       "positive": {
         "name": "позитив",
@@ -1543,6 +1580,7 @@
     }
   },
   "TS_LamaCleanup": {
+    "description": "Встроенный инпейнтинг через LaMa — рисуйте маску прямо на канвасе ноды (кисть + undo/redo + reset), затем запускайте, чтобы заполнить.",
     "inputs": {
       "source_path": {
         "name": "путь источника",
@@ -1581,6 +1619,7 @@
     }
   },
   "TS_Math_Int": {
+    "description": "Двухвходовая integer-математика: +, -, *, /, //, %, **, min, max.",
     "inputs": {
       "a": {
         "name": "a",
@@ -1603,6 +1642,7 @@
     }
   },
   "TS_Matting_ViTMatte": {
+    "description": "Guided alpha matting через Hugging Face ViTMatte.",
     "inputs": {
       "image": {
         "name": "изображение",
@@ -1685,6 +1725,7 @@
     }
   },
   "TS_ModelConverter": {
+    "description": "In-memory FP8-конвертация (float8_e4m3fn) загруженной MODEL.",
     "inputs": {
       "model": {
         "name": "модель",
@@ -1699,6 +1740,7 @@
     }
   },
   "TS_ModelConverterAdvanced": {
+    "description": "Та же идея с тонкой настройкой: выбор целевого dtype (fp8 e4m3 / e5m2, bf16, fp16, fp32), keyword-фильтры по слоям и опции загрузки/сохранения.",
     "inputs": {
       "model_name": {
         "name": "имя модели",
@@ -1729,6 +1771,7 @@
     }
   },
   "TS_ModelConverterAdvancedDirect": {
+    "description": "То же, что Advanced, но пишет конвертированные веса напрямую на диск — без in-memory roundtrip.",
     "inputs": {
       "model": {
         "name": "модель",
@@ -1755,6 +1798,7 @@
     }
   },
   "TS_ModelScanner": {
+    "description": "Инспекция любого .safetensors (из models/diffusion_models/) или загруженного MODEL.",
     "inputs": {
       "model_name": {
         "name": "имя модели",
@@ -1777,6 +1821,7 @@
     }
   },
   "TS_MultiReference": {
+    "description": "Добавляет до трёх референсных изображений в conditioning как reference_latents.",
     "inputs": {
       "conditioning": {
         "name": "кондиционирование",
@@ -1847,6 +1892,7 @@
     }
   },
   "TS_MusicStems": {
+    "description": "Разделение музыки на источники через Demucs.",
     "inputs": {
       "audio": {
         "name": "аудио",
@@ -1897,6 +1943,7 @@
     }
   },
   "TS_PromptBuilder": {
+    "description": "Composable prompt builder.",
     "inputs": {
       "seed": {
         "name": "сид",
@@ -1915,6 +1962,7 @@
     }
   },
   "TS_Qwen3_VL_V3": {
+    "description": "Мультимодальный Qwen 3 VL (image + video + text) локально.",
     "inputs": {
       "model_name": {
         "name": "модель",
@@ -1997,6 +2045,7 @@
     }
   },
   "TS_QwenCanvas": {
+    "description": "Создаёт пустое Qwen-Image-полотно в одном из поддерживаемых разрешений и опционально вставляет вашу картинку в центр (с mask-aware кропом, если подать маску).",
     "inputs": {
       "resolution": {
         "name": "разрешение",
@@ -2027,6 +2076,7 @@
     }
   },
   "TS_QwenSafeResize": {
+    "description": "Ресайз в один клик к ближайшему официальному разрешению Qwen-Image (1344×1344, 1792×1008 и т.п.).",
     "inputs": {
       "image": {
         "name": "изображение",
@@ -2041,6 +2091,7 @@
     }
   },
   "TS_RTX_Upscaler": {
+    "description": "Аппаратный апскейл через NVIDIA RTX Video Super Resolution (nvvfx).",
     "inputs": {
       "images": {
         "name": "изображения",
@@ -2075,6 +2126,7 @@
     }
   },
   "TS_ResolutionSelector": {
+    "description": "Визуальный выбор соотношения сторон.",
     "inputs": {
       "aspect_ratio": {
         "name": "соотношение сторон",
@@ -2105,6 +2157,7 @@
     }
   },
   "TS_SAM_MediaLoader": {
+    "description": "Загружает изображение или видео и позволяет накликать позитивные/негативные точки прямо на превью первого кадра.",
     "inputs": {
       "source_path": {
         "name": "путь источника",
@@ -2167,6 +2220,7 @@
     }
   },
   "TS_SileroStress": {
+    "description": "Препроцессор русского текста: расставляет ударения (Unicode acute или Silero +-нотация) и восстанавливает буквы ё.",
     "inputs": {
       "text": {
         "name": "текст",
@@ -2221,6 +2275,7 @@
     }
   },
   "TS_SileroTTS": {
+    "description": "Русский text-to-speech через Silero TTS v5_3.",
     "inputs": {
       "text": {
         "name": "текст",
@@ -2275,6 +2330,7 @@
     }
   },
   "TS_Smart_Switch": {
+    "description": "Type-aware булев свитч между двумя ANY-входами.",
     "inputs": {
       "data_type": {
         "name": "тип данных",
@@ -2301,6 +2357,7 @@
     }
   },
   "TS_StylePromptSelector": {
+    "description": "Визуальный выбор стиля: библиотека из 157 стилей с превью, разложенных по 15 категориям — от наскальной живописи и византийской мозаики через авангард двадцатого века и фильм-нуар до пиксель-арта и вейпорвейва.",
     "inputs": {
       "style_id": {
         "name": "id стиля",
@@ -2315,6 +2372,7 @@
     }
   },
   "TS_SuperPrompt": {
+    "description": "Нода-улучшайзер промптов со встроенной голосовой кнопкой — скажите идею, Whisper её транскрибирует (с грамматикой, заточенной под cinematography), маленький Qwen3 раскрывает в насыщенный промпт.",
     "inputs": {
       "text": {
         "name": "текст",
@@ -2341,6 +2399,7 @@
     }
   },
   "TS_VideoDepthNode": {
+    "description": "Покадровое определение глубины через Depth-Anything, оптимизированное для видео (временна́я согласованность).",
     "inputs": {
       "images": {
         "name": "изображения",
@@ -2403,6 +2462,7 @@
     }
   },
   "TS_Video_Upscale_With_Model": {
+    "description": "Покадровый апскейл любой моделью, поддерживаемой spandrel (RealESRGAN, 4x-Ultrasharp и т.п.).",
     "inputs": {
       "model_name": {
         "name": "модель",
@@ -2433,6 +2493,7 @@
     }
   },
   "TS_WAN_SafeResize": {
+    "description": "Аналог Qwen Safe Resize, но для WAN-Video.",
     "inputs": {
       "image": {
         "name": "изображение",

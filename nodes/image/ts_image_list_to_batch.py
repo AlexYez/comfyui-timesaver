@@ -23,6 +23,7 @@ class TS_ImageListToImageBatch(IO.ComfyNode):
             node_id="TS_ImageListToImageBatch",
             display_name="TS Image List to Image Batch",
             category="TS/Image",
+            description="Convert an image list back into a single image batch.",
             is_input_list=True,
             inputs=[
                 IO.Image.Input(

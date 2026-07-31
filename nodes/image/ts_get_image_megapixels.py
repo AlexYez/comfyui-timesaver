@@ -22,6 +22,7 @@ class TS_GetImageMegapixels(IO.ComfyNode):
             node_id="TS_GetImageMegapixels",
             display_name="TS Get Image Megapixels",
             category="TS/Image",
+            description="Return the size of an image in megapixels as a FLOAT.",
             inputs=[IO.Image.Input("image", tooltip="Image whose resolution is measured.")],
             outputs=[IO.Float.Output(display_name="megapixels", tooltip="Image area (width x height) expressed in megapixels.")],
         )

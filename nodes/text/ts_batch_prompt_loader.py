@@ -10,6 +10,7 @@ class TS_BatchPromptLoader(IO.ComfyNode):
             node_id="TS_BatchPromptLoader",
             display_name="TS Batch Prompt Loader",
             category="TS/Text",
+            description="Split a multiline text into a list of prompts separated by blank lines, plus their count.",
             inputs=[
                 IO.String.Input(
                     "text",

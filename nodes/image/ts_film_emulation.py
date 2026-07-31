@@ -41,6 +41,7 @@ class TS_Film_Emulation(IO.ComfyNode):
             node_id="TS_Film_Emulation",
             display_name="TS Film Emulation",
             category="TS/Image",
+            description="Apply film-stock looks (Kodak, Fuji, Cineon-style) or any .cube LUT from models/luts.",
             inputs=[
                 IO.Image.Input("image", tooltip="Image to apply the film look to."),
                 IO.Boolean.Input("enable", default=True, tooltip="If disabled, the image passes through unchanged."),

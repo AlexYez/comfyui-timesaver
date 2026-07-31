@@ -84,6 +84,7 @@ class TS_MusicStems(IO.ComfyNode):
             node_id="TS_MusicStems",
             display_name="TS Music Stems",
             category="TS/Audio",
+            description="Split music into stems (vocals, drums, bass, other) with Demucs.",
             inputs=[
                 IO.Audio.Input("audio", tooltip="Audio track to split into stems."),
                 IO.Combo.Input("model_name", options=["htdemucs", "htdemucs_ft", "hdemucs_mmi"], default="htdemucs_ft", tooltip="Demucs separation model. htdemucs_ft is fine-tuned for best quality but slower."),

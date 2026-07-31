@@ -479,6 +479,7 @@ class TS_Frame_Interpolation(IO.ComfyNode):
             node_id="TS_Frame_Interpolation",
             display_name="TS Frame Interpolation",
             category="TS/Video",
+            description="Interpolate intermediate frames with RIFE or FILM to smooth or slow down a clip.",
             inputs=[
                 IO.Image.Input(
                     "images",

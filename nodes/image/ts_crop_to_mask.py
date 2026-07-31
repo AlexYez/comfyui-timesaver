@@ -26,6 +26,7 @@ class TSCropToMask(IO.ComfyNode):
             node_id="TSCropToMask",
             display_name="TS Crop To Mask",
             category="TS/Image",
+            description="Crop a batch around its mask with padding, a resolution clamp, fixed aspect and inter-frame smoothing for video.",
             inputs=[
                 IO.Image.Input("images", tooltip="Batch of images to crop around the mask region."),
                 IO.Mask.Input("mask", tooltip="Mask that defines the region to crop. The bounding box of its non-zero area sets the crop."),

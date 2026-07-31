@@ -17,6 +17,7 @@ class TS_Color_Grade(IO.ComfyNode):
             node_id="TS_Color_Grade",
             display_name="TS Color Grade",
             category="TS/Image",
+            description="Eight-knob colour correction: hue, temperature, saturation, contrast, gain, lift, gamma and brightness.",
             inputs=[
                 IO.Image.Input("image", tooltip="Image to color grade."),
                 IO.Float.Input("hue", default=0.0, min=-180.0, max=180.0, step=0.1, tooltip="Rotates all colors around the hue wheel, in degrees. 0 = no change."),

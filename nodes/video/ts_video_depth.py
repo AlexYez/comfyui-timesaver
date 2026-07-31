@@ -479,6 +479,7 @@ class TS_VideoDepth(IO.ComfyNode):
             node_id="TS_VideoDepthNode",
             display_name="TS Video Depth",
             category="TS/Video",
+            description="Estimate per-frame depth with Depth-Anything, tuned for temporal consistency on video.",
             inputs=[
                 IO.Image.Input(
                     "images",

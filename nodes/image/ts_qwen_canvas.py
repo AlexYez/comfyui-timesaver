@@ -35,6 +35,7 @@ class TS_QwenCanvas(IO.ComfyNode):
             node_id="TS_QwenCanvas",
             display_name="TS Qwen Canvas",
             category="TS/Image",
+            description="Make a blank Qwen-Image canvas at a supported resolution and optionally paste your image into it.",
             inputs=[
                 IO.Combo.Input(
                     "resolution",

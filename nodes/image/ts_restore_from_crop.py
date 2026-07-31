@@ -71,6 +71,7 @@ class TSRestoreFromCrop(IO.ComfyNode):
             node_id="TSRestoreFromCrop",
             display_name="TS Restore From Crop",
             category="TS/Image",
+            description="Paste a processed crop back into the original frame with feathered seams.",
             inputs=[
                 IO.Image.Input("original_images", tooltip="Full-size source frames to paste the processed crop back into."),
                 IO.Image.Input("cropped_images", tooltip="Processed crop to paste back, from TS Crop To Mask."),

@@ -71,6 +71,7 @@ class TS_ModelConverterAdvancedNode(IO.ComfyNode):
             node_id="TS_ModelConverterAdvanced",
             display_name="TS Model Converter Advanced",
             category="TS/Files",
+            description="Convert a model to a chosen dtype with per-layer filters and load/save options.",
             inputs=[
                 IO.Combo.Input("model_name", options=_build_file_list(), tooltip="Safetensors model on disk to convert, shown as 'folder | filename'. Ignored when a MODEL is connected to the 'model' input."),
                 IO.Combo.Input("fp8_mode", options=["e4m3fn", "e5m2"], default="e5m2", tooltip="Target FP8 format. e4m3fn has more precision, e5m2 a wider range. Pick what your target pipeline expects."),

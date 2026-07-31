@@ -38,6 +38,7 @@ class TS_FilePathLoader(IO.ComfyNode):
             node_id="TS_FilePathLoader",
             display_name="TS File Path Loader",
             category="TS/Files",
+            description="Pick the N-th file of a folder in sorted order and return its path.",
             inputs=[
                 IO.String.Input("folder_path", default="", multiline=False, tooltip="Absolute path to a folder. Supported files inside are listed sorted by name; media/model extensions plus .mp4 and .mov are matched."),
                 IO.Int.Input("index", default=0, min=0, step=1, tooltip="Which file to pick from the sorted list. Wraps around (modulo) when it exceeds the file count."),

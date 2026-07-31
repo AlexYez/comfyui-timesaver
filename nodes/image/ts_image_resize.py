@@ -32,6 +32,7 @@ class TS_ImageResize(IO.ComfyNode):
             node_id="TS_ImageResize",
             display_name="TS Image Resize",
             category="TS/Image",
+            description="Resize by exact size, one side, megapixels or scale, with divisor snapping and an optional no-enlarge guard.",
             inputs=[
                 IO.Image.Input("pixels", tooltip="Image to resize."),
                 IO.Int.Input(

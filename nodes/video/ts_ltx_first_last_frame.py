@@ -24,6 +24,7 @@ class TS_LTX_FirstLastFrame(IO.ComfyNode):
             node_id="TS_LTX_FirstLastFrame",
             display_name="TS LTX First/Last Frame",
             category="TS/Video",
+            description="Apply LTX-Video keyframe conditioning to the first and, optionally, the last frame in one node.",
             inputs=[
                 IO.Conditioning.Input(
                     "positive",

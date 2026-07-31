@@ -36,6 +36,7 @@ class TS_Video_Upscale_With_Model(IO.ComfyNode):
             node_id="TS_Video_Upscale_With_Model",
             display_name="TS Video Upscale With Model",
             category="TS/Video",
+            description="Upscale every frame with a spandrel model such as RealESRGAN.",
             inputs=[
                 IO.Combo.Input(
                     "model_name",

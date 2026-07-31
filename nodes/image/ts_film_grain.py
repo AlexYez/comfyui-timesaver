@@ -20,6 +20,7 @@ class TS_FilmGrain(IO.ComfyNode):
             node_id="TS_FilmGrain",
             display_name="TS Film Grain",
             category="TS/Image",
+            description="Add three-octave organic film grain.",
             inputs=[
                 IO.Image.Input("images", tooltip="Images to add film grain to."),
                 IO.Boolean.Input("force_gpu", default=True, tooltip="Compute grain on GPU (fp16) when CUDA is available; otherwise falls back to CPU."),

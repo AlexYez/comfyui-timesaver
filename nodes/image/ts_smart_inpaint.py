@@ -711,6 +711,7 @@ class TSSmartInpaint(IO.ComfyNode):
             node_id="TSSmartInpaint",
             display_name="TS Smart Inpaint",
             category="TS/Image",
+            description="Regenerate or refine only the masked region: it crops with context, samples at full detail and composites the result back.",
             inputs=[
                 IO.Model.Input("model", tooltip="Diffusion model used to regenerate the masked region."),
                 IO.Vae.Input("vae", tooltip="VAE used to encode the crop to latent and decode the result."),

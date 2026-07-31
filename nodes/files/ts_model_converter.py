@@ -22,6 +22,7 @@ class TS_ModelConverterNode(IO.ComfyNode):
             node_id="TS_ModelConverter",
             display_name="TS Model Converter",
             category="TS/Files",
+            description="Convert a loaded model to FP8 (e4m3fn) in memory to save VRAM.",
             inputs=[IO.Model.Input("model", tooltip="Model to convert. Its weights are cast to FP8 (float8_e4m3fn) on a non-destructive copy, leaving the cached input untouched.")],
             outputs=[IO.Model.Output(display_name="MODEL", tooltip="Copy of the input model with weights cast to FP8 (float8_e4m3fn).")],
         )

@@ -22,6 +22,7 @@ class TS_GetImageSizeSide(IO.ComfyNode):
             node_id="TS_GetImageSizeSide",
             display_name="TS Get Image Size",
             category="TS/Image",
+            description="Return the larger or the smaller side of an image as an INT.",
             inputs=[
                 IO.Image.Input("image", tooltip="Image whose dimensions are measured."),
                 IO.Boolean.Input(

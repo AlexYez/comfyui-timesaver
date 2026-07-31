@@ -51,6 +51,7 @@ class TS_CPULoraMergerNode(IO.ComfyNode):
             node_id="TS_CPULoraMerger",
             display_name="TS CPU LoRA Merger",
             category="TS/Files",
+            description="Merge LoRA weights into a base model on the CPU, so even huge models need no VRAM.",
             is_output_node=True,
             inputs=[
                 IO.Combo.Input("base_model", options=model_choices, tooltip="Base checkpoint or diffusion model to merge the LoRA weights into. Shown as 'folder | filename'."),

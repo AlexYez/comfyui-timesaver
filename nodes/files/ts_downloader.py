@@ -132,6 +132,7 @@ class TS_DownloadFilesNode(IO.ComfyNode):
             node_id="TS Files Downloader",
             display_name="TS Files Downloader (Ultimate)",
             category="TS/Files",
+            description="Download every model a workflow needs from a list of URL + target-folder lines, with resume, mirrors and integrity checks.",
             is_output_node=True,
             inputs=[
                 IO.String.Input(

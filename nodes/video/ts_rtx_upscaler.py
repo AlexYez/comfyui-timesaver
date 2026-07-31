@@ -29,6 +29,7 @@ class TS_RTX_Upscaler(IO.ComfyNode):
             node_id="TS_RTX_Upscaler",
             display_name="TS RTX Upscaler",
             category="TS/Video",
+            description="Upscale frames with NVIDIA RTX Video Super Resolution.",
             inputs=[
                 IO.Image.Input(
                     "images",

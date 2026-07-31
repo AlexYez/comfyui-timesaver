@@ -36,6 +36,7 @@ class TS_ModelScanner(IO.ComfyNode):
             node_id="TS_ModelScanner",
             display_name="TS Model Scanner",
             category="TS/Files",
+            description="Report every parameter of a .safetensors file or a loaded model: name, shape, dtype and device.",
             inputs=[
                 IO.Combo.Input("model_name", options=_build_model_choices(), tooltip="Safetensors file from the diffusion_models folder to scan. Ignored when a MODEL is connected to the 'model' input."),
                 IO.Model.Input("model", optional=True, tooltip="Optional in-graph MODEL to scan directly. When connected, it takes priority over 'model_name'."),

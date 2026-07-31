@@ -15,6 +15,7 @@ class TSAutoTileSize(IO.ComfyNode):
             node_id="TSAutoTileSize",
             display_name="TS Auto Tile Size",
             category="TS/Image",
+            description="Work out the best tile width and height for an image from a tile count, honouring padding and a divisor.",
             inputs=[
                 IO.Combo.Input("tile_count", options=[4, 8, 16], tooltip="Total number of tiles to split the image into. The grid is chosen to best match the image aspect ratio."),
                 IO.Int.Input("padding", default=64, min=0, max=512, step=8, tooltip="Overlap in pixels added between neighbouring tiles to hide seams."),

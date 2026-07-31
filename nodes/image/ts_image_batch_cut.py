@@ -22,6 +22,7 @@ class TS_ImageBatchCut(IO.ComfyNode):
             node_id="TS_ImageBatchCut",
             display_name="TS Image Batch Cut",
             category="TS/Image",
+            description="Trim frames from the start and the end of an image batch.",
             inputs=[
                 IO.Image.Input("image", tooltip="Image batch (e.g. video frames) to trim."),
                 IO.Int.Input("first_cut", default=0, min=0, max=4096, tooltip="Number of frames to drop from the start of the batch."),

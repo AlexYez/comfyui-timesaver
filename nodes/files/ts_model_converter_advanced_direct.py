@@ -17,6 +17,7 @@ class TS_ModelConverterAdvancedDirectNode(TS_ModelConverterAdvancedNode):
             node_id="TS_ModelConverterAdvancedDirect",
             display_name="TS Model Converter Advanced Direct",
             category="TS/Files",
+            description="Convert model weights and write them straight to disk, with no in-memory roundtrip.",
             inputs=[
                 IO.Model.Input("model", tooltip="In-graph MODEL to convert directly to FP8 and save to disk."),
                 IO.Combo.Input("fp8_mode", options=["e4m3fn", "e5m2"], default="e5m2", tooltip="Target FP8 format. e4m3fn has more precision, e5m2 a wider range. Pick what your target pipeline expects."),

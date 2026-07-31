@@ -170,6 +170,7 @@ class TS_Qwen3_VL_V3(IO.ComfyNode):
             node_id="TS_Qwen3_VL_V3",
             display_name="TS Qwen 3 VL V3",
             category="TS/LLM",
+            description="Run Qwen 3 VL locally over image, video and text to caption, describe or answer.",
             inputs=[
                 IO.Combo.Input(
                     "model_name",

@@ -267,6 +267,7 @@ class TS_PromptBuilder(IO.ComfyNode):
             node_id="TS_PromptBuilder",
             display_name="TS Prompt Builder",
             category="TS/Text",
+            description="Build a prompt from reusable text blocks you can toggle and reorder.",
             inputs=[
                 IO.Int.Input(
                     "seed",
