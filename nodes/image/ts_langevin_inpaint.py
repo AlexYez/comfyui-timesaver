@@ -264,6 +264,11 @@ class TS_LangevinInpaint(IO.ComfyNode):
         def sample_fn(inner_model, x, sigmas_in, extra_args=None, callback=None,
                       disable=None, **_kwargs):
             inner.model = inner_model
+            # The latent, its noise and the mask arrive on whatever device the
+            # graph left them on; sampling happens on the model's device.
+            inner.latent_image = inner.latent_image.to(x.device, x.dtype)
+            inner.noise = inner.noise.to(x.device, x.dtype)
+            inner.mask_known = inner.mask_known.to(x.device, x.dtype)
             extra_args = dict(extra_args or {})
             extra_args.pop("denoise_mask", None)   # the mask is applied here, not upstream
             for index in range(len(sigmas_in) - 1):
