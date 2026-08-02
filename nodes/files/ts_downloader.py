@@ -24,9 +24,12 @@ except ImportError:
 
 from comfy_api.v0_0_2 import IO
 
-# Registers POST /ts_downloader/hf_search at import time: the scan report's
-# "no download link" column calls it to find a URL on HuggingFace.
-from . import _downloader_search  # noqa: F401
+# Registered at import time: hf_search serves the scan report's "no download
+# link" column; jobs serves the studio's fetch/cancel/jobs progress routes.
+from . import (
+    _downloader_jobs,  # noqa: F401
+    _downloader_search,  # noqa: F401
+)
 
 logger = logging.getLogger("comfyui_timesaver.ts_downloader")
 LOG_PREFIX = "[TS Downloader]"
@@ -945,7 +948,7 @@ class TS_DownloadFilesNode(IO.ComfyNode):
             return False
 
     @classmethod
-    def _download_single_file(cls, session, url, target_dir, skip_existing, verify_size, chunk_size_bytes, hf_domain_active, hf_token, ms_token, unzip_after_download, integrity_mode):
+    def _download_single_file(cls, session, url, target_dir, skip_existing, verify_size, chunk_size_bytes, hf_domain_active, hf_token, ms_token, unzip_after_download, integrity_mode, progress_cb=None):
         response_get = None
         download_lock = None
         try:
@@ -1249,6 +1252,8 @@ class TS_DownloadFilesNode(IO.ComfyNode):
                         continue
                     f.write(chunk)
                     transferred += len(chunk)
+                    if progress_cb is not None:
+                        progress_cb(resume_byte_pos + transferred, total_size or 0, "download")
                     if live_hash is not None:
                         live_hash.update(chunk)
                     chunk_len = len(chunk)
@@ -1279,6 +1284,8 @@ class TS_DownloadFilesNode(IO.ComfyNode):
                     # Resumed download: the bytes from the earlier run never
                     # passed through this process, so the file has to be read.
                     logger.info(f"{LOG_PREFIX} Verifying HF SHA256 (resumed download)...")
+                    if progress_cb is not None:
+                        progress_cb(total_size or 0, total_size or 0, "verify")
                     verified_sha256 = cls._compute_sha256(temp_file_path).lower()
                 if verified_sha256 != hf_expected_sha256:
                     logger.error(f"{LOG_PREFIX} HF SHA256 mismatch. Removing corrupted file.")
