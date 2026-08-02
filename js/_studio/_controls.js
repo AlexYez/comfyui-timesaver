@@ -8,6 +8,7 @@
 
 import { ensureThemeStyles } from "../_theme.js";
 import { deckSection } from "./_shell.js";
+import { makeDropZone } from "./_dnd.js";
 
 // Controls render inside the shell's TS_UI_CLASS scope; ensureThemeStyles()
 // here keeps this module self-sufficient if a control is ever mounted alone.
@@ -42,6 +43,44 @@ export function ensureControlStyles() {
 .ts-studio__advanced{border:none;background:none;padding:0;display:flex;align-items:center;gap:5px;
     color:var(--ts-muted);cursor:pointer;font-size:var(--ts-fs-sm)}
 .ts-studio__advanced:hover{color:var(--ts-text)}
+.ts-studio__refs{display:flex;gap:6px}
+.ts-studio__ref{position:relative;width:52px;height:52px;border:1px dashed var(--ts-border-strong);
+    border-radius:var(--ts-radius);background:none;color:var(--ts-muted);cursor:pointer;
+    display:flex;align-items:center;justify-content:center;font-size:15px;padding:0;overflow:hidden}
+.ts-studio__ref.is-drag-over{border-color:var(--ts-accent);color:var(--ts-accent)}
+.ts-studio__ref.is-filled{border-style:solid}
+.ts-studio__ref img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.ts-studio__refx{position:absolute;top:1px;right:1px;z-index:2;width:15px;height:15px;
+    border-radius:50%;border:none;background:var(--ts-elevated);color:var(--ts-text);
+    font-size:10px;line-height:1;cursor:pointer;padding:0;display:none}
+.ts-studio__ref.is-filled .ts-studio__refx{display:block}
+.ts-studio__ref:focus-visible{outline:2px solid var(--ts-accent-line);outline-offset:1px}
+.ts-studio__loras{display:flex;flex-direction:column;gap:3px}
+.ts-studio__lora{display:flex;align-items:center;gap:6px;min-height:26px;
+    border-radius:var(--ts-radius-sm);padding:1px 2px}
+.ts-studio__lora.is-drag-over{background:var(--ts-accent-soft)}
+.ts-studio__lorahandle{cursor:grab;color:var(--ts-muted);border:none;background:none;
+    padding:0 2px;font-size:11px;letter-spacing:1px}
+.ts-studio__loraname{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+    font-size:var(--ts-fs-sm)}
+.ts-studio__lora input[type=range]{width:64px}
+.ts-studio__loraval{width:34px;text-align:right;font-size:var(--ts-fs-sm);color:var(--ts-muted)}
+.ts-studio__lorax{border:none;background:none;color:var(--ts-muted);cursor:pointer;padding:0 3px}
+.ts-studio__lorax:hover{color:var(--ts-danger)}
+.ts-studio__loraadd{border:1px dashed var(--ts-border-strong);border-radius:var(--ts-radius-sm);
+    background:none;color:var(--ts-muted);cursor:pointer;padding:4px;font-size:var(--ts-fs-sm)}
+.ts-studio__loraadd:hover{color:var(--ts-text);border-color:var(--ts-border-strong)}
+.ts-studio__lorapick{position:relative}
+.ts-studio__lorapop{position:absolute;z-index:41;left:0;right:0;top:calc(100% + 3px);
+    display:none;flex-direction:column;gap:4px;padding:6px;max-height:220px;
+    background:var(--ts-elevated);border:1px solid var(--ts-border);
+    border-radius:var(--ts-radius);box-shadow:var(--ts-shadow)}
+.ts-studio__lorapop.is-open{display:flex}
+.ts-studio__loralist{overflow-y:auto;display:flex;flex-direction:column}
+.ts-studio__loraopt{border:none;background:none;color:var(--ts-text);cursor:pointer;
+    text-align:left;padding:3px 5px;border-radius:var(--ts-radius-sm);
+    font-size:var(--ts-fs-sm);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ts-studio__loraopt:hover{background:var(--ts-border-soft)}
 `;
     document.head.appendChild(style);
 }
@@ -227,6 +266,254 @@ registerControlKind("seed", (control, ctx) => {
         },
         // The app reads/writes the last used seed here after each run.
         showSeed: (seed) => { field.value = String(seed); state.value = seed; },
+    };
+});
+
+// ── reference slots ─────────────────────────────────────────────────────── //
+// Each slot maps to an optional image marker (ref_1..ref_N). Filling a slot
+// uploads the blob immediately; the run only carries annotated names. Empty
+// slots become dropParams so the patcher removes their branch.
+registerControlKind("refs", (control, ctx) => {
+    const max = Math.max(1, Math.min(Number(control.max || 3), 6));
+    const section = deckSection(ctx.t.references);
+    const row = document.createElement("div");
+    row.className = "ts-studio__refs";
+    section.appendChild(row);
+
+    const slots = [];
+    const teardowns = [];
+
+    const fileInput = document.createElement("input");
+    fileInput.type = "file";
+    fileInput.accept = "image/*";
+    fileInput.className = "ts-ui-file";
+    document.body.appendChild(fileInput);
+    teardowns.push(() => fileInput.remove());
+    let pickTarget = -1;
+    fileInput.addEventListener("change", () => {
+        const file = fileInput.files?.[0];
+        if (file && pickTarget >= 0) fill(pickTarget, file, file.name);
+        fileInput.value = "";
+    });
+
+    async function fill(index, blob, name) {
+        try {
+            const annotated = await ctx.uploadImage(blob, name || `ref_${index + 1}.png`);
+            slots[index].value = annotated;
+            slots[index].img.src = URL.createObjectURL(blob);
+            slots[index].button.classList.add("is-filled");
+            emit();
+        } catch (err) {
+            console.warn("[TS Studio] reference upload failed", err);
+        }
+    }
+
+    function clear(index) {
+        slots[index].value = "";
+        slots[index].img.removeAttribute("src");
+        slots[index].button.classList.remove("is-filled");
+        emit();
+    }
+
+    function emit() {
+        const refs = {};
+        slots.forEach((slot, i) => { refs[`ref_${i + 1}`] = slot.value; });
+        ctx.onChange(control.param || "__refs", refs);
+    }
+
+    for (let i = 0; i < max; i += 1) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "ts-studio__ref";
+        button.title = ctx.t.refSlotTip(i + 1);
+        button.setAttribute("aria-label", ctx.t.refSlotTip(i + 1));
+        const img = document.createElement("img");
+        img.alt = "";
+        const plus = document.createElement("span");
+        plus.textContent = "+";
+        const x = document.createElement("button");
+        x.type = "button";
+        x.className = "ts-studio__refx";
+        x.textContent = "×";
+        x.title = ctx.t.refClear;
+        button.append(img, plus, x);
+        const index = i;
+        button.addEventListener("click", (event) => {
+            if (event.target === x) return;
+            pickTarget = index;
+            fileInput.click();
+        });
+        x.addEventListener("click", (event) => { event.stopPropagation(); clear(index); });
+        teardowns.push(makeDropZone(button, {
+            max: 1,
+            onDrop: async ([item]) => fill(index, await item.getBlob(), item.name),
+        }));
+        row.appendChild(button);
+        slots.push({ button, img, value: "" });
+    }
+    emit();
+
+    return {
+        element: section,
+        get: () => slots.map((s) => s.value),
+        set: () => {},
+        teardown: () => teardowns.forEach((fn) => fn()),
+    };
+});
+
+// ── LoRA stack ──────────────────────────────────────────────────────────── //
+registerControlKind("loras", (control, ctx) => {
+    const [lo, hi] = control.strength || [-2.0, 2.0];
+    const max = Number(control.max || 8);
+    const section = deckSection("LoRA");
+    const list = document.createElement("div");
+    list.className = "ts-studio__loras";
+    const pickWrap = document.createElement("div");
+    pickWrap.className = "ts-studio__lorapick";
+    const addButton = document.createElement("button");
+    addButton.type = "button";
+    addButton.className = "ts-studio__loraadd";
+    addButton.textContent = ctx.t.loraAdd;
+    const pop = document.createElement("div");
+    pop.className = "ts-studio__lorapop";
+    const search = document.createElement("input");
+    search.type = "text";
+    search.className = "ts-ui-input";
+    search.placeholder = ctx.t.loraSearch;
+    const optList = document.createElement("div");
+    optList.className = "ts-studio__loralist";
+    pop.append(search, optList);
+    pickWrap.append(addButton, pop);
+    section.append(list, pickWrap);
+
+    const stack = []; // {name, strength}
+    const options = ctx.loraOptions || [];
+
+    function emit() {
+        ctx.onChange(control.param || "loras", stack.map((l) => ({ ...l })));
+        addButton.style.display = stack.length >= max ? "none" : "";
+    }
+
+    function renderOptions(query) {
+        const needle = query.trim().toLowerCase();
+        optList.textContent = "";
+        for (const name of options) {
+            if (stack.some((l) => l.name === name)) continue;
+            if (needle && !name.toLowerCase().includes(needle)) continue;
+            const option = document.createElement("button");
+            option.type = "button";
+            option.className = "ts-studio__loraopt";
+            option.textContent = name.replace(/\\/g, "/");
+            option.title = name;
+            option.addEventListener("click", () => {
+                stack.push({ name, strength: 1.0 });
+                pop.classList.remove("is-open");
+                renderList();
+                emit();
+            });
+            optList.appendChild(option);
+        }
+    }
+
+    let dragIndex = -1;
+    function renderList() {
+        list.textContent = "";
+        stack.forEach((lora, index) => {
+            const row = document.createElement("div");
+            row.className = "ts-studio__lora";
+            const handle = document.createElement("button");
+            handle.type = "button";
+            handle.className = "ts-studio__lorahandle";
+            handle.textContent = "⋮⋮";
+            handle.title = ctx.t.loraDrag;
+            const name = document.createElement("span");
+            name.className = "ts-studio__loraname";
+            name.textContent = lora.name.replace(/\\/g, "/").split("/").pop();
+            name.title = lora.name;
+            const slider = document.createElement("input");
+            slider.type = "range";
+            slider.className = "ts-ui-slider";
+            slider.min = String(lo);
+            slider.max = String(hi);
+            slider.step = "0.05";
+            slider.value = String(lora.strength);
+            slider.title = ctx.t.loraStrength;
+            const value = document.createElement("span");
+            value.className = "ts-studio__loraval";
+            value.textContent = lora.strength.toFixed(2).replace(/0$/, "");
+            slider.addEventListener("input", () => {
+                lora.strength = Number(slider.value);
+                value.textContent = lora.strength.toFixed(2).replace(/0$/, "");
+                emit();
+            });
+            const x = document.createElement("button");
+            x.type = "button";
+            x.className = "ts-studio__lorax";
+            x.textContent = "×";
+            x.title = ctx.t.loraRemove;
+            x.addEventListener("click", () => {
+                stack.splice(index, 1);
+                renderList();
+                emit();
+            });
+            row.draggable = true;
+            row.addEventListener("dragstart", (event) => {
+                dragIndex = index;
+                event.dataTransfer.effectAllowed = "move";
+                event.dataTransfer.setData("text/plain", String(index));
+            });
+            row.addEventListener("dragover", (event) => {
+                if (dragIndex < 0) return;
+                event.preventDefault();
+                row.classList.add("is-drag-over");
+            });
+            row.addEventListener("dragleave", () => row.classList.remove("is-drag-over"));
+            row.addEventListener("drop", (event) => {
+                event.preventDefault();
+                row.classList.remove("is-drag-over");
+                if (dragIndex < 0 || dragIndex === index) return;
+                const [moved] = stack.splice(dragIndex, 1);
+                stack.splice(index, 0, moved);
+                dragIndex = -1;
+                renderList();
+                emit();
+            });
+            row.append(handle, name, slider, value, x);
+            list.appendChild(row);
+        });
+    }
+
+    addButton.addEventListener("click", () => {
+        const open = !pop.classList.contains("is-open");
+        pop.classList.toggle("is-open", open);
+        if (open) {
+            renderOptions("");
+            search.value = "";
+            search.focus();
+        }
+    });
+    search.addEventListener("input", () => renderOptions(search.value));
+    const onDocDown = (event) => {
+        if (!pickWrap.contains(event.target)) pop.classList.remove("is-open");
+    };
+    document.addEventListener("pointerdown", onDocDown);
+
+    if (!options.length) {
+        addButton.disabled = true;
+        addButton.title = ctx.t.loraNone;
+    }
+    emit();
+
+    return {
+        element: section,
+        get: () => stack.map((l) => ({ ...l })),
+        set: (value) => {
+            stack.length = 0;
+            for (const lora of value || []) stack.push({ ...lora });
+            renderList();
+            emit();
+        },
+        teardown: () => document.removeEventListener("pointerdown", onDocDown),
     };
 });
 

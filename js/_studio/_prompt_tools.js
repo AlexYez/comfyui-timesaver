@@ -10,6 +10,7 @@
 // with an explanatory title instead of breaking the field.
 
 import { TS_UI_CLASS, ensureThemeStyles } from "../_theme.js";
+import { uploadImage } from "./_dnd.js";
 
 const STYLE_ID = "ts-studio-prompt-tools-styles";
 
@@ -72,16 +73,6 @@ const SVG = {
     palette: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3a9 9 0 1 0 0 18h1a2 2 0 0 0 0-4h-1a2 2 0 0 1 0-4h5a4 4 0 0 0 4-4c0-3.5-4-6-9-6z"/><circle cx="7.5" cy="11" r="1"/><circle cx="9.5" cy="7" r="1"/><circle cx="14" cy="6.5" r="1"/></svg>',
     wand: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 19L16 8m2.5-2.5L17 7M19 3l.7 1.8L21.5 5.5l-1.8.7L19 8l-.7-1.8-1.8-.7 1.8-.7zM8 3l.5 1.3L9.8 4.8l-1.3.5L8 6.6l-.5-1.3-1.3-.5 1.3-.5z"/></svg>',
 };
-
-async function uploadImage(api, blob, filename) {
-    const form = new FormData();
-    form.append("image", blob, filename);
-    const response = await api.fetchApi("/upload/image", { method: "POST", body: form });
-    if (!response.ok) throw new Error(`upload HTTP ${response.status}`);
-    const payload = await response.json();
-    const folder = payload.subfolder ? `${payload.subfolder}/` : "";
-    return `${folder}${payload.name} [${payload.type || "input"}]`;
-}
 
 function insertAtCursor(textarea, text) {
     const start = textarea.selectionStart ?? textarea.value.length;

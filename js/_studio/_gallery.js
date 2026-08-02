@@ -7,6 +7,7 @@
 
 import { TS_UI_CLASS, ensureThemeStyles } from "../_theme.js";
 import { resultViewUrl } from "./_session.js";
+import { makeAssetDraggable } from "./_dnd.js";
 
 const STYLE_ID = "ts-studio-gallery-styles";
 
@@ -89,6 +90,12 @@ export function createGallery(options) {
         img.src = resultViewUrl(result.image);
         card.appendChild(img);
         card.addEventListener("click", () => select(card, result));
+        // A result drags into reference slots (and any studio drop zone).
+        makeAssetDraggable(card, {
+            type: "image",
+            name: result.image.filename,
+            url: resultViewUrl(result.image),
+        });
         grid.prepend(card);
         syncEmpty();
         return { card, result };

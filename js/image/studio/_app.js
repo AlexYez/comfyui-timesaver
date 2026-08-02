@@ -15,9 +15,13 @@ import { loadBackends, groupByFamily } from "../../_studio/_backends.js";
 import { patchBackend } from "../../_studio/_markers.js";
 import { newSessionId, sessionPrefix, resultRelPath, restoreResults } from "../../_studio/_session.js";
 import { mountPromptTools } from "../../_studio/_prompt_tools.js";
+import { uploadImage } from "../../_studio/_dnd.js";
 
 const ICONS = {
-    generate: '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 3l1.8 4.7L18.5 9l-4.7 1.8L12 15.5l-1.8-4.7L5.5 9l4.7-1.3zM19 15l.9 2.3 2.1.7-2.1.9L19 21l-.9-2.1-2.1-.9 2.1-.7z"/></svg>',
+    t2i: '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 3l1.8 4.7L18.5 9l-4.7 1.8L12 15.5l-1.8-4.7L5.5 9l4.7-1.3zM19 15l.9 2.3 2.1.7-2.1.9L19 21l-.9-2.1-2.1-.9 2.1-.7z"/></svg>',
+    edit: '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 20l4.5-1 11-11a2.1 2.1 0 0 0-3-3l-11 11zM13.5 6.5l3 3"/></svg>',
+    inpaint: '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 21c-4 0-7-2.5-7-6 0-4 4-5 5-9 .4-1.6 2.6-1.6 3 0 1 4 6 5 6 9 0 3.5-3 6-7 6z"/></svg>',
+    upscale: '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 20v-5m0 5h5m-5 0l6-6M20 4v5m0-5h-5m5 0l-6 6"/></svg>',
 };
 
 const STRINGS = {
@@ -48,7 +52,17 @@ const STRINGS = {
         backendBroken: "unavailable",
         noBackends: "No backend workflows are available for any installed model.",
         runFailed: (m) => `Run failed: ${m}`,
+        requiresMissing: (p) => `Add the required image first (${p}).`,
         modes: { t2i: "Generate", edit: "Edit", inpaint: "Inpaint", upscale: "Upscale" },
+        references: "References",
+        refSlotTip: (n) => `Reference ${n}: drop an image here, or click to pick a file`,
+        refClear: "Remove this reference",
+        loraAdd: "+ Add LoRA",
+        loraSearch: "Search LoRAs…",
+        loraDrag: "Drag to reorder — the chain applies top to bottom",
+        loraStrength: "Strength (negative values invert the effect)",
+        loraRemove: "Remove this LoRA",
+        loraNone: "No LoRA files installed",
         pt: {
             mic: "Dictate the prompt (click to start/stop)",
             hq: "High-quality voice model (slower, more accurate)",
@@ -95,7 +109,17 @@ const STRINGS = {
         backendBroken: "недоступен",
         noBackends: "Нет доступных workflow ни для одной установленной модели.",
         runFailed: (m) => `Ошибка запуска: ${m}`,
+        requiresMissing: (p) => `Сначала добавьте обязательное изображение (${p}).`,
         modes: { t2i: "Генерация", edit: "Редактирование", inpaint: "Inpaint", upscale: "Upscale" },
+        references: "Референсы",
+        refSlotTip: (n) => `Референс ${n}: перетащите картинку или кликните для выбора файла`,
+        refClear: "Убрать этот референс",
+        loraAdd: "+ Добавить LoRA",
+        loraSearch: "Поиск LoRA…",
+        loraDrag: "Перетащите, чтобы изменить порядок — цепочка применяется сверху вниз",
+        loraStrength: "Сила (отрицательные значения инвертируют эффект)",
+        loraRemove: "Убрать эту LoRA",
+        loraNone: "Файлы LoRA не установлены",
         pt: {
             mic: "Надиктовать промпт (клик — старт/стоп)",
             hq: "Качественная модель голоса (медленнее, точнее)",
@@ -168,9 +192,10 @@ export async function openStudio(node, persist) {
         label: t.appLabel,
         closeTitle: t.close,
         collapseTitle: t.collapse,
-        modes: modeIds.map((id) => ({ id, title: t.modes[id] || id, icon: ICONS.generate })),
+        modes: modeIds.map((id) => ({ id, title: t.modes[id] || id, icon: ICONS[id] || ICONS.t2i })),
         onMode: (id) => selectMode(id),
         onClose: () => {
+            for (const instance of controlInstances) instance.teardown?.();
             promptTools?.teardown();
             runner.destroy();
         },
@@ -240,8 +265,12 @@ export async function openStudio(node, persist) {
     // ── deck ────────────────────────────────────────────────────────────── //
     let seedControl = null;
     let promptTools = null;
+    let controlInstances = [];
+    const loraOptions = readLoraOptions(objectInfo);
 
     function buildDeck(backend) {
+        for (const instance of controlInstances) instance.teardown?.();
+        controlInstances = [];
         shell.deck.textContent = "";
         seedControl = null;
         promptTools?.teardown();
@@ -273,17 +302,28 @@ export async function openStudio(node, persist) {
         modelSection.appendChild(modelRow);
         shell.deck.appendChild(modelSection);
 
+        const controls = [...(backend.manifest.controls || [])];
+        // Reference slots come from the manifest's refs block; insert the
+        // control right after the prompt unless the author placed one.
+        const refsMax = Number(backend.manifest.refs?.max || 0);
+        if (refsMax > 0 && !controls.some((c) => c.kind === "refs")) {
+            const promptIndex = controls.findIndex((c) => c.kind === "prompt");
+            controls.splice(promptIndex + 1, 0, { kind: "refs", max: refsMax, param: "__refs" });
+        }
+
         const advanced = [];
-        for (const control of backend.manifest.controls || []) {
+        for (const control of controls) {
             const renderer = getControlRenderer(control.kind);
             if (!renderer) {
                 console.warn(`[TS Studio] no renderer for control kind '${control.kind}' — skipped`);
                 continue;
             }
             const instance = renderer(control, {
-                t, locale,
+                t, locale, loraOptions,
+                uploadImage: (blob, name) => uploadImage(api, blob, name),
                 onChange: (param, value) => { values[param] = value; },
             });
+            controlInstances.push(instance);
             if (control.kind === "seed") seedControl = instance;
             if (control.advanced) advanced.push(instance.element);
             else shell.deck.appendChild(instance.element);
@@ -363,13 +403,20 @@ export async function openStudio(node, persist) {
     // ── run ─────────────────────────────────────────────────────────────── //
     async function run() {
         if (!activeBackend) return;
+        for (const required of activeBackend.manifest.requires || []) {
+            const refValue = values.__refs?.[required] ?? values[required];
+            if (!refValue) {
+                setStatus(t.requiresMissing(required));
+                return;
+            }
+        }
         const seedState = values.seed || { value: 0, randomize: true };
         const seed = seedState.randomize ? randomSeed() : Number(seedState.value || 0);
         seedControl?.showSeed(seed);
 
         const runValues = {};
         for (const [param, value] of Object.entries(values)) {
-            if (param === "seed") continue;
+            if (param === "seed" || param === "loras" || param === "__refs") continue;
             if (typeof value === "object" && value !== null) continue;
             runValues[param] = value;
         }
@@ -381,12 +428,22 @@ export async function openStudio(node, persist) {
             const base = runValues.prompt.trim().replace(/[,\s]+$/, "");
             runValues.prompt = base ? `${base}, ${styleTail}` : styleTail;
         }
+        // Filled reference slots become image params; empty ones become
+        // dropParams so the patcher removes their optional branches.
+        const dropParams = [];
+        for (const [name, annotated] of Object.entries(values.__refs || {})) {
+            if (!activeBackend.spec.params.has(name)) continue;
+            if (annotated) runValues[name] = annotated;
+            else dropParams.push(name);
+        }
 
         let patched;
         try {
             patched = patchBackend(activeBackend.graph, activeBackend.spec, {
                 values: runValues,
                 modelFiles: activeBackend.modelFiles,
+                loras: Array.isArray(values.loras) ? values.loras : [],
+                dropParams,
                 filenamePrefix: sessionPrefix(sessionId),
                 isOptionalInput: optionalIndex,
             });
@@ -461,4 +518,11 @@ function buildOptionalIndex(objectInfo) {
     return (cls, inputName) =>
         Boolean(objectInfo[cls]?.input?.optional
             && inputName in objectInfo[cls].input.optional);
+}
+
+function readLoraOptions(objectInfo) {
+    const spec = objectInfo?.LoraLoaderModelOnly?.input?.required?.lora_name;
+    if (Array.isArray(spec?.[0])) return spec[0];
+    if (Array.isArray(spec?.[1]?.options)) return spec[1].options;
+    return [];
 }
