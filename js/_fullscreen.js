@@ -47,12 +47,16 @@ export function markOverlayAbove(element) {
     };
 }
 
+// A closed lightbox often stays in the DOM as an empty singleton, and an empty
+// element can still report a client rect. Requiring real area is what keeps a
+// dormant one from swallowing Escape forever.
+const OPEN_MIN_SIDE = 40;
+
 /** Is some foreign overlay currently stacked above the editors? */
 function overlayAboveIsOpen(doc) {
     for (const node of doc.querySelectorAll(`[${ABOVE_ATTR}]`)) {
-        // offsetParent is null for display:none; a lightbox that merely hid
-        // itself must not keep swallowing Escape.
-        if (node.offsetParent !== null || node.getClientRects().length) return true;
+        const rect = node.getBoundingClientRect();
+        if (rect.width >= OPEN_MIN_SIDE && rect.height >= OPEN_MIN_SIDE) return true;
     }
     return false;
 }
