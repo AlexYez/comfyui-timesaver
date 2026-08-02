@@ -16,6 +16,18 @@ A fullscreen studio for generating and editing images. Everything under the hood
 - Palette — the style library: picked styles append to the prompt as chips, removable by their cross.
 - ✨ — prompt enhancement; the preset selects next to it.
 
+## Choosing a repaint strength
+
+Measured on identical tasks, so the numbers mean something:
+
+- **0.1-0.25** — refinement: the object stays itself and gains texture and fine detail. This is what "improve the quality" wants.
+- **0.3-0.5** — visible rework: the object's shape and pattern change.
+- **0.6-1.0** — replacement: the mask fills with whatever the prompt describes.
+
+**Flux 2 Klein** keeps a deliberately narrow range (0.1-0.5) — it is the gentle-retouch tool, and full replacement lives on its **Replace** switch. It is also the fastest: an object swap takes about 40 seconds.
+
+From the runs: to swap an object reach for Klein with Replace, or Krea 2; to add detail without substituting the subject, Qwen Image at 0.35 or Klein at 0.2.
+
 ## Ideogram: the designer, hosted
 
 Ideogram 4 has a node of its own — **TS Image Ideogram Designer** — and the studio does not replace it: the **Layout** button opens that very editor, with all its panels, presets and its prompt-generating button. The model reads a structured description rather than free text, and it is the node that builds one, so the image's metadata carries exactly the prompt the render used.
