@@ -7,22 +7,6 @@
    "label": ""
   }
  },
- "p_width": {
-  "class_type": "TS_StudioInputNumber",
-  "inputs": {
-   "value": 1024,
-   "param_name": "width",
-   "label": ""
-  }
- },
- "p_height": {
-  "class_type": "TS_StudioInputNumber",
-  "inputs": {
-   "value": 1024,
-   "param_name": "height",
-   "label": ""
-  }
- },
  "p_steps": {
   "class_type": "TS_StudioInputNumber",
   "inputs": {
@@ -110,7 +94,7 @@
   "class_type": "CLIPTextEncode",
   "inputs": {
    "text": [
-    "p_prompt",
+    "designer",
     0
    ],
    "clip": [
@@ -167,12 +151,12 @@
     1
    ],
    "width": [
-    "p_width",
+    "designer",
     1
    ],
    "height": [
-    "p_height",
-    1
+    "designer",
+    2
    ],
    "mu": 0.5,
    "std": 1.75
@@ -191,12 +175,12 @@
   "class_type": "EmptyFlux2LatentImage",
   "inputs": {
    "width": [
-    "p_width",
+    "designer",
     1
    ],
    "height": [
-    "p_height",
-    1
+    "designer",
+    2
    ],
    "batch_size": 1
   }
@@ -252,7 +236,42 @@
  "studio_manifest": {
   "class_type": "TS_StudioManifest",
   "inputs": {
-   "manifest": "{\"schema_version\": \"1.0.0\", \"id\": \"ideogram/t2i\", \"label\": {\"en\": \"Generate\", \"ru\": \"Генерация\"}, \"family\": \"ideogram\", \"family_label\": \"Ideogram 4\", \"mode\": \"t2i\", \"order\": 15, \"controls\": [{\"param\": \"prompt\", \"kind\": \"prompt\", \"superprompt\": true}, {\"param\": \"size\", \"kind\": \"size\", \"aspects\": [\"1:1\", \"16:9\", \"9:16\", \"3:2\", \"2:3\", \"4:3\", \"3:4\"], \"base_mp\": 1.0, \"mp\": [0.25, 2.5], \"snap\": 16, \"width_param\": \"width\", \"height_param\": \"height\"}, {\"param\": \"seed\", \"kind\": \"seed\"}, {\"param\": \"loras\", \"kind\": \"loras\", \"max\": 8, \"strength\": [-2.0, 2.0]}, {\"param\": \"steps\", \"kind\": \"number\", \"advanced\": true, \"min\": 1, \"max\": 60, \"label\": {\"en\": \"Steps\", \"ru\": \"Шаги\"}, \"default\": 12}, {\"param\": \"cfg\", \"kind\": \"number\", \"advanced\": true, \"min\": 0, \"max\": 15, \"step\": 0.1, \"label\": {\"en\": \"CFG\", \"ru\": \"CFG\"}}], \"refs\": {\"max\": 0}, \"negative_prompt\": false, \"models\": [{\"title\": \"studio:model\", \"input\": \"unet_name\", \"folder\": \"diffusion_models\", \"match\": \"ideogram4_(fp8|int8)(?!.*uncond)\"}, {\"title\": \"studio:model_uncond\", \"input\": \"unet_name\", \"folder\": \"diffusion_models\", \"match\": \"ideogram4_unconditional\"}, {\"title\": \"studio:clip\", \"input\": \"clip_name\", \"folder\": \"text_encoders\", \"match\": \"qwen3vl_8b\"}, {\"title\": \"studio:vae\", \"input\": \"vae_name\", \"folder\": \"vae\", \"match\": \"flux2.*flux2-vae-v2\"}], \"prompt_pipeline\": {\"preset\": \"Ideogram Prompt Enhance\", \"expect\": \"json\"}}"
+   "manifest": "{\"schema_version\": \"1.0.0\", \"id\": \"ideogram/t2i\", \"label\": {\"en\": \"Generate\", \"ru\": \"Генерация\"}, \"family\": \"ideogram\", \"family_label\": \"Ideogram 4\", \"mode\": \"t2i\", \"order\": 15, \"controls\": [{\"param\": \"prompt\", \"kind\": \"prompt\", \"superprompt\": true}, {\"param\": \"size\", \"kind\": \"size\", \"aspects\": [\"1:1\", \"16:9\", \"9:16\", \"3:2\", \"2:3\", \"4:3\", \"3:4\"], \"default_aspect\": \"1:1\", \"base_mp\": 1.0, \"mp\": [0.5, 2.0], \"snap\": 32, \"width_param\": \"__w\", \"height_param\": \"__h\"}, {\"param\": \"design_json\", \"kind\": \"designer\", \"provider\": \"ideogram\", \"label\": {\"en\": \"Layout\", \"ru\": \"Макет\"}}, {\"param\": \"seed\", \"kind\": \"seed\"}, {\"param\": \"loras\", \"kind\": \"loras\", \"max\": 8, \"strength\": [-2.0, 2.0]}, {\"param\": \"steps\", \"kind\": \"number\", \"advanced\": true, \"min\": 1, \"max\": 60, \"label\": {\"en\": \"Steps\", \"ru\": \"Шаги\"}, \"default\": 12}, {\"param\": \"cfg\", \"kind\": \"number\", \"advanced\": true, \"min\": 0, \"max\": 15, \"step\": 0.1, \"label\": {\"en\": \"CFG\", \"ru\": \"CFG\"}}], \"refs\": {\"max\": 0}, \"negative_prompt\": false, \"models\": [{\"title\": \"studio:model\", \"input\": \"unet_name\", \"folder\": \"diffusion_models\", \"match\": \"ideogram4_(fp8|int8)(?!.*uncond)\"}, {\"title\": \"studio:model_uncond\", \"input\": \"unet_name\", \"folder\": \"diffusion_models\", \"match\": \"ideogram4_unconditional\"}, {\"title\": \"studio:clip\", \"input\": \"clip_name\", \"folder\": \"text_encoders\", \"match\": \"qwen3vl_8b\"}, {\"title\": \"studio:vae\", \"input\": \"vae_name\", \"folder\": \"vae\", \"match\": \"flux2.*flux2-vae-v2\"}], \"designer\": {\"param\": \"design_json\", \"mode_param\": \"mode\", \"caption_param\": \"auto_caption\", \"preset\": \"Ideogram Prompt Enhance\"}, \"literals\": {\"mode\": {\"node\": \"designer\", \"input\": \"mode\"}}}"
+  }
+ },
+ "p_design": {
+  "class_type": "TS_StudioInputText",
+  "inputs": {
+   "value": "",
+   "param_name": "design_json",
+   "label": ""
+  }
+ },
+ "p_caption": {
+  "class_type": "TS_StudioInputText",
+  "inputs": {
+   "value": "",
+   "param_name": "auto_caption",
+   "label": ""
+  }
+ },
+ "designer": {
+  "class_type": "TS_IdeogramDesigner",
+  "_meta": {
+   "title": "studio:designer"
+  },
+  "inputs": {
+   "design_json": [
+    "p_design",
+    0
+   ],
+   "mode": "auto",
+   "auto_prompt": "",
+   "auto_caption": [
+    "p_caption",
+    0
+   ],
+   "auto_seed": 0
   }
  }
 }

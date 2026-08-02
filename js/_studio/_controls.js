@@ -9,6 +9,7 @@
 import { ensureThemeStyles } from "../_theme.js";
 import { deckSection } from "./_shell.js";
 import { makeDropZone, annotatedImageUrl } from "./_dnd.js";
+import { getEditorProvider } from "./_editors.js";
 
 // Controls render inside the shell's TS_UI_CLASS scope; ensureThemeStyles()
 // here keeps this module self-sufficient if a control is ever mounted alone.
@@ -55,6 +56,7 @@ export function ensureControlStyles() {
 .ts-studio__sliderrow{display:flex;align-items:center;gap:6px}
 .ts-studio__sliderrow input[type=range]{flex:1;min-width:0}
 .ts-studio__slider.is-disabled{opacity:.45}
+.ts-studio__designer.is-active{border-color:var(--ts-accent-line);color:var(--ts-accent)}
 .ts-studio__numrow{display:flex;align-items:center;justify-content:space-between;gap:8px;
     min-height:26px}
 .ts-studio__numrow input{width:76px;text-align:right}
@@ -611,6 +613,69 @@ registerControlKind("loras", (control, ctx) => {
             emit();
         },
         teardown: () => document.removeEventListener("pointerdown", onDocDown),
+    };
+});
+
+// ── designer: hand the family's own editor the wheel ────────────────────── //
+// The studio does not reimplement an authoring UI that already ships with a
+// node — this control opens that editor and keeps whatever state it returns.
+registerControlKind("designer", (control, ctx) => {
+    const provider = getEditorProvider(control.provider);
+    const section = deckSection(localized(control.label, ctx.locale, ""));
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "ts-ui-btn ts-studio__designer";
+    const label = localized(provider?.label, ctx.locale, control.provider || "Editor");
+    button.textContent = label;
+    const note = document.createElement("div");
+    note.className = "ts-studio__seedhint";
+    let state = null;
+
+    function sync(emit = true) {
+        note.textContent = state ? ctx.t.designerReady : ctx.t.designerEmpty;
+        button.classList.toggle("is-active", Boolean(state));
+        if (emit) ctx.onChange(control.param, state ? JSON.stringify(state) : "");
+    }
+
+    button.addEventListener("click", async () => {
+        if (!provider) return;
+        button.disabled = true;
+        try {
+            const next = await provider.open({
+                design: state,
+                prompt: ctx.getPrompt?.() || "",
+                aspect: ctx.getSize?.()?.aspect,
+                megapixels: ctx.getSize?.()?.mp,
+            });
+            if (next) state = next;
+            sync();
+        } catch (err) {
+            console.warn("[TS Studio] editor failed", err);
+        } finally {
+            button.disabled = false;
+        }
+    });
+
+    section.append(button, note);
+    if (!provider) {
+        button.disabled = true;
+        button.title = ctx.t.designerMissing;
+    }
+    sync();
+
+    return {
+        element: section,
+        get: () => state,
+        set: (value) => {
+            if (typeof value === "string" && value.trim()) {
+                try { state = JSON.parse(value); } catch { state = null; }
+            } else if (value && typeof value === "object") {
+                state = value;
+            } else {
+                state = null;
+            }
+            sync();
+        },
     };
 });
 

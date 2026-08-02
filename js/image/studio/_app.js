@@ -54,7 +54,10 @@ const STRINGS = {
         negativePrompt: "Negative prompt",
         promptPlaceholder: "Describe the image…",
         promptExpanding: "Preparing the prompt for this model…",
-        promptExpandBadShape: "The prompt helper did not return the structure this model needs — try again.",
+        designerReady: "A design is ready — it drives this render",
+        designerEmpty: "No design yet — the prompt is used instead",
+        designerMissing: "This editor is not installed",
+        designerNeedsInput: "Write a prompt or open the designer first.",
         promptExpandFailed: (m) => `Could not prepare the prompt: ${m}`,
         format: "Format",
         sizeFromReference: "Size follows the reference image",
@@ -180,7 +183,10 @@ const STRINGS = {
         negativePrompt: "Негативный промпт",
         promptPlaceholder: "Опишите изображение…",
         promptExpanding: "Готовлю промпт под эту модель…",
-        promptExpandBadShape: "Помощник промпта вернул не ту структуру, которую ждёт модель — попробуйте ещё раз.",
+        designerReady: "Дизайн готов — рендер идёт по нему",
+        designerEmpty: "Дизайна нет — используется промпт",
+        designerMissing: "Этот редактор не установлен",
+        designerNeedsInput: "Напишите промпт или откройте дизайнер.",
         promptExpandFailed: (m) => `Не удалось подготовить промпт: ${m}`,
         format: "Формат",
         sizeFromReference: "Размер берётся от референса",
@@ -619,6 +625,9 @@ export async function openStudio(node, persist) {
             const instance = renderer(control, {
                 t, locale, loraOptions,
                 uploadImage: (blob, name) => uploadImage(api, blob, name),
+                // A designer editor opens seeded with what the deck shows.
+                getPrompt: () => controlsByParam.get("prompt")?.get() || "",
+                getSize: () => controlsByParam.get("size")?.get(),
                 onChange: (param, value) => {
                     values[param] = value;
                     // Replace ON implies 100% strength: grey the slider out.
@@ -829,11 +838,14 @@ export async function openStudio(node, persist) {
         // What the user typed — the metadata and the snapshot keep this, not
         // whatever a model-specific pipeline expands it into.
         const authoredPrompt = typeof runValues.prompt === "string" ? runValues.prompt : "";
-        const pipeline = target.manifest.prompt_pipeline;
-        if (pipeline && authoredPrompt) {
-            const expanded = await expandPrompt(pipeline, authoredPrompt);
-            if (expanded === null) return;          // status already explains
-            runValues.prompt = expanded;
+        // Families whose node owns the prompt format (Ideogram's designer)
+        // get their own path: the design the editor produced, or — when the
+        // user only typed text — the node's Auto mode, fed by the same
+        // SuperPrompt preset its editor uses.
+        const designer = target.manifest.designer;
+        if (designer && authoredPrompt !== undefined) {
+            const prepared = await prepareDesignerRun(designer, authoredPrompt, runValues);
+            if (!prepared) return;                  // status already explains
         }
         // Filled reference slots become image params; empty ones become
         // dropParams so the patcher removes their optional branches.
@@ -987,47 +999,48 @@ export async function openStudio(node, persist) {
     }
 
     /**
-     * Some families do not read free text. Ideogram 4 wants a structured JSON
-     * caption and answers anything else with its built-in "blocked by safety
-     * filter" card (measured on this install) — so a manifest can declare the
-     * SuperPrompt preset that turns what the user wrote into the shape its
-     * model expects. The typed text stays the user's; only the graph sees the
-     * expansion.
+     * Ideogram 4 reads a structured caption, not prose — TS_IdeogramDesigner
+     * is the node that builds one, so the graph runs on its output. Two ways
+     * in: a design from its editor (Designer mode), or the typed text turned
+     * into a caption by the same SuperPrompt preset the editor's own Generate
+     * button uses (Auto mode). Either way the node does the converting.
      *
-     * @returns {Promise<string|null>} expanded prompt, or null to abort the run.
+     * @returns {Promise<boolean>} false when the run must not proceed.
      */
-    async function expandPrompt(pipeline, text) {
-        if (pipeline.expect === "json" && looksLikeJsonObject(text)) return text;
+    async function prepareDesignerRun(designer, authoredPrompt, runValues) {
+        const design = controlsByParam.get(designer.param)?.get();
+        const size = controlsByParam.get("size")?.get();
+        if (design) {
+            const { applyFrameToDesign } = await import("../../_studio/_editors.js");
+            runValues[designer.param] = JSON.stringify(
+                applyFrameToDesign(design, size?.aspect, size?.mp));
+            runValues[designer.mode_param || "mode"] = "designer";
+            return true;
+        }
+        if (!authoredPrompt.trim()) {
+            setStatus(t.designerNeedsInput);
+            return false;
+        }
         setStatus(t.promptExpanding);
         try {
             const response = await api.fetchApi("/ts_super_prompt/enhance", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ text, system_preset: pipeline.preset, seed: Date.now() }),
+                body: JSON.stringify({ text: authoredPrompt, system_preset: designer.preset,
+                                       seed: Date.now() }),
             });
             const payload = await response.json();
-            if (!response.ok || payload.error) throw new Error(payload.error || `HTTP ${response.status}`);
-            const expanded = String(payload.text || "").trim();
-            if (!expanded) throw new Error("empty result");
-            if (pipeline.expect === "json" && !looksLikeJsonObject(expanded)) {
-                // Passing prose to a JSON-only model wastes a full render.
-                setStatus(t.promptExpandBadShape);
-                return null;
+            if (!response.ok || payload.error) {
+                throw new Error(payload.error || `HTTP ${response.status}`);
             }
+            const caption = String(payload.text || "").trim();
+            if (!caption) throw new Error("empty result");
+            runValues[designer.caption_param || "auto_caption"] = caption;
+            runValues[designer.mode_param || "mode"] = "auto";
             setStatus("");
-            return expanded;
+            return true;
         } catch (err) {
             setStatus(t.promptExpandFailed(err.message));
-            return null;
-        }
-    }
-
-    function looksLikeJsonObject(text) {
-        const trimmed = String(text).trim();
-        if (!trimmed.startsWith("{")) return false;
-        try {
-            return typeof JSON.parse(trimmed) === "object";
-        } catch {
             return false;
         }
     }
