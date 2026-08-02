@@ -16,6 +16,7 @@ import { patchBackend } from "../../_studio/_markers.js";
 import { newSessionId, sessionPrefix, resultRelPath, restoreResults } from "../../_studio/_session.js";
 import { mountPromptTools } from "../../_studio/_prompt_tools.js";
 import { pickAssetProvider } from "../../_studio/_assets.js";
+import { createInpaintMode } from "./_modes_inpaint.js";
 import { uploadImage } from "../../_studio/_dnd.js";
 
 const ICONS = {
@@ -66,6 +67,22 @@ const STRINGS = {
         loraStrength: "Strength (negative values invert the effect)",
         loraRemove: "Remove this LoRA",
         loraNone: "No LoRA files installed",
+        inp: {
+            cleanup: "Cleanup", repaint: "Repaint",
+            cleanupTip: "Instant object removal (LaMa): paint and release — no prompt needed",
+            repaintTip: "Diffusion repaint: paint the mask, describe the change, press Run",
+            brush: "Brush size ([ and ])",
+            eraser: "Eraser — paint to remove mask",
+            clear: "Clear the mask",
+            undo: "Undo (Ctrl+Z)", redo: "Redo (Ctrl+Y)",
+            empty: "Drop an image here, pick a session result, or drag from the Library.",
+            cleaning: "Cleaning…",
+            cleaned: (s) => `Cleaned in ${s} s`,
+            repainted: "Repainted — the result is on the canvas and in the gallery.",
+            needImage: "Add an image to inpaint first.",
+            needMask: "Paint a mask first.",
+            failed: (m) => `Failed: ${m}`,
+        },
         pt: {
             mic: "Dictate the prompt (click to start/stop)",
             hq: "High-quality voice model (slower, more accurate)",
@@ -125,6 +142,22 @@ const STRINGS = {
         loraStrength: "Сила (отрицательные значения инвертируют эффект)",
         loraRemove: "Убрать эту LoRA",
         loraNone: "Файлы LoRA не установлены",
+        inp: {
+            cleanup: "Cleanup", repaint: "Repaint",
+            cleanupTip: "Мгновенное удаление объектов (LaMa): закрасьте и отпустите — промпт не нужен",
+            repaintTip: "Диффузионная перерисовка: маска + описание изменения + Run",
+            brush: "Размер кисти ([ и ])",
+            eraser: "Ластик — стирает маску",
+            clear: "Очистить маску",
+            undo: "Отменить (Ctrl+Z)", redo: "Вернуть (Ctrl+Y)",
+            empty: "Перетащите изображение, выберите результат сессии или тяните из Библиотеки.",
+            cleaning: "Очистка…",
+            cleaned: (s) => `Очищено за ${s} с`,
+            repainted: "Перерисовано — результат на холсте и в галерее.",
+            needImage: "Сначала добавьте изображение.",
+            needMask: "Сначала нарисуйте маску.",
+            failed: (m) => `Ошибка: ${m}`,
+        },
         pt: {
             mic: "Надиктовать промпт (клик — старт/стоп)",
             hq: "Качественная модель голоса (медленнее, точнее)",
@@ -200,6 +233,7 @@ export async function openStudio(node, persist) {
         modes: modeIds.map((id) => ({ id, title: t.modes[id] || id, icon: ICONS[id] || ICONS.t2i })),
         onMode: (id) => selectMode(id),
         onClose: () => {
+            inpaintMode?.teardown();
             for (const instance of controlInstances) instance.teardown?.();
             promptTools?.teardown();
             runner.destroy();
@@ -414,8 +448,36 @@ export async function openStudio(node, persist) {
         buildDeck(backend);
     }
 
+    let inpaintMode = null;
+    let activeModeId = null;
+
+    function ensureInpaintMounted() {
+        if (!inpaintMode) {
+            inpaintMode = createInpaintMode({
+                api, t, sessionId,
+                onEngineChange: () => {},
+            });
+            shell.stage.appendChild(inpaintMode.element);
+            const selectedUrl = stageImg.src && stageImg.style.display !== "none" ? stageImg.src : "";
+            if (selectedUrl) {
+                inpaintMode.setImageFromUrl(selectedUrl).catch(() => {});
+            }
+        }
+        inpaintMode.element.style.display = "";
+        stageFit.style.display = "none";
+        caption.style.display = "none";
+    }
+
+    function leaveInpaint() {
+        if (inpaintMode) inpaintMode.element.style.display = "none";
+        stageFit.style.display = "";
+    }
+
     function selectMode(modeId) {
         shell.setMode(modeId);
+        activeModeId = modeId;
+        if (modeId === "inpaint") ensureInpaintMounted();
+        else leaveInpaint();
         const current = activeBackend?.manifest.family;
         const inFamily = families.get(current)?.modes.get(modeId);
         const fallback = [...families.values()]
@@ -461,6 +523,16 @@ export async function openStudio(node, persist) {
             else dropParams.push(name);
         }
 
+        if (activeModeId === "inpaint" && inpaintMode) {
+            try {
+                const collected = await inpaintMode.collectRunValues();
+                Object.assign(runValues, collected);
+            } catch (err) {
+                setStatus(String(err.message || err));
+                return;
+            }
+        }
+
         let patched;
         try {
             patched = patchBackend(activeBackend.graph, activeBackend.spec, {
@@ -494,6 +566,15 @@ export async function openStudio(node, persist) {
                         gallery.add(result);
                         showResult(result);
                         persist.setResultPath(resultRelPath(image));
+                        if (activeModeId === "inpaint" && inpaintMode) {
+                            const url = "/view?" + new URLSearchParams({
+                                filename: image.filename,
+                                subfolder: image.subfolder || "",
+                                type: "output",
+                            });
+                            inpaintMode.acceptRepaintResult(url, image.filename)
+                                .catch(() => {});
+                        }
                     }
                 },
                 onError: (message) => {

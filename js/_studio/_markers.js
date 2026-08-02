@@ -189,8 +189,10 @@ export function missingModelValues(graph, objectInfo) {
         }
         const declared = { ...(spec.input?.required || {}), ...(spec.input?.optional || {}) };
         for (const [name, value] of Object.entries(node.inputs || {})) {
-            const decl = declared[name]?.[0];
-            if (Array.isArray(decl) && typeof value === "string" && !decl.includes(value)) {
+            const spec_item = declared[name];
+            const options = Array.isArray(spec_item?.[0]) ? spec_item[0]
+                : Array.isArray(spec_item?.[1]?.options) ? spec_item[1].options : null;
+            if (options && typeof value === "string" && !options.includes(value)) {
                 missing.push({ nodeId, kind: "value", input: name, value });
             }
         }

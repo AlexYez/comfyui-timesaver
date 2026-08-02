@@ -60,8 +60,10 @@ function comboOptionsFor(objectInfo, cls, inputName) {
     const spec = objectInfo[cls];
     if (!spec) return null;
     const declared = { ...(spec.input?.required || {}), ...(spec.input?.optional || {}) };
-    const decl = declared[inputName]?.[0];
-    return Array.isArray(decl) ? decl : null;
+    const decl = declared[inputName];
+    if (Array.isArray(decl?.[0])) return decl[0];
+    if (Array.isArray(decl?.[1]?.options)) return decl[1].options;
+    return null;
 }
 
 function validateAgainstServer(entry, objectInfo) {
