@@ -270,7 +270,9 @@ class TS_LangevinInpaint(IO.ComfyNode):
             inner.noise = inner.noise.to(x.device, x.dtype)
             inner.mask_known = inner.mask_known.to(x.device, x.dtype)
             extra_args = dict(extra_args or {})
-            extra_args.pop("denoise_mask", None)   # the mask is applied here, not upstream
+            # The engine's inpaint wrapper takes denoise_mask positionally; we
+            # do the masking ourselves, so hand it an explicit None.
+            extra_args["denoise_mask"] = None
             for index in range(len(sigmas_in) - 1):
                 sigma = sigmas_in[index]
                 sigma_next = sigmas_in[index + 1]
