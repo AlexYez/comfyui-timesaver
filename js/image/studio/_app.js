@@ -359,9 +359,11 @@ export async function openStudio(node, persist) {
             const found = modes.map((m) => family.modes.get(m)).filter(Boolean);
             if (!found.length) continue;
             // The primary backend runs when no reference is filled in; the
-            // edit backend takes over as soon as one is.
+            // edit backend takes over as soon as one is. Only Generate has
+            // that pairing — Inpaint and Upscale must not sprout reference
+            // slots just because the family can also edit (measured).
             const primary = family.modes.get(modes[0]) || found[0];
-            const edit = family.modes.get("edit") || null;
+            const edit = modes.includes("edit") ? (family.modes.get("edit") || null) : null;
             out.set(family.family, { family, primary, edit, label: family.label });
         }
         return out;
