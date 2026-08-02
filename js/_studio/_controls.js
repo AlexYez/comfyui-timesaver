@@ -6,11 +6,15 @@
 // special-cases a family. Every renderer returns {element, get, set} and
 // reports edits through onChange so the app stores values per mode.
 
+import { ensureThemeStyles } from "../_theme.js";
 import { deckSection } from "./_shell.js";
 
+// Controls render inside the shell's TS_UI_CLASS scope; ensureThemeStyles()
+// here keeps this module self-sufficient if a control is ever mounted alone.
 const STYLE_ID = "ts-studio-controls-styles";
 
 export function ensureControlStyles() {
+    ensureThemeStyles();
     if (document.getElementById(STYLE_ID)) return;
     const style = document.createElement("style");
     style.id = STYLE_ID;

@@ -6,7 +6,7 @@
 // beyond composition lives here.
 
 import { api } from "/scripts/api.js";
-import { pickLocaleStrings } from "../../_theme.js";
+import { TS_UI_CLASS, ensureThemeStyles, pickLocaleStrings } from "../../_theme.js";
 import { createShell, deckSection } from "../../_studio/_shell.js";
 import { ensureControlStyles, getControlRenderer, randomSeed } from "../../_studio/_controls.js";
 import { createGallery } from "../../_studio/_gallery.js";
@@ -83,6 +83,7 @@ const STRINGS = {
 const APP_STYLE_ID = "ts-image-studio-app-styles";
 
 function ensureAppStyles() {
+    ensureThemeStyles();
     if (document.getElementById(APP_STYLE_ID)) return;
     const style = document.createElement("style");
     style.id = APP_STYLE_ID;
@@ -146,7 +147,9 @@ export async function openStudio(node, persist) {
 
     // ── stage ───────────────────────────────────────────────────────────── //
     const stageFit = document.createElement("div");
-    stageFit.className = "ts-istudio__stagefit";
+    // Own token scope (nested scopes are harmless): stage chrome keeps its
+    // colours even if a mode ever hoists it out of the shell.
+    stageFit.className = `${TS_UI_CLASS} ts-istudio__stagefit`;
     const stageEmpty = document.createElement("div");
     stageEmpty.className = "ts-istudio__stageempty";
     stageEmpty.textContent = t.stageEmpty;

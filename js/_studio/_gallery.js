@@ -5,11 +5,13 @@
 // Type-specific card rendering is injected (images now; video/audio studios
 // pass their own), the grid mechanics stay shared.
 
+import { TS_UI_CLASS, ensureThemeStyles } from "../_theme.js";
 import { resultViewUrl } from "./_session.js";
 
 const STYLE_ID = "ts-studio-gallery-styles";
 
 export function ensureGalleryStyles() {
+    ensureThemeStyles();
     if (document.getElementById(STYLE_ID)) return;
     const style = document.createElement("style");
     style.id = STYLE_ID;
@@ -41,7 +43,9 @@ export function ensureGalleryStyles() {
 export function createGallery(options) {
     ensureGalleryStyles();
     const element = document.createElement("div");
-    element.className = "ts-studio__gallery";
+    // Own token scope: the gallery panel stays theme-correct even when a
+    // future studio mounts it outside the shell.
+    element.className = `${TS_UI_CLASS} ts-studio__gallery`;
 
     const tabs = document.createElement("div");
     tabs.className = "ts-studio__gallerytabs";
