@@ -36,7 +36,7 @@ class TS_StudioOutput(IO.ComfyNode):
     @classmethod
     def execute(cls, image, filename_prefix: str) -> IO.NodeOutput:
         results = UI.ImageSaveHelper.save_images(
-            image, filename_prefix=filename_prefix, folder_type=UI.FolderType.output, cls=cls,
+            image, filename_prefix=filename_prefix, folder_type=IO.FolderType.output, cls=cls,
         )
         return IO.NodeOutput(ui={"images": results})
 

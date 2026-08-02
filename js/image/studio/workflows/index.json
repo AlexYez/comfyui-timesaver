@@ -1,0 +1,9 @@
+{
+ "schema_version": "1.0.0",
+ "workflows": [
+  "flux2-klein/t2i.json",
+  "krea2/t2i.json",
+  "qwen-image/t2i.json",
+  "z-image/t2i.json"
+ ]
+}
