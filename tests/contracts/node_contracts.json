@@ -1959,6 +1959,9 @@
     "widgets": {
       "filename_prefix": {
         "default": "ts_studio/session"
+      },
+      "studio_state": {
+        "default": ""
       }
     }
   },

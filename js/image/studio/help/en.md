@@ -4,8 +4,8 @@ A fullscreen studio for generating and editing images. Everything under the hood
 
 ## Modes (left rail)
 
-- **Generate** — text to image. Describe the picture, pick a model, format and resolution, press **Run** (Ctrl+Enter).
-- **Edit** — instruction-based editing (Qwen Image Edit): up to three references, the first is the source. Describe what to change.
+- **Generate** — text-to-image and instruction editing in one mode. Describe the picture, pick a model, format and resolution, press **Run** (Ctrl+Enter). When the model can use references (Flux 2 Klein, Qwen Image Edit), slots appear under the prompt: leave them empty for a plain generation, fill one and the run switches to editing, taking its frame from the first reference.
+
 - **Inpaint** — two engines on one canvas. **Cleanup**: paint over an object and release — it vanishes in a second (LaMa, no prompt). **Repaint**: mask + description + Run — a diffusion model redraws the region.
 - **Upscale** — enlarge the gallery-selected result. **SeedVR2** restores and grows up to 4x; **Diffusion 2-pass** adds detail with a second generative pass.
 
@@ -21,10 +21,19 @@ A fullscreen studio for generating and editing images. Everything under the hood
 - Reference slots accept dropped files, gallery cards and Artius Browser cards; click to pick a file; the cross clears.
 - **+ Add LoRA** — search across installed LoRAs; strength from −2 to +2; reorder rows by their drag handle.
 
-## Gallery and library (right)
+## The left panel: session, library, queue
 
 - **Session** — every result of this node; clicking selects the image, and the node's IMAGE output emits the same one. Cards drag into slots and onto the canvas.
-- **Library** — recent server images (or Artius Browser when installed). The panel collapses by its edge grip or the Tab key.
+- **Library** — recent server images (or Artius Browser when installed). Its fullscreen viewer opens above the studio and closes with its own Escape.
+- **Queue** — ComfyUI's own queue, so studio jobs and graph runs appear side by side. Drag to reorder, × drops a job, **Clear** removes every pending one, **Stop** interrupts what is running.
+
+The panel collapses by its edge grip or the Tab key.
+
+## Recreating a session from an image
+
+Every result carries a snapshot of its settings in a PNG text chunk of its own — beside ComfyUI's standard metadata, competing with neither it nor image browsers. The **Recreate** button under the picture (or dropping such a PNG onto the canvas) restores the mode, model, prompt, seed, format and LoRA chain, and puts the source back where it was used: the inpaint canvas, the upscale stage or the reference slots. Dropping someone else's image simply makes it the current mode's source.
+
+The prompt is additionally written into the standard metadata (through TS Image Prompt Injector), so Artius Browser and other viewers show it exactly as they do for ordinary generations.
 
 ## Missing models
 
@@ -37,5 +46,5 @@ Build a workflow in ComfyUI, add the markers from the `TS/Studio` category (para
 ## Shortcuts
 
 - Ctrl+Enter — Run; Esc — close the studio
-- Tab — collapse/expand the right panel
+- Tab — collapse/expand the asset panel
 - In Inpaint: [ and ] — brush size; Ctrl+Z / Ctrl+Y — undo and redo
