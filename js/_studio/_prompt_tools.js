@@ -182,7 +182,7 @@ export function mountPromptTools(options) {
             if (text) insertAtCursor(textarea, text);
             setStatus("");
         } catch (err) {
-            setStatus(t.pt.failed(err.message));
+            setStatus(t.pt.opFailed(err.message));
         }
     }
 
@@ -225,7 +225,7 @@ export function mountPromptTools(options) {
             attachButton.classList.add("is-active");
             setStatus("");
         } catch (err) {
-            setStatus(t.pt.failed(err.message));
+            setStatus(t.pt.opFailed(err.message));
         }
     }
 
@@ -309,7 +309,7 @@ export function mountPromptTools(options) {
             textarea.dispatchEvent(new Event("input", { bubbles: true }));
             setStatus("");
         } catch (err) {
-            setStatus(t.pt.failed(err.message));
+            setStatus(t.pt.opFailed(err.message));
         } finally {
             aiButton.disabled = false;
         }
@@ -349,7 +349,7 @@ export function mountPromptTools(options) {
             stylesLoaded = true;
             renderStyleGrid("");
         } catch (err) {
-            setStatus(t.pt.failed(err.message));
+            setStatus(t.pt.opFailed(err.message));
         }
     }
 

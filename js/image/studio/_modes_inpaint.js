@@ -250,7 +250,7 @@ export function createInpaintMode(ctx) {
             const seconds = ((performance.now() - started) / 1000).toFixed(1);
             setStatus(ctx.t.inp.cleaned(seconds));
         } catch (err) {
-            setStatus(ctx.t.inp.failed(err.message));
+            setStatus(ctx.t.inp.paintFailed(err.message));
         } finally {
             cleaning = false;
         }

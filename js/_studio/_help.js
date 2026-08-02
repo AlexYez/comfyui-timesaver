@@ -97,7 +97,7 @@ export function createHelpPanel(options) {
     head.className = "ts-help__head";
     const title = document.createElement("span");
     title.className = "ts-help__title";
-    title.textContent = options.t.help.title;
+    title.textContent = options.t.help.helpHeader;
     const hintRow = document.createElement("label");
     hintRow.className = "ts-help__hintrow";
     const hintToggle = document.createElement("input");
@@ -109,7 +109,7 @@ export function createHelpPanel(options) {
     const close = document.createElement("button");
     close.type = "button";
     close.className = "ts-ui-btn";
-    close.textContent = options.t.help.close;
+    close.textContent = options.t.help.closeLabel;
     close.addEventListener("click", () => toggle(false));
     head.append(title, hintRow, close);
     const body = document.createElement("div");

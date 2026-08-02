@@ -48,7 +48,7 @@ function fmtBytes(n) {
 export function createDownloadPanel(options) {
     ensureDownloadStyles();
     const { api, t } = options;
-    const section = deckSection(t.dl.title);
+    const section = deckSection(t.dl.dlHeader);
     const wrap = document.createElement("div");
     wrap.className = `${TS_UI_CLASS} ts-dl`;
     section.appendChild(wrap);
@@ -111,7 +111,7 @@ export function createDownloadPanel(options) {
         } else if (detail.status === "verifying") {
             row.meta.textContent = t.dl.verifying;
         } else if (detail.status === "queued") {
-            row.meta.textContent = t.dl.queued;
+            row.meta.textContent = t.dl.waiting;
         } else {
             row.meta.textContent = t.dl.status(detail.status) + (detail.error ? `: ${detail.error}` : "");
             row.bar.classList.remove("is-active");
@@ -197,7 +197,7 @@ export function createDownloadPanel(options) {
                 const job = await fetchRes.json();
                 if (job.error) throw new Error(job.error);
                 attachJob(job.job_id, handle);
-                handle.meta.textContent = t.dl.queued;
+                handle.meta.textContent = t.dl.waiting;
             } catch (err) {
                 handle.meta.textContent = t.dl.status("error") + `: ${err.message}`;
                 handle.button.disabled = false;
