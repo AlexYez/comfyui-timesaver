@@ -26,7 +26,7 @@
  "p_steps": {
   "class_type": "TS_StudioInputNumber",
   "inputs": {
-   "value": 28,
+   "value": 12,
    "param_name": "steps",
    "label": ""
   }
@@ -100,7 +100,7 @@
  "vae_loader": {
   "class_type": "VAELoader",
   "inputs": {
-   "vae_name": "flux2\\flux2-vae.safetensors"
+   "vae_name": "flux2\\flux2-vae-v2.safetensors"
   },
   "_meta": {
    "title": "studio:vae"
@@ -174,8 +174,8 @@
     "p_height",
     1
    ],
-   "mu": 0.0,
-   "std": 0.5
+   "mu": 0.5,
+   "std": 1.75
   }
  },
  "noise": {
@@ -252,7 +252,7 @@
  "studio_manifest": {
   "class_type": "TS_StudioManifest",
   "inputs": {
-   "manifest": "{\n  \"schema_version\": \"1.0.0\",\n  \"id\": \"ideogram/t2i\",\n  \"label\": {\n    \"en\": \"Generate\",\n    \"ru\": \"Генерация\"\n  },\n  \"family\": \"ideogram\",\n  \"family_label\": \"Ideogram 4\",\n  \"mode\": \"t2i\",\n  \"order\": 15,\n  \"controls\": [\n    {\n      \"param\": \"prompt\",\n      \"kind\": \"prompt\",\n      \"superprompt\": true\n    },\n    {\n      \"param\": \"size\",\n      \"kind\": \"size\",\n      \"aspects\": [\n        \"1:1\",\n        \"16:9\",\n        \"9:16\",\n        \"3:2\",\n        \"2:3\",\n        \"4:3\",\n        \"3:4\"\n      ],\n      \"base_mp\": 1.0,\n      \"mp\": [\n        0.25,\n        2.5\n      ],\n      \"snap\": 16,\n      \"width_param\": \"width\",\n      \"height_param\": \"height\"\n    },\n    {\n      \"param\": \"seed\",\n      \"kind\": \"seed\"\n    },\n    {\n      \"param\": \"loras\",\n      \"kind\": \"loras\",\n      \"max\": 8,\n      \"strength\": [\n        -2.0,\n        2.0\n      ]\n    },\n    {\n      \"param\": \"steps\",\n      \"kind\": \"number\",\n      \"advanced\": true,\n      \"min\": 1,\n      \"max\": 60,\n      \"label\": {\n        \"en\": \"Steps\",\n        \"ru\": \"Шаги\"\n      }\n    },\n    {\n      \"param\": \"cfg\",\n      \"kind\": \"number\",\n      \"advanced\": true,\n      \"min\": 0,\n      \"max\": 15,\n      \"step\": 0.1,\n      \"label\": {\n        \"en\": \"CFG\",\n        \"ru\": \"CFG\"\n      }\n    }\n  ],\n  \"refs\": {\n    \"max\": 0\n  },\n  \"negative_prompt\": false,\n  \"models\": [\n    {\n      \"title\": \"studio:model\",\n      \"input\": \"unet_name\",\n      \"folder\": \"diffusion_models\",\n      \"match\": \"ideogram4_(fp8|int8)(?!.*uncond)\"\n    },\n    {\n      \"title\": \"studio:model_uncond\",\n      \"input\": \"unet_name\",\n      \"folder\": \"diffusion_models\",\n      \"match\": \"ideogram4_unconditional\"\n    },\n    {\n      \"title\": \"studio:clip\",\n      \"input\": \"clip_name\",\n      \"folder\": \"text_encoders\",\n      \"match\": \"qwen3vl_8b\"\n    },\n    {\n      \"title\": \"studio:vae\",\n      \"input\": \"vae_name\",\n      \"folder\": \"vae\",\n      \"match\": \"flux2-vae\"\n    }\n  ]\n}"
+   "manifest": "{\"schema_version\": \"1.0.0\", \"id\": \"ideogram/t2i\", \"label\": {\"en\": \"Generate\", \"ru\": \"Генерация\"}, \"family\": \"ideogram\", \"family_label\": \"Ideogram 4\", \"mode\": \"t2i\", \"order\": 15, \"controls\": [{\"param\": \"prompt\", \"kind\": \"prompt\", \"superprompt\": true}, {\"param\": \"size\", \"kind\": \"size\", \"aspects\": [\"1:1\", \"16:9\", \"9:16\", \"3:2\", \"2:3\", \"4:3\", \"3:4\"], \"base_mp\": 1.0, \"mp\": [0.25, 2.5], \"snap\": 16, \"width_param\": \"width\", \"height_param\": \"height\"}, {\"param\": \"seed\", \"kind\": \"seed\"}, {\"param\": \"loras\", \"kind\": \"loras\", \"max\": 8, \"strength\": [-2.0, 2.0]}, {\"param\": \"steps\", \"kind\": \"number\", \"advanced\": true, \"min\": 1, \"max\": 60, \"label\": {\"en\": \"Steps\", \"ru\": \"Шаги\"}, \"default\": 12}, {\"param\": \"cfg\", \"kind\": \"number\", \"advanced\": true, \"min\": 0, \"max\": 15, \"step\": 0.1, \"label\": {\"en\": \"CFG\", \"ru\": \"CFG\"}}], \"refs\": {\"max\": 0}, \"negative_prompt\": false, \"models\": [{\"title\": \"studio:model\", \"input\": \"unet_name\", \"folder\": \"diffusion_models\", \"match\": \"ideogram4_(fp8|int8)(?!.*uncond)\"}, {\"title\": \"studio:model_uncond\", \"input\": \"unet_name\", \"folder\": \"diffusion_models\", \"match\": \"ideogram4_unconditional\"}, {\"title\": \"studio:clip\", \"input\": \"clip_name\", \"folder\": \"text_encoders\", \"match\": \"qwen3vl_8b\"}, {\"title\": \"studio:vae\", \"input\": \"vae_name\", \"folder\": \"vae\", \"match\": \"flux2.*flux2-vae-v2\"}]}"
   }
  }
 }
