@@ -480,6 +480,16 @@ export async function openStudio(node, persist) {
             });
             controlInstances.push(instance);
             if (control.param) controlsByParam.set(control.param, instance);
+            // Seed the control with the backend file's own default so the
+            // deck never shows an empty field lying about what will run.
+            if ((control.kind === "number" || control.kind === "prompt")
+                && backend.spec.params.has(control.param)) {
+                const markerId = backend.spec.params.get(control.param).nodeId;
+                const fileDefault = backend.graph[markerId]?.inputs?.value;
+                if (fileDefault !== undefined && fileDefault !== "") {
+                    instance.set(fileDefault);
+                }
+            }
             if (control.kind === "seed") seedControl = instance;
             if (control.advanced) advanced.push(instance.element);
             else shell.deck.appendChild(instance.element);
