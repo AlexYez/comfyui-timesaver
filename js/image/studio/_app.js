@@ -14,6 +14,7 @@ import { createRunner } from "../../_studio/_runner.js";
 import { loadBackends, groupByFamily } from "../../_studio/_backends.js";
 import { patchBackend } from "../../_studio/_markers.js";
 import { newSessionId, sessionPrefix, resultRelPath, restoreResults } from "../../_studio/_session.js";
+import { mountPromptTools } from "../../_studio/_prompt_tools.js";
 
 const ICONS = {
     generate: '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 3l1.8 4.7L18.5 9l-4.7 1.8L12 15.5l-1.8-4.7L5.5 9l4.7-1.3zM19 15l.9 2.3 2.1.7-2.1.9L19 21l-.9-2.1-2.1-.9 2.1-.7z"/></svg>',
@@ -48,6 +49,24 @@ const STRINGS = {
         noBackends: "No backend workflows are available for any installed model.",
         runFailed: (m) => `Run failed: ${m}`,
         modes: { t2i: "Generate", edit: "Edit", inpaint: "Inpaint", upscale: "Upscale" },
+        pt: {
+            mic: "Dictate the prompt (click to start/stop)",
+            hq: "High-quality voice model (slower, more accurate)",
+            micDenied: "Microphone unavailable or denied.",
+            transcribing: "Transcribing…",
+            attach: "Attach an image — AI will combine it with your text",
+            detach: "Remove the attached image",
+            uploading: "Uploading image…",
+            preset: "Enhance preset",
+            enhance: "Enhance the prompt with AI",
+            enhancing: "Enhancing the prompt…",
+            enhancingImage: "Reading the image and combining with your text…",
+            noSuperPrompt: "TS SuperPrompt is not available on this server",
+            styles: "Style library",
+            styleSearch: "Search styles…",
+            removeStyle: "Click to remove this style",
+            failed: (m) => `Failed: ${m}`,
+        },
     },
     ru: {
         appLabel: "TS Image Studio",
@@ -77,6 +96,24 @@ const STRINGS = {
         noBackends: "Нет доступных workflow ни для одной установленной модели.",
         runFailed: (m) => `Ошибка запуска: ${m}`,
         modes: { t2i: "Генерация", edit: "Редактирование", inpaint: "Inpaint", upscale: "Upscale" },
+        pt: {
+            mic: "Надиктовать промпт (клик — старт/стоп)",
+            hq: "Качественная модель голоса (медленнее, точнее)",
+            micDenied: "Микрофон недоступен или доступ запрещён.",
+            transcribing: "Распознавание…",
+            attach: "Приложить картинку — ИИ объединит её с вашим текстом",
+            detach: "Убрать приложенную картинку",
+            uploading: "Загрузка картинки…",
+            preset: "Пресет улучшения",
+            enhance: "Улучшить промпт ИИ",
+            enhancing: "Улучшение промпта…",
+            enhancingImage: "Читаю картинку и объединяю с вашим текстом…",
+            noSuperPrompt: "TS SuperPrompt недоступен на этом сервере",
+            styles: "Библиотека стилей",
+            styleSearch: "Поиск стилей…",
+            removeStyle: "Клик — убрать стиль",
+            failed: (m) => `Ошибка: ${m}`,
+        },
     },
 };
 
@@ -133,7 +170,10 @@ export async function openStudio(node, persist) {
         collapseTitle: t.collapse,
         modes: modeIds.map((id) => ({ id, title: t.modes[id] || id, icon: ICONS.generate })),
         onMode: (id) => selectMode(id),
-        onClose: () => runner.destroy(),
+        onClose: () => {
+            promptTools?.teardown();
+            runner.destroy();
+        },
         onKey: (event) => {
             if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
                 event.preventDefault();
@@ -199,10 +239,13 @@ export async function openStudio(node, persist) {
 
     // ── deck ────────────────────────────────────────────────────────────── //
     let seedControl = null;
+    let promptTools = null;
 
     function buildDeck(backend) {
         shell.deck.textContent = "";
         seedControl = null;
+        promptTools?.teardown();
+        promptTools = null;
         for (const key of Object.keys(values)) delete values[key];
 
         const modelSection = deckSection(t.model);
@@ -244,6 +287,16 @@ export async function openStudio(node, persist) {
             if (control.kind === "seed") seedControl = instance;
             if (control.advanced) advanced.push(instance.element);
             else shell.deck.appendChild(instance.element);
+            if (control.kind === "prompt" && control.superprompt) {
+                const slot = instance.element.querySelector(
+                    `[data-ts-slot="prompt-toolbar:${control.param}"]`);
+                const textarea = instance.element.querySelector("textarea");
+                if (slot && textarea) {
+                    promptTools = mountPromptTools({
+                        textarea, slot, api, objectInfo, t, locale,
+                    });
+                }
+            }
         }
         if (advanced.length) {
             const toggle = document.createElement("button");
@@ -321,6 +374,13 @@ export async function openStudio(node, persist) {
             runValues[param] = value;
         }
         runValues.seed = seed;
+        // Styles append to the prompt the same way the selector node does —
+        // what runs is exactly what the gallery params will replay.
+        const styleTail = promptTools?.getStylePrompts().join(", ");
+        if (styleTail && typeof runValues.prompt === "string") {
+            const base = runValues.prompt.trim().replace(/[,\s]+$/, "");
+            runValues.prompt = base ? `${base}, ${styleTail}` : styleTail;
+        }
 
         let patched;
         try {
