@@ -7,6 +7,7 @@
 // an OS file picker, drawn with the shared grid styling.
 
 import { makeAssetDraggable } from "./_dnd.js";
+import { markOverlayAbove } from "../_fullscreen.js";
 
 const PROVIDERS = [];
 
@@ -40,9 +41,40 @@ registerAssetProvider({
                 url: asset.file_url,
             }),
         });
-        return { unmount: () => handle?.unmount?.() };
+        const releaseLightbox = adoptArtiusLightbox();
+        return { unmount: () => { releaseLightbox(); handle?.unmount?.(); } };
     },
 });
+
+// Artius opens its full-size viewer as a body-level element sized for the
+// page, not for a host that is already fullscreen: it would paint UNDER the
+// studio and its Escape would close the studio instead of the lightbox. The
+// adapter lifts it — the browser stays a plain guest, no patch on its side.
+const ARTIUS_VIEWER_TAG = "ts-artius-browser-viewer";
+
+function adoptArtiusLightbox() {
+    const adopted = new Map();
+    const adopt = (element) => {
+        if (adopted.has(element)) return;
+        adopted.set(element, markOverlayAbove(element));
+    };
+    for (const node of document.querySelectorAll(ARTIUS_VIEWER_TAG)) adopt(node);
+    const observer = new MutationObserver((records) => {
+        for (const record of records) {
+            for (const node of record.addedNodes) {
+                if (node.nodeType !== 1) continue;
+                if (node.tagName?.toLowerCase() === ARTIUS_VIEWER_TAG) adopt(node);
+                else node.querySelectorAll?.(ARTIUS_VIEWER_TAG).forEach(adopt);
+            }
+        }
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+    return () => {
+        observer.disconnect();
+        for (const release of adopted.values()) release();
+        adopted.clear();
+    };
+}
 
 // ── fallback: recent server images + OS picker ──────────────────────────── //
 registerAssetProvider({

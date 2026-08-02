@@ -1,6 +1,7 @@
 {
  "schema_version": "1.0.0",
  "workflows": [
+  "flux2-klein/edit.json",
   "flux2-klein/inpaint.json",
   "flux2-klein/t2i.json",
   "ideogram/inpaint.json",

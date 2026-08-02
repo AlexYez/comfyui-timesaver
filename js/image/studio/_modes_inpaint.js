@@ -355,6 +355,7 @@ export function createInpaintMode(ctx) {
         element: root,
         engine: () => state.engine,
         setImageFromUrl,
+        setImageFromBlob,
         collectRunValues,
         acceptRepaintResult,
         hasImage: () => mask.hasImage(),

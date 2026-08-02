@@ -20,6 +20,23 @@ export async function uploadImage(api, blob, filename) {
     return `${folder}${payload.name} [${payload.type || "input"}]`;
 }
 
+/**
+ * Inverse of uploadImage: turn an annotated name ("sub/name.png [input]")
+ * back into a /view URL. Annotated names are how every image param travels,
+ * so this is what lets a saved run point at its own sources.
+ */
+export function annotatedImageUrl(annotated) {
+    const text = String(annotated || "").trim();
+    if (!text) return "";
+    const match = /^(.*?)\s*\[(\w+)\]$/.exec(text);
+    const path = (match ? match[1] : text).replace(/\\/g, "/");
+    const type = match ? match[2] : "input";
+    const slash = path.lastIndexOf("/");
+    const filename = slash >= 0 ? path.slice(slash + 1) : path;
+    const subfolder = slash >= 0 ? path.slice(0, slash) : "";
+    return `/view?${new URLSearchParams({ filename, subfolder, type })}`;
+}
+
 const NORMALIZERS = [];
 
 /** Extension point: {id, sniff(dataTransfer) -> bool, extract(dataTransfer) -> Promise<items>} */

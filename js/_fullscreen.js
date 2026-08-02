@@ -21,6 +21,42 @@
 
 import { TS_UI_CLASS } from "./_theme.js";
 
+// Overlays that a fullscreen editor may legitimately stack ON TOP of itself —
+// an embedded image browser's lightbox, for one. Two things have to be true
+// for that to work: it must paint above us, and Esc must reach IT rather than
+// close the editor underneath. Both are handled here so no caller reinvents
+// the stacking rules.
+const ABOVE_ATTR = "data-ts-overlay-above";
+const ABOVE_Z = 11500;   // .ts-ui-modal is 11000; see _theme.js
+
+/**
+ * Let `element` sit above the fullscreen overlay and own the Escape key while
+ * it is on screen.
+ *
+ * @param {HTMLElement} element The foreign overlay root.
+ * @returns {() => void} Undo, for when the overlay closes.
+ */
+export function markOverlayAbove(element) {
+    if (!element) return () => {};
+    element.setAttribute(ABOVE_ATTR, "1");
+    const previous = element.style.zIndex;
+    element.style.zIndex = String(ABOVE_Z);
+    return () => {
+        element.removeAttribute(ABOVE_ATTR);
+        element.style.zIndex = previous;
+    };
+}
+
+/** Is some foreign overlay currently stacked above the editors? */
+function overlayAboveIsOpen(doc) {
+    for (const node of doc.querySelectorAll(`[${ABOVE_ATTR}]`)) {
+        // offsetParent is null for display:none; a lightbox that merely hid
+        // itself must not keep swallowing Escape.
+        if (node.offsetParent !== null || node.getClientRects().length) return true;
+    }
+    return false;
+}
+
 // Single × icon shared by every fullscreen editor's close control.
 const CLOSE_ICON_SVG =
     '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">' +
@@ -133,6 +169,9 @@ export function openFullscreenOverlay(content, options = {}) {
 
     function onKeyDown(event) {
         if (!open) return;
+        // Something is stacked above us (an embedded lightbox): it gets the
+        // keystroke, including its own Escape-to-close.
+        if (overlayAboveIsOpen(doc)) return;
         if (event.key === "Escape") {
             event.preventDefault();
             event.stopPropagation();

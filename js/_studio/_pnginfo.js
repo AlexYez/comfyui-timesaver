@@ -1,10 +1,22 @@
 // TS Studio kit — reproducibility from PNG metadata (core layer, no DOM).
 //
-// Every studio result already embeds the full API prompt (ComfyUI's standard
-// tEXt "prompt" chunk, written by the save helper). This module reads it
-// back: drop a studio PNG anywhere later — even from a file browser — and
-// the exact backend, prompt, seed, sizes and LoRA chain are recoverable.
+// A studio result carries two independent records, and this module owns both
+// ends of the trip:
+//
+//   • `ts_studio` — the studio's OWN snapshot chunk (see buildStudioState).
+//     It holds everything needed to recreate the session: rail tab, backend,
+//     every control value, the LoRA chain, the styles and the annotated names
+//     of the source image / mask / references. Written through the output
+//     marker's extra_pnginfo, so it sits BESIDE ComfyUI's `prompt` and
+//     `workflow` chunks rather than competing with them — ComfyUI keeps
+//     reading its metadata and image browsers keep reading theirs.
+//   • the standard `prompt` graph — the fallback for images made before the
+//     snapshot existed, read back through the marker nodes.
+//
 // Pure functions: blob in, plain objects out.
+
+export const STUDIO_STATE_CHUNK = "ts_studio";
+export const STUDIO_STATE_VERSION = 1;
 
 /** Parse PNG tEXt/iTXt chunks; returns {keyword: text}. Not a PNG? -> {}. */
 export async function readPngText(blob) {
@@ -88,4 +100,84 @@ export async function studioRunFromPng(blob) {
     } catch {
         return null;
     }
+}
+
+/**
+ * Snapshot of everything the studio needs to rebuild a session.
+ *
+ * Deliberately flat and self-describing: a future studio (video, audio) or a
+ * later schema reads `v` and decides. Values are primitives and plain arrays
+ * only — no DOM handles, no blobs, no absolute paths. Image references travel
+ * as ComfyUI annotated names ("sub/name.png [input]"), which resolve through
+ * /view on any install.
+ */
+export function buildStudioState(run) {
+    const state = {
+        v: STUDIO_STATE_VERSION,
+        app: "ts-image-studio",
+        backend: run.backendId,
+        family: run.family,
+        family_label: run.familyLabel || run.family,
+        mode: run.mode,
+        ui_mode: run.uiMode || run.mode,
+        values: {},
+        loras: (run.loras || []).map((l) => ({ name: l.name, strength: Number(l.strength) })),
+        styles: (run.styles || []).map((s) => String(s)),
+        sources: {},
+    };
+    for (const [key, value] of Object.entries(run.values || {})) {
+        if (value === null || value === undefined) continue;
+        if (typeof value === "object") continue;
+        state.values[key] = value;
+    }
+    for (const [key, value] of Object.entries(run.sources || {})) {
+        if (typeof value === "string" && value) state.sources[key] = value;
+    }
+    if (run.size?.aspect) state.size = { aspect: run.size.aspect, mp: Number(run.size.mp) };
+    return state;
+}
+
+/** True when the object looks like a snapshot this build can apply. */
+export function isStudioState(value) {
+    return Boolean(value && typeof value === "object"
+        && value.app === "ts-image-studio"
+        && Number(value.v) >= 1 && Number(value.v) <= STUDIO_STATE_VERSION
+        && value.backend);
+}
+
+/**
+ * Read a studio session out of a PNG: the snapshot chunk when present, the
+ * prompt graph otherwise.
+ *
+ * @returns {Promise<null | {source: "snapshot"|"prompt", state: object}>}
+ */
+export async function studioStateFromPng(blob) {
+    const text = await readPngText(blob);
+    const raw = text[STUDIO_STATE_CHUNK];
+    if (raw) {
+        try {
+            const parsed = JSON.parse(raw);
+            if (isStudioState(parsed)) return { source: "snapshot", state: parsed };
+        } catch {
+            // Fall through to the prompt graph — a damaged chunk is not fatal.
+        }
+    }
+    if (!text.prompt) return null;
+    let legacy = null;
+    try {
+        legacy = extractStudioRun(JSON.parse(text.prompt));
+    } catch {
+        return null;
+    }
+    if (!legacy) return null;
+    return {
+        source: "prompt",
+        state: buildStudioState({
+            backendId: legacy.backendId,
+            family: legacy.family,
+            mode: legacy.mode,
+            values: legacy.values,
+            loras: legacy.loras,
+        }),
+    };
 }

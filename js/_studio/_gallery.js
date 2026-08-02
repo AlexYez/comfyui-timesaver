@@ -59,6 +59,19 @@ export function createGallery(options) {
     libraryTab.className = "ts-studio__gallerytab";
     libraryTab.textContent = options.t.tabLibrary;
     tabs.append(sessionTab, libraryTab);
+    // Extra tabs are data (the queue panel is the first of them): the gallery
+    // hosts them without knowing what they show.
+    const extras = (options.extraTabs || []).map((spec) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "ts-studio__gallerytab";
+        button.textContent = spec.label;
+        if (spec.title) button.title = spec.title;
+        button.addEventListener("click", () => showTab(spec.id));
+        tabs.appendChild(button);
+        spec.element.style.display = "none";
+        return { spec, button };
+    });
 
     const grid = document.createElement("div");
     grid.className = "ts-studio__gallerygrid";
@@ -70,18 +83,25 @@ export function createGallery(options) {
     libraryHost.className = "ts-studio__gallery";
     libraryHost.style.display = "none";
 
-    element.append(tabs, grid, empty, libraryHost);
+    element.append(tabs, grid, empty, libraryHost, ...extras.map((e) => e.spec.element));
 
     let libraryHandle = null;
     function showTab(which) {
         const session = which === "session";
+        const library = which === "library";
         sessionTab.classList.toggle("is-active", session);
-        libraryTab.classList.toggle("is-active", !session);
+        libraryTab.classList.toggle("is-active", library);
         grid.style.display = session ? "" : "none";
         empty.style.display = session ? "" : "none";
-        libraryHost.style.display = session ? "none" : "";
+        libraryHost.style.display = library ? "" : "none";
+        for (const { spec, button } of extras) {
+            const active = which === spec.id;
+            button.classList.toggle("is-active", active);
+            spec.element.style.display = active ? "" : "none";
+            spec.onVisible?.(active);
+        }
         if (session) syncEmpty();
-        if (!session && !libraryHandle && options.mountLibrary) {
+        if (library && !libraryHandle && options.mountLibrary) {
             libraryHandle = options.mountLibrary(libraryHost) || { unmount() {} };
         }
     }
@@ -139,7 +159,7 @@ export function createGallery(options) {
     }
 
     return {
-        element, add, setAll, selectLast,
+        element, add, setAll, selectLast, showTab,
         count: () => results.length,
         teardown: () => libraryHandle?.unmount?.(),
     };

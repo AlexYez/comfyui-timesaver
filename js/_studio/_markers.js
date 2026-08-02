@@ -72,6 +72,9 @@ export function inspectBackend(graph) {
  *   Whether a class input is optional (from /object_info). A consumer of a
  *   dropped branch survives when the link sat on an optional input (the link
  *   is simply removed); a required input dooms the consumer too.
+ * @param {string} [run.promptText] Final positive prompt. Spliced into the
+ *   saved metadata through TS_ImagePromptInjector — see insertPromptInjector.
+ * @param {object} [run.studioState] Run snapshot for the PNG's ts_studio chunk.
  */
 export function patchBackend(graph, spec, run) {
     const out = structuredClone(graph);
@@ -104,6 +107,12 @@ export function patchBackend(graph, spec, run) {
     if (run.filenamePrefix) {
         out[spec.output].inputs.filename_prefix = run.filenamePrefix;
     }
+    if (run.studioState) {
+        out[spec.output].inputs.studio_state = JSON.stringify(run.studioState);
+    }
+    if (run.promptText) {
+        insertPromptInjector(out, spec.output, run.promptText);
+    }
 
     expandLoraStack(out, spec, run.loras || []);
     const dropRoots = (run.dropParams || [])
@@ -113,6 +122,25 @@ export function patchBackend(graph, spec, run) {
         removeBranches(out, dropRoots, run.isOptionalInput || (() => false));
     }
     return out;
+}
+
+// The prompt reaches the text encoders through a LINK from the prompt marker,
+// so the saved workflow metadata shows an empty `text` and image browsers
+// (Artius among them) find no prompt on a studio image. TS_ImagePromptInjector
+// exists for exactly this: it passes the image through untouched and writes
+// the real text into the metadata's positive encoders. Splicing it here — one
+// place, at submit time — covers user-authored backends too.
+function insertPromptInjector(graph, outputId, promptText) {
+    const output = graph[outputId];
+    const upstream = output?.inputs?.image;
+    if (!Array.isArray(upstream)) return;
+    const id = "ts_prompt_meta";
+    graph[id] = {
+        class_type: "TS_ImagePromptInjector",
+        inputs: { image: upstream, prompt: String(promptText) },
+        _meta: { title: "studio:prompt-metadata" },
+    };
+    output.inputs.image = [id, 0];
 }
 
 // The stack marker is MODEL-only passthrough; the user's stack becomes a chain

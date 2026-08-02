@@ -1,10 +1,11 @@
 // TS Studio kit — the application shell (ui-kit layer).
 //
 // Frame of every TS studio app (image now; video/audio later): mode rail,
-// left control deck, center stage, right collapsible panel, all mounted in
-// the pack's fullscreen overlay. The shell knows NOTHING about image modes —
-// rail tabs come from data, panes come from the caller. Styling: theme
-// tokens only, hairline separators, compact density (plan §9).
+// collapsible asset panel, control deck, stage — left to right, mirroring
+// ComfyUI's own sidebar order so the browser sits where the eye expects it.
+// The shell knows NOTHING about image modes — rail tabs come from data, panes
+// come from the caller. Styling: theme tokens only, hairline separators,
+// compact density (plan §9).
 
 import { TS_UI_CLASS, ensureThemeStyles } from "../_theme.js";
 import { openFullscreenOverlay } from "../_fullscreen.js";
@@ -19,32 +20,37 @@ export function ensureShellStyles() {
     // Layout only; hairlines via border tokens, surfaces via theme tokens.
     style.textContent = `
 .ts-studio{display:grid;
-    grid-template-columns:44px var(--ts-studio-deck-w,340px) minmax(0,1fr) auto;
+    grid-template-columns:44px auto var(--ts-studio-deck-w,340px) minmax(0,1fr);
     width:100%;height:100%;min-height:0;background:var(--ts-bg);color:var(--ts-text);
     font-size:var(--ts-fs)}
 .ts-studio__rail{display:flex;flex-direction:column;align-items:center;gap:4px;
     padding:8px 0;border-right:1px solid var(--ts-border);background:var(--ts-elevated)}
-.ts-studio__railbtn{width:32px;height:32px;display:flex;align-items:center;justify-content:center;
+.ts-studio__railbtn{position:relative;width:32px;height:32px;display:flex;align-items:center;
+    justify-content:center;
     border-radius:var(--ts-radius);border:none;background:none;color:var(--ts-muted);cursor:pointer}
 .ts-studio__railbtn:hover{background:var(--ts-border-soft);color:var(--ts-text)}
 .ts-studio__railbtn.is-active{background:var(--ts-accent-soft);color:var(--ts-accent)}
 .ts-studio__railbtn:focus-visible{outline:2px solid var(--ts-accent-line);outline-offset:1px}
 .ts-studio__railspacer{flex:1}
-.ts-studio__deck{position:relative;display:flex;flex-direction:column;min-height:0;overflow-y:auto;
-    gap:10px;padding:10px;border-right:1px solid var(--ts-border);background:var(--ts-elevated)}
-/* Column resizers: invisible 5px strips over the hairlines. The layout is
-   fluid — widths are CSS variables, everything else is minmax/percent. */
+/* The deck is a frame: only its inner body is rebuilt per backend, so the
+   resizer strip and any chrome survive a deck rebuild. */
+.ts-studio__deck{position:relative;display:flex;flex-direction:column;min-height:0;min-width:0;
+    border-right:1px solid var(--ts-border);background:var(--ts-elevated)}
+.ts-studio__deckbody{display:flex;flex-direction:column;min-height:0;overflow-y:auto;
+    gap:10px;padding:10px;flex:1}
+/* Column resizers: invisible strips over the hairlines. The layout is fluid —
+   widths are CSS variables, everything else is minmax/percent. */
 .ts-studio__resizer{position:absolute;top:0;bottom:0;width:7px;z-index:9;cursor:col-resize}
 .ts-studio__resizer:hover,.ts-studio__resizer.is-active{background:var(--ts-accent-soft)}
 .ts-studio__stage{position:relative;min-width:0;min-height:0;background:var(--ts-sunken)}
 .ts-studio__side{position:relative;display:flex;flex-direction:column;min-height:0;
     width:var(--ts-studio-side-w,280px);
-    border-left:1px solid var(--ts-border);background:var(--ts-elevated)}
+    border-right:1px solid var(--ts-border);background:var(--ts-elevated)}
 .ts-studio__side.is-collapsed{width:26px}
 .ts-studio__side.is-collapsed>*:not(.ts-studio__sidegrip){display:none}
-.ts-studio__sidegrip{position:absolute;left:0;top:50%;transform:translateY(-50%);z-index:3;
+.ts-studio__sidegrip{position:absolute;right:0;top:50%;transform:translateY(-50%);z-index:10;
     width:14px;height:56px;display:flex;align-items:center;justify-content:center;
-    border:1px solid var(--ts-border);border-left:none;border-radius:0 var(--ts-radius) var(--ts-radius) 0;
+    border:1px solid var(--ts-border);border-right:none;border-radius:var(--ts-radius) 0 0 var(--ts-radius);
     background:var(--ts-elevated);color:var(--ts-muted);cursor:pointer;padding:0}
 .ts-studio__sidegrip:hover{color:var(--ts-text)}
 .ts-studio__section{display:flex;flex-direction:column;gap:5px}
@@ -94,6 +100,9 @@ export function createShell(options) {
 
     const deck = document.createElement("div");
     deck.className = "ts-studio__deck";
+    const deckBody = document.createElement("div");
+    deckBody.className = "ts-studio__deckbody";
+    deck.appendChild(deckBody);
     const stage = document.createElement("div");
     stage.className = "ts-studio__stage";
     const side = document.createElement("div");
@@ -104,11 +113,11 @@ export function createShell(options) {
     grip.className = "ts-studio__sidegrip";
     grip.title = options.collapseTitle;
     grip.setAttribute("aria-label", options.collapseTitle);
-    grip.textContent = "›";
+    grip.textContent = "‹";
     grip.addEventListener("click", () => setSideCollapsed(!side.classList.contains("is-collapsed")));
     side.appendChild(grip);
 
-    root.append(rail, deck, stage, side);
+    root.append(rail, side, deck, stage);
 
     function setMode(modeId) {
         for (const [id, button] of railButtons) {
@@ -119,7 +128,7 @@ export function createShell(options) {
 
     function setSideCollapsed(collapsed) {
         side.classList.toggle("is-collapsed", collapsed);
-        grip.textContent = collapsed ? "‹" : "›";
+        grip.textContent = collapsed ? "›" : "‹";
     }
 
     // ── fluid columns: draggable widths, persisted per install ──────────── //
@@ -167,12 +176,11 @@ export function createShell(options) {
         host.appendChild(grip);
         return grip;
     }
-    // The deck resizer lives on the ROOT: the deck's own children are wiped
-    // on every rebuild, which silently removed a deck-hosted grip (measured).
-    const deckGrip = makeResizer(root, "right", () => widths.deck, (w) => { widths.deck = w; });
-    deckGrip.style.right = "";
-    deckGrip.style.left = "calc(44px + var(--ts-studio-deck-w, 340px) - 4px)";
-    makeResizer(side, "left", () => widths.side, (w) => { widths.side = w; });
+    // Each grip lives on the right edge of the column it sizes. The deck hosts
+    // its own because only deckBody is wiped on a rebuild — an earlier version
+    // put the grip among the rebuilt children and it vanished (measured).
+    makeResizer(deck, "right", () => widths.deck, (w) => { widths.deck = w; });
+    makeResizer(side, "right", () => widths.side, (w) => { widths.side = w; });
 
     const overlay = openFullscreenOverlay(root, {
         label: options.label,
@@ -182,8 +190,11 @@ export function createShell(options) {
     });
 
     return {
-        root, deck, stage, side, rail,
+        // `deck` is the rebuildable body; `deckFrame` is the column that keeps
+        // the resizer across rebuilds.
+        root, deck: deckBody, deckFrame: deck, stage, side, rail,
         setMode, setSideCollapsed,
+        isSideCollapsed: () => side.classList.contains("is-collapsed"),
         parkFocus: overlay.parkFocus,
         close: overlay.close,
         isOpen: overlay.isOpen,

@@ -8,7 +8,7 @@
 
 import { ensureThemeStyles } from "../_theme.js";
 import { deckSection } from "./_shell.js";
-import { makeDropZone } from "./_dnd.js";
+import { makeDropZone, annotatedImageUrl } from "./_dnd.js";
 
 // Controls render inside the shell's TS_UI_CLASS scope; ensureThemeStyles()
 // here keeps this module self-sufficient if a control is ever mounted alone.
@@ -35,8 +35,22 @@ export function ensureControlStyles() {
 .ts-studio__sizerow input[type=range]{flex:1}
 .ts-studio__sizeinfo{display:flex;justify-content:space-between;font-size:var(--ts-fs-sm);
     color:var(--ts-muted)}
-.ts-studio__seedrow{display:flex;align-items:center;gap:6px}
-.ts-studio__seedrow input[type=text]{flex:1}
+.ts-studio__seedrow{display:flex;align-items:center;gap:4px}
+.ts-studio__seedrow input[type=text]{flex:1;font-variant-numeric:tabular-nums}
+.ts-studio__seedbtn{width:26px;height:26px;flex:0 0 auto;display:flex;align-items:center;
+    justify-content:center;border:1px solid var(--ts-border);border-radius:var(--ts-radius-sm);
+    background:none;color:var(--ts-muted);cursor:pointer;padding:0}
+.ts-studio__seedbtn:hover{color:var(--ts-text);border-color:var(--ts-border-strong)}
+.ts-studio__seedbtn.is-active{color:var(--ts-accent);border-color:var(--ts-accent-line);
+    background:var(--ts-accent-soft)}
+.ts-studio__seedbtn:focus-visible{outline:2px solid var(--ts-accent-line);outline-offset:1px}
+.ts-studio__seedhint{font-size:var(--ts-fs-xs);color:var(--ts-muted)}
+.ts-studio__sliderhead{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.ts-studio__slidervalue{font-size:var(--ts-fs-sm);color:var(--ts-text);
+    font-variant-numeric:tabular-nums}
+.ts-studio__sliderrow{display:flex;align-items:center;gap:6px}
+.ts-studio__sliderrow input[type=range]{flex:1;min-width:0}
+.ts-studio__slider.is-disabled{opacity:.45}
 .ts-studio__numrow{display:flex;align-items:center;justify-content:space-between;gap:8px;
     min-height:26px}
 .ts-studio__numrow input{width:76px;text-align:right}
@@ -76,8 +90,11 @@ export function ensureControlStyles() {
     background:var(--ts-elevated);border:1px solid var(--ts-border);
     border-radius:var(--ts-radius);box-shadow:var(--ts-shadow)}
 .ts-studio__lorapop.is-open{display:flex}
-.ts-studio__loralist{overflow-y:auto;display:flex;flex-direction:column}
-.ts-studio__loraopt{border:none;background:none;color:var(--ts-text);cursor:pointer;
+.ts-studio__loralist{overflow-y:auto;display:flex;flex-direction:column;min-height:0}
+/* flex:0 0 auto is load-bearing: in a scrolling flex column the default
+   flex-shrink squeezed every option down to 6px once the list overflowed. */
+.ts-studio__loraopt{flex:0 0 auto;min-height:22px;display:flex;align-items:center;
+    border:none;background:none;color:var(--ts-text);cursor:pointer;
     text-align:left;padding:3px 5px;border-radius:var(--ts-radius-sm);
     font-size:var(--ts-fs-sm);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ts-studio__loraopt:hover{background:var(--ts-border-soft)}
@@ -211,8 +228,13 @@ registerControlKind("size", (control, ctx) => {
         element: section,
         get: () => ({ aspect: state.aspect, mp: state.mp }),
         set: (value) => {
-            if (value?.aspect) state.aspect = value.aspect;
-            if (value?.mp) { state.mp = Number(value.mp); slider.value = String(state.mp); }
+            // A carried-over aspect only applies if this model offers it;
+            // otherwise the model's own default stands.
+            if (value?.aspect && buttons.has(value.aspect)) state.aspect = value.aspect;
+            if (value?.mp) {
+                state.mp = Math.min(mpMax, Math.max(mpMin, Number(value.mp)));
+                slider.value = String(state.mp);
+            }
             sync();
         },
     };
@@ -223,8 +245,17 @@ export function randomSeed() {
     return Math.floor(Math.random() * Number.MAX_SAFE_INTEGER);
 }
 
+const SEED_ICONS = {
+    dice: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="4" y="4" width="16" height="16" rx="3"/><circle cx="9" cy="9" r="1.2" fill="currentColor" stroke="none"/><circle cx="15" cy="15" r="1.2" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.2" fill="currentColor" stroke="none"/></svg>',
+    shuffle: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 7h4l10 10h4M3 17h4l3.2-3.2M14.6 9.2L17 7h4M18 4l3 3-3 3M18 14l3 3-3 3"/></svg>',
+    lock: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>',
+};
+
+// Seed is two decisions, so it gets two explicit controls: the mode (a new
+// seed every run vs the one in the field) and a one-shot dice that rolls a
+// value NOW and pins it. Typing a seed always means "use exactly this".
 registerControlKind("seed", (control, ctx) => {
-    const state = { value: 0, randomize: true };
+    const state = { value: randomSeed(), randomize: true };
     const section = deckSection(ctx.t.seed);
     const row = document.createElement("div");
     row.className = "ts-studio__seedrow";
@@ -232,39 +263,69 @@ registerControlKind("seed", (control, ctx) => {
     field.type = "text";
     field.className = "ts-ui-input";
     field.inputMode = "numeric";
-    field.value = "0";
+    field.title = ctx.t.seedFieldTip;
+    field.value = String(state.value);
+
+    const dice = iconButton(SEED_ICONS.dice, ctx.t.seedDice);
+    const mode = iconButton(SEED_ICONS.shuffle, ctx.t.randomizeTip);
+    const hint = document.createElement("div");
+    hint.className = "ts-studio__seedhint";
+
+    function sync(emit = true) {
+        mode.innerHTML = state.randomize ? SEED_ICONS.shuffle : SEED_ICONS.lock;
+        mode.classList.toggle("is-active", state.randomize);
+        mode.title = state.randomize ? ctx.t.randomizeTip : ctx.t.seedFixedTip;
+        mode.setAttribute("aria-label", mode.title);
+        mode.setAttribute("aria-pressed", state.randomize ? "true" : "false");
+        hint.textContent = state.randomize ? ctx.t.seedHintRandom : ctx.t.seedHintFixed;
+        if (emit) ctx.onChange(control.param, { ...state });
+    }
+
     field.addEventListener("input", () => {
-        const parsed = Number(field.value.replace(/\D/g, "") || 0);
-        state.value = parsed;
+        const digits = field.value.replace(/\D/g, "");
+        if (field.value !== digits) field.value = digits;
+        state.value = Number(digits || 0);
         state.randomize = false;
-        toggle.classList.remove("is-active");
-        ctx.onChange(control.param, state);
+        sync();
     });
-    const toggle = document.createElement("button");
-    toggle.type = "button";
-    toggle.className = "ts-ui-btn is-active";
-    toggle.textContent = ctx.t.randomize;
-    toggle.title = ctx.t.randomizeTip;
-    toggle.addEventListener("click", () => {
+    dice.addEventListener("click", () => {
+        state.value = randomSeed();
+        state.randomize = false;
+        field.value = String(state.value);
+        sync();
+    });
+    mode.addEventListener("click", () => {
         state.randomize = !state.randomize;
-        toggle.classList.toggle("is-active", state.randomize);
-        ctx.onChange(control.param, state);
+        sync();
     });
-    row.append(field, toggle);
-    section.appendChild(row);
-    ctx.onChange(control.param, state);
+
+    row.append(field, dice, mode);
+    section.append(row, hint);
+    sync();
+
+    function iconButton(svg, title) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "ts-studio__seedbtn";
+        button.title = title;
+        button.setAttribute("aria-label", title);
+        button.innerHTML = svg;
+        return button;
+    }
+
     return {
         element: section,
         get: () => ({ ...state }),
         set: (value) => {
-            if (typeof value?.value === "number") { state.value = value.value; field.value = String(value.value); }
-            if (typeof value?.randomize === "boolean") {
-                state.randomize = value.randomize;
-                toggle.classList.toggle("is-active", state.randomize);
+            if (Number.isFinite(Number(value?.value))) {
+                state.value = Number(value.value);
+                field.value = String(state.value);
             }
-            ctx.onChange(control.param, state);
+            if (typeof value?.randomize === "boolean") state.randomize = value.randomize;
+            sync();
         },
-        // The app reads/writes the last used seed here after each run.
+        // The app writes the seed a run actually used, so the field always
+        // shows what produced the image on the stage — even in random mode.
         showSeed: (seed) => { field.value = String(seed); state.value = seed; },
     };
 });
@@ -356,7 +417,23 @@ registerControlKind("refs", (control, ctx) => {
     return {
         element: section,
         get: () => slots.map((s) => s.value),
-        set: () => {},
+        // Values are annotated names, so a restored slot points at the very
+        // file the original run used — no re-upload, no copy.
+        set: (values) => {
+            const list = Array.isArray(values) ? values : [];
+            slots.forEach((slot, index) => {
+                const annotated = String(list[index] || "");
+                slot.value = annotated;
+                if (annotated) {
+                    slot.img.src = annotatedImageUrl(annotated);
+                    slot.button.classList.add("is-filled");
+                } else {
+                    slot.img.removeAttribute("src");
+                    slot.button.classList.remove("is-filled");
+                }
+            });
+            emit();
+        },
         teardown: () => teardowns.forEach((fn) => fn()),
     };
 });
@@ -542,6 +619,64 @@ registerControlKind("toggle", (control, ctx) => {
         element: row,
         get: () => value,
         set: (v) => { value = Boolean(v); sync(); },
+    };
+});
+
+// ── slider: a bounded number that reads as a magnitude ──────────────────── //
+// Same contract as "number" (get/set/setDisabled) so a manifest can swap the
+// kind without the app noticing.
+registerControlKind("slider", (control, ctx) => {
+    const min = Number(control.min ?? 0);
+    const max = Number(control.max ?? 1);
+    const step = Number(control.step ?? 0.05);
+    const decimals = String(step).includes(".") ? String(step).split(".")[1].length : 0;
+    let value = Number(control.default ?? min);
+
+    const wrap = document.createElement("div");
+    wrap.className = "ts-studio__section ts-studio__slider";
+    const head = document.createElement("div");
+    head.className = "ts-studio__sliderhead";
+    const label = document.createElement("span");
+    label.className = "ts-studio__sectionhead";
+    label.textContent = localized(control.label, ctx.locale, control.param);
+    const readout = document.createElement("span");
+    readout.className = "ts-studio__slidervalue";
+    head.append(label, readout);
+
+    const row = document.createElement("div");
+    row.className = "ts-studio__sliderrow";
+    const slider = document.createElement("input");
+    slider.type = "range";
+    slider.className = "ts-ui-slider";
+    slider.min = String(min);
+    slider.max = String(max);
+    slider.step = String(step);
+    const tip = localized(control.tooltip, ctx.locale, "");
+    if (tip) { slider.title = tip; label.title = tip; }
+    row.appendChild(slider);
+    wrap.append(head, row);
+
+    function sync(emit = true) {
+        slider.value = String(value);
+        readout.textContent = value.toFixed(decimals);
+        if (emit) ctx.onChange(control.param, value);
+    }
+    slider.addEventListener("input", () => { value = Number(slider.value); sync(); });
+    sync();
+
+    return {
+        element: wrap,
+        get: () => value,
+        set: (next) => {
+            const parsed = Number(next);
+            if (!Number.isFinite(parsed)) return;
+            value = Math.min(max, Math.max(min, parsed));
+            sync();
+        },
+        setDisabled: (disabled) => {
+            slider.disabled = Boolean(disabled);
+            wrap.classList.toggle("is-disabled", Boolean(disabled));
+        },
     };
 });
 

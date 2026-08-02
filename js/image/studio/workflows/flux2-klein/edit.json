@@ -1,0 +1,276 @@
+{
+ "p_prompt": {
+  "class_type": "TS_StudioInputText",
+  "inputs": {
+   "value": "",
+   "param_name": "prompt",
+   "label": ""
+  }
+ },
+ "p_steps": {
+  "class_type": "TS_StudioInputNumber",
+  "inputs": {
+   "value": 4,
+   "param_name": "steps",
+   "label": ""
+  }
+ },
+ "p_cfg": {
+  "class_type": "TS_StudioInputNumber",
+  "inputs": {
+   "value": 1.0,
+   "param_name": "cfg",
+   "label": ""
+  }
+ },
+ "p_seed": {
+  "class_type": "TS_StudioInputSeed",
+  "inputs": {
+   "value": 0,
+   "param_name": "seed"
+  }
+ },
+ "p_ref1": {
+  "class_type": "TS_StudioInputImage",
+  "inputs": {
+   "value": "",
+   "param_name": "ref_1",
+   "label": "Source"
+  }
+ },
+ "p_ref2": {
+  "class_type": "TS_StudioInputImage",
+  "inputs": {
+   "value": "",
+   "param_name": "ref_2",
+   "label": ""
+  }
+ },
+ "p_ref3": {
+  "class_type": "TS_StudioInputImage",
+  "inputs": {
+   "value": "",
+   "param_name": "ref_3",
+   "label": ""
+  }
+ },
+ "model_loader": {
+  "class_type": "UNETLoader",
+  "inputs": {
+   "unet_name": "flux2\\flux-2-klein-9b-fp8.safetensors",
+   "weight_dtype": "default"
+  },
+  "_meta": {
+   "title": "studio:model"
+  }
+ },
+ "lora_stack": {
+  "class_type": "TS_StudioLoraStack",
+  "inputs": {
+   "model": [
+    "model_loader",
+    0
+   ]
+  }
+ },
+ "clip_loader": {
+  "class_type": "CLIPLoader",
+  "inputs": {
+   "clip_name": "flux2\\qwen_3_8b_fp8mixed.safetensors",
+   "type": "flux2"
+  },
+  "_meta": {
+   "title": "studio:clip"
+  }
+ },
+ "vae_loader": {
+  "class_type": "VAELoader",
+  "inputs": {
+   "vae_name": "flux2\\flux2-vae.safetensors"
+  },
+  "_meta": {
+   "title": "studio:vae"
+  }
+ },
+ "encode_pos": {
+  "class_type": "CLIPTextEncode",
+  "inputs": {
+   "text": [
+    "p_prompt",
+    0
+   ],
+   "clip": [
+    "clip_loader",
+    0
+   ]
+  }
+ },
+ "multiref": {
+  "class_type": "TS_MultiReference",
+  "inputs": {
+   "conditioning": [
+    "encode_pos",
+    0
+   ],
+   "vae": [
+    "vae_loader",
+    0
+   ],
+   "max_megapixels": 1.0,
+   "divide_by": 64,
+   "block_empty_slots": false,
+   "mask_orientation": "auto",
+   "image_1": [
+    "p_ref1",
+    0
+   ],
+   "image_2": [
+    "p_ref2",
+    0
+   ],
+   "image_3": [
+    "p_ref3",
+    0
+   ]
+  }
+ },
+ "neg_zero": {
+  "class_type": "ConditioningZeroOut",
+  "inputs": {
+   "conditioning": [
+    "encode_pos",
+    0
+   ]
+  }
+ },
+ "guider": {
+  "class_type": "CFGGuider",
+  "inputs": {
+   "model": [
+    "lora_stack",
+    0
+   ],
+   "positive": [
+    "multiref",
+    3
+   ],
+   "negative": [
+    "neg_zero",
+    0
+   ],
+   "cfg": [
+    "p_cfg",
+    0
+   ]
+  }
+ },
+ "ref_size": {
+  "class_type": "GetImageSize",
+  "inputs": {
+   "image": [
+    "multiref",
+    0
+   ]
+  }
+ },
+ "sampler_sel": {
+  "class_type": "KSamplerSelect",
+  "inputs": {
+   "sampler_name": "euler"
+  }
+ },
+ "sigmas": {
+  "class_type": "Flux2Scheduler",
+  "inputs": {
+   "steps": [
+    "p_steps",
+    1
+   ],
+   "width": [
+    "ref_size",
+    0
+   ],
+   "height": [
+    "ref_size",
+    1
+   ]
+  }
+ },
+ "noise": {
+  "class_type": "RandomNoise",
+  "inputs": {
+   "noise_seed": [
+    "p_seed",
+    0
+   ]
+  }
+ },
+ "latent": {
+  "class_type": "EmptyFlux2LatentImage",
+  "inputs": {
+   "width": [
+    "ref_size",
+    0
+   ],
+   "height": [
+    "ref_size",
+    1
+   ],
+   "batch_size": 1
+  }
+ },
+ "sample": {
+  "class_type": "SamplerCustomAdvanced",
+  "inputs": {
+   "noise": [
+    "noise",
+    0
+   ],
+   "guider": [
+    "guider",
+    0
+   ],
+   "sampler": [
+    "sampler_sel",
+    0
+   ],
+   "sigmas": [
+    "sigmas",
+    0
+   ],
+   "latent_image": [
+    "latent",
+    0
+   ]
+  }
+ },
+ "decode": {
+  "class_type": "VAEDecode",
+  "inputs": {
+   "samples": [
+    "sample",
+    0
+   ],
+   "vae": [
+    "vae_loader",
+    0
+   ]
+  }
+ },
+ "studio_out": {
+  "class_type": "TS_StudioOutput",
+  "inputs": {
+   "image": [
+    "decode",
+    0
+   ],
+   "filename_prefix": "ts_studio/session"
+  }
+ },
+ "studio_manifest": {
+  "class_type": "TS_StudioManifest",
+  "inputs": {
+   "manifest": "{\"id\": \"flux2-klein/edit\", \"family\": \"flux2-klein\", \"family_label\": \"Flux 2 Klein\", \"mode\": \"edit\", \"order\": 10, \"refs\": {\"max\": 3}, \"requires\": [\"ref_1\"], \"models\": [{\"title\": \"studio:model\", \"input\": \"unet_name\", \"folder\": \"diffusion_models\", \"match\": \"flux.?2.?klein.*(9b|4b)|ArtiusFlux\"}, {\"title\": \"studio:clip\", \"input\": \"clip_name\", \"folder\": \"text_encoders\", \"match\": \"qwen_3_(8b|4b)\"}, {\"title\": \"studio:vae\", \"input\": \"vae_name\", \"folder\": \"vae\", \"match\": \"flux2-vae\"}], \"controls\": [{\"param\": \"prompt\", \"kind\": \"prompt\", \"superprompt\": true}, {\"param\": \"seed\", \"kind\": \"seed\"}, {\"param\": \"loras\", \"kind\": \"loras\", \"max\": 8, \"strength\": [-2.0, 2.0]}, {\"param\": \"steps\", \"kind\": \"number\", \"min\": 1, \"max\": 50, \"step\": 1, \"advanced\": true, \"label\": {\"en\": \"Steps\", \"ru\": \"Шаги\"}}, {\"param\": \"cfg\", \"kind\": \"number\", \"min\": 1.0, \"max\": 10.0, \"step\": 0.1, \"advanced\": true, \"label\": {\"en\": \"CFG\", \"ru\": \"CFG\"}}]}"
+  }
+ }
+}

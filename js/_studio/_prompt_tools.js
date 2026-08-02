@@ -54,15 +54,23 @@ export function ensurePromptToolStyles() {
     background:var(--ts-elevated);border:1px solid var(--ts-border);
     border-radius:var(--ts-radius);box-shadow:var(--ts-shadow)}
 .ts-ptools__popover.is-open{display:flex}
+/* auto-rows + start alignment keep every card at its natural height: a plain
+   auto row in a scrolling grid squeezed the cards into slivers (measured). */
 .ts-ptools__stylegrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;
-    overflow-y:auto}
-.ts-ptools__style{border:1px solid var(--ts-border);border-radius:var(--ts-radius-sm);
+    grid-auto-rows:min-content;align-content:start;overflow-y:auto;min-height:0;flex:1}
+.ts-ptools__style{display:flex;flex-direction:column;align-self:start;
+    border:1px solid var(--ts-border);border-radius:var(--ts-radius-sm);
     background:none;color:var(--ts-text);cursor:pointer;padding:0 0 3px;overflow:hidden;
     font-size:var(--ts-fs-xs)}
-.ts-ptools__style img{width:100%;aspect-ratio:1;object-fit:cover;display:block}
+.ts-ptools__style img,.ts-ptools__stylefallback{width:100%;aspect-ratio:1;object-fit:cover;
+    display:block;flex:0 0 auto}
+.ts-ptools__stylefallback{display:flex;align-items:center;justify-content:center;
+    background:var(--ts-sunken);color:var(--ts-muted);font-size:var(--ts-fs-lg)}
 .ts-ptools__style.is-selected{border-color:var(--ts-accent)}
+.ts-ptools__style:focus-visible{outline:2px solid var(--ts-accent-line);outline-offset:1px}
 .ts-ptools__stylename{display:block;padding:2px 4px 0;white-space:nowrap;overflow:hidden;
-    text-overflow:ellipsis}
+    text-overflow:ellipsis;flex:0 0 auto}
+.ts-ptools__styleempty{grid-column:1/-1;padding:10px;text-align:center;color:var(--ts-muted)}
 `;
     document.head.appendChild(style);
 }
@@ -94,6 +102,7 @@ function insertAtCursor(textarea, text) {
  * @param {object} options.objectInfo For the enhance preset list.
  * @param {object} options.t Locale strings (studio dictionary).
  * @param {string} options.locale "en" | "ru".
+ * @param {object[]} [options.initialStyles] Styles to start selected.
  * @returns {{getStylePrompts: () => string[], teardown: () => void}}
  */
 export function mountPromptTools(options) {
@@ -111,7 +120,9 @@ export function mountPromptTools(options) {
     const setStatus = (text) => { status.textContent = text || ""; };
 
     const teardowns = [];
-    const state = { attached: "", styles: [] };
+    // initialStyles carries the selection across a deck rebuild: switching
+    // models must not silently drop the styles someone picked.
+    const state = { attached: "", styles: [...(options.initialStyles || [])] };
 
     // ── voice dictation ─────────────────────────────────────────────────── //
     const micButton = toolButton(SVG.mic, t.pt.mic);
@@ -360,9 +371,11 @@ export function mountPromptTools(options) {
     function renderStyleGrid(query) {
         const needle = query.trim().toLowerCase();
         styleGrid.textContent = "";
+        let shown = 0;
         for (const style of allStyles) {
             const label = styleName(style);
             if (needle && !`${label} ${style.name} ${style.id}`.toLowerCase().includes(needle)) continue;
+            shown += 1;
             const card = document.createElement("button");
             card.type = "button";
             card.className = "ts-ptools__style";
@@ -372,7 +385,12 @@ export function mountPromptTools(options) {
                 img.loading = "lazy";
                 img.alt = label;
                 img.src = `/ts_styles/preview?path=${encodeURIComponent(style.preview)}`;
+                // A missing preview must not collapse the card: swap in the
+                // same-sized initial tile so the grid stays even.
+                img.addEventListener("error", () => img.replaceWith(fallbackTile(label)));
                 card.appendChild(img);
+            } else {
+                card.appendChild(fallbackTile(label));
             }
             const name = document.createElement("span");
             name.className = "ts-ptools__stylename";
@@ -388,6 +406,19 @@ export function mountPromptTools(options) {
             });
             styleGrid.appendChild(card);
         }
+        if (!shown) {
+            const note = document.createElement("div");
+            note.className = "ts-ptools__styleempty";
+            note.textContent = stylesLoaded ? t.pt.stylesEmpty : t.pt.stylesLoading;
+            styleGrid.appendChild(note);
+        }
+    }
+
+    function fallbackTile(label) {
+        const tile = document.createElement("span");
+        tile.className = "ts-ptools__stylefallback";
+        tile.textContent = (label || "?").trim().charAt(0).toUpperCase();
+        return tile;
     }
 
     function renderChips() {
@@ -414,6 +445,7 @@ export function mountPromptTools(options) {
         popover.classList.toggle("is-open", open);
         styleButton.classList.toggle("is-active", open);
         if (open) {
+            renderStyleGrid(styleSearch.value);   // shows the loading note first
             loadStyles();
             styleSearch.focus();
         }
@@ -443,9 +475,13 @@ export function mountPromptTools(options) {
         return button;
     }
 
+    renderChips();
+
     return {
         getStylePrompts: () => state.styles.map((s) => String(s.prompt || "").trim()).filter(Boolean),
         getStyleNames: () => state.styles.map((s) => styleName(s)),
+        // The full style objects, so a rebuilt toolbar can restore them.
+        getSelectedStyles: () => state.styles.map((s) => ({ ...s })),
         teardown: () => teardowns.forEach((fn) => fn()),
     };
 }

@@ -19,12 +19,27 @@ import { pickAssetProvider } from "../../_studio/_assets.js";
 import { createInpaintMode } from "./_modes_inpaint.js";
 import { createDownloadPanel } from "../../_studio/_downloads.js";
 import { createHelpPanel } from "../../_studio/_help.js";
-import { uploadImage, makeDropZone } from "../../_studio/_dnd.js";
-import { studioRunFromPng } from "../../_studio/_pnginfo.js";
+import { uploadImage, makeDropZone, annotatedImageUrl } from "../../_studio/_dnd.js";
+import { buildStudioState, studioStateFromPng } from "../../_studio/_pnginfo.js";
+import { createQueuePanel } from "../../_studio/_queue.js";
+
+// Rail tabs are UI modes, not backend modes. "Generate" covers both t2i and
+// edit: the same act with or without reference images, so the user picks a
+// model and the references appear when that model can use them (plan §9).
+const UI_MODES = [
+    { id: "generate", backendModes: ["t2i", "edit"] },
+    { id: "inpaint", backendModes: ["inpaint"] },
+    { id: "upscale", backendModes: ["upscale"] },
+];
+
+// Control kinds whose value belongs to the user, not to the backend file:
+// they survive a model or mode switch. The prompt above all — a switch must
+// never cost the text someone just wrote.
+const STICKY_KINDS = new Set(["prompt", "seed", "size", "loras", "refs"]);
 
 const ICONS = {
-    t2i: '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 3l1.8 4.7L18.5 9l-4.7 1.8L12 15.5l-1.8-4.7L5.5 9l4.7-1.3zM19 15l.9 2.3 2.1.7-2.1.9L19 21l-.9-2.1-2.1-.9 2.1-.7z"/></svg>',
-    edit: '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 20l4.5-1 11-11a2.1 2.1 0 0 0-3-3l-11 11zM13.5 6.5l3 3"/></svg>',
+    generate: '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 3l1.8 4.7L18.5 9l-4.7 1.8L12 15.5l-1.8-4.7L5.5 9l4.7-1.3zM19 15l.9 2.3 2.1.7-2.1.9L19 21l-.9-2.1-2.1-.9 2.1-.7z"/></svg>',
+
     inpaint: '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 21c-4 0-7-2.5-7-6 0-4 4-5 5-9 .4-1.6 2.6-1.6 3 0 1 4 6 5 6 9 0 3.5-3 6-7 6z"/></svg>',
     upscale: '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 20v-5m0 5h5m-5 0l6-6M20 4v5m0-5h-5m5 0l-6 6"/></svg>',
 };
@@ -42,7 +57,12 @@ const STRINGS = {
         resolution: "Resolution",
         seed: "Seed",
         randomize: "randomize",
-        randomizeTip: "New random seed on every run. Type a seed to pin it.",
+        randomizeTip: "Random seed on every run — click to pin the current one",
+        seedFixedTip: "Pinned seed — click to randomise on every run",
+        seedDice: "Roll a new seed now and pin it",
+        seedFieldTip: "Type a seed to reproduce an image exactly",
+        seedHintRandom: "New seed every run",
+        seedHintFixed: "This seed is used every run",
         advanced: "Advanced",
         run: "Run",
         runHint: "Ctrl+Enter",
@@ -64,7 +84,24 @@ const STRINGS = {
         pngRestored: (f) => `Settings restored from the image (${f}).`,
         pngNotStudio: "This image carries no studio settings.",
         pngNoBackend: (id) => `The image was made by backend '${id}', which is not available here.`,
-        modes: { t2i: "Generate", edit: "Edit", inpaint: "Inpaint", upscale: "Upscale" },
+        modes: { generate: "Generate", t2i: "Generate", edit: "Edit",
+                 inpaint: "Inpaint", upscale: "Upscale" },
+        tabQueue: "Queue",
+        recreate: "Recreate",
+        recreateTip: "Restore the mode, settings and source image this result was made with",
+        recreated: (f) => `Session recreated (${f}).`,
+        sourceSet: "Image loaded as the source.",
+        queue: {
+            foreign: "Job from the graph",
+            queueEmpty: "The queue is empty.",
+            count: (r, p) => (r ? `running 1 · queued ${p}` : `queued ${p}`),
+            stopRunning: "Stop",
+            stopRunningTip: "Interrupt the job that is running now",
+            clearPending: "Clear",
+            clearPendingTip: "Remove every queued job except the running one",
+            dropTip: "Remove this job from the queue",
+            reorderTip: "Drag to reorder the queue",
+        },
         references: "References",
         refSlotTip: (n) => `Reference ${n}: drop an image here, or click to pick a file`,
         refClear: "Remove this reference",
@@ -124,6 +161,8 @@ const STRINGS = {
             noSuperPrompt: "TS SuperPrompt is not available on this server",
             styles: "Style library",
             styleSearch: "Search styles…",
+            stylesLoading: "Loading the style library…",
+            stylesEmpty: "No styles match.",
             removeStyle: "Click to remove this style",
             opFailed: (m) => `Failed: ${m}`,
         },
@@ -140,7 +179,12 @@ const STRINGS = {
         resolution: "Разрешение",
         seed: "Seed",
         randomize: "случайный",
-        randomizeTip: "Новый случайный сид на каждый запуск. Введите сид, чтобы закрепить.",
+        randomizeTip: "Случайный сид на каждый запуск — клик закрепит текущий",
+        seedFixedTip: "Сид закреплён — клик включит случайный на каждый запуск",
+        seedDice: "Сгенерировать новый сид и закрепить его",
+        seedFieldTip: "Введите сид, чтобы точно повторить изображение",
+        seedHintRandom: "Новый сид на каждый запуск",
+        seedHintFixed: "Этот сид используется на каждом запуске",
         advanced: "Дополнительно",
         run: "Run",
         runHint: "Ctrl+Enter",
@@ -162,7 +206,24 @@ const STRINGS = {
         pngRestored: (f) => `Настройки восстановлены из изображения (${f}).`,
         pngNotStudio: "В этом изображении нет настроек студии.",
         pngNoBackend: (id) => `Изображение сделано бэкендом '${id}', он здесь недоступен.`,
-        modes: { t2i: "Генерация", edit: "Редактирование", inpaint: "Inpaint", upscale: "Upscale" },
+        modes: { generate: "Генерация", t2i: "Генерация", edit: "Редактирование",
+                 inpaint: "Inpaint", upscale: "Upscale" },
+        tabQueue: "Очередь",
+        recreate: "Повторить",
+        recreateTip: "Восстановить режим, настройки и исходник, с которыми сделан результат",
+        recreated: (f) => `Сессия восстановлена (${f}).`,
+        sourceSet: "Изображение загружено как исходник.",
+        queue: {
+            foreign: "Задача из графа",
+            queueEmpty: "Очередь пуста.",
+            count: (r, p) => (r ? `выполняется 1 · в очереди ${p}` : `в очереди ${p}`),
+            stopRunning: "Стоп",
+            stopRunningTip: "Прервать выполняющуюся задачу",
+            clearPending: "Очистить",
+            clearPendingTip: "Убрать из очереди все задачи, кроме текущей",
+            dropTip: "Убрать эту задачу из очереди",
+            reorderTip: "Перетащите, чтобы изменить порядок",
+        },
         references: "Референсы",
         refSlotTip: (n) => `Референс ${n}: перетащите картинку или кликните для выбора файла`,
         refClear: "Убрать этот референс",
@@ -222,6 +283,8 @@ const STRINGS = {
             noSuperPrompt: "TS SuperPrompt недоступен на этом сервере",
             styles: "Библиотека стилей",
             styleSearch: "Поиск стилей…",
+            stylesLoading: "Загружаю библиотеку стилей…",
+            stylesEmpty: "Стили не найдены.",
             removeStyle: "Клик — убрать стиль",
             opFailed: (m) => `Ошибка: ${m}`,
         },
@@ -239,9 +302,15 @@ function ensureAppStyles() {
 .ts-istudio__stagefit{position:absolute;inset:12px;display:flex;align-items:center;justify-content:center}
 .ts-istudio__stagefit img{max-width:100%;max-height:100%;object-fit:contain;border-radius:4px}
 .ts-istudio__stageempty{color:var(--ts-muted);font-size:var(--ts-fs-lg)}
-.ts-istudio__caption{position:absolute;left:10px;bottom:10px;padding:3px 8px;font-size:var(--ts-fs-sm);
+.ts-istudio__caption{position:absolute;left:10px;bottom:10px;padding:3px 5px 3px 8px;
+    display:flex;align-items:center;gap:8px;font-size:var(--ts-fs-sm);
     color:var(--ts-muted);background:var(--ts-elevated);border:1px solid var(--ts-border);
     border-radius:var(--ts-radius-sm)}
+.ts-istudio__recreate{border:1px solid var(--ts-border);border-radius:var(--ts-radius-sm);
+    background:none;color:var(--ts-accent);cursor:pointer;padding:1px 7px;
+    font-size:var(--ts-fs-xs)}
+.ts-istudio__recreate:hover{border-color:var(--ts-accent-line);background:var(--ts-accent-soft)}
+.ts-istudio__recreate:focus-visible{outline:2px solid var(--ts-accent-line);outline-offset:1px}
 .ts-istudio__modelrow{display:flex;align-items:center;gap:6px}
 .ts-istudio__modelrow select{flex:1}
 .ts-istudio__runwrap{display:flex;flex-direction:column;gap:4px}
@@ -274,19 +343,38 @@ export async function openStudio(node, persist) {
     let activeBackend = null;
     let queueCount = 0;
 
-    const MODE_ORDER = ["t2i", "edit", "inpaint", "upscale"];
     const present = new Set([...families.values()].flatMap((f) => [...f.modes.keys()]));
-    const modeIds = [...MODE_ORDER.filter((m) => present.has(m)),
-                     ...[...present].filter((m) => !MODE_ORDER.includes(m))];
+    const uiModes = UI_MODES.filter((m) => m.backendModes.some((b) => present.has(b)));
+    const modeIds = uiModes.map((m) => m.id);
+    const backendModesOf = (uiMode) =>
+        UI_MODES.find((m) => m.id === uiMode)?.backendModes || [uiMode];
+
+    /** Families offering any backend of this UI mode, with their roles. */
+    function familiesForMode(uiMode) {
+        const modes = backendModesOf(uiMode);
+        const out = new Map();
+        for (const family of families.values()) {
+            const found = modes.map((m) => family.modes.get(m)).filter(Boolean);
+            if (!found.length) continue;
+            // The primary backend runs when no reference is filled in; the
+            // edit backend takes over as soon as one is.
+            const primary = family.modes.get(modes[0]) || found[0];
+            const edit = family.modes.get("edit") || null;
+            out.set(family.family, { family, primary, edit, label: family.label });
+        }
+        return out;
+    }
+
     const shell = createShell({
         label: t.appLabel,
         closeTitle: t.close,
         collapseTitle: t.collapse,
-        modes: modeIds.map((id) => ({ id, title: t.modes[id] || id, icon: ICONS[id] || ICONS.t2i })),
+        modes: modeIds.map((id) => ({ id, title: t.modes[id] || id, icon: ICONS[id] || ICONS.generate })),
         onMode: (id) => selectMode(id),
         onClose: () => {
             stageDropTeardown?.();
             gallery.teardown?.();
+            queuePanel.teardown();
             helpPanel.teardown?.();
             inpaintMode?.teardown();
             for (const instance of controlInstances) instance.teardown?.();
@@ -316,7 +404,7 @@ export async function openStudio(node, persist) {
                 helpPanel.toggle();
             } else if (event.key === "Tab") {
                 event.preventDefault();
-                shell.setSideCollapsed(!shell.side.classList.contains("is-collapsed"));
+                shell.setSideCollapsed(!shell.isSideCollapsed());
             }
         },
     });
@@ -335,13 +423,35 @@ export async function openStudio(node, persist) {
     const caption = document.createElement("div");
     caption.className = "ts-istudio__caption";
     caption.style.display = "none";
+    const captionText = document.createElement("span");
+    // Recreate lives with the image it describes, and only appears when the
+    // studio actually knows how that image was made.
+    const recreateButton = document.createElement("button");
+    recreateButton.type = "button";
+    recreateButton.className = "ts-istudio__recreate";
+    recreateButton.textContent = t.recreate;
+    recreateButton.title = t.recreateTip;
+    recreateButton.style.display = "none";
+    caption.append(captionText, recreateButton);
     stageFit.append(stageEmpty, stageImg);
     shell.stage.append(stageFit, caption);
 
     let selectedResult = null;
+    // An image dropped into Upscale outranks the gallery selection.
+    let upscaleSource = "";
+
+    function setCaption(text, state) {
+        captionText.textContent = text || "";
+        recreateButton.style.display = state ? "" : "none";
+        recreateButton.onclick = state ? () => {
+            applyStudioState(state).catch((err) => setStatus(String(err?.message || err)));
+        } : null;
+        caption.style.display = (text || state) ? "" : "none";
+    }
 
     function showResult(result) {
         selectedResult = result;
+        upscaleSource = "";
         stageImg.src = `/view?filename=${encodeURIComponent(result.image.filename)}` +
             `&subfolder=${encodeURIComponent(result.image.subfolder || "")}&type=output`;
         stageImg.style.display = "";
@@ -350,16 +460,14 @@ export async function openStudio(node, persist) {
         const bits = [];
         if (params.width && params.height) bits.push(`${params.width} × ${params.height}`);
         if (params.seed !== undefined) bits.push(`seed ${params.seed}`);
-        caption.textContent = bits.join(" · ");
-        caption.style.display = bits.length ? "" : "none";
+        setCaption(bits.join(" · "), result.state || null);
     }
 
     function showLibraryAsset(asset) {
         stageImg.src = asset.url;
         stageImg.style.display = "";
         stageEmpty.style.display = "none";
-        caption.textContent = asset.name || "";
-        caption.style.display = asset.name ? "" : "none";
+        setCaption(asset.name || "", null);
     }
 
     function showPreviewBlob(blob) {
@@ -382,9 +490,16 @@ export async function openStudio(node, persist) {
     helpButton.addEventListener("click", () => helpPanel.toggle());
     shell.rail.appendChild(helpButton);
 
-    // ── gallery (right panel) ───────────────────────────────────────────── //
+    // ── asset panel: session results, library, queue ────────────────────── //
+    const queuePanel = createQueuePanel({ api, t });
     const gallery = createGallery({
         t,
+        extraTabs: [{
+            id: "queue",
+            label: t.tabQueue,
+            element: queuePanel.element,
+            onVisible: (visible) => queuePanel.setVisible(visible),
+        }],
         onSelect: (result) => {
             showResult(result);
             persist.setResultPath(resultRelPath(result.image));
@@ -416,7 +531,26 @@ export async function openStudio(node, persist) {
     let controlsByParam = new Map();
     const loraOptions = readLoraOptions(objectInfo);
 
+    // Values the user owns, carried across deck rebuilds. Captured from the
+    // live controls just before they are torn down, so nothing is lost when a
+    // model or a mode changes under the same deck.
+    const sticky = new Map();       // param -> {kind, value}
+    let stylesSticky = [];
+
+    function captureSticky() {
+        for (const [param, instance] of controlsByParam) {
+            if (!STICKY_KINDS.has(instance.kind)) continue;
+            try {
+                sticky.set(param, { kind: instance.kind, value: instance.get() });
+            } catch (err) {
+                console.warn(`[TS Studio] could not keep '${param}'`, err);
+            }
+        }
+        if (promptTools) stylesSticky = promptTools.getSelectedStyles();
+    }
+
     function buildDeck(backend) {
+        captureSticky();
         for (const instance of controlInstances) instance.teardown?.();
         controlInstances = [];
         controlsByParam = new Map();
@@ -426,35 +560,40 @@ export async function openStudio(node, persist) {
         promptTools = null;
         for (const key of Object.keys(values)) delete values[key];
 
+        const roles = familiesForMode(activeModeId || backend.manifest.mode);
+        const editBackend = roles.get(backend.manifest.family)?.edit || null;
+
         const modelSection = deckSection(t.model);
         const modelRow = document.createElement("div");
         modelRow.className = "ts-istudio__modelrow";
         const select = document.createElement("select");
         select.className = "ts-ui-select";
-        for (const family of families.values()) {
-            const candidate = family.modes.get(backend.manifest.mode);
-            if (!candidate) continue;
+        for (const role of roles.values()) {
             const option = document.createElement("option");
-            option.value = family.family;
-            option.textContent = candidate.available
-                ? family.label
-                : `${family.label} — ${t.backendBroken}`;
-            option.disabled = !candidate.available;
-            option.selected = family.family === backend.manifest.family;
+            option.value = role.family.family;
+            const usable = role.primary.available || role.edit?.available;
+            option.textContent = usable ? role.label : `${role.label} — ${t.backendBroken}`;
+            option.disabled = !usable;
+            option.selected = role.family.family === backend.manifest.family;
             select.appendChild(option);
         }
         select.addEventListener("change", () => {
-            const next = families.get(select.value)?.modes.get(backend.manifest.mode);
-            if (next?.available) selectBackend(next);
+            const role = familiesForMode(activeModeId).get(select.value);
+            const next = role?.primary?.available ? role.primary
+                : (role?.edit?.available ? role.edit : null);
+            if (next) selectBackend(next);
         });
         modelRow.appendChild(select);
         modelSection.appendChild(modelRow);
         shell.deck.appendChild(modelSection);
 
         const controls = [...(backend.manifest.controls || [])];
-        // Reference slots come from the manifest's refs block; insert the
-        // control right after the prompt unless the author placed one.
-        const refsMax = Number(backend.manifest.refs?.max || 0);
+        // Reference slots follow the model's ability, not the current backend
+        // file: a family with an edit backend shows them even while its
+        // text-to-image backend is the one loaded. Filling a slot is what
+        // switches the run over to the edit graph.
+        const refsMax = Number(backend.manifest.refs?.max
+            || editBackend?.manifest.refs?.max || 0);
         if (refsMax > 0 && !controls.some((c) => c.kind === "refs")) {
             const promptIndex = controls.findIndex((c) => c.kind === "prompt");
             controls.splice(promptIndex + 1, 0, { kind: "refs", max: refsMax, param: "__refs" });
@@ -478,12 +617,18 @@ export async function openStudio(node, persist) {
                     }
                 },
             });
+            instance.kind = control.kind;
             controlInstances.push(instance);
             if (control.param) controlsByParam.set(control.param, instance);
-            // Seed the control with the backend file's own default so the
-            // deck never shows an empty field lying about what will run.
-            if ((control.kind === "number" || control.kind === "prompt")
-                && backend.spec.params.has(control.param)) {
+            const kept = sticky.get(control.param);
+            if (kept && kept.kind === control.kind) {
+                // What the user set outlives the file's default.
+                instance.set(kept.value);
+            } else if ((control.kind === "number" || control.kind === "slider"
+                        || control.kind === "prompt")
+                       && backend.spec.params.has(control.param)) {
+                // Seed the control with the backend file's own default so the
+                // deck never shows an empty field lying about what will run.
                 const markerId = backend.spec.params.get(control.param).nodeId;
                 const fileDefault = backend.graph[markerId]?.inputs?.value;
                 if (fileDefault !== undefined && fileDefault !== "") {
@@ -500,6 +645,7 @@ export async function openStudio(node, persist) {
                 if (slot && textarea) {
                     promptTools = mountPromptTools({
                         textarea, slot, api, objectInfo, t, locale,
+                        initialStyles: stylesSticky,
                     });
                 }
             }
@@ -611,17 +757,33 @@ export async function openStudio(node, persist) {
         activeModeId = modeId;
         if (modeId === "inpaint") ensureInpaintMounted();
         else leaveInpaint();
-        const current = activeBackend?.manifest.family;
-        const inFamily = families.get(current)?.modes.get(modeId);
-        const fallback = [...families.values()]
-            .map((f) => f.modes.get(modeId)).find((b) => b?.available);
-        const next = inFamily?.available ? inFamily : fallback;
+        const roles = familiesForMode(modeId);
+        const current = roles.get(activeBackend?.manifest.family);
+        const pick = (role) => (role?.primary?.available ? role.primary
+            : (role?.edit?.available ? role.edit : null));
+        const next = pick(current) || [...roles.values()].map(pick).find(Boolean);
         if (next) selectBackend(next);
+    }
+
+    /**
+     * Which graph a run actually submits. In Generate the answer depends on
+     * the reference slots: empty means text-to-image, filled means the
+     * family's edit graph — one rail tab, two backends.
+     */
+    function runBackend() {
+        if (activeModeId !== "generate" || !activeBackend) return activeBackend;
+        const role = familiesForMode("generate").get(activeBackend.manifest.family);
+        const hasRef = Object.values(values.__refs || {}).some(Boolean);
+        if (hasRef && role?.edit?.available) return role.edit;
+        if (!hasRef && role?.primary?.available) return role.primary;
+        return activeBackend;
     }
 
     // ── run ─────────────────────────────────────────────────────────────── //
     async function run() {
         if (!activeBackend) return;
+        const target = runBackend();
+        if (!target) return;
 
         const seedState = values.seed || { value: 0, randomize: true };
         const seed = seedState.randomize ? randomSeed() : Number(seedState.value || 0);
@@ -631,6 +793,9 @@ export async function openStudio(node, persist) {
         for (const [param, value] of Object.entries(values)) {
             if (param === "seed" || param === "loras" || param === "__refs") continue;
             if (typeof value === "object" && value !== null) continue;
+            // The deck is built from one backend but a run may go to another
+            // (Generate → edit): only params that graph actually declares.
+            if (!target.spec.params.has(param) && !target.spec.literals?.has(param)) continue;
             runValues[param] = value;
         }
         runValues.seed = seed;
@@ -649,7 +814,7 @@ export async function openStudio(node, persist) {
         // dropParams so the patcher removes their optional branches.
         const dropParams = [];
         for (const [name, annotated] of Object.entries(values.__refs || {})) {
-            if (!activeBackend.spec.params.has(name)) continue;
+            if (!target.spec.params.has(name)) continue;
             if (annotated) runValues[name] = annotated;
             else dropParams.push(name);
         }
@@ -664,26 +829,32 @@ export async function openStudio(node, persist) {
             }
         }
         if (activeModeId === "upscale") {
-            if (!selectedResult) {
+            // A dropped image wins over the gallery selection: it is the more
+            // deliberate act of the two.
+            if (upscaleSource) {
+                runValues.source_image = upscaleSource;
+            } else if (selectedResult) {
+                try {
+                    const url = "/view?" + new URLSearchParams({
+                        filename: selectedResult.image.filename,
+                        subfolder: selectedResult.image.subfolder || "",
+                        type: "output",
+                    });
+                    const blob = await (await fetch(url)).blob();
+                    runValues.source_image =
+                        await uploadImage(api, blob, selectedResult.image.filename);
+                } catch (err) {
+                    setStatus(t.runFailed(err.message));
+                    return;
+                }
+            } else {
                 setStatus(t.upscaleNeedsImage);
-                return;
-            }
-            try {
-                const url = "/view?" + new URLSearchParams({
-                    filename: selectedResult.image.filename,
-                    subfolder: selectedResult.image.subfolder || "",
-                    type: "output",
-                });
-                const blob = await (await fetch(url)).blob();
-                runValues.source_image = await uploadImage(api, blob, selectedResult.image.filename);
-            } catch (err) {
-                setStatus(t.runFailed(err.message));
                 return;
             }
         }
         // Required params are judged AFTER mode-specific collection — the
         // inpaint surface contributes source_image/mask right above.
-        for (const required of activeBackend.manifest.requires || []) {
+        for (const required of target.manifest.requires || []) {
             const value = runValues[required] ?? values.__refs?.[required];
             if (!value) {
                 setStatus(t.requiresMissing(required));
@@ -691,15 +862,37 @@ export async function openStudio(node, persist) {
             }
         }
 
+        const loras = Array.isArray(values.loras) ? values.loras : [];
+        // The snapshot rides in the PNG so this exact session can be recreated
+        // from the image alone — sources included.
+        const studioState = buildStudioState({
+            backendId: target.manifest.id,
+            family: target.manifest.family,
+            familyLabel: target.manifest.family_label,
+            mode: target.manifest.mode,
+            uiMode: activeModeId,
+            values: runValues,
+            loras,
+            styles: promptTools?.getStyleNames() || [],
+            size: controlsByParam.get("size")?.get(),
+            sources: {
+                source_image: runValues.source_image,
+                mask: runValues.mask,
+                ...(values.__refs || {}),
+            },
+        });
+
         let patched;
         try {
-            patched = patchBackend(activeBackend.graph, activeBackend.spec, {
+            patched = patchBackend(target.graph, target.spec, {
                 values: runValues,
-                modelFiles: activeBackend.modelFiles,
-                loras: Array.isArray(values.loras) ? values.loras : [],
+                modelFiles: target.modelFiles,
+                loras,
                 dropParams,
                 filenamePrefix: sessionPrefix(sessionId),
                 isOptionalInput: optionalIndex,
+                promptText: typeof runValues.prompt === "string" ? runValues.prompt : "",
+                studioState,
             });
         } catch (err) {
             setStatus(t.runFailed(err.message));
@@ -723,7 +916,7 @@ export async function openStudio(node, persist) {
                     updateHint();
                     deckWidgets.progress.classList.remove("is-active");
                     for (const image of images) {
-                        const result = { image, params: { ...runValues } };
+                        const result = { image, params: { ...runValues }, state: studioState };
                         gallery.add(result);
                         showResult(result);
                         persist.setResultPath(resultRelPath(image));
@@ -759,48 +952,104 @@ export async function openStudio(node, persist) {
     }
 
     function setStatus(message) {
-        caption.textContent = message;
-        caption.style.display = "";
+        setCaption(message, null);
         console.warn("[TS Studio]", message);
     }
 
-    // ── reproducibility: drop a studio PNG to restore its run ───────────── //
-    async function restoreFromPng(blob) {
-        const run = await studioRunFromPng(blob);
-        if (!run) return false;
-        const backend = backends.find((b) => b.manifest?.id === run.backendId && b.available)
-            || backends.find((b) => b.manifest?.family === run.family
-                && b.manifest?.mode === run.mode && b.available);
+    // ── recreate: rebuild a whole session from a result ─────────────────── //
+    //
+    // The snapshot is the source of truth (mode, backend, every control, the
+    // LoRA chain, the styles and the annotated sources). Applying it walks the
+    // same paths a person would: pick the rail tab, pick the model, set the
+    // controls, then put the sources back where that mode expects them.
+    async function applyStudioState(state) {
+        const backend = backends.find((b) => b.manifest?.id === state.backend && b.available)
+            || backends.find((b) => b.manifest?.family === state.family
+                && b.manifest?.mode === state.mode && b.available);
         if (!backend) {
-            setStatus(t.pngNoBackend(run.backendId));
+            setStatus(t.pngNoBackend(state.backend));
             return true;
         }
-        selectMode(backend.manifest.mode);
+        const uiMode = UI_MODES.find((m) => m.id === state.ui_mode)
+            || UI_MODES.find((m) => m.backendModes.includes(backend.manifest.mode));
+        // Sticky values must not fight the snapshot: it replaces them wholesale.
+        sticky.clear();
+        stylesSticky = [];
+        selectMode(uiMode?.id || backend.manifest.mode);
         selectBackend(backend);
-        for (const [param, value] of Object.entries(run.values)) {
+
+        for (const [param, value] of Object.entries(state.values || {})) {
+            if (param === "width" || param === "height") continue;   // via size
             if (param === "seed") {
                 controlsByParam.get("seed")?.set({ value: Number(value), randomize: false });
-            } else if (param === "width" || param === "height") {
-                continue; // handled below through the size control
-            } else {
-                controlsByParam.get(param)?.set(value);
-                if (param in values || controlsByParam.has(param)) values[param] = value;
+                continue;
             }
+            controlsByParam.get(param)?.set(value);
+            if (controlsByParam.has(param)) values[param] = value;
         }
-        const width = Number(run.values.width);
-        const height = Number(run.values.height);
-        if (width > 0 && height > 0) {
+        const width = Number(state.values?.width);
+        const height = Number(state.values?.height);
+        if (state.size?.aspect) {
+            controlsByParam.get("size")?.set(state.size);
+        } else if (width > 0 && height > 0) {
             const divisor = ((a, b) => { while (b) { [a, b] = [b, a % b]; } return a; })(width, height);
             controlsByParam.get("size")?.set({
                 aspect: `${width / divisor}:${height / divisor}`,
                 mp: (width * height) / 1e6,
             });
-            values.width = width;
-            values.height = height;
         }
-        controlsByParam.get("loras")?.set(run.loras);
-        if (run.loras.length) values.loras = run.loras;
-        setStatus(t.pngRestored(backend.manifest.family_label || backend.manifest.family));
+        if (width > 0 && height > 0) { values.width = width; values.height = height; }
+        controlsByParam.get("loras")?.set(state.loras || []);
+        values.loras = state.loras || [];
+
+        const sources = state.sources || {};
+        const refs = ["ref_1", "ref_2", "ref_3", "ref_4", "ref_5", "ref_6"]
+            .map((key) => sources[key] || "");
+        if (refs.some(Boolean)) controlsByParam.get("__refs")?.set(refs);
+        await restoreSources(sources, uiMode?.id || backend.manifest.mode);
+        setStatus(t.recreated(backend.manifest.family_label || backend.manifest.family));
+        return true;
+    }
+
+    /** Put the run's source image back into the surface its mode works on. */
+    async function restoreSources(sources, uiMode) {
+        const source = sources.source_image;
+        if (!source) return;
+        const url = annotatedImageUrl(source);
+        if (!url) return;
+        if (uiMode === "inpaint") {
+            ensureInpaintMounted();
+            await inpaintMode.setImageFromUrl(url).catch(() => {});
+        } else if (uiMode === "upscale") {
+            upscaleSource = source;
+            stageImg.src = url;
+            stageImg.style.display = "";
+            stageEmpty.style.display = "none";
+        }
+    }
+
+    /** A dropped image either recreates its session or becomes the source. */
+    async function acceptDroppedImage(item) {
+        const blob = await item.getBlob();
+        const found = await studioStateFromPng(blob);
+        if (found) return applyStudioState(found.state);
+        const annotated = await uploadImage(api, blob, item.name || "dropped.png");
+        if (activeModeId === "inpaint") {
+            ensureInpaintMounted();
+            await inpaintMode.setImageFromBlob(blob, item.name || "dropped.png");
+        } else if (activeModeId === "upscale") {
+            upscaleSource = annotated;
+            stageImg.src = URL.createObjectURL(blob);
+            stageImg.style.display = "";
+            stageEmpty.style.display = "none";
+        } else {
+            const current = controlsByParam.get("__refs")?.get() || [];
+            const slot = current.findIndex((v) => !v);
+            if (slot < 0) return false;
+            current[slot] = annotated;
+            controlsByParam.get("__refs")?.set(current);
+        }
+        setStatus(t.sourceSet);
         return true;
     }
 
@@ -808,9 +1057,7 @@ export async function openStudio(node, persist) {
         max: 1,
         onDrop: async ([item]) => {
             try {
-                const blob = await item.getBlob();
-                if (await restoreFromPng(blob)) return;
-                setStatus(t.pngNotStudio);
+                if (!await acceptDroppedImage(item)) setStatus(t.pngNotStudio);
             } catch (err) {
                 setStatus(String(err?.message || err));
             }
@@ -820,10 +1067,11 @@ export async function openStudio(node, persist) {
     // ── boot ────────────────────────────────────────────────────────────── //
     const available = backends.filter((b) => b.available)
         .sort((a, b2) => (a.manifest.order || 99) - (b2.manifest.order || 99));
-    const firstAvailable = available.find((b) => b.manifest.mode === modeIds[0]) || available[0];
+    const bootModes = backendModesOf(modeIds[0]);
+    const firstAvailable = available.find((b) => bootModes.includes(b.manifest.mode))
+        || available[0];
     if (firstAvailable) {
-        selectMode(firstAvailable.manifest.mode);
-        selectBackend(firstAvailable);
+        selectMode(modeIds[0]);
     } else {
         const note = document.createElement("div");
         note.className = "ts-studio__galleryempty";
