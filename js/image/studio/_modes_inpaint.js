@@ -43,6 +43,10 @@ function ensureInpaintStyles() {
 .ts-inp__status{position:absolute;left:10px;bottom:10px;z-index:5;padding:3px 8px;
     font-size:var(--ts-fs-sm);color:var(--ts-muted);background:var(--ts-elevated);
     border:1px solid var(--ts-border);border-radius:var(--ts-radius-sm)}
+.ts-inp__pip{position:absolute;right:10px;bottom:10px;z-index:5;width:172px;max-height:172px;
+    object-fit:contain;border:1px solid var(--ts-border);border-radius:var(--ts-radius-sm);
+    background:var(--ts-sunken);display:none}
+.ts-inp__pip.is-active{display:block}
 `;
     document.head.appendChild(style);
 }
@@ -104,7 +108,22 @@ export function createInpaintMode(ctx) {
     status.className = "ts-inp__status";
     status.style.display = "none";
 
-    root.append(mask.element, empty, bar, status);
+    const pip = document.createElement("img");
+    pip.className = "ts-inp__pip";
+    pip.alt = "";
+    root.append(mask.element, empty, bar, status, pip);
+
+    let pipUrl = "";
+    function showPreview(blob) {
+        if (pipUrl) URL.revokeObjectURL(pipUrl);
+        pipUrl = URL.createObjectURL(blob);
+        pip.src = pipUrl;
+        pip.classList.add("is-active");
+    }
+    function hidePreview() {
+        pip.classList.remove("is-active");
+        if (pipUrl) { URL.revokeObjectURL(pipUrl); pipUrl = ""; }
+    }
 
     const state = {
         engine: "cleanup",
@@ -272,7 +291,15 @@ export function createInpaintMode(ctx) {
     }
 
     async function acceptRepaintResult(url, name) {
-        await setImageFromUrl(url, name || "repaint.png");
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const blob = await response.blob();
+        const annotated = await uploadImage(ctx.api, blob, name || "repaint.png");
+        const objectUrl = URL.createObjectURL(blob);
+        await mask.loadImage(objectUrl);
+        state.sourceAnnotated = annotated;
+        state.cleanupWorking = "";
+        history.push({ kind: "repaint", url: objectUrl, annotated, working: "" });
         setStatus(ctx.t.inp.repainted);
     }
 
@@ -286,7 +313,17 @@ export function createInpaintMode(ctx) {
         collectRunValues,
         acceptRepaintResult,
         hasImage: () => mask.hasImage(),
+        undo: () => history.undo(),
+        redo: () => history.redo(),
+        brushDelta: (delta) => {
+            const next = Math.max(6, Math.min(200, Number(brush.value) + delta));
+            brush.value = String(next);
+            mask.setBrush(next);
+        },
+        showPreview,
+        hidePreview,
         teardown: () => {
+            hidePreview();
             dropTeardown();
             dropTeardown2();
             mask.teardown();

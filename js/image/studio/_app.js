@@ -289,6 +289,20 @@ export async function openStudio(node, persist) {
             if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
                 event.preventDefault();
                 run();
+            } else if (activeModeId === "inpaint" && inpaintMode
+                       && (event.ctrlKey || event.metaKey)
+                       && (event.key === "z" || event.key === "Z")) {
+                event.preventDefault();
+                inpaintMode.undo();
+            } else if (activeModeId === "inpaint" && inpaintMode
+                       && (event.ctrlKey || event.metaKey)
+                       && (event.key === "y" || event.key === "Y")) {
+                event.preventDefault();
+                inpaintMode.redo();
+            } else if (activeModeId === "inpaint" && inpaintMode
+                       && (event.key === "[" || event.key === "]")) {
+                event.preventDefault();
+                inpaintMode.brushDelta(event.key === "]" ? 6 : -6);
             } else if (event.key === "F1") {
                 event.preventDefault();
                 helpPanel.toggle();
@@ -669,7 +683,10 @@ export async function openStudio(node, persist) {
                     deckWidgets.progress.classList.add("is-active");
                     deckWidgets.progressFill.style.width = `${pct}%`;
                 },
-                onPreview: (blob) => showPreviewBlob(blob),
+                onPreview: (blob) => {
+                    if (activeModeId === "inpaint" && inpaintMode) inpaintMode.showPreview(blob);
+                    else showPreviewBlob(blob);
+                },
                 onDone: (images) => {
                     queueCount -= 1;
                     updateHint();
@@ -680,6 +697,7 @@ export async function openStudio(node, persist) {
                         showResult(result);
                         persist.setResultPath(resultRelPath(image));
                         if (activeModeId === "inpaint" && inpaintMode) {
+                            inpaintMode.hidePreview();
                             const url = "/view?" + new URLSearchParams({
                                 filename: image.filename,
                                 subfolder: image.subfolder || "",
