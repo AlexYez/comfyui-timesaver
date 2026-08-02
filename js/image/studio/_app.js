@@ -18,6 +18,7 @@ import { mountPromptTools } from "../../_studio/_prompt_tools.js";
 import { pickAssetProvider } from "../../_studio/_assets.js";
 import { createInpaintMode } from "./_modes_inpaint.js";
 import { createDownloadPanel } from "../../_studio/_downloads.js";
+import { createHelpPanel } from "../../_studio/_help.js";
 import { uploadImage } from "../../_studio/_dnd.js";
 
 const ICONS = {
@@ -69,6 +70,13 @@ const STRINGS = {
         loraStrength: "Strength (negative values invert the effect)",
         loraRemove: "Remove this LoRA",
         loraNone: "No LoRA files installed",
+        help: {
+            title: "Help",
+            hintsToggle: "Teaching tooltips on every control",
+            close: "Close",
+            missing: "Help pages are not available on this install.",
+            open: "Help (F1)",
+        },
         dl: {
             title: "Missing models",
             get: "Download",
@@ -157,6 +165,13 @@ const STRINGS = {
         loraStrength: "Сила (отрицательные значения инвертируют эффект)",
         loraRemove: "Убрать эту LoRA",
         loraNone: "Файлы LoRA не установлены",
+        help: {
+            title: "Справка",
+            hintsToggle: "Обучающие подсказки на каждом контроле",
+            close: "Закрыть",
+            missing: "Страницы справки недоступны в этой установке.",
+            open: "Справка (F1)",
+        },
         dl: {
             title: "Недостающие модели",
             get: "Скачать",
@@ -272,6 +287,9 @@ export async function openStudio(node, persist) {
             if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
                 event.preventDefault();
                 run();
+            } else if (event.key === "F1") {
+                event.preventDefault();
+                helpPanel.toggle();
             } else if (event.key === "Tab") {
                 event.preventDefault();
                 shell.setSideCollapsed(!shell.side.classList.contains("is-collapsed"));
@@ -325,6 +343,20 @@ export async function openStudio(node, persist) {
         stageImg.style.display = "";
         stageEmpty.style.display = "none";
     }
+
+    const helpPanel = createHelpPanel({
+        stage: shell.stage, t, locale,
+        studioRoot: shell.root,
+        pagesBase: "/extensions/comfyui-timesaver/image/studio/help",
+    });
+    const helpButton = document.createElement("button");
+    helpButton.type = "button";
+    helpButton.className = "ts-studio__railbtn";
+    helpButton.title = t.help.open;
+    helpButton.setAttribute("aria-label", t.help.open);
+    helpButton.textContent = "?";
+    helpButton.addEventListener("click", () => helpPanel.toggle());
+    shell.rail.appendChild(helpButton);
 
     // ── gallery (right panel) ───────────────────────────────────────────── //
     const gallery = createGallery({
