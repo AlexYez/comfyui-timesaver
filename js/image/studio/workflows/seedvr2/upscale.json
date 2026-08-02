@@ -139,7 +139,7 @@
  },
  "66:59": {
   "inputs": {
-   "color_correction_method": "none",
+   "color_correction_method": "lab",
    "images": [
     "66:55",
     0

@@ -49,7 +49,10 @@ export function inspectBackend(graph) {
     if (!manifest.id || !manifest.family || !manifest.mode) {
         throw new Error("manifest needs id, family and mode");
     }
-    return { params, models, output, manifest, loraStack };
+    // manifest.literals: {param: {node|title, input}} — values written straight
+    // into a named node input (booleans, combos), no marker node required.
+    const literals = new Map(Object.entries(manifest.literals || {}));
+    return { params, models, output, manifest, loraStack, literals };
 }
 
 /**
@@ -74,6 +77,13 @@ export function patchBackend(graph, spec, run) {
     const out = structuredClone(graph);
 
     for (const [name, value] of Object.entries(run.values || {})) {
+        const literal = spec.literals?.get(name);
+        if (literal) {
+            const targetId = literal.node
+                || spec.models.find((m) => m.title === literal.title)?.nodeId;
+            if (targetId && out[targetId]) out[targetId].inputs[literal.input] = value;
+            continue;
+        }
         const param = spec.params.get(name);
         if (!param) throw new Error(`backend has no param '${name}'`);
         out[param.nodeId].inputs.value = value;

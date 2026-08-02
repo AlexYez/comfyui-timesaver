@@ -228,9 +228,40 @@ export function createMaskCanvas(options = {}) {
         return maskCanvas.toDataURL("image/png");
     }
 
+    function maskBBox() {
+        if (!maskCanvas) return null;
+        const step = 4;
+        const data = maskCtx.getImageData(0, 0, maskCanvas.width, maskCanvas.height).data;
+        let minX = Infinity, minY = Infinity, maxX = -1, maxY = -1;
+        for (let y = 0; y < maskCanvas.height; y += step) {
+            for (let x = 0; x < maskCanvas.width; x += step) {
+                if (data[(y * maskCanvas.width + x) * 4 + 3] > 8) {
+                    if (x < minX) minX = x;
+                    if (x > maxX) maxX = x;
+                    if (y < minY) minY = y;
+                    if (y > maxY) maxY = y;
+                }
+            }
+        }
+        if (maxX < 0) return null;
+        return { x: minX, y: minY, w: maxX - minX + step, h: maxY - minY + step };
+    }
+
+    function imageRectToCss(rect) {
+        return {
+            left: state.offsetX + rect.x * state.scale,
+            top: state.offsetY + rect.y * state.scale,
+            width: rect.w * state.scale,
+            height: rect.h * state.scale,
+        };
+    }
+
     return {
         element: root,
         loadImage,
+        maskBBox,
+        imageRectToCss,
+        imageSize: () => ({ w: state.imageW, h: state.imageH }),
         setBrush: (px) => { state.brush = Math.max(4, px); },
         getBrush: () => state.brush,
         setEraser: (on) => { state.eraser = Boolean(on); },

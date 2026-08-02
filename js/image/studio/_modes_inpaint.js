@@ -114,15 +114,59 @@ export function createInpaintMode(ctx) {
     root.append(mask.element, empty, bar, status, pip);
 
     let pipUrl = "";
-    function showPreview(blob) {
+    let previewBox = null;   // frozen at run start: where the mask was painted
+
+    function capturePreviewBox() {
+        const bbox = mask.maskBBox?.();
+        previewBox = bbox ? { bbox, css: mask.imageRectToCss(bbox) } : null;
+    }
+
+    async function showPreview(blob) {
+        // The preview belongs WHERE THE MASK WAS PAINTED. Two shapes arrive:
+        // a full-frame latent preview (LanPaint recipes) — crop our bbox out
+        // of it; a crop preview (TSSmartInpaint) — its aspect matches the
+        // mask region, place it whole. Distinguish by aspect ratio.
+        if (!previewBox) capturePreviewBox();
         if (pipUrl) URL.revokeObjectURL(pipUrl);
-        pipUrl = URL.createObjectURL(blob);
+        if (!previewBox) {
+            pipUrl = URL.createObjectURL(blob);
+            pip.src = pipUrl;
+            pip.style.cssText = "";
+            pip.classList.add("is-active");
+            return;
+        }
+        const bitmap = await createImageBitmap(blob);
+        const image = mask.imageSize();
+        const frameAspect = image.w / image.h;
+        const previewAspect = bitmap.width / bitmap.height;
+        const { bbox, css } = previewBox;
+        let source = bitmap;
+        if (Math.abs(previewAspect - frameAspect) / frameAspect < 0.12) {
+            const sx = bitmap.width / image.w;
+            const sy = bitmap.height / image.h;
+            const cut = document.createElement("canvas");
+            cut.width = Math.max(1, Math.round(bbox.w * sx));
+            cut.height = Math.max(1, Math.round(bbox.h * sy));
+            cut.getContext("2d").drawImage(bitmap,
+                bbox.x * sx, bbox.y * sy, bbox.w * sx, bbox.h * sy,
+                0, 0, cut.width, cut.height);
+            source = cut;
+        }
+        pipUrl = source instanceof HTMLCanvasElement
+            ? source.toDataURL("image/png") : URL.createObjectURL(blob);
         pip.src = pipUrl;
+        pip.style.cssText = `left:${css.left}px;top:${css.top}px;` +
+            `width:${css.width}px;height:${css.height}px;right:auto;bottom:auto;` +
+            `object-fit:cover;`;
         pip.classList.add("is-active");
+        if (source !== bitmap) bitmap.close?.();
     }
     function hidePreview() {
         pip.classList.remove("is-active");
-        if (pipUrl) { URL.revokeObjectURL(pipUrl); pipUrl = ""; }
+        pip.style.cssText = "";
+        previewBox = null;
+        if (pipUrl && pipUrl.startsWith("blob:")) URL.revokeObjectURL(pipUrl);
+        pipUrl = "";
     }
 
     const state = {
@@ -279,6 +323,7 @@ export function createInpaintMode(ctx) {
     async function collectRunValues() {
         if (!mask.hasImage()) throw new Error(ctx.t.inp.needImage);
         if (!mask.hasMask()) throw new Error(ctx.t.inp.needMask);
+        capturePreviewBox();
         const maskBlob = await (await fetch(mask.maskDataUrl())).blob();
         const maskAnnotated = await uploadImage(ctx.api, maskBlob, "inpaint_mask.png");
         // The CURRENT canvas (after any cleanups) is the repaint source.

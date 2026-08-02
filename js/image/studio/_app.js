@@ -19,7 +19,8 @@ import { pickAssetProvider } from "../../_studio/_assets.js";
 import { createInpaintMode } from "./_modes_inpaint.js";
 import { createDownloadPanel } from "../../_studio/_downloads.js";
 import { createHelpPanel } from "../../_studio/_help.js";
-import { uploadImage } from "../../_studio/_dnd.js";
+import { uploadImage, makeDropZone } from "../../_studio/_dnd.js";
+import { studioRunFromPng } from "../../_studio/_pnginfo.js";
 
 const ICONS = {
     t2i: '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 3l1.8 4.7L18.5 9l-4.7 1.8L12 15.5l-1.8-4.7L5.5 9l4.7-1.3zM19 15l.9 2.3 2.1.7-2.1.9L19 21l-.9-2.1-2.1-.9 2.1-.7z"/></svg>',
@@ -60,6 +61,9 @@ const STRINGS = {
         runFailed: (m) => `Run failed: ${m}`,
         upscaleNeedsImage: "Select an image in the Session gallery first, then Run.",
         requiresMissing: (p) => `Add the required image first (${p}).`,
+        pngRestored: (f) => `Settings restored from the image (${f}).`,
+        pngNotStudio: "This image carries no studio settings.",
+        pngNoBackend: (id) => `The image was made by backend '${id}', which is not available here.`,
         modes: { t2i: "Generate", edit: "Edit", inpaint: "Inpaint", upscale: "Upscale" },
         references: "References",
         refSlotTip: (n) => `Reference ${n}: drop an image here, or click to pick a file`,
@@ -155,6 +159,9 @@ const STRINGS = {
         runFailed: (m) => `Ошибка запуска: ${m}`,
         upscaleNeedsImage: "Сначала выберите изображение в галерее сессии, затем Run.",
         requiresMissing: (p) => `Сначала добавьте обязательное изображение (${p}).`,
+        pngRestored: (f) => `Настройки восстановлены из изображения (${f}).`,
+        pngNotStudio: "В этом изображении нет настроек студии.",
+        pngNoBackend: (id) => `Изображение сделано бэкендом '${id}', он здесь недоступен.`,
         modes: { t2i: "Генерация", edit: "Редактирование", inpaint: "Inpaint", upscale: "Upscale" },
         references: "Референсы",
         refSlotTip: (n) => `Референс ${n}: перетащите картинку или кликните для выбора файла`,
@@ -278,6 +285,7 @@ export async function openStudio(node, persist) {
         modes: modeIds.map((id) => ({ id, title: t.modes[id] || id, icon: ICONS[id] || ICONS.t2i })),
         onMode: (id) => selectMode(id),
         onClose: () => {
+            stageDropTeardown?.();
             gallery.teardown?.();
             helpPanel.teardown?.();
             inpaintMode?.teardown();
@@ -405,11 +413,13 @@ export async function openStudio(node, persist) {
     let seedControl = null;
     let promptTools = null;
     let controlInstances = [];
+    let controlsByParam = new Map();
     const loraOptions = readLoraOptions(objectInfo);
 
     function buildDeck(backend) {
         for (const instance of controlInstances) instance.teardown?.();
         controlInstances = [];
+        controlsByParam = new Map();
         shell.deck.textContent = "";
         seedControl = null;
         promptTools?.teardown();
@@ -460,9 +470,16 @@ export async function openStudio(node, persist) {
             const instance = renderer(control, {
                 t, locale, loraOptions,
                 uploadImage: (blob, name) => uploadImage(api, blob, name),
-                onChange: (param, value) => { values[param] = value; },
+                onChange: (param, value) => {
+                    values[param] = value;
+                    // Replace ON implies 100% strength: grey the slider out.
+                    if (param === "replace") {
+                        controlsByParam.get("denoise")?.setDisabled?.(Boolean(value));
+                    }
+                },
             });
             controlInstances.push(instance);
+            if (control.param) controlsByParam.set(control.param, instance);
             if (control.kind === "seed") seedControl = instance;
             if (control.advanced) advanced.push(instance.element);
             else shell.deck.appendChild(instance.element);
@@ -607,6 +624,10 @@ export async function openStudio(node, persist) {
             runValues[param] = value;
         }
         runValues.seed = seed;
+        if (typeof values.replace === "boolean") {
+            runValues.replace = values.replace;
+            if (values.replace) runValues.denoise = 1.0;
+        }
         // Styles append to the prompt the same way the selector node does —
         // what runs is exactly what the gallery params will replay.
         const styleTail = promptTools?.getStylePrompts().join(", ");
@@ -732,6 +753,59 @@ export async function openStudio(node, persist) {
         caption.style.display = "";
         console.warn("[TS Studio]", message);
     }
+
+    // ── reproducibility: drop a studio PNG to restore its run ───────────── //
+    async function restoreFromPng(blob) {
+        const run = await studioRunFromPng(blob);
+        if (!run) return false;
+        const backend = backends.find((b) => b.manifest?.id === run.backendId && b.available)
+            || backends.find((b) => b.manifest?.family === run.family
+                && b.manifest?.mode === run.mode && b.available);
+        if (!backend) {
+            setStatus(t.pngNoBackend(run.backendId));
+            return true;
+        }
+        selectMode(backend.manifest.mode);
+        selectBackend(backend);
+        for (const [param, value] of Object.entries(run.values)) {
+            if (param === "seed") {
+                controlsByParam.get("seed")?.set({ value: Number(value), randomize: false });
+            } else if (param === "width" || param === "height") {
+                continue; // handled below through the size control
+            } else {
+                controlsByParam.get(param)?.set(value);
+                if (param in values || controlsByParam.has(param)) values[param] = value;
+            }
+        }
+        const width = Number(run.values.width);
+        const height = Number(run.values.height);
+        if (width > 0 && height > 0) {
+            const divisor = ((a, b) => { while (b) { [a, b] = [b, a % b]; } return a; })(width, height);
+            controlsByParam.get("size")?.set({
+                aspect: `${width / divisor}:${height / divisor}`,
+                mp: (width * height) / 1e6,
+            });
+            values.width = width;
+            values.height = height;
+        }
+        controlsByParam.get("loras")?.set(run.loras);
+        if (run.loras.length) values.loras = run.loras;
+        setStatus(t.pngRestored(backend.manifest.family_label || backend.manifest.family));
+        return true;
+    }
+
+    const stageDropTeardown = makeDropZone(stageFit, {
+        max: 1,
+        onDrop: async ([item]) => {
+            try {
+                const blob = await item.getBlob();
+                if (await restoreFromPng(blob)) return;
+                setStatus(t.pngNotStudio);
+            } catch (err) {
+                setStatus(String(err?.message || err));
+            }
+        },
+    });
 
     // ── boot ────────────────────────────────────────────────────────────── //
     const available = backends.filter((b) => b.available)

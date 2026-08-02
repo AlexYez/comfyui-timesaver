@@ -517,6 +517,34 @@ registerControlKind("loras", (control, ctx) => {
     };
 });
 
+// ── toggle ──────────────────────────────────────────────────────────────── //
+registerControlKind("toggle", (control, ctx) => {
+    const row = document.createElement("div");
+    row.className = "ts-studio__numrow";
+    const label = document.createElement("span");
+    label.textContent = (control.label?.[ctx.locale]) || control.label?.en || control.param;
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "ts-ui-btn";
+    button.textContent = "OFF";
+    const tip = control.tooltip?.[ctx.locale] || control.tooltip?.en;
+    if (tip) { row.title = tip; button.title = tip; }
+    let value = Boolean(control.default);
+    function sync() {
+        button.classList.toggle("is-active", value);
+        button.textContent = value ? "ON" : "OFF";
+        ctx.onChange(control.param, value);
+    }
+    button.addEventListener("click", () => { value = !value; sync(); });
+    row.append(label, button);
+    sync();
+    return {
+        element: row,
+        get: () => value,
+        set: (v) => { value = Boolean(v); sync(); },
+    };
+});
+
 // ── number ──────────────────────────────────────────────────────────────── //
 registerControlKind("number", (control, ctx) => {
     const row = document.createElement("div");
@@ -535,5 +563,6 @@ registerControlKind("number", (control, ctx) => {
         element: row,
         get: () => Number(field.value),
         set: (value) => { field.value = String(value); ctx.onChange(control.param, Number(value)); },
+        setDisabled: (disabled) => { field.disabled = Boolean(disabled); },
     };
 });
