@@ -110,8 +110,8 @@ export function patchBackend(graph, spec, run) {
     if (run.studioState) {
         out[spec.output].inputs.studio_state = JSON.stringify(run.studioState);
     }
-    if (run.promptText) {
-        insertPromptInjector(out, spec.output, run.promptText);
+    if (run.promptText || spec.manifest.prompt_source) {
+        insertPromptInjector(out, spec.output, run.promptText, spec.manifest.prompt_source);
     }
 
     expandLoraStack(out, spec, run.loras || []);
@@ -130,14 +130,21 @@ export function patchBackend(graph, spec, run) {
 // exists for exactly this: it passes the image through untouched and writes
 // the real text into the metadata's positive encoders. Splicing it here — one
 // place, at submit time — covers user-authored backends too.
-function insertPromptInjector(graph, outputId, promptText) {
+function insertPromptInjector(graph, outputId, promptText, promptSource) {
     const output = graph[outputId];
     const upstream = output?.inputs?.image;
     if (!Array.isArray(upstream)) return;
+    // A family whose node builds the prompt (Ideogram's designer) points at
+    // that node instead of a literal, so the metadata carries exactly what the
+    // model was given — not an approximation of it.
+    const prompt = promptSource && graph[promptSource.node]
+        ? [promptSource.node, Number(promptSource.slot || 0)]
+        : String(promptText || "");
+    if (!promptSource && !prompt) return;
     const id = "ts_prompt_meta";
     graph[id] = {
         class_type: "TS_ImagePromptInjector",
-        inputs: { image: upstream, prompt: String(promptText) },
+        inputs: { image: upstream, prompt },
         _meta: { title: "studio:prompt-metadata" },
     };
     output.inputs.image = [id, 0];
