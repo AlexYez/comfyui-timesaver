@@ -56,6 +56,7 @@ const STRINGS = {
         backendBroken: "unavailable",
         noBackends: "No backend workflows are available for any installed model.",
         runFailed: (m) => `Run failed: ${m}`,
+        upscaleNeedsImage: "Select an image in the Session gallery first, then Run.",
         requiresMissing: (p) => `Add the required image first (${p}).`,
         modes: { t2i: "Generate", edit: "Edit", inpaint: "Inpaint", upscale: "Upscale" },
         references: "References",
@@ -131,6 +132,7 @@ const STRINGS = {
         backendBroken: "недоступен",
         noBackends: "Нет доступных workflow ни для одной установленной модели.",
         runFailed: (m) => `Ошибка запуска: ${m}`,
+        upscaleNeedsImage: "Сначала выберите изображение в галерее сессии, затем Run.",
         requiresMissing: (p) => `Сначала добавьте обязательное изображение (${p}).`,
         modes: { t2i: "Генерация", edit: "Редактирование", inpaint: "Inpaint", upscale: "Upscale" },
         references: "Референсы",
@@ -214,7 +216,7 @@ export async function openStudio(node, persist) {
     const objectInfo = await (await api.fetchApi("/object_info")).json();
     // Backend workflow files are WEB_DIRECTORY statics: /extensions/* lives
     // OUTSIDE the /api prefix that api.fetchApi prepends, so plain fetch.
-    const backends = await loadBackends((url) => fetch(url), objectInfo);
+    const backends = await loadBackends((url) => fetch(url), objectInfo, (url) => api.fetchApi(url));
     const families = groupByFamily(backends);
     const sessionId = persist.sessionId || newSessionId();
     persist.setSessionId(sessionId);
@@ -266,7 +268,10 @@ export async function openStudio(node, persist) {
     stageFit.append(stageEmpty, stageImg);
     shell.stage.append(stageFit, caption);
 
+    let selectedResult = null;
+
     function showResult(result) {
+        selectedResult = result;
         stageImg.src = `/view?filename=${encodeURIComponent(result.image.filename)}` +
             `&subfolder=${encodeURIComponent(result.image.subfolder || "")}&type=output`;
         stageImg.style.display = "";
@@ -523,6 +528,24 @@ export async function openStudio(node, persist) {
                 Object.assign(runValues, collected);
             } catch (err) {
                 setStatus(String(err.message || err));
+                return;
+            }
+        }
+        if (activeModeId === "upscale") {
+            if (!selectedResult) {
+                setStatus(t.upscaleNeedsImage);
+                return;
+            }
+            try {
+                const url = "/view?" + new URLSearchParams({
+                    filename: selectedResult.image.filename,
+                    subfolder: selectedResult.image.subfolder || "",
+                    type: "output",
+                });
+                const blob = await (await fetch(url)).blob();
+                runValues.source_image = await uploadImage(api, blob, selectedResult.image.filename);
+            } catch (err) {
+                setStatus(t.runFailed(err.message));
                 return;
             }
         }

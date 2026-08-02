@@ -9,6 +9,8 @@
   "qwen-image-edit/edit.json",
   "qwen-image/inpaint.json",
   "qwen-image/t2i.json",
+  "secondpass/upscale.json",
+  "seedvr2/upscale.json",
   "z-image/inpaint.json",
   "z-image/t2i.json"
  ]

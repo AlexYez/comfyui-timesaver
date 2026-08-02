@@ -34,15 +34,35 @@ async function fetchJson(fetcher, url) {
  * @param {(url: string) => Promise<Response>} fetcher api.fetchApi-compatible.
  * @param {object} objectInfo Full /object_info payload.
  */
-export async function loadBackends(fetcher, objectInfo) {
+export async function loadBackends(fetcher, objectInfo, apiFetcher = null) {
     const index = await fetchJson(fetcher, `${BUILTIN_BASE}/index.json`);
+    const sources = (index.workflows || []).map((rel) => ({
+        rel, url: `${BUILTIN_BASE}/${rel}`, tier: "builtin",
+    }));
+    // User tier: ComfyUI userdata under user/default/ts-studio/workflows.
+    // A user file whose manifest id matches a built-in OVERRIDES it (plan §4).
+    if (apiFetcher) {
+        try {
+            const res = await apiFetcher("/userdata?dir=ts-studio%2Fworkflows&recurse=true");
+            if (res.ok) {
+                for (const name of await res.json()) {
+                    if (!String(name).endsWith(".json")) continue;
+                    const encoded = encodeURIComponent(`ts-studio/workflows/${name}`);
+                    sources.push({ rel: `user:${name}`, tier: "user",
+                                   url: `/userdata/${encoded}`, viaApi: true });
+                }
+            }
+        } catch (err) {
+            console.warn("[TS Studio] userdata listing failed", err);
+        }
+    }
     const backends = [];
-    for (const rel of index.workflows || []) {
-        const entry = { id: rel, manifest: null, graph: null, spec: null,
-                        available: false, problems: [], modelFiles: {} };
+    for (const source of sources) {
+        const entry = { id: source.rel, tier: source.tier, manifest: null, graph: null,
+                        spec: null, available: false, problems: [], modelFiles: {} };
         backends.push(entry);
         try {
-            entry.graph = await fetchJson(fetcher, `${BUILTIN_BASE}/${rel}`);
+            entry.graph = await fetchJson(source.viaApi ? apiFetcher : fetcher, source.url);
             entry.spec = inspectBackend(entry.graph);
             entry.manifest = entry.spec.manifest;
             entry.id = entry.manifest.id;
@@ -53,7 +73,14 @@ export async function loadBackends(fetcher, objectInfo) {
         validateAgainstServer(entry, objectInfo);
         entry.available = entry.problems.length === 0;
     }
-    return backends;
+    // User override: same manifest id keeps only the user version.
+    const byId = new Map();
+    for (const backend of backends) {
+        const key = backend.manifest?.id || backend.id;
+        const existing = byId.get(key);
+        if (!existing || backend.tier === "user") byId.set(key, backend);
+    }
+    return [...byId.values()];
 }
 
 function comboOptionsFor(objectInfo, cls, inputName) {
