@@ -220,15 +220,12 @@ export function createMaskCanvas(options = {}) {
     }
 
     function maskDataUrl() {
-        // Black background + white mask, the shape every consumer expects.
-        const out = document.createElement("canvas");
-        out.width = maskCanvas.width;
-        out.height = maskCanvas.height;
-        const octx = out.getContext("2d");
-        octx.fillStyle = "#000000";
-        octx.fillRect(0, 0, out.width, out.height);
-        octx.drawImage(maskCanvas, 0, 0);
-        return out.toDataURL("image/png");
+        // White strokes on a FULLY TRANSPARENT background. Both consumers
+        // agree on this shape: LaMa's decoder reads the alpha channel of an
+        // RGBA PNG (an opaque black background would select the whole frame
+        // — measured), and the studio's mask marker reads luminance, where
+        // transparent decodes to black.
+        return maskCanvas.toDataURL("image/png");
     }
 
     return {
