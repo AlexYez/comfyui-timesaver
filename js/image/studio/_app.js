@@ -54,6 +54,7 @@ const STRINGS = {
         negativePrompt: "Negative prompt",
         promptPlaceholder: "Describe the image…",
         format: "Format",
+        sizeFromReference: "Size follows the reference image",
         resolution: "Resolution",
         seed: "Seed",
         randomize: "randomize",
@@ -176,6 +177,7 @@ const STRINGS = {
         negativePrompt: "Негативный промпт",
         promptPlaceholder: "Опишите изображение…",
         format: "Формат",
+        sizeFromReference: "Размер берётся от референса",
         resolution: "Разрешение",
         seed: "Seed",
         randomize: "случайный",
@@ -614,6 +616,12 @@ export async function openStudio(node, persist) {
                     // Replace ON implies 100% strength: grey the slider out.
                     if (param === "replace") {
                         controlsByParam.get("denoise")?.setDisabled?.(Boolean(value));
+                    }
+                    // A filled reference sends the run to the edit graph,
+                    // which takes its frame from that image.
+                    if (param === "__refs") {
+                        const used = Object.values(value || {}).some(Boolean);
+                        controlsByParam.get("size")?.setDisabled?.(used);
                     }
                 },
             });

@@ -35,6 +35,10 @@ export function ensureControlStyles() {
 .ts-studio__sizerow input[type=range]{flex:1}
 .ts-studio__sizeinfo{display:flex;justify-content:space-between;font-size:var(--ts-fs-sm);
     color:var(--ts-muted)}
+.ts-studio__size.is-disabled .ts-studio__aspects,
+.ts-studio__size.is-disabled .ts-studio__sizerow,
+.ts-studio__size.is-disabled .ts-studio__sizeinfo{opacity:.4}
+.ts-studio__sizenote{font-size:var(--ts-fs-xs);color:var(--ts-muted)}
 .ts-studio__seedrow{display:flex;align-items:center;gap:4px}
 .ts-studio__seedrow input[type=text]{flex:1;font-variant-numeric:tabular-nums}
 .ts-studio__seedbtn{width:26px;height:26px;flex:0 0 auto;display:flex;align-items:center;
@@ -170,6 +174,7 @@ registerControlKind("size", (control, ctx) => {
     const snap = Number(control.snap || 16);
 
     const section = deckSection(ctx.t.format);
+    section.classList.add("ts-studio__size");
     const grid = document.createElement("div");
     grid.className = "ts-studio__aspects";
     const buttons = new Map();
@@ -224,9 +229,24 @@ registerControlKind("size", (control, ctx) => {
     }
     sync();
 
+    const note = document.createElement("div");
+    note.className = "ts-studio__sizenote";
+    note.style.display = "none";
+    note.textContent = ctx.t.sizeFromReference;
+    section.appendChild(note);
+
     return {
         element: section,
         get: () => ({ aspect: state.aspect, mp: state.mp }),
+        // Edit runs inherit the reference's frame, so the picker would be
+        // lying if it stayed live: grey it out and say why.
+        setDisabled: (disabled) => {
+            const off = Boolean(disabled);
+            section.classList.toggle("is-disabled", off);
+            slider.disabled = off;
+            for (const button of buttons.values()) button.disabled = off;
+            note.style.display = off ? "" : "none";
+        },
         set: (value) => {
             // A carried-over aspect only applies if this model offers it;
             // otherwise the model's own default stands.
