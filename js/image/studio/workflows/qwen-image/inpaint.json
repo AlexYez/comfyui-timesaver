@@ -1,0 +1,318 @@
+{
+ "p_prompt": {
+  "class_type": "TS_StudioInputText",
+  "inputs": {
+   "value": "",
+   "param_name": "prompt",
+   "label": ""
+  }
+ },
+ "p_image": {
+  "class_type": "TS_StudioInputImage",
+  "inputs": {
+   "value": "",
+   "param_name": "source_image",
+   "label": ""
+  }
+ },
+ "p_mask": {
+  "class_type": "TS_StudioInputMask",
+  "inputs": {
+   "value": "",
+   "param_name": "mask",
+   "label": ""
+  }
+ },
+ "p_steps": {
+  "class_type": "TS_StudioInputNumber",
+  "inputs": {
+   "value": 20,
+   "param_name": "steps",
+   "label": ""
+  }
+ },
+ "p_cfg": {
+  "class_type": "TS_StudioInputNumber",
+  "inputs": {
+   "value": 2.5,
+   "param_name": "cfg",
+   "label": ""
+  }
+ },
+ "p_seed": {
+  "class_type": "TS_StudioInputSeed",
+  "inputs": {
+   "value": 0,
+   "param_name": "seed"
+  }
+ },
+ "p_denoise": {
+  "class_type": "TS_StudioInputNumber",
+  "inputs": {
+   "value": 1.0,
+   "param_name": "denoise",
+   "label": ""
+  }
+ },
+ "p_think": {
+  "class_type": "TS_StudioInputNumber",
+  "inputs": {
+   "value": 4,
+   "param_name": "think_steps",
+   "label": ""
+  }
+ },
+ "model_loader": {
+  "class_type": "UNETLoader",
+  "inputs": {
+   "unet_name": "qwen\\qwen_image_2512_bf16.safetensors",
+   "weight_dtype": "default"
+  },
+  "_meta": {
+   "title": "studio:model"
+  }
+ },
+ "lora_stack": {
+  "class_type": "TS_StudioLoraStack",
+  "inputs": {
+   "model": [
+    "model_loader",
+    0
+   ]
+  }
+ },
+ "model_sampling": {
+  "class_type": "ModelSamplingAuraFlow",
+  "inputs": {
+   "model": [
+    "lora_stack",
+    0
+   ],
+   "shift": 3.1
+  }
+ },
+ "clip_loader": {
+  "class_type": "CLIPLoader",
+  "inputs": {
+   "clip_name": "qwen\\qwen_2.5_vl_7b_fp8_scaled.safetensors",
+   "type": "qwen_image"
+  },
+  "_meta": {
+   "title": "studio:clip"
+  }
+ },
+ "vae_loader": {
+  "class_type": "VAELoader",
+  "inputs": {
+   "vae_name": "qwen\\qwen_image_vae.safetensors"
+  },
+  "_meta": {
+   "title": "studio:vae"
+  }
+ },
+ "encode_pos": {
+  "class_type": "CLIPTextEncode",
+  "inputs": {
+   "text": [
+    "p_prompt",
+    0
+   ],
+   "clip": [
+    "clip_loader",
+    0
+   ]
+  }
+ },
+ "neg_zero": {
+  "class_type": "ConditioningZeroOut",
+  "inputs": {
+   "conditioning": [
+    "encode_pos",
+    0
+   ]
+  }
+ },
+ "crop": {
+  "class_type": "TSCropToMask",
+  "inputs": {
+   "images": [
+    "p_image",
+    0
+   ],
+   "mask": [
+    "p_mask",
+    0
+   ],
+   "padding": 64,
+   "divide_by": 32,
+   "max_resolution": 1024,
+   "fixed_mask_frame_index": 0,
+   "interpolation_window_size": 0,
+   "force_gpu": true,
+   "fixed_crop_size": false,
+   "fixed_width": 1024,
+   "fixed_height": 1024
+  }
+ },
+ "encode_latent": {
+  "class_type": "VAEEncode",
+  "inputs": {
+   "pixels": [
+    "crop",
+    0
+   ],
+   "vae": [
+    "vae_loader",
+    0
+   ]
+  }
+ },
+ "latent_mask": {
+  "class_type": "SetLatentNoiseMask",
+  "inputs": {
+   "samples": [
+    "encode_latent",
+    0
+   ],
+   "mask": [
+    "crop",
+    1
+   ]
+  }
+ },
+ "guider": {
+  "class_type": "CFGGuider",
+  "inputs": {
+   "model": [
+    "model_sampling",
+    0
+   ],
+   "positive": [
+    "encode_pos",
+    0
+   ],
+   "negative": [
+    "neg_zero",
+    0
+   ],
+   "cfg": [
+    "p_cfg",
+    0
+   ]
+  }
+ },
+ "sigmas": {
+  "class_type": "BasicScheduler",
+  "inputs": {
+   "model": [
+    "model_sampling",
+    0
+   ],
+   "scheduler": "simple",
+   "steps": [
+    "p_steps",
+    1
+   ],
+   "denoise": [
+    "p_denoise",
+    0
+   ]
+  }
+ },
+ "sampler": {
+  "class_type": "TS_UniversalInpaintSampler",
+  "inputs": {
+   "think_steps": [
+    "p_think",
+    1
+   ],
+   "lambda_strength": 4.0,
+   "step_size": 0.15,
+   "friction": 12.0,
+   "think_noise": 0.0
+  }
+ },
+ "noise": {
+  "class_type": "RandomNoise",
+  "inputs": {
+   "noise_seed": [
+    "p_seed",
+    0
+   ]
+  }
+ },
+ "sample": {
+  "class_type": "SamplerCustomAdvanced",
+  "inputs": {
+   "noise": [
+    "noise",
+    0
+   ],
+   "guider": [
+    "guider",
+    0
+   ],
+   "sampler": [
+    "sampler",
+    0
+   ],
+   "sigmas": [
+    "sigmas",
+    0
+   ],
+   "latent_image": [
+    "latent_mask",
+    0
+   ]
+  }
+ },
+ "decode": {
+  "class_type": "VAEDecode",
+  "inputs": {
+   "samples": [
+    "sample",
+    0
+   ],
+   "vae": [
+    "vae_loader",
+    0
+   ]
+  }
+ },
+ "restore": {
+  "class_type": "TSRestoreFromCrop",
+  "inputs": {
+   "original_images": [
+    "p_image",
+    0
+   ],
+   "cropped_images": [
+    "decode",
+    0
+   ],
+   "crop_data": [
+    "crop",
+    2
+   ],
+   "blur": 8,
+   "blur_type": "gaussian",
+   "force_gpu": true
+  }
+ },
+ "studio_out": {
+  "class_type": "TS_StudioOutput",
+  "inputs": {
+   "image": [
+    "restore",
+    0
+   ],
+   "filename_prefix": "ts_studio/session"
+  }
+ },
+ "studio_manifest": {
+  "class_type": "TS_StudioManifest",
+  "inputs": {
+   "manifest": "{\n  \"schema_version\": \"1.0.0\",\n  \"id\": \"qwen-image/inpaint\",\n  \"label\": {\n    \"en\": \"Inpaint\",\n    \"ru\": \"Inpaint\"\n  },\n  \"family\": \"qwen-image\",\n  \"family_label\": \"Qwen Image\",\n  \"mode\": \"inpaint\",\n  \"order\": 30,\n  \"controls\": [\n    {\n      \"param\": \"prompt\",\n      \"kind\": \"prompt\",\n      \"superprompt\": true\n    },\n    {\n      \"param\": \"seed\",\n      \"kind\": \"seed\"\n    },\n    {\n      \"param\": \"loras\",\n      \"kind\": \"loras\",\n      \"max\": 8,\n      \"strength\": [\n        -2.0,\n        2.0\n      ]\n    },\n    {\n      \"param\": \"denoise\",\n      \"kind\": \"number\",\n      \"advanced\": true,\n      \"min\": 0.05,\n      \"max\": 1.0,\n      \"step\": 0.05,\n      \"label\": {\n        \"en\": \"Denoise\",\n        \"ru\": \"Денойз\"\n      }\n    },\n    {\n      \"param\": \"steps\",\n      \"kind\": \"number\",\n      \"advanced\": true,\n      \"min\": 1,\n      \"max\": 60,\n      \"label\": {\n        \"en\": \"Steps\",\n        \"ru\": \"Шаги\"\n      }\n    },\n    {\n      \"param\": \"cfg\",\n      \"kind\": \"number\",\n      \"advanced\": true,\n      \"min\": 0,\n      \"max\": 15,\n      \"step\": 0.1,\n      \"label\": {\n        \"en\": \"CFG\",\n        \"ru\": \"CFG\"\n      }\n    },\n    {\n      \"param\": \"think_steps\",\n      \"kind\": \"number\",\n      \"advanced\": true,\n      \"min\": 0,\n      \"max\": 12,\n      \"label\": {\n        \"en\": \"Think steps (quality)\",\n        \"ru\": \"Шаги размышления (качество)\"\n      }\n    }\n  ],\n  \"refs\": {\n    \"max\": 0\n  },\n  \"requires\": [\n    \"source_image\",\n    \"mask\"\n  ],\n  \"inpaint_params\": {\n    \"image\": \"source_image\",\n    \"mask\": \"mask\"\n  },\n  \"negative_prompt\": false,\n  \"models\": [\n    {\n      \"title\": \"studio:model\",\n      \"input\": \"unet_name\",\n      \"folder\": \"diffusion_models\",\n      \"match\": \"qwen_image_(2512|\\\\d+)_|Artius_Qwen_v\"\n    },\n    {\n      \"title\": \"studio:clip\",\n      \"input\": \"clip_name\",\n      \"folder\": \"text_encoders\",\n      \"match\": \"qwen_2\\\\.5_vl_7b\"\n    },\n    {\n      \"title\": \"studio:vae\",\n      \"input\": \"vae_name\",\n      \"folder\": \"vae\",\n      \"match\": \"qwen_image_vae\"\n    }\n  ]\n}"
+  }
+ }
+}
