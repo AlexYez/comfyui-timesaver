@@ -53,6 +53,9 @@ const STRINGS = {
         prompt: "Prompt",
         negativePrompt: "Negative prompt",
         promptPlaceholder: "Describe the image…",
+        promptExpanding: "Preparing the prompt for this model…",
+        promptExpandBadShape: "The prompt helper did not return the structure this model needs — try again.",
+        promptExpandFailed: (m) => `Could not prepare the prompt: ${m}`,
         format: "Format",
         sizeFromReference: "Size follows the reference image",
         resolution: "Resolution",
@@ -176,6 +179,9 @@ const STRINGS = {
         prompt: "Промпт",
         negativePrompt: "Негативный промпт",
         promptPlaceholder: "Опишите изображение…",
+        promptExpanding: "Готовлю промпт под эту модель…",
+        promptExpandBadShape: "Помощник промпта вернул не ту структуру, которую ждёт модель — попробуйте ещё раз.",
+        promptExpandFailed: (m) => `Не удалось подготовить промпт: ${m}`,
         format: "Формат",
         sizeFromReference: "Размер берётся от референса",
         resolution: "Разрешение",
@@ -820,6 +826,15 @@ export async function openStudio(node, persist) {
             const base = runValues.prompt.trim().replace(/[,\s]+$/, "");
             runValues.prompt = base ? `${base}, ${styleTail}` : styleTail;
         }
+        // What the user typed — the metadata and the snapshot keep this, not
+        // whatever a model-specific pipeline expands it into.
+        const authoredPrompt = typeof runValues.prompt === "string" ? runValues.prompt : "";
+        const pipeline = target.manifest.prompt_pipeline;
+        if (pipeline && authoredPrompt) {
+            const expanded = await expandPrompt(pipeline, authoredPrompt);
+            if (expanded === null) return;          // status already explains
+            runValues.prompt = expanded;
+        }
         // Filled reference slots become image params; empty ones become
         // dropParams so the patcher removes their optional branches.
         const dropParams = [];
@@ -881,7 +896,7 @@ export async function openStudio(node, persist) {
             familyLabel: target.manifest.family_label,
             mode: target.manifest.mode,
             uiMode: activeModeId,
-            values: runValues,
+            values: { ...runValues, prompt: authoredPrompt || runValues.prompt },
             loras,
             styles: promptTools?.getStyleNames() || [],
             size: controlsByParam.get("size")?.get(),
@@ -901,7 +916,8 @@ export async function openStudio(node, persist) {
                 dropParams,
                 filenamePrefix: sessionPrefix(sessionId),
                 isOptionalInput: optionalIndex,
-                promptText: typeof runValues.prompt === "string" ? runValues.prompt : "",
+                promptText: authoredPrompt || (typeof runValues.prompt === "string"
+                    ? runValues.prompt : ""),
                 studioState,
             });
         } catch (err) {
@@ -968,6 +984,52 @@ export async function openStudio(node, persist) {
     function setStatus(message) {
         setCaption(message, null);
         console.warn("[TS Studio]", message);
+    }
+
+    /**
+     * Some families do not read free text. Ideogram 4 wants a structured JSON
+     * caption and answers anything else with its built-in "blocked by safety
+     * filter" card (measured on this install) — so a manifest can declare the
+     * SuperPrompt preset that turns what the user wrote into the shape its
+     * model expects. The typed text stays the user's; only the graph sees the
+     * expansion.
+     *
+     * @returns {Promise<string|null>} expanded prompt, or null to abort the run.
+     */
+    async function expandPrompt(pipeline, text) {
+        if (pipeline.expect === "json" && looksLikeJsonObject(text)) return text;
+        setStatus(t.promptExpanding);
+        try {
+            const response = await api.fetchApi("/ts_super_prompt/enhance", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ text, system_preset: pipeline.preset, seed: Date.now() }),
+            });
+            const payload = await response.json();
+            if (!response.ok || payload.error) throw new Error(payload.error || `HTTP ${response.status}`);
+            const expanded = String(payload.text || "").trim();
+            if (!expanded) throw new Error("empty result");
+            if (pipeline.expect === "json" && !looksLikeJsonObject(expanded)) {
+                // Passing prose to a JSON-only model wastes a full render.
+                setStatus(t.promptExpandBadShape);
+                return null;
+            }
+            setStatus("");
+            return expanded;
+        } catch (err) {
+            setStatus(t.promptExpandFailed(err.message));
+            return null;
+        }
+    }
+
+    function looksLikeJsonObject(text) {
+        const trimmed = String(text).trim();
+        if (!trimmed.startsWith("{")) return false;
+        try {
+            return typeof JSON.parse(trimmed) === "object";
+        } catch {
+            return false;
+        }
     }
 
     // ── recreate: rebuild a whole session from a result ─────────────────── //

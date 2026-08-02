@@ -25,7 +25,7 @@
  "p_denoise": {
   "class_type": "TS_StudioInputNumber",
   "inputs": {
-   "value": 0.25,
+   "value": 0.45,
    "param_name": "denoise",
    "label": ""
   }
@@ -33,7 +33,7 @@
  "p_steps": {
   "class_type": "TS_StudioInputNumber",
   "inputs": {
-   "value": 8,
+   "value": 3,
    "param_name": "steps",
    "label": ""
   }
@@ -163,8 +163,8 @@
     1
    ],
    "cfg": 1.0,
-   "sampler_name": "euler",
-   "scheduler": "simple",
+   "sampler_name": "dpmpp_2m_sde",
+   "scheduler": "beta",
    "positive": [
     "encode_pos",
     0
@@ -213,7 +213,7 @@
  "studio_manifest": {
   "class_type": "TS_StudioManifest",
   "inputs": {
-   "manifest": "{\"schema_version\": \"1.0.0\", \"id\": \"secondpass/upscale\", \"label\": {\"en\": \"Upscale\", \"ru\": \"Апскейл\"}, \"family\": \"secondpass\", \"family_label\": \"Diffusion 2-pass (detail)\", \"mode\": \"upscale\", \"order\": 41, \"controls\": [{\"param\": \"prompt\", \"kind\": \"prompt\", \"superprompt\": true}, {\"param\": \"seed\", \"kind\": \"seed\"}, {\"param\": \"denoise\", \"kind\": \"slider\", \"min\": 0.05, \"max\": 0.6, \"step\": 0.05, \"label\": {\"en\": \"Detail denoise\", \"ru\": \"Денойз деталей\"}, \"default\": 0.25}, {\"param\": \"steps\", \"kind\": \"number\", \"advanced\": true, \"min\": 1, \"max\": 30, \"label\": {\"en\": \"Steps\", \"ru\": \"Шаги\"}}], \"refs\": {\"max\": 0}, \"requires\": [\"source_image\"], \"upscale_params\": {\"image\": \"source_image\"}, \"negative_prompt\": false, \"models\": [{\"title\": \"studio:upscaler\", \"input\": \"model_name\", \"folder\": \"upscale_models\", \"match\": \".\"}, {\"title\": \"studio:model\", \"input\": \"unet_name\", \"folder\": \"diffusion_models\", \"match\": \"z.?image.*turbo|Artius_ZImage\"}, {\"title\": \"studio:clip\", \"input\": \"clip_name\", \"folder\": \"text_encoders\", \"match\": \"qwen_3_4b\"}, {\"title\": \"studio:vae\", \"input\": \"vae_name\", \"folder\": \"vae\", \"match\": \"^ae\\\\.safetensors$\"}]}"
+   "manifest": "{\"schema_version\": \"1.0.0\", \"id\": \"secondpass/upscale\", \"label\": {\"en\": \"Upscale\", \"ru\": \"Апскейл\"}, \"family\": \"secondpass\", \"family_label\": \"Diffusion 2-pass (detail)\", \"mode\": \"upscale\", \"order\": 41, \"controls\": [{\"param\": \"prompt\", \"kind\": \"prompt\", \"superprompt\": true}, {\"param\": \"seed\", \"kind\": \"seed\"}, {\"param\": \"denoise\", \"kind\": \"slider\", \"min\": 0.05, \"max\": 0.6, \"step\": 0.05, \"label\": {\"en\": \"Detail denoise\", \"ru\": \"Денойз деталей\"}, \"default\": 0.45}, {\"param\": \"steps\", \"kind\": \"number\", \"advanced\": true, \"min\": 1, \"max\": 30, \"label\": {\"en\": \"Steps\", \"ru\": \"Шаги\"}, \"default\": 3}], \"refs\": {\"max\": 0}, \"requires\": [\"source_image\"], \"upscale_params\": {\"image\": \"source_image\"}, \"negative_prompt\": false, \"models\": [{\"title\": \"studio:upscaler\", \"input\": \"model_name\", \"folder\": \"upscale_models\", \"match\": \".\"}, {\"title\": \"studio:model\", \"input\": \"unet_name\", \"folder\": \"diffusion_models\", \"match\": \"z.?image.*turbo|Artius_ZImage\"}, {\"title\": \"studio:clip\", \"input\": \"clip_name\", \"folder\": \"text_encoders\", \"match\": \"qwen_3_4b\"}, {\"title\": \"studio:vae\", \"input\": \"vae_name\", \"folder\": \"vae\", \"match\": \"^ae\\\\.safetensors$\"}]}"
   }
  }
 }
