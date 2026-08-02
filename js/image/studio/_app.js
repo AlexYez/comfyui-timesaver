@@ -489,13 +489,7 @@ export async function openStudio(node, persist) {
     // ── run ─────────────────────────────────────────────────────────────── //
     async function run() {
         if (!activeBackend) return;
-        for (const required of activeBackend.manifest.requires || []) {
-            const refValue = values.__refs?.[required] ?? values[required];
-            if (!refValue) {
-                setStatus(t.requiresMissing(required));
-                return;
-            }
-        }
+
         const seedState = values.seed || { value: 0, randomize: true };
         const seed = seedState.randomize ? randomSeed() : Number(seedState.value || 0);
         seedControl?.showSeed(seed);
@@ -529,6 +523,15 @@ export async function openStudio(node, persist) {
                 Object.assign(runValues, collected);
             } catch (err) {
                 setStatus(String(err.message || err));
+                return;
+            }
+        }
+        // Required params are judged AFTER mode-specific collection — the
+        // inpaint surface contributes source_image/mask right above.
+        for (const required of activeBackend.manifest.requires || []) {
+            const value = runValues[required] ?? values.__refs?.[required];
+            if (!value) {
+                setStatus(t.requiresMissing(required));
                 return;
             }
         }
