@@ -246,8 +246,8 @@
     0
    ],
    "sigmas": [
-    "sigmas",
-    0
+    "sigmas_denoise",
+    1
    ],
    "latent_image": [
     "latent_mask",
@@ -312,7 +312,7 @@
  "studio_manifest": {
   "class_type": "TS_StudioManifest",
   "inputs": {
-   "manifest": "{\"schema_version\": \"1.0.0\", \"id\": \"ideogram/inpaint\", \"label\": {\"en\": \"Inpaint\", \"ru\": \"Inpaint\"}, \"family\": \"ideogram\", \"family_label\": \"Ideogram 4\", \"mode\": \"inpaint\", \"order\": 30, \"controls\": [{\"param\": \"prompt\", \"kind\": \"prompt\", \"superprompt\": true}, {\"param\": \"design_json\", \"kind\": \"designer\", \"provider\": \"ideogram\", \"label\": {\"en\": \"Layout\", \"ru\": \"Макет\"}}, {\"param\": \"seed\", \"kind\": \"seed\"}, {\"param\": \"loras\", \"kind\": \"loras\", \"max\": 8, \"strength\": [-2.0, 2.0]}, {\"param\": \"think_steps\", \"kind\": \"number\", \"advanced\": true, \"min\": 1, \"max\": 12, \"label\": {\"en\": \"Think steps (quality)\", \"ru\": \"Шаги размышления (качество)\"}}, {\"param\": \"steps\", \"kind\": \"number\", \"advanced\": true, \"min\": 1, \"max\": 60, \"label\": {\"en\": \"Steps\", \"ru\": \"Шаги\"}, \"default\": 12}, {\"param\": \"cfg\", \"kind\": \"number\", \"advanced\": true, \"min\": 0, \"max\": 15, \"step\": 0.1, \"label\": {\"en\": \"CFG\", \"ru\": \"CFG\"}}], \"refs\": {\"max\": 0}, \"requires\": [\"source_image\", \"mask\"], \"negative_prompt\": false, \"models\": [{\"title\": \"studio:model\", \"input\": \"unet_name\", \"folder\": \"diffusion_models\", \"match\": \"ideogram4_(fp8|int8)(?!.*uncond)\"}, {\"title\": \"studio:model_uncond\", \"input\": \"unet_name\", \"folder\": \"diffusion_models\", \"match\": \"ideogram4_unconditional\"}, {\"title\": \"studio:clip\", \"input\": \"clip_name\", \"folder\": \"text_encoders\", \"match\": \"qwen3vl_8b\"}, {\"title\": \"studio:vae\", \"input\": \"vae_name\", \"folder\": \"vae\", \"match\": \"flux2.*flux2-vae-v2\"}], \"dependencies\": [{\"pack\": \"LanPaint\", \"nodes\": [\"LanPaint_SamplerCustomAdvanced\", \"LanPaint_MaskBlend\"]}], \"designer\": {\"param\": \"design_json\", \"mode_param\": \"mode\", \"caption_param\": \"auto_caption\", \"preset\": \"Ideogram Prompt Enhance\"}, \"literals\": {\"mode\": {\"node\": \"designer\", \"input\": \"mode\"}}, \"prompt_source\": {\"node\": \"designer\", \"slot\": 0}}"
+   "manifest": "{\"schema_version\": \"1.0.0\", \"id\": \"ideogram/inpaint\", \"label\": {\"en\": \"Inpaint\", \"ru\": \"Inpaint\"}, \"family\": \"ideogram\", \"family_label\": \"Ideogram 4\", \"mode\": \"inpaint\", \"order\": 30, \"controls\": [{\"param\": \"prompt\", \"kind\": \"prompt\", \"superprompt\": true}, {\"param\": \"design_json\", \"kind\": \"designer\", \"provider\": \"ideogram\", \"label\": {\"en\": \"Layout\", \"ru\": \"Макет\"}}, {\"param\": \"seed\", \"kind\": \"seed\"}, {\"param\": \"denoise\", \"kind\": \"slider\", \"min\": 0.1, \"max\": 1.0, \"step\": 0.05, \"default\": 1.0, \"label\": {\"en\": \"Repaint strength\", \"ru\": \"Сила перерисовки\"}}, {\"param\": \"loras\", \"kind\": \"loras\", \"max\": 8, \"strength\": [-2.0, 2.0]}, {\"param\": \"think_steps\", \"kind\": \"number\", \"advanced\": true, \"min\": 1, \"max\": 12, \"label\": {\"en\": \"Think steps (quality)\", \"ru\": \"Шаги размышления (качество)\"}}, {\"param\": \"steps\", \"kind\": \"number\", \"advanced\": true, \"min\": 1, \"max\": 60, \"label\": {\"en\": \"Steps\", \"ru\": \"Шаги\"}, \"default\": 12}, {\"param\": \"cfg\", \"kind\": \"number\", \"advanced\": true, \"min\": 0, \"max\": 15, \"step\": 0.1, \"label\": {\"en\": \"CFG\", \"ru\": \"CFG\"}}], \"refs\": {\"max\": 0}, \"requires\": [\"source_image\", \"mask\"], \"negative_prompt\": false, \"models\": [{\"title\": \"studio:model\", \"input\": \"unet_name\", \"folder\": \"diffusion_models\", \"match\": \"ideogram4_(fp8|int8)(?!.*uncond)\"}, {\"title\": \"studio:model_uncond\", \"input\": \"unet_name\", \"folder\": \"diffusion_models\", \"match\": \"ideogram4_unconditional\"}, {\"title\": \"studio:clip\", \"input\": \"clip_name\", \"folder\": \"text_encoders\", \"match\": \"qwen3vl_8b\"}, {\"title\": \"studio:vae\", \"input\": \"vae_name\", \"folder\": \"vae\", \"match\": \"flux2.*flux2-vae-v2\"}], \"dependencies\": [{\"pack\": \"LanPaint\", \"nodes\": [\"LanPaint_SamplerCustomAdvanced\", \"LanPaint_MaskBlend\"]}], \"designer\": {\"param\": \"design_json\", \"mode_param\": \"mode\", \"caption_param\": \"auto_caption\", \"preset\": \"Ideogram Prompt Enhance\"}, \"literals\": {\"mode\": {\"node\": \"designer\", \"input\": \"mode\"}}, \"prompt_source\": {\"node\": \"designer\", \"slot\": 0}}"
   }
  },
  "p_design": {
@@ -348,6 +348,27 @@
     0
    ],
    "auto_seed": 0
+  }
+ },
+ "p_denoise": {
+  "class_type": "TS_StudioInputNumber",
+  "inputs": {
+   "value": 1.0,
+   "param_name": "denoise",
+   "label": ""
+  }
+ },
+ "sigmas_denoise": {
+  "class_type": "SplitSigmasDenoise",
+  "inputs": {
+   "sigmas": [
+    "sigmas",
+    0
+   ],
+   "denoise": [
+    "p_denoise",
+    0
+   ]
   }
  }
 }
