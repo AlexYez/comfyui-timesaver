@@ -26,7 +26,7 @@
  "p_steps": {
   "class_type": "TS_StudioInputNumber",
   "inputs": {
-   "value": 20,
+   "value": 4,
    "param_name": "steps",
    "label": ""
   }
@@ -34,7 +34,7 @@
  "p_cfg": {
   "class_type": "TS_StudioInputNumber",
   "inputs": {
-   "value": 2.5,
+   "value": 1.0,
    "param_name": "cfg",
    "label": ""
   }
@@ -122,7 +122,7 @@
   "class_type": "ModelSamplingAuraFlow",
   "inputs": {
    "model": [
-    "lora_stack",
+    "lightning",
     0
    ],
    "shift": 3.1
@@ -204,7 +204,21 @@
  "studio_manifest": {
   "class_type": "TS_StudioManifest",
   "inputs": {
-   "manifest": "{\n  \"schema_version\": \"1.0.0\",\n  \"id\": \"qwen-image/t2i\",\n  \"label\": {\n    \"en\": \"Generate\",\n    \"ru\": \"Генерация\"\n  },\n  \"family\": \"qwen-image\",\n  \"family_label\": \"Qwen Image\",\n  \"mode\": \"t2i\",\n  \"order\": 10,\n  \"controls\": [\n    {\n      \"param\": \"prompt\",\n      \"kind\": \"prompt\",\n      \"superprompt\": true\n    },\n    {\n      \"param\": \"size\",\n      \"kind\": \"size\",\n      \"aspects\": [\n        \"1:1\",\n        \"16:9\",\n        \"9:16\",\n        \"3:2\",\n        \"2:3\",\n        \"4:3\",\n        \"3:4\"\n      ],\n      \"width_param\": \"width\",\n      \"height_param\": \"height\",\n      \"base_mp\": 1.6,\n      \"mp\": [\n        0.25,\n        4.0\n      ],\n      \"snap\": 16\n    },\n    {\n      \"param\": \"seed\",\n      \"kind\": \"seed\"\n    },\n    {\n      \"param\": \"loras\",\n      \"kind\": \"loras\",\n      \"max\": 8,\n      \"strength\": [\n        -2.0,\n        2.0\n      ]\n    },\n    {\n      \"param\": \"negative_prompt\",\n      \"kind\": \"prompt\",\n      \"advanced\": true,\n      \"label\": {\n        \"en\": \"Negative prompt\",\n        \"ru\": \"Негативный промпт\"\n      }\n    },\n    {\n      \"param\": \"steps\",\n      \"kind\": \"number\",\n      \"advanced\": true,\n      \"min\": 1,\n      \"max\": 60,\n      \"step\": 1,\n      \"label\": {\n        \"en\": \"Steps\",\n        \"ru\": \"Шаги\"\n      }\n    },\n    {\n      \"param\": \"cfg\",\n      \"kind\": \"number\",\n      \"advanced\": true,\n      \"min\": 0,\n      \"max\": 15,\n      \"step\": 0.1,\n      \"label\": {\n        \"en\": \"CFG\",\n        \"ru\": \"CFG\"\n      }\n    }\n  ],\n  \"refs\": {\n    \"max\": 0\n  },\n  \"negative_prompt\": true,\n  \"models\": [\n    {\n      \"title\": \"studio:model\",\n      \"input\": \"unet_name\",\n      \"folder\": \"diffusion_models\",\n      \"match\": \"qwen_image_(2512|\\\\d+)_|Artius_Qwen_v\"\n    },\n    {\n      \"title\": \"studio:clip\",\n      \"input\": \"clip_name\",\n      \"folder\": \"text_encoders\",\n      \"match\": \"qwen_2\\\\.5_vl_7b\"\n    },\n    {\n      \"title\": \"studio:vae\",\n      \"input\": \"vae_name\",\n      \"folder\": \"vae\",\n      \"match\": \"qwen_image_vae\"\n    }\n  ]\n}"
+   "manifest": "{\"schema_version\": \"1.0.0\", \"id\": \"qwen-image/t2i\", \"label\": {\"en\": \"Generate\", \"ru\": \"Генерация\"}, \"family\": \"qwen-image\", \"family_label\": \"Qwen Image\", \"mode\": \"t2i\", \"order\": 10, \"controls\": [{\"param\": \"prompt\", \"kind\": \"prompt\", \"superprompt\": true}, {\"param\": \"size\", \"kind\": \"size\", \"aspects\": [\"1:1\", \"16:9\", \"9:16\", \"3:2\", \"2:3\", \"4:3\", \"3:4\"], \"width_param\": \"width\", \"height_param\": \"height\", \"base_mp\": 1.6, \"mp\": [0.25, 4.0], \"snap\": 16}, {\"param\": \"seed\", \"kind\": \"seed\"}, {\"param\": \"loras\", \"kind\": \"loras\", \"max\": 8, \"strength\": [-2.0, 2.0]}, {\"param\": \"negative_prompt\", \"kind\": \"prompt\", \"advanced\": true, \"label\": {\"en\": \"Negative prompt\", \"ru\": \"Негативный промпт\"}}, {\"param\": \"steps\", \"kind\": \"number\", \"advanced\": true, \"min\": 1, \"max\": 60, \"step\": 1, \"label\": {\"en\": \"Steps\", \"ru\": \"Шаги\"}, \"default\": 4}, {\"param\": \"cfg\", \"kind\": \"number\", \"advanced\": true, \"min\": 1.0, \"max\": 15, \"step\": 0.1, \"label\": {\"en\": \"CFG\", \"ru\": \"CFG\"}, \"default\": 1.0}], \"refs\": {\"max\": 0}, \"negative_prompt\": true, \"models\": [{\"title\": \"studio:model\", \"input\": \"unet_name\", \"folder\": \"diffusion_models\", \"match\": \"qwen_image_(2512|\\\\d+)_|Artius_Qwen_v\"}, {\"title\": \"studio:clip\", \"input\": \"clip_name\", \"folder\": \"text_encoders\", \"match\": \"qwen_2\\\\.5_vl_7b\"}, {\"title\": \"studio:vae\", \"input\": \"vae_name\", \"folder\": \"vae\", \"match\": \"qwen_image_vae\"}, {\"title\": \"studio:lora_lightning\", \"match\": \"Qwen-Image-2512-Lightning-4steps.*bf16\", \"folder\": \"loras\"}]}"
+  }
+ },
+ "lightning": {
+  "class_type": "LoraLoaderModelOnly",
+  "_meta": {
+   "title": "studio:lora_lightning"
+  },
+  "inputs": {
+   "model": [
+    "lora_stack",
+    0
+   ],
+   "lora_name": "qwen\\Qwen-Image-2512-Lightning-4steps-V1.0-bf16.safetensors",
+   "strength_model": 1.0
   }
  }
 }
