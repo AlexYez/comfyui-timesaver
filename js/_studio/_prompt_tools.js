@@ -281,11 +281,16 @@ export function mountPromptTools(options) {
     presetSelect.title = t.pt.preset;
     const presetSpec = objectInfo?.TS_SuperPrompt?.input?.required?.system_preset
         ?? objectInfo?.TS_SuperPrompt?.input?.optional?.system_preset;
-    const presets = Array.isArray(presetSpec?.[0]) ? presetSpec[0] : [];
+    // V1 nodes serialise a combo as [options, meta]; V3 as ["COMBO",
+    // {options}]. Read both shapes.
+    const presets = Array.isArray(presetSpec?.[0]) ? presetSpec[0]
+        : Array.isArray(presetSpec?.[1]?.options) ? presetSpec[1].options : [];
+    const defaultPreset = presetSpec?.[1]?.default;
     for (const preset of presets) {
         const option = document.createElement("option");
         option.value = preset;
         option.textContent = preset;
+        option.selected = preset === defaultPreset;
         presetSelect.appendChild(option);
     }
 
