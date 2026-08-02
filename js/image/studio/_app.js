@@ -227,7 +227,10 @@ export async function openStudio(node, persist) {
     let activeBackend = null;
     let queueCount = 0;
 
-    const modeIds = [...new Set([...families.values()].flatMap((f) => [...f.modes.keys()]))];
+    const MODE_ORDER = ["t2i", "edit", "inpaint", "upscale"];
+    const present = new Set([...families.values()].flatMap((f) => [...f.modes.keys()]));
+    const modeIds = [...MODE_ORDER.filter((m) => present.has(m)),
+                     ...[...present].filter((m) => !MODE_ORDER.includes(m))];
     const shell = createShell({
         label: t.appLabel,
         closeTitle: t.close,
@@ -629,9 +632,11 @@ export async function openStudio(node, persist) {
     }
 
     // ── boot ────────────────────────────────────────────────────────────── //
-    const firstAvailable = backends.find((b) => b.available);
+    const available = backends.filter((b) => b.available)
+        .sort((a, b2) => (a.manifest.order || 99) - (b2.manifest.order || 99));
+    const firstAvailable = available.find((b) => b.manifest.mode === modeIds[0]) || available[0];
     if (firstAvailable) {
-        shell.setMode(firstAvailable.manifest.mode);
+        selectMode(firstAvailable.manifest.mode);
         selectBackend(firstAvailable);
     } else {
         const note = document.createElement("div");
