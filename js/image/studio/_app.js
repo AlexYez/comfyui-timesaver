@@ -1010,10 +1010,14 @@ export async function openStudio(node, persist) {
     async function prepareDesignerRun(designer, authoredPrompt, runValues) {
         const design = controlsByParam.get(designer.param)?.get();
         const size = controlsByParam.get("size")?.get();
+        const { applyFrameToDesign } = await import("../../_studio/_editors.js");
+        // The node reads width/height from design_json in BOTH modes, so the
+        // deck's frame has to travel even when there is no design — otherwise
+        // Auto runs fall back to the node's own default aspect (measured: the
+        // deck said 1:1 and the render came out wide).
+        runValues[designer.param] = JSON.stringify(
+            applyFrameToDesign(design || {}, size?.aspect, size?.mp));
         if (design) {
-            const { applyFrameToDesign } = await import("../../_studio/_editors.js");
-            runValues[designer.param] = JSON.stringify(
-                applyFrameToDesign(design, size?.aspect, size?.mp));
             runValues[designer.mode_param || "mode"] = "designer";
             return true;
         }
