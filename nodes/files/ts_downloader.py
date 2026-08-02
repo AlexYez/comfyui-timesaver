@@ -1219,7 +1219,10 @@ class TS_DownloadFilesNode(IO.ComfyNode):
             total_size = remote_file_size if remote_file_size > 0 else None
 
             comfy_pbar = None
-            if ProgressBar and total_size:
+            # The engine ProgressBar checks the prompt-interrupt flag on
+            # update; a service job (honor_prompt_interrupt=False) must not
+            # inherit that, so it skips the queue progress bar entirely.
+            if ProgressBar and total_size and honor_prompt_interrupt:
                 comfy_pbar = ProgressBar(total_size)
 
             downloaded_since_update = 0

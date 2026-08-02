@@ -101,6 +101,10 @@ def _run_job_blocking(job: dict[str, Any]) -> None:
         except Exception:
             pass
     if not ok:
+        # The engine swallows the InterruptedError our progress_cb raises and
+        # reports a plain failure; restore the honest verdict.
+        if job.get("_cancel"):
+            raise InterruptedError("cancelled by the user")
         raise RuntimeError("Download failed — see the server log for the reason.")
 
 
