@@ -17,6 +17,7 @@ import { newSessionId, sessionPrefix, resultRelPath, restoreResults } from "../.
 import { mountPromptTools } from "../../_studio/_prompt_tools.js";
 import { pickAssetProvider } from "../../_studio/_assets.js";
 import { createInpaintMode } from "./_modes_inpaint.js";
+import { createDownloadPanel } from "../../_studio/_downloads.js";
 import { uploadImage } from "../../_studio/_dnd.js";
 
 const ICONS = {
@@ -68,6 +69,18 @@ const STRINGS = {
         loraStrength: "Strength (negative values invert the effect)",
         loraRemove: "Remove this LoRA",
         loraNone: "No LoRA files installed",
+        dl: {
+            title: "Missing models",
+            get: "Download",
+            cancel: "Stop",
+            searching: "Searching on Hugging Face…",
+            notFound: "Not found on Hugging Face — add the file manually.",
+            queued: "Queued…",
+            verifying: "Verifying SHA256…",
+            total: (n, d, s) => `${n} downloading · ${d} of ${s}`,
+            status: (s) => ({done: "Done", error: "Failed", cancelled: "Cancelled"}[s] || s),
+            doneHint: "Model downloaded — switch models to re-check.",
+        },
         inp: {
             cleanup: "Cleanup", repaint: "Repaint",
             cleanupTip: "Instant object removal (LaMa): paint and release — no prompt needed",
@@ -144,6 +157,18 @@ const STRINGS = {
         loraStrength: "Сила (отрицательные значения инвертируют эффект)",
         loraRemove: "Убрать эту LoRA",
         loraNone: "Файлы LoRA не установлены",
+        dl: {
+            title: "Недостающие модели",
+            get: "Скачать",
+            cancel: "Стоп",
+            searching: "Поиск на Hugging Face…",
+            notFound: "Не найдено на Hugging Face — добавьте файл вручную.",
+            queued: "В очереди…",
+            verifying: "Проверка SHA256…",
+            total: (n, d, s) => `скачивается: ${n} · ${d} из ${s}`,
+            status: (s) => ({done: "Готово", error: "Ошибка", cancelled: "Отменено"}[s] || s),
+            doneHint: "Модель скачана — переключите модель для перепроверки.",
+        },
         inp: {
             cleanup: "Cleanup", repaint: "Repaint",
             cleanupTip: "Мгновенное удаление объектов (LaMa): закрасьте и отпустите — промпт не нужен",
@@ -418,6 +443,31 @@ export async function openStudio(node, persist) {
                 toggle.textContent = `${open ? "▾" : "▸"} ${t.advanced}`;
             });
             shell.deck.append(toggle, holder);
+        }
+
+        const problems = [];
+        for (const candidate of backends) {
+            if (candidate.available || candidate.manifest?.mode !== backend.manifest.mode) continue;
+            for (const reason of candidate.problems) {
+                const match = /no installed file matches '([^']+)' for (\S+)/.exec(reason);
+                if (!match) continue;
+                const modelSpec = (candidate.manifest.models || [])
+                    .find((m) => m.title === match[2]);
+                problems.push({
+                    familyLabel: candidate.manifest.family_label || candidate.manifest.family,
+                    filenameHint: match[1].replace(/[^\w.-]+/g, "_"),
+                    folder: modelSpec?.folder || "checkpoints",
+                });
+            }
+        }
+        let downloadPanel = null;
+        if (problems.length) {
+            downloadPanel = createDownloadPanel({
+                api, t, problems,
+                onResolved: () => setStatus(t.dl.doneHint),
+            });
+            controlInstances.push(downloadPanel);
+            shell.deck.appendChild(downloadPanel.element);
         }
 
         const foot = document.createElement("div");
