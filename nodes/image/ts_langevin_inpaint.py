@@ -265,10 +265,20 @@ class TS_LangevinInpaint(IO.ComfyNode):
         def sample_fn(inner_model, x, sigmas_in, extra_args=None, callback=None,
                       disable=None, **_kwargs):
             inner.model = inner_model
-            # The latent, its noise and the mask arrive on whatever device the
-            # graph left them on; sampling happens on the model's device.
-            inner.latent_image = inner.latent_image.to(x.device, x.dtype)
-            inner.noise = inner.noise.to(x.device, x.dtype)
+            # Take the anchor latent and its noise from the engine's own inpaint
+            # wrapper. Ours would be the RAW latent, while the engine samples in
+            # process_latent_in space — anchoring with the raw one printed a
+            # bright block into the mask (measured, even with the dynamics off).
+            engine_latent = getattr(inner_model, "latent_image", None)
+            engine_noise = getattr(inner_model, "noise", None)
+            if engine_latent is not None:
+                inner.latent_image = engine_latent.to(x.device, x.dtype)
+            else:
+                inner.latent_image = inner.latent_image.to(x.device, x.dtype)
+            if engine_noise is not None:
+                inner.noise = engine_noise.to(x.device, x.dtype)
+            else:
+                inner.noise = inner.noise.to(x.device, x.dtype)
             inner.mask_known = inner.mask_known.to(x.device, x.dtype)
             extra_args = dict(extra_args or {})
             # The engine's inpaint wrapper takes denoise_mask positionally; we
