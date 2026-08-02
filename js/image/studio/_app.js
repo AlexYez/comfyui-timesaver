@@ -80,7 +80,7 @@ const STRINGS = {
         dl: {
             title: "Missing models",
             get: "Download",
-            cancel: "Stop",
+            stop: "Stop",
             searching: "Searching on Hugging Face…",
             notFound: "Not found on Hugging Face — add the file manually.",
             queued: "Queued…",
@@ -175,7 +175,7 @@ const STRINGS = {
         dl: {
             title: "Недостающие модели",
             get: "Скачать",
-            cancel: "Стоп",
+            stop: "Стоп",
             searching: "Поиск на Hugging Face…",
             notFound: "Не найдено на Hugging Face — добавьте файл вручную.",
             queued: "В очереди…",

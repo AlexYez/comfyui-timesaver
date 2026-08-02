@@ -31,7 +31,7 @@ export function ensureDownloadStyles() {
     display:none}
 .ts-dl__bar.is-active{display:block}
 .ts-dl__bar div{height:100%;width:0%;background:var(--ts-accent);transition:width .2s ease}
-.ts-dl__bar.is-verify div{background:var(--ts-success,#7dbf7d)}
+.ts-dl__bar.is-verify div{background:var(--ts-success)}
 `;
     document.head.appendChild(style);
 }
@@ -152,7 +152,7 @@ export function createDownloadPanel(options) {
         const cancel = document.createElement("button");
         cancel.type = "button";
         cancel.className = "ts-ui-btn";
-        cancel.textContent = t.dl.cancel;
+        cancel.textContent = t.dl.stop;
         cancel.style.display = "none";
         head.append(name, button, cancel);
         const meta = document.createElement("div");
