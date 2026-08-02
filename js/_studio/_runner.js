@@ -17,8 +17,14 @@ export function createRunner(api) {
     }
 
     const teardowns = [
+        // execution_start reliably carries prompt_id on every engine version.
+        track("execution_start", ({ detail }) => {
+            if (detail?.prompt_id) executingPromptId = detail.prompt_id;
+        }),
         track("executing", ({ detail }) => {
             // detail: {node, display_node, prompt_id} — node === null means done.
+            // Some engine versions omit prompt_id here; execution_start above
+            // is the authoritative setter, this only clears on completion.
             if (detail?.prompt_id) {
                 executingPromptId = detail.node === null ? null : detail.prompt_id;
             }
@@ -29,8 +35,11 @@ export function createRunner(api) {
         }),
         track("b_preview", ({ detail }) => {
             // Binary previews carry no prompt id; they belong to whatever is
-            // executing. Route them only when that is one of ours.
-            const job = jobs.get(executingPromptId);
+            // executing. Route via the tracked id, or — when the engine gave
+            // us no id at all — to the single active job (measured: previews
+            // arrived but "executing" lacked prompt_id on this build).
+            let job = jobs.get(executingPromptId);
+            if (!job && jobs.size === 1) job = jobs.values().next().value;
             if (job) job.callbacks.onPreview?.(detail); // detail is a Blob
         }),
         track("executed", ({ detail }) => {

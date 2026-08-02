@@ -18,7 +18,8 @@ export function ensureShellStyles() {
     style.id = STYLE_ID;
     // Layout only; hairlines via border tokens, surfaces via theme tokens.
     style.textContent = `
-.ts-studio{display:grid;grid-template-columns:44px minmax(280px,340px) minmax(0,1fr) auto;
+.ts-studio{display:grid;
+    grid-template-columns:44px var(--ts-studio-deck-w,340px) minmax(0,1fr) auto;
     width:100%;height:100%;min-height:0;background:var(--ts-bg);color:var(--ts-text);
     font-size:var(--ts-fs)}
 .ts-studio__rail{display:flex;flex-direction:column;align-items:center;gap:4px;
@@ -29,10 +30,15 @@ export function ensureShellStyles() {
 .ts-studio__railbtn.is-active{background:var(--ts-accent-soft);color:var(--ts-accent)}
 .ts-studio__railbtn:focus-visible{outline:2px solid var(--ts-accent-line);outline-offset:1px}
 .ts-studio__railspacer{flex:1}
-.ts-studio__deck{display:flex;flex-direction:column;min-height:0;overflow-y:auto;
+.ts-studio__deck{position:relative;display:flex;flex-direction:column;min-height:0;overflow-y:auto;
     gap:10px;padding:10px;border-right:1px solid var(--ts-border);background:var(--ts-elevated)}
+/* Column resizers: invisible 5px strips over the hairlines. The layout is
+   fluid — widths are CSS variables, everything else is minmax/percent. */
+.ts-studio__resizer{position:absolute;top:0;bottom:0;width:7px;z-index:9;cursor:col-resize}
+.ts-studio__resizer:hover,.ts-studio__resizer.is-active{background:var(--ts-accent-soft)}
 .ts-studio__stage{position:relative;min-width:0;min-height:0;background:var(--ts-sunken)}
-.ts-studio__side{position:relative;display:flex;flex-direction:column;min-height:0;width:280px;
+.ts-studio__side{position:relative;display:flex;flex-direction:column;min-height:0;
+    width:var(--ts-studio-side-w,280px);
     border-left:1px solid var(--ts-border);background:var(--ts-elevated)}
 .ts-studio__side.is-collapsed{width:26px}
 .ts-studio__side.is-collapsed>*:not(.ts-studio__sidegrip){display:none}
@@ -115,6 +121,53 @@ export function createShell(options) {
         side.classList.toggle("is-collapsed", collapsed);
         grip.textContent = collapsed ? "‹" : "›";
     }
+
+    // ── fluid columns: draggable widths, persisted per install ──────────── //
+    const WIDTH_KEY = "ts-studio.columns";
+    let widths = { deck: 340, side: 280 };
+    try {
+        widths = { ...widths, ...JSON.parse(localStorage.getItem(WIDTH_KEY) || "{}") };
+    } catch { /* defaults stand */ }
+    function applyWidths() {
+        root.style.setProperty("--ts-studio-deck-w",
+            `${Math.min(560, Math.max(240, widths.deck))}px`);
+        root.style.setProperty("--ts-studio-side-w",
+            `${Math.min(520, Math.max(200, widths.side))}px`);
+    }
+    applyWidths();
+
+    function makeResizer(host, edge, get, set) {
+        const grip = document.createElement("div");
+        grip.className = "ts-studio__resizer";
+        grip.style[edge] = "-4px";
+        let startX = 0;
+        let startW = 0;
+        grip.addEventListener("pointerdown", (event) => {
+            event.preventDefault();
+            grip.setPointerCapture(event.pointerId);
+            grip.classList.add("is-active");
+            startX = event.clientX;
+            startW = get();
+        });
+        grip.addEventListener("pointermove", (event) => {
+            if (!grip.classList.contains("is-active")) return;
+            const delta = event.clientX - startX;
+            set(startW + (edge === "right" ? delta : -delta));
+            applyWidths();
+        });
+        const stop = () => {
+            if (!grip.classList.contains("is-active")) return;
+            grip.classList.remove("is-active");
+            try {
+                localStorage.setItem(WIDTH_KEY, JSON.stringify(widths));
+            } catch { /* private mode */ }
+        };
+        grip.addEventListener("pointerup", stop);
+        grip.addEventListener("pointercancel", stop);
+        host.appendChild(grip);
+    }
+    makeResizer(deck, "right", () => widths.deck, (w) => { widths.deck = w; });
+    makeResizer(side, "left", () => widths.side, (w) => { widths.side = w; });
 
     const overlay = openFullscreenOverlay(root, {
         label: options.label,
