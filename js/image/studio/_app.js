@@ -278,6 +278,8 @@ export async function openStudio(node, persist) {
         modes: modeIds.map((id) => ({ id, title: t.modes[id] || id, icon: ICONS[id] || ICONS.t2i })),
         onMode: (id) => selectMode(id),
         onClose: () => {
+            gallery.teardown?.();
+            helpPanel.teardown?.();
             inpaintMode?.teardown();
             for (const instance of controlInstances) instance.teardown?.();
             promptTools?.teardown();
