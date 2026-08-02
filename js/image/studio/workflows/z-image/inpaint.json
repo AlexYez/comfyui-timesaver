@@ -226,10 +226,11 @@
     "p_think",
     1
    ],
-   "lambda_strength": 4.0,
-   "step_size": 0.15,
-   "friction": 12.0,
-   "think_noise": 0.0
+   "resample_strength": 1.0,
+   "model": [
+    "model_sampling",
+    0
+   ]
   }
  },
  "noise": {
@@ -295,7 +296,7 @@
     2
    ],
    "blur": 8,
-   "blur_type": "gaussian",
+   "blur_type": "Gaussian",
    "force_gpu": true
   }
  },
