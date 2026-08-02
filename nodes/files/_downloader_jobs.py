@@ -91,6 +91,9 @@ def _run_job_blocking(job: dict[str, Any]) -> None:
             session, url, resolved, True, True, 1024 * 1024,
             "huggingface.co", "", "", False, "hf_sha256_auto",
             progress_cb=progress_cb,
+            # Service downloads must not die because a PROMPT was interrupted
+            # once — the stale engine flag has nothing to do with this job.
+            honor_prompt_interrupt=False,
         )
     finally:
         try:

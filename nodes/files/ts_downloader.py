@@ -948,7 +948,7 @@ class TS_DownloadFilesNode(IO.ComfyNode):
             return False
 
     @classmethod
-    def _download_single_file(cls, session, url, target_dir, skip_existing, verify_size, chunk_size_bytes, hf_domain_active, hf_token, ms_token, unzip_after_download, integrity_mode, progress_cb=None):
+    def _download_single_file(cls, session, url, target_dir, skip_existing, verify_size, chunk_size_bytes, hf_domain_active, hf_token, ms_token, unzip_after_download, integrity_mode, progress_cb=None, honor_prompt_interrupt=True):
         response_get = None
         download_lock = None
         try:
@@ -1247,7 +1247,8 @@ class TS_DownloadFilesNode(IO.ComfyNode):
                     # nothing in this loop ever asked whether the run was still
                     # wanted. The partial file and its meta stay on disk, so the
                     # next run resumes instead of starting over.
-                    cls._raise_if_interrupted()
+                    if honor_prompt_interrupt:
+                        cls._raise_if_interrupted()
                     if not chunk:
                         continue
                     f.write(chunk)
