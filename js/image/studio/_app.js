@@ -902,6 +902,10 @@ export async function openStudio(node, persist) {
             queueCount += 1;
             updateHint();
             await runner.submit(patched, {
+                // The snapshot travels as extra_pnginfo so the saver writes
+                // the ts_studio chunk even though the studio sends no
+                // LiteGraph workflow of its own.
+                pngInfo: { ts_studio: studioState },
                 onProgress: (value, max) => {
                     const pct = max ? Math.round((value / max) * 100) : 0;
                     deckWidgets.progress.classList.add("is-active");

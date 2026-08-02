@@ -71,13 +71,21 @@ export function createRunner(api) {
     /**
      * @param {object} graph Patched prompt JSON.
      * @param {object} callbacks {onQueued, onProgress, onPreview, onDone, onError, onCancelled}
+     * @param {object} [callbacks.pngInfo] Extra tEXt chunks for saved images,
+     *   as {chunkName: value}. The studio has no LiteGraph workflow to send,
+     *   so extra_pnginfo would otherwise be absent and a saver would have
+     *   nothing to attach the run snapshot to.
      * @returns {Promise<string>} prompt_id
      */
     async function submit(graph, callbacks) {
+        const body = { prompt: graph, client_id: api.clientId };
+        if (callbacks.pngInfo && Object.keys(callbacks.pngInfo).length) {
+            body.extra_data = { extra_pnginfo: { ...callbacks.pngInfo } };
+        }
         const response = await api.fetchApi("/prompt", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ prompt: graph, client_id: api.clientId }),
+            body: JSON.stringify(body),
         });
         const payload = await response.json();
         if (!response.ok || payload.error) {
