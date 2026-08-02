@@ -112,7 +112,7 @@
    "resize_type": "scale by multiplier",
    "resize_type.multiplier": [
     "p_scale",
-    1
+    0
    ],
    "scale_method": "lanczos",
    "input": [
