@@ -291,8 +291,9 @@ class TS_LangevinInpaint(IO.ComfyNode):
 
         sampler = comfy.samplers.KSAMPLER(sample_fn)
         logger.info("%s %d steps x %d inner (guidance %.1f, step %.2f, beta %.2f, "
-                    "friction %.1f) sampler=%s", LOG_PREFIX, len(sigmas) - 1,
-                    think_steps, guidance, step_size, beta, friction, sampler_name)
+                    "friction %.1f) sampler=%s flow=%s sigma[0]=%.3f",
+                    LOG_PREFIX, len(sigmas) - 1, think_steps, guidance, step_size,
+                    beta, friction, sampler_name, is_flow, float(sigmas[0]))
 
         callback = latent_preview.prepare_callback(model, len(sigmas) - 1)
         samples = comfy.sample.sample_custom(
@@ -317,10 +318,20 @@ def _sampler_step(x, denoised, sigma, sigma_next, is_flow):
 
 
 def _looks_like_flow(model) -> bool:
-    """Flow-matching families parameterise time differently; detect them."""
+    """Is this a flow-matching family?
+
+    Decided by the sampling object rather than the model type: CONST is exactly
+    the class whose noise_scaling reads (1-sigma)*x0 + sigma*eps, which is the
+    parameterisation the dynamics has to switch frames for. A model type string
+    can lag behind a ModelSampling patch; this cannot.
+    """
     try:
-        model_type = getattr(model.model, "model_type", None)
-        return str(getattr(model_type, "name", model_type)).upper() in {"FLOW", "FLUX"}
+        import comfy.model_sampling
+
+        sampling = model.get_model_object("model_sampling")
+        if isinstance(sampling, comfy.model_sampling.CONST):
+            return True
+        return isinstance(sampling, comfy.model_sampling.ModelSamplingDiscreteFlow)
     except Exception:                       # noqa: BLE001 - detection must not fail a run
         return False
 
