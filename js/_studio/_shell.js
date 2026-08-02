@@ -165,8 +165,13 @@ export function createShell(options) {
         grip.addEventListener("pointerup", stop);
         grip.addEventListener("pointercancel", stop);
         host.appendChild(grip);
+        return grip;
     }
-    makeResizer(deck, "right", () => widths.deck, (w) => { widths.deck = w; });
+    // The deck resizer lives on the ROOT: the deck's own children are wiped
+    // on every rebuild, which silently removed a deck-hosted grip (measured).
+    const deckGrip = makeResizer(root, "right", () => widths.deck, (w) => { widths.deck = w; });
+    deckGrip.style.right = "";
+    deckGrip.style.left = "calc(44px + var(--ts-studio-deck-w, 340px) - 4px)";
     makeResizer(side, "left", () => widths.side, (w) => { widths.side = w; });
 
     const overlay = openFullscreenOverlay(root, {
