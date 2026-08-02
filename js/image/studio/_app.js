@@ -112,7 +112,9 @@ export async function openStudio(node, persist) {
     const locale = STRINGS.ru === t ? "ru" : "en";
 
     const objectInfo = await (await api.fetchApi("/object_info")).json();
-    const backends = await loadBackends((url) => api.fetchApi(url), objectInfo);
+    // Backend workflow files are WEB_DIRECTORY statics: /extensions/* lives
+    // OUTSIDE the /api prefix that api.fetchApi prepends, so plain fetch.
+    const backends = await loadBackends((url) => fetch(url), objectInfo);
     const families = groupByFamily(backends);
     const sessionId = persist.sessionId || newSessionId();
     persist.setSessionId(sessionId);
