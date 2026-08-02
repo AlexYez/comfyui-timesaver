@@ -16,6 +16,12 @@ A fullscreen studio for generating and editing images. Everything under the hood
 - Palette — the style library: picked styles append to the prompt as chips, removable by their cross.
 - ✨ — prompt enhancement; the preset selects next to it.
 
+## Ideogram: the designer, hosted
+
+Ideogram 4 has a node of its own — **TS Image Ideogram Designer** — and the studio does not replace it: the **Layout** button opens that very editor, with all its panels, presets and its prompt-generating button. The model reads a structured description rather than free text, and it is the node that builds one, so the image's metadata carries exactly the prompt the render used.
+
+Skip the designer and the short path applies: plain text from the prompt field goes through the node's Auto mode and becomes a description via the same helper its editor uses. The deck's format and resolution are handed to the designer and stay authoritative.
+
 ## References and LoRA
 
 - Reference slots accept dropped files, gallery cards and Artius Browser cards; click to pick a file; the cross clears.
