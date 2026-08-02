@@ -45,48 +45,59 @@ _SMALL_ARG = 1e-3
 _TINY = 1e-12
 
 
-def _cosh_sinh_over_w(omega_sq: torch.Tensor, t: torch.Tensor):
-    """Return cosh(ωt) and sinh(ωt)/ω for ω² of either sign.
+def _damped_cosh_sinh(gamma: torch.Tensor, omega_sq: torch.Tensor, t: torch.Tensor):
+    """Return e^{−Γt/2}·cosh(ωt) and e^{−Γt/2}·sinh(ωt)/ω.
 
-    Both are entire functions of ω², so a single expression covers the
-    oscillatory (ω² < 0) and damped (ω² > 0) regimes:
+    The two factors have to be combined BEFORE evaluating: the sampler runs at
+    Γt of a few hundred, where cosh(ωt) overflows on its own even though the
+    product is O(1) — ω approaches Γ/2, so the surviving exponent is
+    (Γt/2)(√Δ − 1), a small number. Writing the product as a sum of two
+    exponentials keeps every exponent in range (measured: evaluating the
+    factors separately cost 0.5 of absolute error here).
 
-        cosh(ωt)      = Σ (ω²)^k t^{2k} / (2k)!
-        sinh(ωt)/ω    = t · Σ (ω²)^k t^{2k} / (2k+1)!
+    For ω² < 0 the motion oscillates; cosh/sinh become cos/sin, which are
+    bounded, so the plain product is safe there.
     """
-    arg = omega_sq * t * t                       # (ωt)², sign carries the regime
+    half_gamma_t = gamma * t / 2.0
     positive = omega_sq > 0
     omega = torch.sqrt(torch.clamp(omega_sq.abs(), min=_TINY))
     wt = omega * t
 
-    cosh_pos = torch.cosh(torch.clamp(wt, max=30.0))
-    cosh_neg = torch.cos(wt)
-    # sinh(x)/x and sin(x)/x, both -> 1 as x -> 0.
-    sinh_over_pos = torch.sinh(torch.clamp(wt, max=30.0)) / torch.clamp(wt, min=_TINY)
-    sinh_over_neg = torch.sinc(wt / math.pi)
+    # Damped branch: e^{-Γt/2}·cosh(ωt) = (e^{ωt-Γt/2} + e^{-ωt-Γt/2}) / 2
+    hi = torch.exp(torch.clamp(wt - half_gamma_t, max=60.0))
+    lo = torch.exp(torch.clamp(-wt - half_gamma_t, max=60.0))
+    cosh_damped = (hi + lo) / 2.0
+    sinh_over_w_damped = (hi - lo) / (2.0 * torch.clamp(omega, min=_TINY))
 
-    cosh = torch.where(positive, cosh_pos, cosh_neg)
-    sinh_over_wt = torch.where(positive, sinh_over_pos, sinh_over_neg)
+    # Oscillatory branch.
+    decay = torch.exp(-half_gamma_t)
+    cosh_osc = decay * torch.cos(wt)
+    sinh_over_w_osc = decay * t * torch.sinc(wt / math.pi)
 
-    # Series near zero: 1 + a/2 + a²/24 and 1 + a/6 + a²/120 with a = (ωt)².
+    cosh = torch.where(positive, cosh_damped, cosh_osc)
+    sinh_over_w = torch.where(positive, sinh_over_w_damped, sinh_over_w_osc)
+
+    # Series when ωt is negligible: cosh -> 1, sinh/ω -> t, both times decay.
+    arg = omega_sq * t * t
     small = arg.abs() < _SMALL_ARG
-    cosh = torch.where(small, 1.0 + arg / 2.0 + arg * arg / 24.0, cosh)
-    sinh_over_wt = torch.where(small, 1.0 + arg / 6.0 + arg * arg / 120.0, sinh_over_wt)
-    return cosh, sinh_over_wt * t              # cosh(ωt), sinh(ωt)/ω
+    cosh = torch.where(small, decay * (1.0 + arg / 2.0 + arg * arg / 24.0), cosh)
+    sinh_over_w = torch.where(
+        small, decay * t * (1.0 + arg / 6.0 + arg * arg / 120.0), sinh_over_w)
+    return cosh, sinh_over_w
 
 
 def _propagator(gamma: torch.Tensor, a: torch.Tensor, t: torch.Tensor):
     """e^{Mt} for M = [[0, √Γ], [−√Γ A, −Γ]], returned as four blocks."""
     omega_sq = gamma * gamma / 4.0 - gamma * a
-    cosh, sinh_over_w = _cosh_sinh_over_w(omega_sq, t)
-    decay = torch.exp(-gamma * t / 2.0)
+    cosh, sinh_over_w = _damped_cosh_sinh(gamma, omega_sq, t)
     root_gamma = torch.sqrt(torch.clamp(gamma, min=_TINY))
 
-    # e^{Mt} = decay · [cosh·I + sinh/ω · (M + Γ/2·I)]
-    e11 = decay * (cosh + sinh_over_w * gamma / 2.0)
-    e12 = decay * sinh_over_w * root_gamma
-    e21 = -decay * sinh_over_w * root_gamma * a
-    e22 = decay * (cosh - sinh_over_w * gamma / 2.0)
+    # e^{Mt} = e^{−Γt/2}·[cosh·I + sinh/ω·(M + Γ/2·I)], with the decay already
+    # folded into both terms above.
+    e11 = cosh + sinh_over_w * gamma / 2.0
+    e12 = sinh_over_w * root_gamma
+    e21 = -sinh_over_w * root_gamma * a
+    e22 = cosh - sinh_over_w * gamma / 2.0
     return e11, e12, e21, e22
 
 

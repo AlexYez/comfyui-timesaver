@@ -112,12 +112,11 @@ class _LangevinInner:
         a_y = (1.0 + self.lam) / one_minus_abt
         a = a_x * (1.0 - mask) + a_y * mask
 
-        # Damping per unit time. Writing out the published scaling — friction²
-        # times the step size, halved, divided by that same step size — leaves
-        # a constant: Γ = friction²/0.2, identical on both branches. Deriving
-        # it "per step" instead makes Γ blow up as the noise level falls, which
-        # is exactly what turned late steps into garbage (measured).
-        gamma = torch.full_like(x_t, self.friction**2 / 0.2)
+        # Damping. The published scaling fixes the DIMENSIONLESS product Γ·dt
+        # at friction²·step_size/0.2 — the same on both branches — so Γ itself
+        # scales as 1/dt and grows as the noise level falls.
+        gamma_dt = self.friction**2 * self.step_size / 0.2
+        gamma = gamma_dt / torch.clamp(dt, min=1e-8)
         d_amp = torch.full_like(x_t, 2.0**0.5)
 
         velocity = None
