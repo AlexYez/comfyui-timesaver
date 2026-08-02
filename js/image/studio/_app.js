@@ -15,6 +15,7 @@ import { loadBackends, groupByFamily } from "../../_studio/_backends.js";
 import { patchBackend } from "../../_studio/_markers.js";
 import { newSessionId, sessionPrefix, resultRelPath, restoreResults } from "../../_studio/_session.js";
 import { mountPromptTools } from "../../_studio/_prompt_tools.js";
+import { pickAssetProvider } from "../../_studio/_assets.js";
 import { uploadImage } from "../../_studio/_dnd.js";
 
 const ICONS = {
@@ -46,7 +47,9 @@ const STRINGS = {
         generating: (p) => `Generating… ${p}%`,
         tabSession: "Session",
         tabLibrary: "Library",
-        tabLibrarySoon: "Asset browser arrives in the next phase",
+        libraryHint: "Recent server results. Drag into a reference slot; double-click to view.",
+        libraryPickTip: "Drag into a slot · double-click to view on the stage",
+        libraryEmpty: "No recent images on this server yet.",
         galleryEmpty: "Results of this session appear here.",
         stageEmpty: "Describe the image and press Run.",
         backendBroken: "unavailable",
@@ -103,7 +106,9 @@ const STRINGS = {
         generating: (p) => `Генерация… ${p}%`,
         tabSession: "Сессия",
         tabLibrary: "Библиотека",
-        tabLibrarySoon: "Браузер ассетов появится в следующей фазе",
+        libraryHint: "Недавние результаты сервера. Тяните в слот референса; двойной клик — просмотр.",
+        libraryPickTip: "Тяните в слот · двойной клик — показать на холсте",
+        libraryEmpty: "На сервере пока нет недавних изображений.",
         galleryEmpty: "Результаты этой сессии появятся здесь.",
         stageEmpty: "Опишите изображение и нажмите Run.",
         backendBroken: "недоступен",
@@ -240,6 +245,14 @@ export async function openStudio(node, persist) {
         caption.style.display = bits.length ? "" : "none";
     }
 
+    function showLibraryAsset(asset) {
+        stageImg.src = asset.url;
+        stageImg.style.display = "";
+        stageEmpty.style.display = "none";
+        caption.textContent = asset.name || "";
+        caption.style.display = asset.name ? "" : "none";
+    }
+
     function showPreviewBlob(blob) {
         stageImg.src = URL.createObjectURL(blob);
         stageImg.style.display = "";
@@ -252,6 +265,17 @@ export async function openStudio(node, persist) {
         onSelect: (result) => {
             showResult(result);
             persist.setResultPath(resultRelPath(result.image));
+        },
+        mountLibrary: (host) => {
+            let handle = null;
+            pickAssetProvider().then((provider) => {
+                if (!provider) return;
+                handle = provider.mount(host, {
+                    api, t,
+                    onPick: (asset) => showLibraryAsset(asset),
+                });
+            });
+            return { unmount: () => handle?.unmount?.() };
         },
     });
     shell.side.appendChild(gallery.element);

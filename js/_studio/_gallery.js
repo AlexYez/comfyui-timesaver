@@ -58,8 +58,6 @@ export function createGallery(options) {
     libraryTab.type = "button";
     libraryTab.className = "ts-studio__gallerytab";
     libraryTab.textContent = options.t.tabLibrary;
-    libraryTab.disabled = true; // asset providers arrive in phase 2
-    libraryTab.title = options.t.tabLibrarySoon;
     tabs.append(sessionTab, libraryTab);
 
     const grid = document.createElement("div");
@@ -68,8 +66,27 @@ export function createGallery(options) {
     const empty = document.createElement("div");
     empty.className = "ts-studio__galleryempty";
     empty.textContent = options.t.galleryEmpty;
+    const libraryHost = document.createElement("div");
+    libraryHost.className = "ts-studio__gallery";
+    libraryHost.style.display = "none";
 
-    element.append(tabs, grid, empty);
+    element.append(tabs, grid, empty, libraryHost);
+
+    let libraryHandle = null;
+    function showTab(which) {
+        const session = which === "session";
+        sessionTab.classList.toggle("is-active", session);
+        libraryTab.classList.toggle("is-active", !session);
+        grid.style.display = session ? "" : "none";
+        empty.style.display = session ? "" : "none";
+        libraryHost.style.display = session ? "none" : "";
+        if (session) syncEmpty();
+        if (!session && !libraryHandle && options.mountLibrary) {
+            libraryHandle = options.mountLibrary(libraryHost) || { unmount() {} };
+        }
+    }
+    sessionTab.addEventListener("click", () => showTab("session"));
+    libraryTab.addEventListener("click", () => showTab("library"));
 
     const results = [];
     let selectedCard = null;
@@ -121,5 +138,9 @@ export function createGallery(options) {
         if (card && results.length) select(card, results[results.length - 1]);
     }
 
-    return { element, add, setAll, selectLast, count: () => results.length };
+    return {
+        element, add, setAll, selectLast,
+        count: () => results.length,
+        teardown: () => libraryHandle?.unmount?.(),
+    };
 }
