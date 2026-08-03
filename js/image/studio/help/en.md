@@ -42,6 +42,8 @@ Klein's inpaint deck has a **Reference object** slot. Drop a picture of the thin
 
 The reference is only read during a full redraw, so filling the slot switches **Replace** on by itself — the strength slider greys out because it plays no part in that mode.
 
+Paint the area at the size of the object: what fits in the mask is what you get. A thin stroke yields a fragment rather than the thing itself — a bottle needs a tall patch reaching from the table to where its neck will be.
+
 ## Ideogram: the designer, hosted
 
 Ideogram 4 has a node of its own — **TS Image Ideogram Designer** — and the studio does not replace it: the **Layout** button opens that very editor, with all its panels, presets and its prompt-generating button. The model reads a structured description rather than free text, and it is the node that builds one, so the image's metadata carries exactly the prompt the render used.
