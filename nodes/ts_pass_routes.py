@@ -16,6 +16,7 @@ from pathlib import Path
 from ._deps import TSDependencyManager  # noqa: F401  (kept for import parity)
 from ._shared import make_route_registrars
 from . import _pass
+from . import _studio_dev
 from . import _studio_packs
 
 logger = logging.getLogger("comfyui_timesaver.pass_routes")
@@ -72,10 +73,45 @@ def _json(payload, status: int = 200):
 
 @register_get("/api/ts_pass/status")
 async def pass_status(_request):
-    """Current access state — what the studio renders locks and badges from."""
+    """Current access state — what the studio renders locks and badges from.
+
+    Testing mode can make this report an absent or lapsed pass while the real
+    one stays on disk; on a user's machine there is no such file and the state
+    is simply the truth (see nodes/_studio_dev.py).
+    """
     _adopt_launcher_pass_if_any()
-    state = _pass.read_pass()
+    state = _studio_packs.current_pass()
     state["links"] = STORE_LINKS
+    state["dev"] = _studio_dev.read_dev()
+    return _json(state)
+
+
+@register_get("/api/ts_studio/dev")
+async def studio_dev_status(_request):
+    """Whether testing mode is on, and what it points at."""
+    return _json(_studio_dev.read_dev())
+
+
+@register_post("/api/ts_studio/dev")
+async def studio_dev_set(request):
+    """Change testing mode from the studio.
+
+    Only reachable in the sense that matters: with no dev file the studio never
+    draws the panel that calls this. Turning it on still requires the file, so
+    this route cannot switch a user's machine into testing mode by itself.
+    """
+    try:
+        body = await request.json()
+    except Exception:                       # noqa: BLE001
+        return _json({"error": "expected a JSON body"}, status=400)
+
+    if not _studio_dev.read_dev():
+        return _json({"error": "testing mode is not enabled on this machine"},
+                     status=403)
+    try:
+        state = _studio_dev.clear_dev() if body.get("off") else _studio_dev.write_dev(body)
+    except (ValueError, RuntimeError) as error:
+        return _json({"error": str(error)}, status=400)
     return _json(state)
 
 

@@ -38,6 +38,8 @@ comfyui-pack-testing-guide.md
 # because README.md links to it.
 /doc/AGENTS.md
 /doc/ARCHITECTURE.md
+# Author's working sheet for testing on a live install — dev-only.
+/doc/TESTING_STUDIO.md
 /doc/TS_DEPENDENCY_POLICY.md
 /doc/migration.md
 /doc/generate_readme_ru.py

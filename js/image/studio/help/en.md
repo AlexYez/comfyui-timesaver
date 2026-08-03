@@ -106,6 +106,8 @@ The month's code comes with a subscription (Boosty, Patreon, VK) and is entered 
 
 **What is installed keeps working.** The key is needed only to receive a pack or an update to one; once installed, a pack keeps working after the subscription lapses. Settings shows the date the key runs to, and a Forget button that wipes the key from this machine without touching anything already installed.
 
+With a `user/default/ts-studio/dev.json` file present, Settings grows a **Testing** section: read the catalogue from a local build instead of the published one, and show the pass as absent or expired without losing the real one. An ordinary install has no such section.
+
 ## Missing models
 
 When a family lacks its file, the deck shows a list: **Download** searches Hugging Face and fetches with live progress (speed, ETA, SHA256 verification) — one model at a time, with a total bar above. An interrupted download resumes where it stopped.

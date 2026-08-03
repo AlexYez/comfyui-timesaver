@@ -31,6 +31,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from . import _pass
+from . import _studio_dev
 
 logger = logging.getLogger("comfyui_timesaver.studio_packs")
 LOG_PREFIX = "[TS Packs]"
@@ -43,7 +44,6 @@ LOG_PREFIX = "[TS Packs]"
 BASE_URL = os.environ.get(
     "TS_STUDIO_PACKS_URL",
     "https://raw.githubusercontent.com/AlexYez/ts-studio-packs/main").rstrip("/")
-CATALOG_URL = f"{BASE_URL}/index.json"
 
 # Product id, so Video and Audio studios can share the catalogue later.
 PRODUCT = "image"
@@ -54,6 +54,25 @@ WORKFLOWS_SUBDIR = "workflows"
 
 _HTTP_TIMEOUT = 60
 _MAX_PACK_BYTES = 64 * 1024 * 1024          # a pack is graphs and text, not models
+
+
+def base_url() -> str:
+    """Where packs are read from right now.
+
+    Testing mode can point this at a folder on disk (`file:///…/dist/studio`),
+    which is the difference between trying a pack and publishing one to try it.
+    On a user's machine there is no dev file and this is the constant above.
+    """
+    return _studio_dev.catalog_base(BASE_URL)
+
+
+def catalog_url() -> str:
+    return f"{base_url()}/index.json"
+
+
+def current_pass() -> dict:
+    """The pass as the studio should see it, simulation included."""
+    return _studio_dev.apply_pass_simulation(_pass.read_pass())
 
 
 def _user_root() -> Path | None:
@@ -85,13 +104,13 @@ def _fetch_bytes(url: str, limit: int = _MAX_PACK_BYTES) -> bytes | None:
         return None
 
 
-def fetch_catalog(url: str = CATALOG_URL) -> dict:
+def fetch_catalog(url: str | None = None) -> dict:
     """The public catalogue: what exists, what it looks like, what is new.
 
     Readable with no pass at all — a person has to see what a subscription
     buys before buying it.
     """
-    raw = _fetch_bytes(url, limit=4 * 1024 * 1024)
+    raw = _fetch_bytes(url or catalog_url(), limit=4 * 1024 * 1024)
     if raw is None:
         return {"products": {}, "offline": True}
     try:
@@ -122,7 +141,7 @@ def read_installed() -> dict:
     return found
 
 
-def pack_url(entry: dict, secrets: dict, *, base_url: str = BASE_URL,
+def pack_url(entry: dict, secrets: dict, *, base: str | None = None,
              product: str = PRODUCT) -> str | None:
     """Address of a pack's archive, or None when the pass does not open it.
 
@@ -134,15 +153,16 @@ def pack_url(entry: dict, secrets: dict, *, base_url: str = BASE_URL,
       instead. Required anywhere the file tree can be browsed (a public git
       repository), where a secret in the path would be printed on the page.
     """
+    base = (base or base_url()).rstrip("/")
     tier = int(entry.get("tier") or 0)
     if not tier:
-        return f"{base_url}/free/{product}/{entry['file']}"
+        return f"{base}/free/{product}/{entry['file']}"
     secret = (secrets or {}).get(str(tier))
     if not secret:
         return None
     if entry.get("enc"):
-        return f"{base_url}/paid/{product}/{entry['file']}"
-    return f"{base_url}/paid/{secret}/{product}/{entry['file']}"
+        return f"{base}/paid/{product}/{entry['file']}"
+    return f"{base}/paid/{secret}/{product}/{entry['file']}"
 
 
 ENC_MAGIC = b"TSPK1"
@@ -193,7 +213,7 @@ def _safe_members(archive: zipfile.ZipFile) -> list[zipfile.ZipInfo]:
     return safe
 
 
-def install_pack(entry: dict, *, base_url: str = BASE_URL,
+def install_pack(entry: dict, *, base: str | None = None,
                  product: str = PRODUCT, data: bytes | None = None) -> dict:
     """Fetch and unpack one pack. Returns its stamp.
 
@@ -204,13 +224,13 @@ def install_pack(entry: dict, *, base_url: str = BASE_URL,
         raise RuntimeError("ComfyUI's user directory is unavailable")
 
     if data is None:
-        state = _pass.read_pass()
+        state = current_pass()
         tier = int(entry.get("tier") or 0)
         if tier and not (state.get("state") == "active"
                          and int(state.get("tier") or 0) >= tier):
             raise PermissionError("this pack needs an active subscription")
         url = pack_url(entry, state.get("secrets") or {},
-                       base_url=base_url, product=product)
+                       base=base, product=product)
         if not url:
             raise PermissionError("this pass does not carry the key for that tier")
         data = _fetch_bytes(url)
@@ -269,7 +289,7 @@ def describe_catalog(catalog: dict, *, product: str = PRODUCT) -> dict:
     One call gives the showcase everything it renders: entries, their state
     and whether an update is waiting.
     """
-    state = _pass.read_pass()
+    state = current_pass()
     installed = read_installed()
     tier_held = int(state.get("tier") or 0) if state.get("state") == "active" else 0
 

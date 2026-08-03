@@ -29,6 +29,19 @@ const STRINGS = {
         passNone: "No pass on this machine",
         passEnter: "Enter a code",
         passForget: "Forget",
+        dev: "Testing",
+        devNote: "Only on this machine, and only while ts-studio/dev.json exists. "
+            + "The rules are untouched — this changes where packs are read from "
+            + "and how the pass is reported.",
+        devSource: "Catalogue",
+        devSourceLive: "Published",
+        devSourceLocal: "Local build",
+        devPass: "Show the pass as",
+        devPassOff: "As it is",
+        devPassNone: "Absent",
+        devPassExpired: "Expired",
+        devOff: "Leave testing mode",
+        devLocalMissing: "No local build is configured — run studio_pack.py dev",
     },
     ru: {
         open: "Настройки",
@@ -46,6 +59,19 @@ const STRINGS = {
         passNone: "Ключа на этой машине нет",
         passEnter: "Ввести код",
         passForget: "Забыть",
+        dev: "Тестирование",
+        devNote: "Только на этой машине и только пока есть ts-studio/dev.json. "
+            + "Правила не меняются — меняется, откуда читаются наборы и каким "
+            + "показывается ключ.",
+        devSource: "Каталог",
+        devSourceLive: "Опубликованный",
+        devSourceLocal: "Локальная сборка",
+        devPass: "Показывать ключ как",
+        devPassOff: "Как есть",
+        devPassNone: "Отсутствующий",
+        devPassExpired: "Истёкший",
+        devOff: "Выйти из режима тестирования",
+        devLocalMissing: "Локальная сборка не задана — запустите studio_pack.py dev",
     },
 };
 
@@ -252,6 +278,86 @@ export function createSettingsPanel(options) {
         }
     }
 
+    // Testing section. Built empty and filled only when the server says the
+    // marker file is there, so a user's studio has no such row at all.
+    const devRow = document.createElement("div");
+    devRow.className = "ts-settings__row";
+    devRow.style.display = "none";
+    body.appendChild(devRow);
+
+    function renderDev(dev) {
+        devRow.textContent = "";
+        if (!dev?.enabled) {
+            devRow.style.display = "none";
+            return;
+        }
+        devRow.style.display = "";
+        const caption = document.createElement("span");
+        caption.className = "ts-settings__label";
+        caption.textContent = dev.label ? `${t.dev} · ${dev.label}` : t.dev;
+        const hint = document.createElement("span");
+        hint.className = "ts-settings__note";
+        hint.textContent = t.devNote;
+        devRow.append(caption, hint);
+
+        const send = async (patch) => {
+            const next = await options.dev.set({ ...dev, ...patch });
+            renderDev(next);
+            options.dev.onChange?.(next);
+        };
+
+        devRow.appendChild(subChoice(t.devSource, [
+            { label: t.devSourceLive, active: dev.source !== "local",
+              onPick: () => send({ source: "live" }) },
+            { label: dev.localUrl ? t.devSourceLocal : t.devLocalMissing,
+              active: dev.source === "local",
+              disabled: !dev.localUrl,
+              onPick: () => send({ source: "local" }) },
+        ]));
+        devRow.appendChild(subChoice(t.devPass, [
+            { label: t.devPassOff, active: dev.simulate === "off",
+              onPick: () => send({ simulate: "off" }) },
+            { label: t.devPassNone, active: dev.simulate === "none",
+              onPick: () => send({ simulate: "none" }) },
+            { label: t.devPassExpired, active: dev.simulate === "expired",
+              onPick: () => send({ simulate: "expired" }) },
+        ]));
+
+        const leave = document.createElement("button");
+        leave.type = "button";
+        leave.className = "ts-settings__opt";
+        leave.textContent = t.devOff;
+        leave.addEventListener("click", async () => {
+            const next = await options.dev.set({ off: true });
+            renderDev(next);
+            options.dev.onChange?.(next);
+        });
+        devRow.appendChild(leave);
+    }
+
+    /** A labelled strip of buttons, one of them current. */
+    function subChoice(label, buttons) {
+        const wrap = document.createElement("div");
+        wrap.className = "ts-settings__row";
+        const caption = document.createElement("span");
+        caption.className = "ts-settings__note";
+        caption.textContent = label;
+        const strip = document.createElement("div");
+        strip.className = "ts-settings__choice";
+        for (const spec of buttons) {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = "ts-settings__opt";
+            button.textContent = spec.label;
+            button.disabled = Boolean(spec.disabled);
+            button.classList.toggle("is-active", Boolean(spec.active));
+            button.addEventListener("click", () => spec.onPick());
+            strip.appendChild(button);
+        }
+        wrap.append(caption, strip);
+        return wrap;
+    }
+
     options.host.appendChild(panel);
 
     function setOpen(open) {
@@ -263,6 +369,9 @@ export function createSettingsPanel(options) {
                 passState = state;
                 renderPass();
             });
+        }
+        if (open && options.dev) {
+            Promise.resolve(options.dev.state()).then(renderDev).catch(() => {});
         }
     }
 

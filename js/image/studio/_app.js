@@ -603,6 +603,29 @@ export async function openStudio(node, persist) {
             clear: () => gate.forget().then((state) => { showcase?.refresh(); return state; }),
             prompt: () => gate.prompt(),
         },
+        // Testing mode. The panel draws nothing unless the server reports the
+        // marker file, so a user never sees this row (nodes/_studio_dev.py).
+        dev: {
+            state: async () => {
+                const response = await api.fetchApi("/ts_studio/dev");
+                return response.ok ? response.json() : {};
+            },
+            set: async (patch) => {
+                const response = await api.fetchApi("/ts_studio/dev", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(patch),
+                });
+                return response.ok ? response.json() : {};
+            },
+            // Both switches change what the studio may fetch, so the pass and
+            // the catalogue are reread and the deck redrawn from them.
+            onChange: async () => {
+                await gate.refresh();
+                await showcase.refresh();
+                await reloadBackends();
+            },
+        },
     });
     shell.setSidePlacement(readSetting("browserSide"));
 
