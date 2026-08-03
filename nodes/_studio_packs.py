@@ -36,14 +36,25 @@ from . import _studio_dev
 logger = logging.getLogger("comfyui_timesaver.studio_packs")
 LOG_PREFIX = "[TS Packs]"
 
-# Delivery lives in its own public repository: the catalogue has to be
-# readable by everyone (it is the showcase), and the paid archives beside it
-# are encrypted, so a listable tree costs nothing. An install pointed at a
-# different host — the author's own file storage, a mirror — only needs this
-# overridden in the environment.
-BASE_URL = os.environ.get(
-    "TS_STUDIO_PACKS_URL",
-    "https://raw.githubusercontent.com/AlexYez/ts-studio-packs/main").rstrip("/")
+# Two places carry the same catalogue, and the studio reads whichever answers.
+#
+#   host    where the launcher's admin publishes, next to the paid workflows
+#           it already sends. Primary, because that is one upload for the
+#           author instead of two.
+#   mirror  a public git repository. Nothing there is guessable-by-path, so
+#           the packs it holds are encrypted; useful when the host is down or
+#           blocked, which for this audience is not a rare event.
+#
+# Both are tried in order; whichever catalogue answers is also where the packs
+# are fetched from, so a mirror never serves an address the other one hosts.
+BASE_URLS = [
+    "https://files.timesavervfx.com/ai/comfyui/studio",
+    "https://raw.githubusercontent.com/AlexYez/ts-studio-packs/main",
+]
+
+# One address, set in the environment, replaces both — for a private mirror
+# or an install fed from somewhere else entirely.
+BASE_URL = os.environ.get("TS_STUDIO_PACKS_URL", "").rstrip("/")
 
 # Product id, so Video and Audio studios can share the catalogue later.
 PRODUCT = "image"
@@ -56,18 +67,31 @@ _HTTP_TIMEOUT = 60
 _MAX_PACK_BYTES = 64 * 1024 * 1024          # a pack is graphs and text, not models
 
 
-def base_url() -> str:
-    """Where packs are read from right now.
+def base_urls() -> list[str]:
+    """Addresses to try, best first.
 
-    Testing mode can point this at a folder on disk (`file:///…/dist/studio`),
+    Testing mode can put a folder on disk at the front (`file:///…/dist/studio`),
     which is the difference between trying a pack and publishing one to try it.
-    On a user's machine there is no dev file and this is the constant above.
+    On a user's machine there is no dev file and this is the list above.
     """
-    return _studio_dev.catalog_base(BASE_URL)
+    forced = _studio_dev.catalog_base(BASE_URL)
+    if forced:
+        return [forced.rstrip("/")]
+    return [url.rstrip("/") for url in BASE_URLS]
+
+
+def base_url() -> str:
+    """The address in use — the one a catalogue was last read from."""
+    return _last_base or base_urls()[0]
 
 
 def catalog_url() -> str:
     return f"{base_url()}/index.json"
+
+
+# Which address answered last. Installs use it, so a pack is fetched from the
+# same place its catalogue entry came from.
+_last_base = ""
 
 
 def current_pass() -> dict:
@@ -108,17 +132,27 @@ def fetch_catalog(url: str | None = None) -> dict:
     """The public catalogue: what exists, what it looks like, what is new.
 
     Readable with no pass at all — a person has to see what a subscription
-    buys before buying it.
+    buys before buying it. Tries each address in turn and remembers the one
+    that answered, so the packs are fetched from the same place.
     """
-    raw = _fetch_bytes(url or catalog_url(), limit=4 * 1024 * 1024)
-    if raw is None:
-        return {"products": {}, "offline": True}
-    try:
-        catalog = json.loads(raw.decode("utf-8"))
-        return catalog if isinstance(catalog, dict) else {"products": {}}
-    except (UnicodeDecodeError, json.JSONDecodeError) as error:
-        logger.warning("%s the catalogue is unreadable: %s", LOG_PREFIX, error)
-        return {"products": {}}
+    global _last_base
+
+    candidates = [url] if url else [f"{base}/index.json" for base in base_urls()]
+    for candidate in candidates:
+        raw = _fetch_bytes(candidate, limit=4 * 1024 * 1024)
+        if raw is None:
+            continue
+        try:
+            catalog = json.loads(raw.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as error:
+            logger.warning("%s %s is unreadable: %s", LOG_PREFIX, candidate, error)
+            continue
+        if not isinstance(catalog, dict):
+            continue
+        _last_base = candidate[: -len("/index.json")] if candidate.endswith("/index.json")             else _last_base
+        catalog["source"] = _last_base
+        return catalog
+    return {"products": {}, "offline": True}
 
 
 def read_installed() -> dict:
