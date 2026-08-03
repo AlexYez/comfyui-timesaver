@@ -12,6 +12,7 @@ import {
     pickLocaleStrings,
     TS_UI_CLASS,
 } from "../../_theme.js";
+import { hideWidget } from "../../_dom_widget.js";
 import { publishAssetAction } from "../../_studio/_asset_actions.js";
 import { studioStateFromPng } from "../../_studio/_pnginfo.js";
 import { openStudio, openStudioInstance } from "./_app.js";
@@ -132,9 +133,16 @@ async function recreateFromAsset(asset) {
 
 function setupStudioNode(node) {
     ensureThemeStyles();
+    // Both values are bookkeeping the app writes for itself — the session it
+    // is working in, and which result the IMAGE output should emit. Neither is
+    // anyone's to type, so the node shows one button and nothing else: the
+    // pack's hideWidget lifts the widget out of the node (keeping its value in
+    // node.properties, see §12.5.13), and the input row each one is bound to
+    // goes with it. Marking the widget "hidden" alone left both rows on screen.
     for (const name of [W_SESSION, W_RESULT]) {
-        const widget = getWidget(node, name);
-        if (widget) widget.type = "hidden";
+        const index = (node.inputs || []).findIndex((input) => input?.name === name);
+        if (index >= 0) node.removeInput(index);
+        hideWidget(node, name);
     }
 
     const host = document.createElement("div");

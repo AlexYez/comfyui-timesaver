@@ -4,16 +4,19 @@
   "flux2-klein/edit.json",
   "flux2-klein/inpaint.json",
   "flux2-klein/t2i.json",
+  "flux2-klein/upscale.json",
   "ideogram/inpaint.json",
   "ideogram/t2i.json",
   "krea2/inpaint.json",
   "krea2/t2i.json",
+  "krea2/upscale.json",
   "qwen-image-edit/edit.json",
   "qwen-image/inpaint.json",
   "qwen-image/t2i.json",
-  "secondpass/upscale.json",
+  "qwen-image/upscale.json",
   "seedvr2/upscale.json",
   "z-image/inpaint.json",
-  "z-image/t2i.json"
+  "z-image/t2i.json",
+  "z-image/upscale.json"
  ]
 }

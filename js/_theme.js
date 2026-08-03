@@ -64,8 +64,13 @@ function themeCss() {
   --ts-surface-active:#37373a;
   --ts-elevated:#232325;
   --ts-sunken:#141415;
-  /* A dimming scrim stays dark in both themes — that is what "dimmed" means. */
+  /* A dimming scrim stays dark in both themes — that is what "dimmed" means.
+     The same is true of chrome that sits ON user media (a clear button over a
+     thumbnail, a label plate over a frame): it must read against any picture,
+     so these two are deliberately fixed rather than themed. */
   --ts-scrim:rgba(12,12,13,.72);
+  --ts-scrim-strong:rgba(12,12,13,.86);
+  --ts-on-media:#f2f2f4;
   --ts-modal-bg:var(--comfy-menu-bg,#171718);
 
   --ts-text:var(--input-text,#ddd);
@@ -88,6 +93,11 @@ function themeCss() {
   --ts-radius-sm:5px;
   --ts-radius:7px;
   --ts-radius-lg:10px;
+
+  /* Room the fullscreen close button occupies in the top-right corner: its
+     34px box plus the 12px inset on each side. Any bar or header that runs to
+     the top edge reserves this much on its right so the two never overlap. */
+  --ts-fs-safe-right:58px;
 
   --ts-font:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
   --ts-fs-xs:10px;
@@ -229,8 +239,10 @@ function themeCss() {
 @keyframes ts-ui-dialog-in{from{opacity:0;transform:translateY(8px) scale(.985)}
   to{opacity:1;transform:none}}
 /* Unified fullscreen close button — every editor opened via openFullscreenOverlay
-   gets the SAME control in the SAME spot (top-right). Nodes must keep their top
-   toolbar's right edge clear of this corner (see their right inset). */
+   gets the SAME control in the SAME spot (top-right). It floats above whatever
+   the editor draws, so anything an editor puts along the top must keep out of
+   that corner: reserve --ts-fs-safe-right on the right of any top-edge bar,
+   header or panel rather than guessing an inset per node. */
 .ts-ui-fs-close{position:fixed;top:12px;right:12px;z-index:11050;width:34px;height:34px;
   box-shadow:0 2px 10px rgba(0,0,0,.35)}
 /* Hidden focus anchor: parks keyboard focus so ComfyUI's graph hotkeys

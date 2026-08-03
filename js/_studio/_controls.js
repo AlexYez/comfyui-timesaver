@@ -40,6 +40,16 @@ export function ensureControlStyles() {
 .ts-studio__size.is-disabled .ts-studio__sizerow,
 .ts-studio__size.is-disabled .ts-studio__sizeinfo{opacity:.4}
 .ts-studio__sizenote{font-size:var(--ts-fs-xs);color:var(--ts-muted)}
+.ts-studio__choice{display:flex;gap:5px}
+.ts-studio__choicebtn{flex:1;min-width:0;padding:6px 4px;border-radius:var(--ts-radius-sm);
+    border:1px solid var(--ts-border);background:var(--ts-surface);color:var(--ts-muted);
+    font-size:var(--ts-fs-sm);cursor:pointer;
+    transition:border-color .12s ease,background .12s ease,color .12s ease}
+.ts-studio__choicebtn:hover{border-color:var(--ts-border-strong);color:var(--ts-text)}
+.ts-studio__choicebtn.is-active{border-color:var(--ts-accent-line);
+    background:var(--ts-accent-soft);color:var(--ts-accent)}
+.ts-studio__choicebtn:focus-visible{outline:2px solid var(--ts-accent-line);outline-offset:1px}
+.ts-studio__choice.is-disabled{opacity:.45}
 .ts-studio__seedrow{display:flex;align-items:center;gap:4px}
 .ts-studio__seedrow input[type=text]{flex:1;font-variant-numeric:tabular-nums}
 .ts-studio__seedbtn{width:26px;height:26px;flex:0 0 auto;display:flex;align-items:center;
@@ -59,22 +69,48 @@ export function ensureControlStyles() {
 .ts-studio__designer.is-active{border-color:var(--ts-accent-line);color:var(--ts-accent)}
 .ts-studio__numrow{display:flex;align-items:center;justify-content:space-between;gap:8px;
     min-height:26px}
+.ts-studio__switch{position:relative;width:34px;height:19px;flex:0 0 auto;padding:0;
+    border:none;border-radius:999px;cursor:pointer;background:var(--ts-surface-active);
+    box-shadow:inset 0 0 0 1px var(--ts-border-soft);transition:background .14s ease}
+.ts-studio__switch.is-on{background:var(--ts-accent);box-shadow:none}
+.ts-studio__switchknob{position:absolute;top:2px;left:2px;width:15px;height:15px;
+    border-radius:50%;background:var(--ts-on-media);box-shadow:var(--ts-shadow-sm);
+    transition:transform .14s ease}
+.ts-studio__switch.is-on .ts-studio__switchknob{transform:translateX(15px)}
+.ts-studio__switch:focus-visible{outline:2px solid var(--ts-accent-line);outline-offset:2px}
 .ts-studio__numrow input{width:76px;text-align:right}
 .ts-studio__advanced{border:none;background:none;padding:0;display:flex;align-items:center;gap:5px;
     color:var(--ts-muted);cursor:pointer;font-size:var(--ts-fs-sm)}
 .ts-studio__advanced:hover{color:var(--ts-text)}
-.ts-studio__refs{display:flex;gap:6px}
-.ts-studio__ref{position:relative;width:52px;height:52px;border:1px dashed var(--ts-border-strong);
-    border-radius:var(--ts-radius);background:none;color:var(--ts-muted);cursor:pointer;
-    display:flex;align-items:center;justify-content:center;font-size:15px;padding:0;overflow:hidden}
-.ts-studio__ref.is-drag-over{border-color:var(--ts-accent);color:var(--ts-accent)}
-.ts-studio__ref.is-filled{border-style:solid}
-.ts-studio__ref img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
-.ts-studio__refx{position:absolute;top:1px;right:1px;z-index:2;width:15px;height:15px;
-    border-radius:50%;border:none;background:var(--ts-elevated);color:var(--ts-text);
-    font-size:10px;line-height:1;cursor:pointer;padding:0;display:none}
+.ts-studio__refs{display:flex;gap:8px;flex-wrap:wrap}
+/* The border is drawn INSIDE via box-shadow rather than as a real border:
+   a bordered box clips its content against the padding box, so a cover image
+   left a hairline of border colour along the rounded corners. With an inset
+   shadow the image fills the whole button and the frame sits on top of it. */
+.ts-studio__ref{position:relative;width:56px;height:56px;border:none;
+    border-radius:var(--ts-radius);background:var(--ts-surface);color:var(--ts-muted);
+    cursor:pointer;display:flex;align-items:center;justify-content:center;
+    font-size:16px;padding:0;overflow:hidden;
+    box-shadow:inset 0 0 0 1px var(--ts-border-soft);
+    transition:box-shadow .12s ease,color .12s ease}
+.ts-studio__ref::after{content:"";position:absolute;inset:0;border-radius:inherit;
+    pointer-events:none;box-shadow:inset 0 0 0 1px var(--ts-border-strong)}
+.ts-studio__ref.is-filled::after{box-shadow:inset 0 0 0 1px var(--ts-border)}
+.ts-studio__ref:hover{color:var(--ts-text);box-shadow:inset 0 0 0 1px var(--ts-border-strong)}
+.ts-studio__ref.is-drag-over{color:var(--ts-accent)}
+.ts-studio__ref.is-drag-over::after{box-shadow:inset 0 0 0 2px var(--ts-accent)}
+.ts-studio__ref img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;
+    border-radius:inherit}
+/* Sits fully inside the rounded corner instead of straddling it, and only
+   appears once there is something to clear. */
+.ts-studio__refx{position:absolute;top:4px;right:4px;z-index:2;width:17px;height:17px;
+    border-radius:50%;border:none;background:var(--ts-scrim-strong);color:var(--ts-on-media);
+    font-size:11px;line-height:17px;text-align:center;cursor:pointer;padding:0;display:none;
+    opacity:0;transition:opacity .12s ease}
 .ts-studio__ref.is-filled .ts-studio__refx{display:block}
-.ts-studio__ref:focus-visible{outline:2px solid var(--ts-accent-line);outline-offset:1px}
+.ts-studio__ref.is-filled:hover .ts-studio__refx,
+.ts-studio__refx:focus-visible{opacity:1}
+.ts-studio__ref:focus-visible{outline:2px solid var(--ts-accent-line);outline-offset:2px}
 .ts-studio__loras{display:flex;flex-direction:column;gap:3px}
 .ts-studio__lora{display:flex;align-items:center;gap:6px;min-height:26px;
     border-radius:var(--ts-radius-sm);padding:1px 2px}
@@ -275,10 +311,17 @@ export function randomSeed() {
     return Math.floor(Math.random() * Number.MAX_SAFE_INTEGER);
 }
 
+// Same grid and weight as the rail icons. The die shows a real five-pip face
+// (the three-pip diagonal read as a digit); "a new seed every run" is a cycle
+// rather than a shuffle, whose crossing arrows turned to noise at 14px.
+const SEED_ICON_ATTRS = 'viewBox="0 0 24 24" width="14" height="14" fill="none" '
+    + 'stroke="currentColor" stroke-width="1.7" stroke-linecap="round" '
+    + 'stroke-linejoin="round"';
+
 const SEED_ICONS = {
-    dice: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="4" y="4" width="16" height="16" rx="3"/><circle cx="9" cy="9" r="1.2" fill="currentColor" stroke="none"/><circle cx="15" cy="15" r="1.2" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.2" fill="currentColor" stroke="none"/></svg>',
-    shuffle: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 7h4l10 10h4M3 17h4l3.2-3.2M14.6 9.2L17 7h4M18 4l3 3-3 3M18 14l3 3-3 3"/></svg>',
-    lock: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>',
+    dice: `<svg ${SEED_ICON_ATTRS}><rect x="4" y="4" width="16" height="16" rx="3.2"/><circle cx="8.6" cy="8.6" r="1.15" fill="currentColor" stroke="none"/><circle cx="15.4" cy="8.6" r="1.15" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.15" fill="currentColor" stroke="none"/><circle cx="8.6" cy="15.4" r="1.15" fill="currentColor" stroke="none"/><circle cx="15.4" cy="15.4" r="1.15" fill="currentColor" stroke="none"/></svg>`,
+    shuffle: `<svg ${SEED_ICON_ATTRS}><path d="M4.8 12a7.2 7.2 0 0 1 12.3-5.1"/><path d="M19.2 12a7.2 7.2 0 0 1-12.3 5.1"/><path d="M17.6 3.4v3.6H14"/><path d="M6.4 20.6V17H10"/></svg>`,
+    lock: `<svg ${SEED_ICON_ATTRS}><rect x="5" y="10.5" width="14" height="9.5" rx="2.2"/><path d="M8.2 10.5V7.4a3.8 3.8 0 0 1 7.6 0v3.1"/></svg>`,
 };
 
 // Seed is two decisions, so it gets two explicit controls: the mode (a new
@@ -689,22 +732,74 @@ registerControlKind("designer", (control, ctx) => {
     };
 });
 
+// ── choice: a short, exclusive set the value belongs to ─────────────────── //
+// For settings with a handful of meaningful values (an upscale factor, say)
+// where a slider would invite meaningless ones in between.
+registerControlKind("choice", (control, ctx) => {
+    const section = deckSection(localized(control.label, ctx.locale, control.param));
+    const row = document.createElement("div");
+    row.className = "ts-studio__choice";
+    const options = Array.isArray(control.options) ? control.options : [];
+    const buttons = new Map();
+    let value = control.default ?? options[0]?.value;
+
+    function sync(emit = true) {
+        for (const [candidate, button] of buttons) {
+            button.classList.toggle("is-active", candidate === value);
+        }
+        if (emit) ctx.onChange(control.param, value);
+    }
+
+    for (const option of options) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "ts-studio__choicebtn";
+        button.textContent = localized(option.label, ctx.locale, String(option.value));
+        const tip = localized(option.tooltip, ctx.locale, "");
+        if (tip) button.title = tip;
+        button.addEventListener("click", () => { value = option.value; sync(); });
+        buttons.set(option.value, button);
+        row.appendChild(button);
+    }
+    section.appendChild(row);
+    sync();
+
+    return {
+        element: section,
+        get: () => value,
+        set: (next) => {
+            if (!buttons.has(next)) return;      // a value this backend lacks
+            value = next;
+            sync();
+        },
+        setDisabled: (disabled) => {
+            section.classList.toggle("is-disabled", Boolean(disabled));
+            for (const button of buttons.values()) button.disabled = Boolean(disabled);
+        },
+    };
+});
+
 // ── toggle ──────────────────────────────────────────────────────────────── //
 registerControlKind("toggle", (control, ctx) => {
     const row = document.createElement("div");
     row.className = "ts-studio__numrow";
     const label = document.createElement("span");
     label.textContent = (control.label?.[ctx.locale]) || control.label?.en || control.param;
+    // A switch rather than an ON/OFF caption: the state reads at a glance and
+    // the control stops shouting two letters in the middle of the deck.
     const button = document.createElement("button");
     button.type = "button";
-    button.className = "ts-ui-btn";
-    button.textContent = "OFF";
+    button.className = "ts-studio__switch";
+    button.setAttribute("role", "switch");
+    const knob = document.createElement("span");
+    knob.className = "ts-studio__switchknob";
+    button.appendChild(knob);
     const tip = control.tooltip?.[ctx.locale] || control.tooltip?.en;
     if (tip) { row.title = tip; button.title = tip; }
     let value = Boolean(control.default);
     function sync() {
-        button.classList.toggle("is-active", value);
-        button.textContent = value ? "ON" : "OFF";
+        button.classList.toggle("is-on", value);
+        button.setAttribute("aria-checked", String(value));
         ctx.onChange(control.param, value);
     }
     button.addEventListener("click", () => { value = !value; sync(); });

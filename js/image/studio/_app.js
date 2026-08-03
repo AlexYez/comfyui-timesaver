@@ -13,12 +13,14 @@ import { createGallery } from "../../_studio/_gallery.js";
 import { createRunner } from "../../_studio/_runner.js";
 import { loadBackends, groupByFamily } from "../../_studio/_backends.js";
 import { patchBackend } from "../../_studio/_markers.js";
-import { newSessionId, sessionPrefix, resultRelPath, restoreResults } from "../../_studio/_session.js";
+import { newSessionId, outputPrefix, resultRelPath, restoreResults } from "../../_studio/_session.js";
 import { mountPromptTools } from "../../_studio/_prompt_tools.js";
 import { pickAssetProvider } from "../../_studio/_assets.js";
 import { createInpaintMode } from "./_modes_inpaint.js";
 import { createDownloadPanel } from "../../_studio/_downloads.js";
 import { createHelpPanel } from "../../_studio/_help.js";
+import { createSettingsPanel, readSetting, settingsStrings }
+    from "../../_studio/_settings.js";
 import { uploadImage, makeDropZone, annotatedImageUrl } from "../../_studio/_dnd.js";
 import { buildStudioState, studioStateFromPng } from "../../_studio/_pnginfo.js";
 import { createQueuePanel } from "../../_studio/_queue.js";
@@ -37,11 +39,20 @@ const UI_MODES = [
 // never cost the text someone just wrote.
 const STICKY_KINDS = new Set(["prompt", "seed", "size", "loras", "refs"]);
 
-const ICONS = {
-    generate: '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 3l1.8 4.7L18.5 9l-4.7 1.8L12 15.5l-1.8-4.7L5.5 9l4.7-1.3zM19 15l.9 2.3 2.1.7-2.1.9L19 21l-.9-2.1-2.1-.9 2.1-.7z"/></svg>',
+// Rail icons. All drawn on the same 24 grid, same stroke weight, round joins —
+// each shape is symmetric about its own centre so nothing reads as skewed at
+// 17px. Generate: a four-point spark. Inpaint: a pencil, because that is what
+// the mode does. Upscale: corners pushed outward. Settings: sliders, which
+// stay legible at this size where a toothed gear turns to mush.
+const ICON_ATTRS = 'viewBox="0 0 24 24" width="17" height="17" fill="none" '
+    + 'stroke="currentColor" stroke-width="1.7" stroke-linecap="round" '
+    + 'stroke-linejoin="round"';
 
-    inpaint: '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 21c-4 0-7-2.5-7-6 0-4 4-5 5-9 .4-1.6 2.6-1.6 3 0 1 4 6 5 6 9 0 3.5-3 6-7 6z"/></svg>',
-    upscale: '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 20v-5m0 5h5m-5 0l6-6M20 4v5m0-5h-5m5 0l-6 6"/></svg>',
+const ICONS = {
+    generate: `<svg ${ICON_ATTRS}><path d="M11 3.5l1.7 4.3 4.3 1.7-4.3 1.7L11 15.5 9.3 11.2 5 9.5l4.3-1.7z"/><path d="M18 14.5l.85 2.15 2.15.85-2.15.85L18 20.5l-.85-2.15L15 17.5l2.15-.85z"/></svg>`,
+    inpaint: `<svg ${ICON_ATTRS}><path d="M4 20l.9-3.7L15.6 5.6a2.05 2.05 0 0 1 2.9 2.9L7.7 19.1z"/><path d="M13.9 7.3l2.8 2.8"/></svg>`,
+    upscale: `<svg ${ICON_ATTRS}><path d="M4 9V4h5"/><path d="M20 15v5h-5"/><path d="M4 4l6 6"/><path d="M20 20l-6-6"/></svg>`,
+    settings: `<svg ${ICON_ATTRS}><path d="M4 7h7M15 7h5M4 12h11M19 12h1M4 17h3M11 17h9"/><circle cx="13" cy="7" r="2"/><circle cx="17" cy="12" r="2"/><circle cx="9" cy="17" r="2"/></svg>`,
 };
 
 const STRINGS = {
@@ -412,6 +423,7 @@ export async function openStudio(node, persist) {
             gallery.teardown?.();
             queuePanel.teardown();
             helpPanel.teardown?.();
+            settingsPanel.teardown?.();
             inpaintMode?.teardown();
             for (const instance of controlInstances) instance.teardown?.();
             promptTools?.teardown();
@@ -517,13 +529,38 @@ export async function openStudio(node, persist) {
         studioRoot: shell.root,
         pagesBase: "/extensions/comfyui-timesaver/image/studio/help",
     });
+    // Preferences that belong to the person: applied as the studio opens, and
+    // again the moment one is changed.
+    const settingsPanel = createSettingsPanel({
+        host: shell.stage,
+        onChange: (key, value) => {
+            if (key === "browserSide") shell.setSidePlacement(value);
+        },
+    });
+    shell.setSidePlacement(readSetting("browserSide"));
+
+    const settingsButton = document.createElement("button");
+    settingsButton.type = "button";
+    settingsButton.className = "ts-studio__railbtn";
+    settingsButton.title = settingsStrings().open;
+    settingsButton.setAttribute("aria-label", settingsStrings().open);
+    settingsButton.innerHTML = ICONS.settings;
+    settingsButton.addEventListener("click", () => {
+        helpPanel.close?.();
+        settingsPanel.toggle();
+    });
+    shell.rail.appendChild(settingsButton);
+
     const helpButton = document.createElement("button");
     helpButton.type = "button";
     helpButton.className = "ts-studio__railbtn";
     helpButton.title = t.help.open;
     helpButton.setAttribute("aria-label", t.help.open);
     helpButton.textContent = "?";
-    helpButton.addEventListener("click", () => helpPanel.toggle());
+    helpButton.addEventListener("click", () => {
+        settingsPanel.close();
+        helpPanel.toggle();
+    });
     shell.rail.appendChild(helpButton);
 
     // ── asset panel: session results, library, queue ────────────────────── //
@@ -938,6 +975,7 @@ export async function openStudio(node, persist) {
             loras,
             styles: promptTools?.getStyleNames() || [],
             size: controlsByParam.get("size")?.get(),
+            sessionId,
             sources: {
                 source_image: runValues.source_image,
                 mask: runValues.mask,
@@ -952,7 +990,7 @@ export async function openStudio(node, persist) {
                 modelFiles: target.modelFiles,
                 loras,
                 dropParams,
-                filenamePrefix: sessionPrefix(sessionId),
+                filenamePrefix: outputPrefix(target.manifest.family),
                 isOptionalInput: optionalIndex,
                 promptText: authoredPrompt || (typeof runValues.prompt === "string"
                     ? runValues.prompt : ""),
@@ -1082,7 +1120,12 @@ export async function openStudio(node, persist) {
     // same paths a person would: pick the rail tab, pick the model, set the
     // controls, then put the sources back where that mode expects them.
     async function applyStudioState(state) {
-        const backend = backends.find((b) => b.manifest?.id === state.backend && b.available)
+        // Backends that were folded into another one still answer for the
+        // images they made: the generic second pass became Z-Image's upscale,
+        // which is the same recipe with its tile ControlNet added.
+        const RETIRED = { "secondpass/upscale": "z-image/upscale" };
+        const wanted = RETIRED[state.backend] || state.backend;
+        const backend = backends.find((b) => b.manifest?.id === wanted && b.available)
             || backends.find((b) => b.manifest?.family === state.family
                 && b.manifest?.mode === state.mode && b.available);
         if (!backend) {

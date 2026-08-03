@@ -64,9 +64,13 @@ registerEditorProvider({
 });
 
 /**
- * The studio's own format picker stays authoritative: whatever aspect and
- * megapixels the deck shows are written into the design before the editor
- * opens, so the two never disagree about the frame.
+ * Carry whatever the deck knows into the design before the editor opens.
+ *
+ * A backend whose node owns the frame (Ideogram: its designer decides aspect
+ * and megapixels) shows no format picker at all, so both arrive undefined and
+ * the design keeps its own values — the editor stays the single place that
+ * decides. Backends that do show one still hand it over, so the two never
+ * disagree about the frame.
  */
 function seedDesign(design, prompt, aspect, megapixels, shared) {
     const base = design && typeof design === "object" ? { ...design } : {};

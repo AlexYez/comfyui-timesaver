@@ -20,8 +20,9 @@ export function ensureHelpStyles() {
 .ts-help{position:absolute;inset:0;z-index:8;display:none;flex-direction:column;
     background:var(--ts-bg)}
 .ts-help.is-open{display:flex}
+/* Keeps its own controls out from under the fullscreen close button. */
 .ts-help__head{display:flex;align-items:center;gap:8px;padding:8px 12px;
-    border-bottom:1px solid var(--ts-border)}
+    padding-right:var(--ts-fs-safe-right);border-bottom:1px solid var(--ts-border)}
 .ts-help__title{font-weight:700}
 .ts-help__body{flex:1;overflow-y:auto;padding:14px 18px;max-width:760px}
 .ts-help__body h1{font-size:16px;margin:0 0 8px}

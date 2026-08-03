@@ -1,0 +1,300 @@
+{
+ "p_image": {
+  "class_type": "TS_StudioInputImage",
+  "inputs": {
+   "value": "",
+   "param_name": "source_image",
+   "label": ""
+  },
+  "_meta": {
+   "title": "studio:source_image"
+  }
+ },
+ "p_prompt": {
+  "class_type": "TS_StudioInputText",
+  "inputs": {
+   "value": "",
+   "param_name": "prompt",
+   "label": ""
+  },
+  "_meta": {
+   "title": "studio:prompt"
+  }
+ },
+ "p_seed": {
+  "class_type": "TS_StudioInputSeed",
+  "inputs": {
+   "value": 0,
+   "param_name": "seed"
+  },
+  "_meta": {
+   "title": "studio:seed"
+  }
+ },
+ "p_scale": {
+  "class_type": "TS_StudioInputNumber",
+  "inputs": {
+   "value": 2.0,
+   "param_name": "scale",
+   "label": ""
+  },
+  "_meta": {
+   "title": "studio:scale"
+  }
+ },
+ "p_denoise": {
+  "class_type": "TS_StudioInputNumber",
+  "inputs": {
+   "value": 0.45,
+   "param_name": "denoise",
+   "label": ""
+  },
+  "_meta": {
+   "title": "studio:denoise"
+  }
+ },
+ "p_steps": {
+  "class_type": "TS_StudioInputNumber",
+  "inputs": {
+   "value": 3,
+   "param_name": "steps",
+   "label": ""
+  },
+  "_meta": {
+   "title": "studio:steps"
+  }
+ },
+ "model_loader": {
+  "class_type": "UNETLoader",
+  "inputs": {
+   "unet_name": "zimage\\z_image_turbo_fp8_mixed.safetensors",
+   "weight_dtype": "default"
+  },
+  "_meta": {
+   "title": "studio:model"
+  }
+ },
+ "lora_stack": {
+  "class_type": "TS_StudioLoraStack",
+  "inputs": {
+   "model": [
+    "model_loader",
+    0
+   ]
+  },
+  "_meta": {
+   "title": "studio:loras"
+  }
+ },
+ "clip_loader": {
+  "class_type": "CLIPLoader",
+  "inputs": {
+   "clip_name": "qwen_3_4b.safetensors",
+   "type": "lumina2"
+  },
+  "_meta": {
+   "title": "studio:clip"
+  }
+ },
+ "vae_loader": {
+  "class_type": "VAELoader",
+  "inputs": {
+   "vae_name": "ae.safetensors"
+  },
+  "_meta": {
+   "title": "studio:vae"
+  }
+ },
+ "tile_patch": {
+  "class_type": "ModelPatchLoader",
+  "inputs": {
+   "name": "Z-Image-Turbo-Fun-Controlnet-Tile-2.1-lite-2601-8steps.safetensors"
+  }
+ },
+ "tile_cn": {
+  "class_type": "ZImageFunControlnet",
+  "inputs": {
+   "model": [
+    "lora_stack",
+    0
+   ],
+   "model_patch": [
+    "tile_patch",
+    0
+   ],
+   "vae": [
+    "vae_loader",
+    0
+   ],
+   "image": [
+    "tiles",
+    0
+   ],
+   "strength": 0.5
+  }
+ },
+ "encode_pos": {
+  "class_type": "CLIPTextEncode",
+  "inputs": {
+   "text": [
+    "p_prompt",
+    0
+   ],
+   "clip": [
+    "clip_loader",
+    0
+   ]
+  }
+ },
+ "neg_zero": {
+  "class_type": "ConditioningZeroOut",
+  "inputs": {
+   "conditioning": [
+    "encode_pos",
+    0
+   ]
+  }
+ },
+ "enlarge": {
+  "class_type": "ImageScaleBy",
+  "inputs": {
+   "image": [
+    "p_image",
+    0
+   ],
+   "upscale_method": "lanczos",
+   "scale_by": [
+    "p_scale",
+    0
+   ]
+  }
+ },
+ "split": {
+  "class_type": "TS_ImageTileSplitter",
+  "inputs": {
+   "image": [
+    "enlarge",
+    0
+   ],
+   "tile_width": 1280,
+   "tile_height": 1280,
+   "overlap": 64,
+   "feather": 0.1
+  }
+ },
+ "tiles": {
+  "class_type": "TS_ImageBatchToImageList",
+  "inputs": {
+   "image": [
+    "split",
+    0
+   ]
+  }
+ },
+ "encode_latent": {
+  "class_type": "VAEEncode",
+  "inputs": {
+   "pixels": [
+    "tiles",
+    0
+   ],
+   "vae": [
+    "vae_loader",
+    0
+   ]
+  }
+ },
+ "sample": {
+  "class_type": "KSampler",
+  "inputs": {
+   "model": [
+    "tile_cn",
+    0
+   ],
+   "seed": [
+    "p_seed",
+    0
+   ],
+   "steps": [
+    "p_steps",
+    1
+   ],
+   "cfg": 1.0,
+   "sampler_name": "dpmpp_2m_sde",
+   "scheduler": "beta",
+   "positive": [
+    "encode_pos",
+    0
+   ],
+   "negative": [
+    "neg_zero",
+    0
+   ],
+   "latent_image": [
+    "encode_latent",
+    0
+   ],
+   "denoise": [
+    "p_denoise",
+    0
+   ]
+  }
+ },
+ "decode": {
+  "class_type": "VAEDecode",
+  "inputs": {
+   "samples": [
+    "sample",
+    0
+   ],
+   "vae": [
+    "vae_loader",
+    0
+   ]
+  }
+ },
+ "rebatch": {
+  "class_type": "TS_ImageListToImageBatch",
+  "inputs": {
+   "images": [
+    "decode",
+    0
+   ]
+  }
+ },
+ "merge": {
+  "class_type": "TS_ImageTileMerger",
+  "inputs": {
+   "images": [
+    "rebatch",
+    0
+   ],
+   "tile_data": [
+    "split",
+    1
+   ]
+  }
+ },
+ "studio_out": {
+  "class_type": "TS_StudioOutput",
+  "inputs": {
+   "image": [
+    "merge",
+    0
+   ],
+   "filename_prefix": "ts_studio/session"
+  },
+  "_meta": {
+   "title": "studio:output"
+  }
+ },
+ "studio_manifest": {
+  "class_type": "TS_StudioManifest",
+  "inputs": {
+   "manifest": "{\n  \"schema_version\": \"1.0.0\",\n  \"id\": \"z-image/upscale\",\n  \"label\": {\n    \"en\": \"Upscale\",\n    \"ru\": \"Апскейл\"\n  },\n  \"family\": \"z-image\",\n  \"family_label\": \"Z-Image Turbo\",\n  \"mode\": \"upscale\",\n  \"order\": 41,\n  \"controls\": [\n    {\n      \"param\": \"prompt\",\n      \"kind\": \"prompt\",\n      \"superprompt\": true\n    },\n    {\n      \"param\": \"scale\",\n      \"kind\": \"choice\",\n      \"default\": 2.0,\n      \"label\": {\n        \"en\": \"Enlargement\",\n        \"ru\": \"Увеличение\"\n      },\n      \"options\": [\n        {\n          \"value\": 1.0,\n          \"label\": \"1x\",\n          \"tooltip\": {\n            \"en\": \"No enlargement - a second pass at the original size.\",\n            \"ru\": \"Без увеличения — второй проход в исходном размере.\"\n          }\n        },\n        {\n          \"value\": 2.0,\n          \"label\": \"2x\",\n          \"tooltip\": {\n            \"en\": \"Twice the width and height.\",\n            \"ru\": \"Вдвое по ширине и высоте.\"\n          }\n        },\n        {\n          \"value\": 4.0,\n          \"label\": \"4x\",\n          \"tooltip\": {\n            \"en\": \"Four times the width and height - slow, and best with a lower denoise.\",\n            \"ru\": \"Вчетверо по ширине и высоте — долго, и лучше с меньшим денойзом.\"\n          }\n        }\n      ]\n    },\n    {\n      \"param\": \"seed\",\n      \"kind\": \"seed\"\n    },\n    {\n      \"param\": \"denoise\",\n      \"kind\": \"slider\",\n      \"min\": 0.05,\n      \"max\": 0.6,\n      \"step\": 0.05,\n      \"default\": 0.45,\n      \"label\": {\n        \"en\": \"Detail denoise\",\n        \"ru\": \"Денойз деталей\"\n      },\n      \"tooltip\": {\n        \"en\": \"How much the pass invents. 0.2-0.3 stays faithful to the source; 0.45 adds noticeable new detail - good at 1x and 2x, heavy-handed when enlarging fourfold.\",\n        \"ru\": \"Насколько проход домысливает. 0.2–0.3 — верность исходнику; 0.45 заметно добавляет деталей: хорошо для 1x и 2x, многовато при увеличении вчетверо.\"\n      }\n    },\n    {\n      \"param\": \"loras\",\n      \"kind\": \"loras\",\n      \"max\": 8,\n      \"strength\": [\n        -2.0,\n        2.0\n      ]\n    },\n    {\n      \"param\": \"steps\",\n      \"kind\": \"number\",\n      \"advanced\": true,\n      \"min\": 1,\n      \"max\": 30,\n      \"default\": 3,\n      \"label\": {\n        \"en\": \"Steps\",\n        \"ru\": \"Шаги\"\n      }\n    }\n  ],\n  \"refs\": {\n    \"max\": 0\n  },\n  \"requires\": [\n    \"source_image\"\n  ],\n  \"upscale_params\": {\n    \"image\": \"source_image\"\n  },\n  \"negative_prompt\": false,\n  \"models\": [\n    {\n      \"title\": \"studio:model\",\n      \"input\": \"unet_name\",\n      \"folder\": \"diffusion_models\",\n      \"match\": \"z_image_turbo_fp8_mixed\"\n    },\n    {\n      \"title\": \"studio:clip\",\n      \"input\": \"clip_name\",\n      \"folder\": \"text_encoders\",\n      \"match\": \"qwen_3_4b\"\n    },\n    {\n      \"title\": \"studio:vae\",\n      \"input\": \"vae_name\",\n      \"folder\": \"vae\",\n      \"match\": \"ae\"\n    }\n  ]\n}"
+  },
+  "_meta": {
+   "title": "studio:manifest"
+  }
+ }
+}

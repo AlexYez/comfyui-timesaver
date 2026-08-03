@@ -52,6 +52,17 @@ export function ensureShellStyles() {
     width:14px;height:56px;display:flex;align-items:center;justify-content:center;
     border:1px solid var(--ts-border);border-right:none;border-radius:var(--ts-radius) 0 0 var(--ts-radius);
     background:var(--ts-elevated);color:var(--ts-muted);cursor:pointer;padding:0}
+/* The asset browser can live on either edge (Settings). Mirroring is a matter
+   of column order and which side owns the divider and the grip — nothing in
+   the panel itself changes. */
+.ts-studio--side-right{grid-template-columns:44px var(--ts-studio-deck-w,340px) minmax(0,1fr) auto}
+.ts-studio--side-right .ts-studio__side{order:3;border-right:none;
+    border-left:1px solid var(--ts-border)}
+.ts-studio--side-right .ts-studio__deck{order:1}
+.ts-studio--side-right .ts-studio__stage{order:2}
+.ts-studio--side-right .ts-studio__sidegrip{right:auto;left:0;border-right:1px solid var(--ts-border);
+    border-left:none;border-radius:0 var(--ts-radius) var(--ts-radius) 0}
+.ts-studio--side-right .ts-studio__sidegrip.is-collapsed{transform:translateY(-50%) scaleX(-1)}
 .ts-studio__sidegrip:hover{color:var(--ts-text)}
 .ts-studio__section{display:flex;flex-direction:column;gap:5px}
 .ts-studio__sectionhead{font-size:var(--ts-fs-xs);font-weight:700;letter-spacing:.05em;
@@ -128,7 +139,22 @@ export function createShell(options) {
 
     function setSideCollapsed(collapsed) {
         side.classList.toggle("is-collapsed", collapsed);
-        grip.textContent = collapsed ? "›" : "‹";
+        // The chevron points the way the panel will move, which flips with the
+        // side the browser lives on.
+        const rightSide = root.classList.contains("ts-studio--side-right");
+        grip.textContent = collapsed === rightSide ? "‹" : "›";
+    }
+
+    /**
+     * Which edge the asset browser occupies.
+     *
+     * @param {"left"|"right"} placement
+     */
+    function setSidePlacement(placement) {
+        const right = placement === "right";
+        root.classList.toggle("ts-studio--side-right", right);
+        sideResizer.setEdge(right ? "left" : "right");
+        setSideCollapsed(side.classList.contains("is-collapsed"));
     }
 
     // ── fluid columns: draggable widths, persisted per install ──────────── //
@@ -148,7 +174,17 @@ export function createShell(options) {
     function makeResizer(host, edge, get, set) {
         const grip = document.createElement("div");
         grip.className = "ts-studio__resizer";
-        grip.style[edge] = "-4px";
+        // The edge a resizer lives on is not fixed: the browser column swaps
+        // sides, and a grip left on the far edge would widen the panel when
+        // dragged toward it.
+        let liveEdge = edge;
+        grip.style[liveEdge] = "-4px";
+        grip.setEdge = (next) => {
+            if (next === liveEdge) return;
+            grip.style[liveEdge] = "";
+            liveEdge = next;
+            grip.style[liveEdge] = "-4px";
+        };
         let startX = 0;
         let startW = 0;
         grip.addEventListener("pointerdown", (event) => {
@@ -161,7 +197,7 @@ export function createShell(options) {
         grip.addEventListener("pointermove", (event) => {
             if (!grip.classList.contains("is-active")) return;
             const delta = event.clientX - startX;
-            set(startW + (edge === "right" ? delta : -delta));
+            set(startW + (liveEdge === "right" ? delta : -delta));
             applyWidths();
         });
         const stop = () => {
@@ -180,7 +216,8 @@ export function createShell(options) {
     // its own because only deckBody is wiped on a rebuild — an earlier version
     // put the grip among the rebuilt children and it vanished (measured).
     makeResizer(deck, "right", () => widths.deck, (w) => { widths.deck = w; });
-    makeResizer(side, "right", () => widths.side, (w) => { widths.side = w; });
+    const sideResizer = makeResizer(side, "right", () => widths.side,
+                                    (w) => { widths.side = w; });
 
     const overlay = openFullscreenOverlay(root, {
         label: options.label,
@@ -193,7 +230,7 @@ export function createShell(options) {
         // `deck` is the rebuildable body; `deckFrame` is the column that keeps
         // the resizer across rebuilds.
         root, deck: deckBody, deckFrame: deck, stage, side, rail,
-        setMode, setSideCollapsed,
+        setMode, setSideCollapsed, setSidePlacement,
         isSideCollapsed: () => side.classList.contains("is-collapsed"),
         parkFocus: overlay.parkFocus,
         close: overlay.close,

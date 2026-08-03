@@ -48,7 +48,9 @@ Paint the area at the size of the object: what fits in the mask is what you get.
 
 Ideogram 4 has a node of its own — **TS Image Ideogram Designer** — and the studio does not replace it: the **Layout** button opens that very editor, with all its panels, presets and its prompt-generating button. The model reads a structured description rather than free text, and it is the node that builds one, so the image's metadata carries exactly the prompt the render used.
 
-Skip the designer and the short path applies: plain text from the prompt field goes through the node's Auto mode and becomes a description via the same helper its editor uses. The deck's format and resolution are handed to the designer and stay authoritative.
+Skip the designer and the short path applies: plain text from the prompt field goes through the node's Auto mode and becomes a description via the same helper its editor uses.
+
+The deck is deliberately short for this model: format, resolution and the whole layout live in the editor itself rather than being mirrored beside it. What stays in the deck is what the node does not decide — prompt, seed, LoRA, and the sampler settings under Advanced.
 
 ## References and LoRA
 

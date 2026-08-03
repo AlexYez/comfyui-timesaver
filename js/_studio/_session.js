@@ -1,9 +1,10 @@
 // TS Studio kit — session identity and result history (core layer, no DOM).
 //
-// A session is one node instance's body of work. Results are files under
-// output/ts_studio/<session>/ written by the TS_StudioOutput marker; history
-// survives a page reload by re-reading /history and keeping only entries
-// whose images were saved under this session's prefix.
+// A session is one node instance's body of work. Results are written by the
+// TS_StudioOutput marker into output/images/<model>/, named for the model and
+// the moment — a tree a person can browse without the app. The session itself
+// travels in the PNG snapshot (ts_studio), so the gallery can rebuild a
+// sitting after a reload without owning the folder layout.
 
 export function newSessionId() {
     const stamp = Date.now().toString(36);
@@ -11,8 +12,20 @@ export function newSessionId() {
     return `s${stamp}_${noise}`;
 }
 
-export function sessionPrefix(sessionId) {
-    return `ts_studio/${sessionId}/result`;
+/**
+ * Where one run's file goes: a folder per model, a name carrying the model
+ * and the local date and time. Mirrors the layout the owner's own workflows
+ * save into, so studio work sits beside everything else.
+ *
+ * @param {string} family Backend family id, e.g. "krea2".
+ * @param {Date} [now] Injected in tests.
+ */
+export function outputPrefix(family, now = new Date()) {
+    const pad = (n) => String(n).padStart(2, "0");
+    const date = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+    const time = `${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+    const model = String(family || "studio").replace(/[^\w.-]+/g, "-");
+    return `images/${model}/${model}_${date}_${time}`;
 }
 
 export function resultRelPath(image) {
@@ -56,6 +69,17 @@ export async function restoreResults(fetcher, sessionId) {
     }
     found.sort((a, b) => resultRelPath(a.image).localeCompare(resultRelPath(b.image)));
     return found;
+}
+
+/** The session a history entry belongs to, or "" when it carries no snapshot. */
+function readSessionId(historyEntry) {
+    try {
+        const snapshot = historyEntry.prompt?.[3]?.extra_pnginfo?.ts_studio;
+        const state = typeof snapshot === "string" ? JSON.parse(snapshot) : snapshot;
+        return String(state?.session || "");
+    } catch {
+        return "";
+    }
 }
 
 // The parameters of a run are recoverable from the stored prompt: marker

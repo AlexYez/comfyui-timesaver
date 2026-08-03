@@ -21,7 +21,11 @@ function ensureInpaintStyles() {
     style.id = STYLE_ID;
     style.textContent = `
 .ts-inp{position:absolute;inset:0}
-.ts-inp__bar{position:absolute;top:8px;left:50%;transform:translateX(-50%);z-index:5;
+/* Centred on the canvas, but never under the fullscreen close button: the
+   usable strip stops short of that corner, and the bar centres inside it. */
+.ts-inp__bar{position:absolute;top:8px;left:0;right:var(--ts-fs-safe-right);z-index:5;
+    width:max-content;max-width:calc(100% - var(--ts-fs-safe-right) - 8px);
+    margin:0 auto;overflow-x:auto;
     display:flex;align-items:center;gap:8px;padding:4px 8px;background:var(--ts-elevated);
     border:1px solid var(--ts-border);border-radius:var(--ts-radius)}
 .ts-inp__seg{display:flex;border:1px solid var(--ts-border);border-radius:var(--ts-radius-sm);

@@ -120,6 +120,10 @@ export function buildStudioState(run) {
         family_label: run.familyLabel || run.family,
         mode: run.mode,
         ui_mode: run.uiMode || run.mode,
+        // Which sitting produced this. The gallery restores a session from
+        // this rather than from the folder, which leaves the output tree free
+        // to be organised for a person: output/images/<model>/.
+        session: run.sessionId || "",
         values: {},
         loras: (run.loras || []).map((l) => ({ name: l.name, strength: Number(l.strength) })),
         styles: (run.styles || []).map((s) => String(s)),

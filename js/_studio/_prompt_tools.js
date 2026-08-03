@@ -75,11 +75,17 @@ export function ensurePromptToolStyles() {
     document.head.appendChild(style);
 }
 
+// Prompt toolbar, same 24 grid as the rest of the studio. The wand's sparkles
+// are drawn from one symmetric four-point shape at two sizes, so neither leans.
+const TOOL_ICON_ATTRS = 'viewBox="0 0 24 24" width="14" height="14" fill="none" '
+    + 'stroke="currentColor" stroke-width="1.8" stroke-linecap="round" '
+    + 'stroke-linejoin="round"';
+
 const SVG = {
-    mic: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>',
-    image: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M4 17l5-5 4 4 3-3 4 4"/></svg>',
-    palette: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3a9 9 0 1 0 0 18h1a2 2 0 0 0 0-4h-1a2 2 0 0 1 0-4h5a4 4 0 0 0 4-4c0-3.5-4-6-9-6z"/><circle cx="7.5" cy="11" r="1"/><circle cx="9.5" cy="7" r="1"/><circle cx="14" cy="6.5" r="1"/></svg>',
-    wand: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 19L16 8m2.5-2.5L17 7M19 3l.7 1.8L21.5 5.5l-1.8.7L19 8l-.7-1.8-1.8-.7 1.8-.7zM8 3l.5 1.3L9.8 4.8l-1.3.5L8 6.6l-.5-1.3-1.3-.5 1.3-.5z"/></svg>',
+    mic: `<svg ${TOOL_ICON_ATTRS}><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/></svg>`,
+    image: `<svg ${TOOL_ICON_ATTRS}><rect x="3" y="5" width="18" height="14" rx="2.2"/><circle cx="8.6" cy="9.8" r="1.5"/><path d="M4 17l4.8-4.8 3.4 3.4 3-3L21 16.6"/></svg>`,
+    palette: `<svg ${TOOL_ICON_ATTRS}><path d="M12 3a9 9 0 1 0 0 18h1a2 2 0 0 0 0-4h-1a2 2 0 0 1 0-4h5a4 4 0 0 0 4-4c0-3.5-4-6-9-6z"/><circle cx="7.6" cy="11.2" r="1"/><circle cx="9.6" cy="7.4" r="1"/><circle cx="13.8" cy="6.6" r="1"/></svg>`,
+    wand: `<svg ${TOOL_ICON_ATTRS}><path d="M4.5 19.5L13.5 10.5"/><path d="M17 3l.9 2.1 2.1.9-2.1.9-.9 2.1-.9-2.1-2.1-.9 2.1-.9z"/><path d="M20 13l.6 1.4 1.4.6-1.4.6-.6 1.4-.6-1.4-1.4-.6 1.4-.6z"/></svg>`,
 };
 
 function insertAtCursor(textarea, text) {
