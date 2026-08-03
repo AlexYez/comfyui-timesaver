@@ -1224,6 +1224,18 @@ export async function openStudio(node, persist) {
         return true;
     }
 
+    // Reachable from outside: an asset browser can hand an image straight to
+    // the mode on screen. Same path as a drop, so the two cannot diverge.
+    shell.acceptImage = (url, name) => acceptDroppedImage({
+        name: name || "image.png",
+        getBlob: async () => {
+            const response = await fetch(url);
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            return response.blob();
+        },
+    });
+    shell.activeMode = () => activeModeId;
+
     const stageDropTeardown = makeDropZone(stageFit, {
         max: 1,
         onDrop: async ([item]) => {

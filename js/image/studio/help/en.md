@@ -90,6 +90,8 @@ Every result carries a snapshot of its settings in a PNG text chunk of its own �
 
 The prompt is additionally written into the standard metadata (through TS Image Prompt Injector), so Artius Browser and other viewers show it exactly as they do for ordinary generations.
 
+Cards in the Artius browser carry two studio buttons: **S** sends the picture into whichever mode is open (the inpaint canvas, the upscale stage, or a free reference slot), and **R** restores the session it was made in. Both are in the right-click menu as well.
+
 The same is available from the Artius browser: right-click an image and choose **Restore studio session**. The studio opens — or the one already on screen is reused — with that render's settings back in place. It works both when the studio is closed and when the browser is open inside it, in the Library tab.
 
 Artius also marks studio work on the thumbnails: the badge names the mode and the model ("Generate · Krea 2 Turbo"), and the tooltip adds seed, steps, CFG and repaint strength. Images made elsewhere look as they always did. If older work shows no badge yet, press Rebuild Cache in the browser.

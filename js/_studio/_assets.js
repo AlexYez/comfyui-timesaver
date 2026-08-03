@@ -6,7 +6,7 @@
 // provider is always available: recent images from the server history plus
 // an OS file picker, drawn with the shared grid styling.
 
-import { makeAssetDraggable } from "./_dnd.js";
+import { makeAssetDraggable, makePointerDragSource } from "./_dnd.js";
 import { markOverlayAbove } from "../_fullscreen.js";
 
 const PROVIDERS = [];
@@ -42,7 +42,33 @@ registerAssetProvider({
             }),
         });
         const releaseLightbox = adoptArtiusLightbox();
-        return { unmount: () => { releaseLightbox(); handle?.unmount?.(); } };
+        // Carry cards by pointer as well. The browser's own HTML5 drag is left
+        // in place — this is a second route that no focus handling or shadow
+        // boundary can veto, which is what made dragging out of the embedded
+        // panel unreliable in the first place.
+        const releaseDrag = makePointerDragSource(host, {
+            pick: (path) => {
+                const card = path.find((node) => node?.dataset?.cardId);
+                if (!card) return null;
+                const panel = path.find((node) => node?.tagName?.toLowerCase()
+                    === "ts-artius-browser-panel");
+                const asset = panel?.tsFindItemById?.(Number(card.dataset.cardId));
+                return asset?.file_url && String(asset.type) === "image" ? asset : null;
+            },
+            preview: (asset) => asset.preview_url || asset.file_url,
+            item: (asset) => ({
+                type: "image",
+                name: asset.filename || "artius.png",
+                getBlob: async () => {
+                    const response = await fetch(asset.file_url);
+                    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                    return response.blob();
+                },
+            }),
+        });
+        return {
+            unmount: () => { releaseDrag(); releaseLightbox(); handle?.unmount?.(); },
+        };
     },
 });
 

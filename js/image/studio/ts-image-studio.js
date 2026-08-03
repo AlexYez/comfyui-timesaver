@@ -27,12 +27,18 @@ const ACTION_STRINGS = {
         noSession: "This image was not made in TS Image Studio.",
         unreadable: (reason) => `Could not read the image: ${reason}`,
         restored: "Session restored in TS Image Studio.",
+        use: "Use in the studio",
+        noSlot: "Every reference slot is taken — clear one first.",
+        sourceSet: (mode) => `Image loaded into ${mode}.`,
     },
     ru: {
         restore: "Восстановить сессию студии",
         noSession: "Это изображение сделано не в TS Image Studio.",
         unreadable: (reason) => `Не удалось прочитать изображение: ${reason}`,
         restored: "Сессия восстановлена в TS Image Studio.",
+        use: "Использовать в студии",
+        noSlot: "Все слоты референсов заняты — освободите один.",
+        sourceSet: (mode) => `Изображение загружено в режим ${mode}.`,
     },
 };
 
@@ -91,6 +97,32 @@ function findStudioNode() {
 }
 
 /**
+ * Send an image into whatever mode the studio is showing — the inpaint
+ * canvas, the upscale stage, or the next free reference slot.
+ *
+ * Exists because dragging is not always available: the gesture depends on the
+ * browser actually starting an HTML5 drag, and a click never does.
+ *
+ * @param {{url: string, filename?: string}} asset
+ * @returns {Promise<{ok: boolean, message: string}>}
+ */
+async function useAssetAsSource(asset) {
+    const t = pickLocaleStrings(ACTION_STRINGS);
+    const url = String(asset?.url || "");
+    if (!url) return { ok: false, message: t.unreadable("no URL") };
+    try {
+        const host = findStudioNode();
+        const studio = openStudioInstance() || await openStudio(host, persistFor(host));
+        const taken = await studio.acceptImage(url, asset.filename);
+        if (taken === false) return { ok: false, message: t.noSlot };
+        return { ok: true, message: t.sourceSet(studio.activeMode()) };
+    } catch (err) {
+        console.error("[TS Studio] using an image as the source failed", err);
+        return { ok: false, message: String(err?.message || err) };
+    }
+}
+
+/**
  * Rebuild the session an image was made in.
  *
  * Called by asset browsers through the shared action registry, so it takes a
@@ -144,6 +176,12 @@ function setupStudioNode(node) {
         if (index >= 0) node.removeInput(index);
         hideWidget(node, name);
     }
+    // A node saved before the IMAGE input was dropped from the schema still
+    // carries that slot when the workflow is reloaded — LiteGraph restores
+    // what the file says, not what the node now declares. Sources are chosen
+    // inside the studio, so the leftover socket goes too.
+    const staleImage = (node.inputs || []).findIndex((input) => input?.name === "image");
+    if (staleImage >= 0) node.removeInput(staleImage);
 
     const host = document.createElement("div");
     host.className = `${TS_UI_CLASS} ts-istudio-launch`;
@@ -184,6 +222,13 @@ app.registerExtension({
             supports: (asset) => asset?.type === "image"
                 && /\.png$/i.test(String(asset.extension || asset.filename || asset.url || "")),
             run: (asset) => recreateFromAsset(asset),
+        });
+        publishAssetAction({
+            id: "ts-image-studio.use-source",
+            label: { en: ACTION_STRINGS.en.use, ru: ACTION_STRINGS.ru.use },
+            order: 21,
+            supports: (asset) => asset?.type === "image",
+            run: (asset) => useAssetAsSource(asset),
         });
     },
     nodeCreated(node) {

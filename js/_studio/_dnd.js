@@ -150,6 +150,11 @@ export async function normalizeDrop(dataTransfer) {
  * @returns {() => void} teardown
  */
 export function makeDropZone(element, options) {
+    // Also findable without the drag protocol: the pointer-drag fallback below
+    // looks for this attribute under the cursor when a card is released.
+    element.dataset.tsDropzone = "1";
+    element._tsAcceptItems = (items) => options.onDrop(
+        options.max ? items.slice(0, options.max) : items);
     const over = (event) => {
         if (!sniffDrop(event.dataTransfer)) return;
         event.preventDefault();
@@ -170,6 +175,8 @@ export function makeDropZone(element, options) {
     element.addEventListener("dragleave", leave);
     element.addEventListener("drop", drop);
     return () => {
+        delete element.dataset.tsDropzone;
+        delete element._tsAcceptItems;
         element.removeEventListener("dragover", over);
         element.removeEventListener("dragenter", over);
         element.removeEventListener("dragleave", leave);
@@ -186,4 +193,111 @@ export function makeAssetDraggable(element, asset) {
     };
     element.addEventListener("dragstart", onDragStart);
     return () => element.removeEventListener("dragstart", onDragStart);
+}
+
+
+// ── pointer drag: the same gesture without the drag protocol ─────────────── //
+// HTML5 drag-and-drop is not always available to us — a browser will refuse to
+// start one when something inside the page moves focus at the wrong moment, and
+// an embedded panel living in a shadow root makes that harder to control. This
+// carries a card to a drop zone using plain pointer events, which nothing can
+// veto, and hands the result to the same onDrop the zone already has.
+
+const GHOST_ID = "ts-pointer-drag-ghost";
+const DRAG_THRESHOLD = 6;
+
+/**
+ * Make an element's cards draggable by pointer.
+ *
+ * @param {HTMLElement} host Container the cards live in (shadow hosts fine).
+ * @param {object} options
+ * @param {(target: EventTarget[]) => ?object} options.pick Card -> asset, or
+ *   null when the pointer did not start on one. Receives the composed path.
+ * @param {(asset: object) => string} options.preview Thumbnail URL for the ghost.
+ * @param {(asset: object) => object} options.item DropItem for the zone.
+ * @returns {() => void} teardown
+ */
+export function makePointerDragSource(host, options) {
+    let asset = null;
+    let startX = 0;
+    let startY = 0;
+    let ghost = null;
+    let armed = false;
+
+    function ghostElement(url) {
+        const element = document.createElement("div");
+        element.id = GHOST_ID;
+        element.style.cssText = "position:fixed;z-index:12000;width:88px;height:88px;"
+            + "border-radius:8px;pointer-events:none;background-size:cover;"
+            + "background-position:center;box-shadow:0 8px 24px rgba(0,0,0,.45);"
+            + "opacity:.9;transform:translate(-50%,-50%)";
+        if (url) element.style.backgroundImage = `url("${url}")`;
+        document.body.appendChild(element);
+        return element;
+    }
+
+    function zoneUnder(x, y) {
+        for (const element of document.elementsFromPoint(x, y)) {
+            const zone = element.closest?.("[data-ts-dropzone]");
+            if (zone?._tsAcceptItems) return zone;
+        }
+        return null;
+    }
+
+    function onPointerDown(event) {
+        if (event.button !== 0) return;
+        const picked = options.pick(event.composedPath?.() || [event.target]);
+        if (!picked) return;
+        asset = picked;
+        startX = event.clientX;
+        startY = event.clientY;
+        armed = true;
+    }
+
+    function onPointerMove(event) {
+        if (!armed || !asset) return;
+        if (!ghost) {
+            if (Math.hypot(event.clientX - startX, event.clientY - startY) < DRAG_THRESHOLD) return;
+            ghost = ghostElement(options.preview?.(asset));
+        }
+        ghost.style.left = `${event.clientX}px`;
+        ghost.style.top = `${event.clientY}px`;
+        const zone = zoneUnder(event.clientX, event.clientY);
+        for (const element of document.querySelectorAll("[data-ts-dropzone].is-drag-over")) {
+            if (element !== zone) element.classList.remove("is-drag-over");
+        }
+        zone?.classList.add("is-drag-over");
+    }
+
+    function finish(event) {
+        const dragged = Boolean(ghost);
+        const held = asset;
+        armed = false;
+        asset = null;
+        ghost?.remove();
+        ghost = null;
+        for (const element of document.querySelectorAll("[data-ts-dropzone].is-drag-over")) {
+            element.classList.remove("is-drag-over");
+        }
+        if (!dragged || !held) return;                 // a click, not a drag
+        const zone = zoneUnder(event.clientX, event.clientY);
+        if (!zone) return;
+        try {
+            zone._tsAcceptItems([options.item(held)]);
+        } catch (err) {
+            console.warn("[TS Studio] pointer drop failed", err);
+        }
+    }
+
+    host.addEventListener("pointerdown", onPointerDown, true);
+    window.addEventListener("pointermove", onPointerMove, true);
+    window.addEventListener("pointerup", finish, true);
+    window.addEventListener("pointercancel", finish, true);
+    return () => {
+        host.removeEventListener("pointerdown", onPointerDown, true);
+        window.removeEventListener("pointermove", onPointerMove, true);
+        window.removeEventListener("pointerup", finish, true);
+        window.removeEventListener("pointercancel", finish, true);
+        ghost?.remove();
+    };
 }
