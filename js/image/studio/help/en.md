@@ -28,6 +28,20 @@ Measured on identical tasks, so the numbers mean something:
 
 From the runs: to swap an object reach for Klein with Replace, or Krea 2; to add detail without substituting the subject, Qwen Image at 0.35 or Klein at 0.2.
 
+## Processing resolution (Flux 2 Klein)
+
+Klein does not redraw the whole frame: it cuts out the masked region, generates there, and feathers the result back in. The **Processing resolution** slider sets how many megapixels that generation runs at. A small selection is scaled up toward the budget — more detail, more time; an oversized one is scaled down to it so memory stays bounded.
+
+Rough guide: 0.6 MP for a quick pass, 1.5 MP as the working default, 3-4 MP when texture matters over a large area.
+
+The other models work differently — they redraw the whole frame (LanPaint), so resolution there follows the image itself and no slider appears.
+
+## Placing a specific object (Flux 2 Klein)
+
+Klein's inpaint deck has a **Reference object** slot. Drop a picture of the thing you want, mask where it should go, and that exact object appears there instead of a generic one from the description. The prompt still directs the staging: where it stands, how it turns, what light falls on it.
+
+The reference is only read during a full redraw, so filling the slot switches **Replace** on by itself — the strength slider greys out because it plays no part in that mode.
+
 ## Ideogram: the designer, hosted
 
 Ideogram 4 has a node of its own — **TS Image Ideogram Designer** — and the studio does not replace it: the **Layout** button opens that very editor, with all its panels, presets and its prompt-generating button. The model reads a structured description rather than free text, and it is the node that builds one, so the image's metadata carries exactly the prompt the render used.

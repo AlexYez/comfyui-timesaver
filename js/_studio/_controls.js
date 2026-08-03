@@ -366,7 +366,9 @@ registerControlKind("seed", (control, ctx) => {
 // slots become dropParams so the patcher removes their branch.
 registerControlKind("refs", (control, ctx) => {
     const max = Math.max(1, Math.min(Number(control.max || 3), 6));
-    const section = deckSection(ctx.t.references);
+    // A backend may name the slots for what they do there — Inpaint asks for
+    // one object to place, not a set of references.
+    const section = deckSection(localized(control.label, ctx.locale, ctx.t.references));
     const row = document.createElement("div");
     row.className = "ts-studio__refs";
     section.appendChild(row);

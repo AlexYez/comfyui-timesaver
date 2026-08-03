@@ -6,7 +6,7 @@
 // beyond composition lives here.
 
 import { api } from "/scripts/api.js";
-import { TS_UI_CLASS, ensureThemeStyles, pickLocaleStrings } from "../../_theme.js";
+import { TS_UI_CLASS, ensureThemeStyles, getUiLanguage, pickLocaleStrings } from "../../_theme.js";
 import { createShell, deckSection } from "../../_studio/_shell.js";
 import { ensureControlStyles, getControlRenderer, randomSeed } from "../../_studio/_controls.js";
 import { createGallery } from "../../_studio/_gallery.js";
@@ -355,7 +355,12 @@ export async function openStudio(node, persist) {
     ensureAppStyles();
     ensureControlStyles();
     const t = pickLocaleStrings(STRINGS);
-    const locale = STRINGS.ru === t ? "ru" : "en";
+    // Backend manifests carry their own {en, ru} labels, and the controls pick
+    // one by this code. Ask the theme what language the UI is in — comparing
+    // the merged strings object against STRINGS.ru never matched (the helper
+    // returns a fresh object), so every manifest label read as English no
+    // matter what ComfyUI was set to.
+    const locale = getUiLanguage() === "ru" ? "ru" : "en";
 
     const objectInfo = await (await api.fetchApi("/object_info")).json();
     // Backend workflow files are WEB_DIRECTORY statics: /extensions/* lives
@@ -654,6 +659,12 @@ export async function openStudio(node, persist) {
                     if (param === "__refs") {
                         const used = Object.values(value || {}).some(Boolean);
                         controlsByParam.get("size")?.setDisabled?.(used);
+                        // In Inpaint the reference is only read during a full
+                        // redraw — a partial one has nothing to fill from. So
+                        // dropping an object in turns Replace on rather than
+                        // leaving the picture silently unchanged.
+                        const replace = controlsByParam.get("replace");
+                        if (used && replace && replace.get() === false) replace.set(true);
                     }
                 },
             });

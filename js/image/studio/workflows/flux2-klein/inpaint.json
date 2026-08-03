@@ -138,7 +138,10 @@
     "p_denoise",
     0
    ],
-   "megapixels": 1.5,
+   "megapixels": [
+    "p_megapixels",
+    0
+   ],
    "context_pct": 8.0,
    "feather_pct": 3.0,
    "resize_method": "lanczos",
@@ -155,7 +158,11 @@
     0
    ],
    "sampler_name": "euler",
-   "scheduler": "simple"
+   "scheduler": "simple",
+   "reference": [
+    "p_ref1",
+    0
+   ]
   }
  },
  "studio_out": {
@@ -171,7 +178,7 @@
  "studio_manifest": {
   "class_type": "TS_StudioManifest",
   "inputs": {
-   "manifest": "{\"schema_version\": \"1.0.0\", \"id\": \"flux2-klein/inpaint\", \"label\": {\"en\": \"Inpaint\", \"ru\": \"Inpaint\"}, \"family\": \"flux2-klein\", \"family_label\": \"Flux 2 Klein\", \"mode\": \"inpaint\", \"order\": 30, \"controls\": [{\"param\": \"prompt\", \"kind\": \"prompt\", \"superprompt\": true}, {\"param\": \"seed\", \"kind\": \"seed\"}, {\"param\": \"replace\", \"kind\": \"toggle\", \"default\": false, \"label\": {\"en\": \"Replace (full redraw)\", \"ru\": \"Replace (полная перерисовка)\"}, \"tooltip\": {\"en\": \"Regenerate the masked region from scratch; the strength slider is ignored (100%).\", \"ru\": \"Перерисовать маску с нуля; ползунок силы игнорируется (100%).\"}}, {\"param\": \"denoise\", \"kind\": \"slider\", \"min\": 0.1, \"max\": 0.5, \"step\": 0.1, \"label\": {\"en\": \"Repaint strength\", \"ru\": \"Сила перерисовки\"}, \"default\": 0.3, \"tooltip\": {\"en\": \"How far the masked area is reworked. 0.1-0.2 refines the object in place, 0.3-0.5 reshapes it. To replace the content entirely, turn Replace on.\", \"ru\": \"Насколько перерабатывается область. 0.1–0.2 — уточнение объекта на месте, 0.3–0.5 — заметное изменение. Для полной замены включите режим Replace.\"}}, {\"param\": \"loras\", \"kind\": \"loras\", \"max\": 8, \"strength\": [-2.0, 2.0]}, {\"param\": \"steps\", \"kind\": \"number\", \"advanced\": true, \"min\": 1, \"max\": 60, \"label\": {\"en\": \"Steps\", \"ru\": \"Шаги\"}}, {\"param\": \"cfg\", \"kind\": \"number\", \"advanced\": true, \"min\": 0, \"max\": 15, \"step\": 0.1, \"label\": {\"en\": \"CFG\", \"ru\": \"CFG\"}}], \"refs\": {\"max\": 0}, \"requires\": [\"source_image\", \"mask\"], \"inpaint_params\": {\"image\": \"source_image\", \"mask\": \"mask\"}, \"negative_prompt\": false, \"models\": [{\"title\": \"studio:model\", \"input\": \"unet_name\", \"folder\": \"diffusion_models\", \"match\": \"flux.?2.?klein.*(9b|4b)|ArtiusFlux\"}, {\"title\": \"studio:clip\", \"input\": \"clip_name\", \"folder\": \"text_encoders\", \"match\": \"qwen_3_(8b|4b)\"}, {\"title\": \"studio:vae\", \"input\": \"vae_name\", \"folder\": \"vae\", \"match\": \"flux2-vae\"}], \"literals\": {\"replace\": {\"node\": \"smart\", \"input\": \"replace\"}}}"
+   "manifest": "{\n  \"schema_version\": \"1.0.0\",\n  \"id\": \"flux2-klein/inpaint\",\n  \"label\": {\n    \"en\": \"Inpaint\",\n    \"ru\": \"Inpaint\"\n  },\n  \"family\": \"flux2-klein\",\n  \"family_label\": \"Flux 2 Klein\",\n  \"mode\": \"inpaint\",\n  \"order\": 30,\n  \"controls\": [\n    {\n      \"param\": \"prompt\",\n      \"kind\": \"prompt\",\n      \"superprompt\": true\n    },\n    {\n      \"param\": \"__refs\",\n      \"kind\": \"refs\",\n      \"max\": 1,\n      \"label\": {\n        \"en\": \"Reference object\",\n        \"ru\": \"Референс объекта\"\n      }\n    },\n    {\n      \"param\": \"seed\",\n      \"kind\": \"seed\"\n    },\n    {\n      \"param\": \"replace\",\n      \"kind\": \"toggle\",\n      \"default\": false,\n      \"label\": {\n        \"en\": \"Replace (full redraw)\",\n        \"ru\": \"Replace (полная перерисовка)\"\n      },\n      \"tooltip\": {\n        \"en\": \"Regenerate the masked region from scratch; the strength slider is ignored (100%).\",\n        \"ru\": \"Перерисовать маску с нуля; ползунок силы игнорируется (100%).\"\n      }\n    },\n    {\n      \"param\": \"denoise\",\n      \"kind\": \"slider\",\n      \"min\": 0.1,\n      \"max\": 0.5,\n      \"step\": 0.1,\n      \"label\": {\n        \"en\": \"Repaint strength\",\n        \"ru\": \"Сила перерисовки\"\n      },\n      \"default\": 0.3,\n      \"tooltip\": {\n        \"en\": \"How far the masked area is reworked. 0.1-0.2 refines the object in place, 0.3-0.5 reshapes it. To replace the content entirely, turn Replace on.\",\n        \"ru\": \"Насколько перерабатывается область. 0.1–0.2 — уточнение объекта на месте, 0.3–0.5 — заметное изменение. Для полной замены включите режим Replace.\"\n      }\n    },\n    {\n      \"param\": \"megapixels\",\n      \"kind\": \"slider\",\n      \"min\": 0.5,\n      \"max\": 4.0,\n      \"step\": 0.1,\n      \"label\": {\n        \"en\": \"Processing resolution\",\n        \"ru\": \"Разрешение обработки\"\n      },\n      \"tooltip\": {\n        \"en\": \"Megapixels the masked crop is redrawn at. A small selection is upscaled toward this budget (more detail, slower); an oversized one is scaled down to it.\",\n        \"ru\": \"В скольких мегапикселях перерисовывается вырезанный по маске фрагмент. Маленькое выделение увеличивается до этого бюджета (больше деталей, дольше), слишком большое — уменьшается.\"\n      }\n    },\n    {\n      \"param\": \"loras\",\n      \"kind\": \"loras\",\n      \"max\": 8,\n      \"strength\": [\n        -2.0,\n        2.0\n      ]\n    },\n    {\n      \"param\": \"steps\",\n      \"kind\": \"number\",\n      \"advanced\": true,\n      \"min\": 1,\n      \"max\": 60,\n      \"label\": {\n        \"en\": \"Steps\",\n        \"ru\": \"Шаги\"\n      }\n    },\n    {\n      \"param\": \"cfg\",\n      \"kind\": \"number\",\n      \"advanced\": true,\n      \"min\": 0,\n      \"max\": 15,\n      \"step\": 0.1,\n      \"label\": {\n        \"en\": \"CFG\",\n        \"ru\": \"CFG\"\n      }\n    }\n  ],\n  \"refs\": {\n    \"max\": 1\n  },\n  \"requires\": [\n    \"source_image\",\n    \"mask\"\n  ],\n  \"inpaint_params\": {\n    \"image\": \"source_image\",\n    \"mask\": \"mask\"\n  },\n  \"negative_prompt\": false,\n  \"models\": [\n    {\n      \"title\": \"studio:model\",\n      \"input\": \"unet_name\",\n      \"folder\": \"diffusion_models\",\n      \"match\": \"flux.?2.?klein.*(9b|4b)|ArtiusFlux\"\n    },\n    {\n      \"title\": \"studio:clip\",\n      \"input\": \"clip_name\",\n      \"folder\": \"text_encoders\",\n      \"match\": \"qwen_3_(8b|4b)\"\n    },\n    {\n      \"title\": \"studio:vae\",\n      \"input\": \"vae_name\",\n      \"folder\": \"vae\",\n      \"match\": \"flux2-vae\"\n    }\n  ],\n  \"literals\": {\n    \"replace\": {\n      \"node\": \"smart\",\n      \"input\": \"replace\"\n    }\n  }\n}"
   }
  },
  "p_denoise": {
@@ -180,6 +187,28 @@
    "value": 0.3,
    "param_name": "denoise",
    "label": ""
+  }
+ },
+ "p_megapixels": {
+  "class_type": "TS_StudioInputNumber",
+  "inputs": {
+   "value": 1.5,
+   "param_name": "megapixels",
+   "label": ""
+  },
+  "_meta": {
+   "title": "studio:megapixels"
+  }
+ },
+ "p_ref1": {
+  "class_type": "TS_StudioInputImage",
+  "inputs": {
+   "value": "",
+   "param_name": "ref_1",
+   "label": ""
+  },
+  "_meta": {
+   "title": "studio:ref_1"
   }
  }
 }
