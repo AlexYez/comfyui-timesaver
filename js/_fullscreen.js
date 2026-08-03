@@ -161,7 +161,16 @@ export function openFullscreenOverlay(content, options = {}) {
 
     const parkFocus = () => { try { keyAnchor.focus(); } catch { /* not focusable yet */ } };
 
+    // A drag that starts inside the overlay must keep whatever focus the
+    // browser gives it. Re-parking focus on the off-screen anchor mid-gesture
+    // cancels the drag before it leaves the source element — which is why
+    // dragging a card out of the embedded asset browser did nothing at all.
+    let dragging = false;
+    const onDragStart = () => { dragging = true; };
+    const onDragStop = () => { dragging = false; };
+
     function onFocusIn(event) {
+        if (dragging) return;
         const target = event.target;
         if (target === keyAnchor) return;
         const tag = target?.tagName;
@@ -195,6 +204,9 @@ export function openFullscreenOverlay(content, options = {}) {
         doc.defaultView?.removeEventListener("keydown", onKeyDown, true);
         modal.removeEventListener("focusin", onFocusIn);
         modal.removeEventListener("pointerdown", onPointerDown);
+        modal.removeEventListener("dragstart", onDragStart, true);
+        doc.removeEventListener("dragend", onDragStop, true);
+        doc.removeEventListener("drop", onDragStop, true);
         // Detach content (keep it alive for reopen), then drop the overlay.
         content.remove();
         modal.remove();
@@ -203,6 +215,11 @@ export function openFullscreenOverlay(content, options = {}) {
 
     modal.addEventListener("focusin", onFocusIn);
     modal.addEventListener("pointerdown", onPointerDown);
+    // Capture phase, and on the document for the end: a drag can finish
+    // anywhere, including outside the overlay.
+    modal.addEventListener("dragstart", onDragStart, true);
+    doc.addEventListener("dragend", onDragStop, true);
+    doc.addEventListener("drop", onDragStop, true);
     doc.defaultView?.addEventListener("keydown", onKeyDown, true);
     doc.body.appendChild(modal);
     parkFocus();
