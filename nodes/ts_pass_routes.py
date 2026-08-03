@@ -16,6 +16,7 @@ from pathlib import Path
 from ._deps import TSDependencyManager  # noqa: F401  (kept for import parity)
 from ._shared import make_route_registrars
 from . import _pass
+from . import _studio_packs
 
 logger = logging.getLogger("comfyui_timesaver.pass_routes")
 LOG_PREFIX = "[TS Pass]"
@@ -107,6 +108,52 @@ async def pass_clear(_request):
     state = _pass.clear_pass()
     state["links"] = STORE_LINKS
     return _json(state)
+
+
+@register_get("/api/ts_studio/packs")
+async def studio_packs(_request):
+    """Catalogue joined with what is installed — the showcase reads this."""
+    catalog = _studio_packs.fetch_catalog()
+    return _json(_studio_packs.describe_catalog(catalog))
+
+
+@register_post("/api/ts_studio/packs/install")
+async def studio_pack_install(request):
+    """Fetch and unpack one pack. Refuses politely without the right pass."""
+    try:
+        body = await request.json()
+    except Exception:                       # noqa: BLE001
+        return _json({"error": "expected a JSON body"}, status=400)
+
+    pack_id = str(body.get("id") or "")
+    catalog = _studio_packs.fetch_catalog()
+    entries = (catalog.get("products", {}).get(_studio_packs.PRODUCT, {})
+               or {}).get("packs", [])
+    entry = next((e for e in entries if str(e.get("id")) == pack_id), None)
+    if not entry:
+        return _json({"error": "no such pack in the catalogue"}, status=404)
+
+    try:
+        stamp = _studio_packs.install_pack(entry)
+    except PermissionError as error:
+        return _json({"error": str(error)}, status=403)
+    except Exception as error:              # noqa: BLE001
+        logger.warning("%s install failed: %s", LOG_PREFIX, error)
+        return _json({"error": str(error)}, status=500)
+    return _json({"installed": stamp,
+                  "packs": _studio_packs.describe_catalog(catalog)})
+
+
+@register_post("/api/ts_studio/packs/remove")
+async def studio_pack_remove(request):
+    try:
+        body = await request.json()
+    except Exception:                       # noqa: BLE001
+        return _json({"error": "expected a JSON body"}, status=400)
+    removed = _studio_packs.remove_pack(str(body.get("id") or ""))
+    return _json({"removed": removed,
+                  "packs": _studio_packs.describe_catalog(
+                      _studio_packs.fetch_catalog())})
 
 
 # Registers routes only; the pack's loader skips files with no node mappings.
