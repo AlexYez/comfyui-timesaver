@@ -7,6 +7,7 @@
   "flux2-klein/upscale.json",
   "ideogram/inpaint.json",
   "ideogram/t2i.json",
+  "ideogram/upscale.json",
   "krea2/inpaint.json",
   "krea2/t2i.json",
   "krea2/upscale.json",

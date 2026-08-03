@@ -23,14 +23,19 @@ export function ensureControlStyles() {
     style.textContent = `
 .ts-studio__prompt{position:relative}
 .ts-studio__prompt textarea{width:100%;min-height:86px;resize:vertical}
-.ts-studio__aspects{display:flex;flex-wrap:wrap;gap:5px}
-.ts-studio__aspect{display:flex;flex-direction:column;align-items:center;gap:3px;
-    padding:5px 7px 3px;border:1px solid var(--ts-border);border-radius:var(--ts-radius);
-    background:none;color:var(--ts-muted);cursor:pointer;font-size:var(--ts-fs-xs)}
-.ts-studio__aspect:hover{border-color:var(--ts-border-strong);color:var(--ts-text)}
-.ts-studio__aspect.is-active{color:var(--ts-accent)}
-.ts-studio__aspect.is-active .ts-studio__aspectshape{background:var(--ts-accent);border-color:var(--ts-accent)}
-.ts-studio__aspectshape{border:1px solid var(--ts-muted);border-radius:2px;background:none}
+.ts-studio__aspects{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+/* The proportion is the control: each button IS the rectangle, with its ratio
+   written inside. No outer frame — an extra box around a box only muddled
+   which shape was being chosen. */
+.ts-studio__aspect{display:flex;align-items:center;justify-content:center;padding:0;
+    border:1px solid var(--ts-border-strong);border-radius:3px;background:none;
+    color:var(--ts-muted);cursor:pointer;font-size:var(--ts-fs-xs);line-height:1;
+    transition:border-color .12s ease,color .12s ease,background .12s ease}
+.ts-studio__aspect:hover{border-color:var(--ts-text);color:var(--ts-text)}
+.ts-studio__aspect.is-active{border-color:var(--ts-accent);color:var(--ts-accent);
+    background:var(--ts-accent-soft)}
+.ts-studio__aspectcustom{width:52px;height:26px;align-self:center;padding:0 6px;
+    font-size:var(--ts-fs-xs);text-align:center}
 .ts-studio__aspect:focus-visible{outline:2px solid var(--ts-accent-line);outline-offset:1px}
 .ts-studio__sizerow{display:flex;align-items:center;gap:8px}
 .ts-studio__sizerow input[type=range]{flex:1}
@@ -224,23 +229,44 @@ registerControlKind("size", (control, ctx) => {
     const grid = document.createElement("div");
     grid.className = "ts-studio__aspects";
     const buttons = new Map();
-    for (const aspect of aspects) {
+
+    /** The shape IS the button: a rectangle of that proportion, labelled inside. */
+    function aspectButton(aspect) {
         const button = document.createElement("button");
         button.type = "button";
         button.className = "ts-studio__aspect";
-        const shape = document.createElement("span");
-        shape.className = "ts-studio__aspectshape";
+        button.textContent = aspect;
         const ratio = parseAspect(aspect);
-        const base = 18;
-        shape.style.width = `${Math.round(ratio >= 1 ? base : base * ratio)}px`;
-        shape.style.height = `${Math.round(ratio >= 1 ? base / ratio : base)}px`;
-        const caption = document.createElement("span");
-        caption.textContent = aspect;
-        button.append(shape, caption);
+        // One constant area rather than one constant side, so a 16:9 and a
+        // 9:16 read as the same picture turned, not as two different sizes.
+        const box = 30;
+        const width = Math.round(box * Math.sqrt(ratio));
+        button.style.width = `${Math.max(32, Math.min(58, width))}px`;
+        button.style.height = `${Math.max(22, Math.min(58, Math.round(width / ratio)))}px`;
         button.addEventListener("click", () => { state.aspect = aspect; sync(); });
-        grid.appendChild(button);
         buttons.set(aspect, button);
+        return button;
     }
+
+    for (const aspect of aspects) grid.appendChild(aspectButton(aspect));
+
+    // Anything the list does not cover, in w:h.
+    const custom = document.createElement("input");
+    custom.type = "text";
+    custom.className = "ts-ui-input ts-studio__aspectcustom";
+    custom.placeholder = ctx.t.aspectCustom;
+    custom.title = ctx.t.aspectCustomTip;
+    custom.addEventListener("change", () => {
+        const text = custom.value.trim().replace(/[\s,]+/g, ":").replace("x", ":");
+        const [w, h] = text.split(":").map(Number);
+        if (!(w > 0 && h > 0)) { custom.value = ""; return; }
+        const aspect = `${w}:${h}`;
+        if (!buttons.has(aspect)) grid.insertBefore(aspectButton(aspect), custom);
+        state.aspect = aspect;
+        custom.value = "";
+        sync();
+    });
+    grid.appendChild(custom);
     section.appendChild(grid);
 
     const resTitle = deckSection(ctx.t.resolution);

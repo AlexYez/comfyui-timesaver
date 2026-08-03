@@ -7,7 +7,7 @@ A fullscreen studio for generating and editing images. Everything under the hood
 - **Generate** — text-to-image and instruction editing in one mode. Describe the picture, pick a model, format and resolution, press **Run** (Ctrl+Enter). When the model can use references (Flux 2 Klein, Qwen Image Edit), slots appear under the prompt: leave them empty for a plain generation, fill one and the run switches to editing, taking its frame from the first reference.
 
 - **Inpaint** — two engines on one canvas. **Cleanup**: paint over an object and release — it vanishes in a second (LaMa, no prompt). **Repaint**: mask + description + Run — a diffusion model redraws the region.
-- **Upscale** — enlarge the gallery-selected result. **SeedVR2** restores and grows up to 4x; **Diffusion 2-pass** adds detail with a second generative pass.
+- **Upscale** — enlarge the result selected in the gallery, or whatever you drop onto the stage. The factor is a choice of **1x / 2x / 4x** (1x being a second pass at the original size), and the model comes from the same list as everywhere else: each one enlarges by its own recipe.
 
 ## The prompt field
 
@@ -27,6 +27,25 @@ Measured on identical tasks, so the numbers mean something:
 **Flux 2 Klein** keeps a deliberately narrow range (0.1-0.5) — it is the gentle-retouch tool, and full replacement lives on its **Replace** switch. It is also the fastest: an object swap takes about 40 seconds.
 
 From the runs: to swap an object reach for Klein with Replace, or Krea 2; to add detail without substituting the subject, Qwen Image at 0.35 or Klein at 0.2.
+
+## Which model to upscale with
+
+Every family enlarges through the same shape — lanczos stretch, tile split, one pass per tile, seams merged back. What differs is the model and what holds it steady:
+
+- **Z-Image Turbo** — the only one with a tile ControlNet: structure holds best, so its default denoise is 0.45. The most faithful at 4x.
+- **Flux 2 Klein** — with the Samsung detail LoRA, 3 steps.
+- **Krea 2 Turbo** — 8 steps, its own recipe.
+- **Qwen Image** — 4 steps with the Lightning LoRA.
+- **Ideogram 4** — through its dual-model guider; the default preset is **Turbo** (8 steps) rather than the 12 it generates with, because an enlargement converges in fewer steps than a picture born from noise.
+- **SeedVR2** — restores rather than invents: it clears compression artefacts and noise.
+
+Measured on a 512x512 source at 2x: Z-Image 42s, Flux 37s, Krea 53s, Qwen 95s, Ideogram on Turbo 34s (it took 124s at 12 steps). 4x on Z-Image took 83s for 2048x2048.
+
+Families without a tile ControlNet default to 0.35 denoise: at 0.45 they began rewriting the ornament instead of sharpening it.
+
+## Frame format
+
+Each format button is the rectangle of that proportion, with the ratio written inside it. If the one you want is not there, type it into the **w:h** field (`21:9`, `5:4`, `2.35:1`) — it joins the row and applies at once.
 
 ## Processing resolution (Flux 2 Klein)
 
