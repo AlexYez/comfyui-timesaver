@@ -20,6 +20,7 @@ export function ensureMaskStyles() {
 .ts-mask{position:absolute;inset:0}
 .ts-mask__canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
 .ts-mask__canvas.has-image{cursor:none}
+.ts-mask__cursor.is-preview{border-width:2px;opacity:1}
 .ts-mask__cursor{position:absolute;pointer-events:none;border-radius:50%;display:none;
     /* Over user content: must read on any image, so not a theme token. */
     border:1.5px solid rgba(255,255,255,.9);box-shadow:0 0 0 1px rgba(0,0,0,.55)}
@@ -165,13 +166,45 @@ export function createMaskCanvas(options = {}) {
         drawDot(p.x, p.y);
         redraw();
     });
-    canvas.addEventListener("pointermove", (event) => {
-        const p = toLocal(event);
-        cursor.style.display = state.image ? "block" : "none";
+    // Where the ring sits. Kept across events so a size change can redraw it
+    // without waiting for the pointer to move — the size of a brush is only
+    // meaningful as a circle you can see.
+    let cursorAt = null;
+    let previewTimer = null;
+    let hovering = false;
+
+    function placeCursor(cssX, cssY) {
+        cursorAt = { cssX, cssY };
         cursor.style.width = `${state.brush}px`;
         cursor.style.height = `${state.brush}px`;
-        cursor.style.left = `${p.cssX - state.brush / 2}px`;
-        cursor.style.top = `${p.cssY - state.brush / 2}px`;
+        cursor.style.left = `${cssX - state.brush / 2}px`;
+        cursor.style.top = `${cssY - state.brush / 2}px`;
+        cursor.style.display = state.image ? "block" : "none";
+    }
+
+    /**
+     * Show the ring at its current size after a change made elsewhere — while
+     * dragging the size slider, the pointer is on the slider, not the picture.
+     * It fades on its own so it does not sit over the work afterwards.
+     */
+    function previewBrush() {
+        if (!state.image) return;
+        const rect = canvas.getBoundingClientRect();
+        const at = cursorAt || { cssX: rect.width / 2, cssY: rect.height / 2 };
+        placeCursor(at.cssX, at.cssY);
+        cursor.classList.add("is-preview");
+        clearTimeout(previewTimer);
+        previewTimer = setTimeout(() => {
+            cursor.classList.remove("is-preview");
+            if (!hovering) cursor.style.display = "none";
+        }, 900);
+    }
+
+    canvas.addEventListener("pointerenter", () => { hovering = true; });
+    canvas.addEventListener("pointermove", (event) => {
+        const p = toLocal(event);
+        hovering = true;
+        placeCursor(p.cssX, p.cssY);
         if (!state.painting) return;
         drawSegment(last, p);
         last = p;
@@ -185,7 +218,12 @@ export function createMaskCanvas(options = {}) {
     };
     canvas.addEventListener("pointerup", endStroke);
     canvas.addEventListener("pointercancel", endStroke);
-    canvas.addEventListener("pointerleave", () => { cursor.style.display = "none"; });
+    canvas.addEventListener("pointerleave", () => {
+        hovering = false;
+        // A ring shown for a size change outlives the pointer leaving: that is
+        // the one moment when it is the thing being looked at.
+        if (!cursor.classList.contains("is-preview")) cursor.style.display = "none";
+    });
 
     async function loadImage(url) {
         const image = new Image();
@@ -262,7 +300,10 @@ export function createMaskCanvas(options = {}) {
         maskBBox,
         imageRectToCss,
         imageSize: () => ({ w: state.imageW, h: state.imageH }),
-        setBrush: (px) => { state.brush = Math.max(4, px); },
+        setBrush: (px) => {
+            state.brush = Math.max(4, px);
+            previewBrush();
+        },
         getBrush: () => state.brush,
         setEraser: (on) => { state.eraser = Boolean(on); },
         clearMask: () => { state.undo.push(snapshot()); state.redo.length = 0; restore(null); },
