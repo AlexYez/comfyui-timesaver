@@ -63,6 +63,11 @@ export function ensureShellStyles() {
 .ts-studio--side-right .ts-studio__sidegrip{right:auto;left:0;border-right:1px solid var(--ts-border);
     border-left:none;border-radius:0 var(--ts-radius) var(--ts-radius) 0}
 .ts-studio--side-right .ts-studio__sidegrip.is-collapsed{transform:translateY(-50%) scaleX(-1)}
+/* On this side the panel's own tab strip runs into the corner the fullscreen
+   close button occupies, so it yields the same reserved room the other
+   top-edge bars do. */
+.ts-studio--side-right .ts-studio__side>*:first-child,
+.ts-studio--side-right .ts-studio__gallerytabs{padding-right:var(--ts-fs-safe-right)}
 .ts-studio__sidegrip:hover{color:var(--ts-text)}
 .ts-studio__section{display:flex;flex-direction:column;gap:5px}
 .ts-studio__sectionhead{font-size:var(--ts-fs-xs);font-weight:700;letter-spacing:.05em;

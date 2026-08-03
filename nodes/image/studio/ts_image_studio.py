@@ -61,10 +61,10 @@ class TS_ImageStudio(IO.ComfyNode):
                 "emits the result selected in the studio gallery."
             ),
             inputs=[
-                IO.Image.Input(
-                    "image", optional=True,
-                    tooltip="Optional: an image the studio offers as the starting source.",
-                ),
+                # No IMAGE input: sources are chosen inside the studio — dropped
+                # onto its canvas, picked from the library or the Artius browser.
+                # A socket for the same job only invited the question of which
+                # one wins.
                 IO.String.Input(
                     "session_id", default="", socketless=True,
                     tooltip="Studio session id. Managed by the frontend.",

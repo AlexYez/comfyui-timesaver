@@ -747,7 +747,16 @@ registerControlKind("choice", (control, ctx) => {
         for (const [candidate, button] of buttons) {
             button.classList.toggle("is-active", candidate === value);
         }
-        if (emit) ctx.onChange(control.param, value);
+        if (!emit) return;
+        // An option may stand for a set of values rather than one: a quality
+        // preset is several numbers that only make sense together (Ideogram's
+        // steps, mu and std). Those ride along, so the deck needs no separate
+        // control for each and they cannot drift apart.
+        const chosen = options.find((option) => option.value === value);
+        for (const [param, carried] of Object.entries(chosen?.values || {})) {
+            ctx.onChange(param, carried);
+        }
+        ctx.onChange(control.param, value);
     }
 
     for (const option of options) {
