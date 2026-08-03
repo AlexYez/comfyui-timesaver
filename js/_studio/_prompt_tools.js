@@ -10,7 +10,7 @@
 // with an explanatory title instead of breaking the field.
 
 import { TS_UI_CLASS, ensureThemeStyles } from "../_theme.js";
-import { uploadImage } from "./_dnd.js";
+import { uploadImage, makeDropZone } from "./_dnd.js";
 
 const STYLE_ID = "ts-studio-prompt-tools-styles";
 
@@ -36,6 +36,8 @@ export function ensurePromptToolStyles() {
     animation:ts-ptools-pulse 1.1s ease-in-out infinite}
 @keyframes ts-ptools-pulse{50%{opacity:.3}}
 .ts-ptools__status{flex-basis:100%;font-size:var(--ts-fs-xs);color:var(--ts-muted);min-height:14px}
+.ts-ptools__btn.is-drag-over{border-color:var(--ts-accent);
+    background:var(--ts-accent-soft);color:var(--ts-accent)}
 .ts-ptools__attach{position:absolute;top:6px;right:6px;width:44px;height:44px;border-radius:var(--ts-radius-sm);
     overflow:hidden;border:1px solid var(--ts-border);display:none}
 .ts-ptools__attach.is-active{display:block}
@@ -277,6 +279,13 @@ export function mountPromptTools(options) {
     textarea.addEventListener("drop", onDrop);
     textarea.addEventListener("dragover", onDragOver);
     textarea.addEventListener("paste", onPaste);
+    // The button that attaches a picture is also the place to drop one — and
+    // through the shared drop service, so a card dragged out of the asset
+    // browser works exactly like a file from the desktop.
+    teardowns.push(makeDropZone(attachButton, {
+        max: 1,
+        onDrop: async ([item]) => attachBlob(await item.getBlob(), item.name),
+    }));
     teardowns.push(() => {
         textarea.removeEventListener("drop", onDrop);
         textarea.removeEventListener("dragover", onDragOver);
