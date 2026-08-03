@@ -96,6 +96,14 @@ The same is available from the Artius browser: right-click an image and choose *
 
 Artius also marks studio work on the thumbnails: the badge names the mode and the model ("Generate · Krea 2 Turbo"), and the tooltip adds seed, steps, CFG and repaint strength. Images made elsewhere look as they always did. If older work shows no badge yet, press Rebuild Cache in the browser.
 
+## What the studio remembers
+
+Every control keeps what you set it to. The prompt, the seed, the frame, the LoRA chain and the styles are shared: switch model or mode and they come along. Everything else is remembered **per graph** — "repaint strength" is a different number in Inpaint than in Upscale, and returning to a mode finds it as you left it.
+
+Values are written as they change, so a closed tab or a reload costs nothing. The prompt survives leaving the studio too — until you change it yourself.
+
+Back to factory values: Settings → Remembered settings → Reset to defaults.
+
 ## Packs and the subscription
 
 Some models arrive not with the pack itself but in **content packs** — the Packs screen on the left rail. Everything that exists is shown there: a cover, what it does, what is new this month. The catalogue is open to everyone; no key is needed to look.

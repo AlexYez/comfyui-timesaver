@@ -26,6 +26,7 @@ import { buildStudioState, studioStateFromPng } from "../../_studio/_pnginfo.js"
 import { createQueuePanel } from "../../_studio/_queue.js";
 import { createGate } from "../../_studio/_gate.js";
 import { createShowcase } from "../../_studio/_showcase.js";
+import * as memory from "../../_studio/_memory.js";
 
 // Rail tabs are UI modes, not backend modes. "Generate" covers both t2i and
 // edit: the same act with or without reference images, so the user picks a
@@ -35,11 +36,6 @@ const UI_MODES = [
     { id: "inpaint", backendModes: ["inpaint"] },
     { id: "upscale", backendModes: ["upscale"] },
 ];
-
-// Control kinds whose value belongs to the user, not to the backend file:
-// they survive a model or mode switch. The prompt above all — a switch must
-// never cost the text someone just wrote.
-const STICKY_KINDS = new Set(["prompt", "seed", "size", "loras", "refs"]);
 
 // Marks a picker entry that stands for a model the catalogue offers but this
 // machine does not have. Prefixed so it can never collide with a family id.
@@ -478,6 +474,10 @@ export async function openStudio(node, persist) {
         modes: modeIds.map((id) => ({ id, title: t.modes[id] || id, icon: ICONS[id] || ICONS.generate })),
         onMode: (id) => selectMode(id),
         onClose: () => {
+            // Last read before everything is torn down, then written now
+            // rather than on the timer — the page may be leaving.
+            captureValues();
+            memory.flush();
             openInstance = null;
             stageDropTeardown?.();
             gallery.teardown?.();
@@ -597,6 +597,21 @@ export async function openStudio(node, persist) {
         host: shell.stage,
         onChange: (key, value) => {
             if (key === "browserSide") shell.setSidePlacement(value);
+        },
+        // Resetting forgets, then rebuilds the deck so the person sees the
+        // defaults immediately rather than after the next switch.
+        memory: {
+            stats: () => memory.stats(),
+            forget: () => {
+                suppressCapture = true;
+                try {
+                    memory.forgetAll();
+                    sessionRefs.clear();
+                    if (activeBackend) buildDeck(activeBackend);
+                } finally {
+                    suppressCapture = false;
+                }
+            },
         },
         pass: {
             state: () => gate.state(),
@@ -726,26 +741,48 @@ export async function openStudio(node, persist) {
     let controlsByParam = new Map();
     const loraOptions = readLoraOptions(objectInfo);
 
-    // Values the user owns, carried across deck rebuilds. Captured from the
-    // live controls just before they are torn down, so nothing is lost when a
-    // model or a mode changes under the same deck.
-    const sticky = new Map();       // param -> {kind, value}
-    let stylesSticky = [];
+    // Everything the person set is remembered — see _studio/_memory.js for
+    // which values follow the work and which belong to one graph. References
+    // are the exception: they point at uploaded files, so they are carried
+    // within a sitting but not written to disk, where a stale name would come
+    // back as a broken thumbnail.
+    const sessionRefs = new Map();  // param -> value, this sitting only
 
-    function captureSticky() {
+    // Which graph the controls on screen belong to. Not `activeBackend`: that
+    // already points at the NEW graph by the time a rebuild starts, and the
+    // values still on screen belong to the old one — capturing under the wrong
+    // key silently moved Inpaint's numbers onto Upscale.
+    let deckGraphId = "";
+    // Set while the deck is rebuilt on purpose to forget: without it the
+    // capture that precedes every rebuild would write the values still on
+    // screen straight back into the store we just cleared.
+    let suppressCapture = false;
+
+    function graphKey(backend) {
+        return backend?.manifest?.id || "unknown";
+    }
+
+    /** Read every live control and remember it. Called before a rebuild. */
+    function captureValues() {
+        if (suppressCapture || !deckGraphId) return;
+        const key = deckGraphId;
         for (const [param, instance] of controlsByParam) {
-            if (!STICKY_KINDS.has(instance.kind)) continue;
             try {
-                sticky.set(param, { kind: instance.kind, value: instance.get() });
+                const value = instance.get();
+                if (instance.kind === "refs") sessionRefs.set(param, value);
+                else memory.remember(key, param, instance.kind, value);
             } catch (err) {
                 console.warn(`[TS Studio] could not keep '${param}'`, err);
             }
         }
-        if (promptTools) stylesSticky = promptTools.getSelectedStyles();
+        if (promptTools) {
+            memory.remember(key, "__styles", "styles", promptTools.getSelectedStyles());
+        }
     }
 
     function buildDeck(backend) {
-        captureSticky();
+        captureValues();
+        deckGraphId = graphKey(backend);
         for (const instance of controlInstances) instance.teardown?.();
         controlInstances = [];
         controlsByParam = new Map();
@@ -822,6 +859,12 @@ export async function openStudio(node, persist) {
                 console.warn(`[TS Studio] no renderer for control kind '${control.kind}' — skipped`);
                 continue;
             }
+            // Read what was remembered BEFORE the control exists: a control
+            // announces its default the moment it is built, and that write
+            // would land on top of the value we are about to restore.
+            const kept = control.kind === "refs"
+                ? sessionRefs.get(control.param)
+                : memory.recall(graphKey(backend), control.param, control.kind);
             const instance = renderer(control, {
                 t, locale, loraOptions,
                 uploadImage: (blob, name) => uploadImage(api, blob, name),
@@ -830,6 +873,10 @@ export async function openStudio(node, persist) {
                 getSize: () => controlsByParam.get("size")?.get(),
                 onChange: (param, value) => {
                     values[param] = value;
+                    // Written as it changes, not only when the deck is rebuilt:
+                    // a closed tab or a reload must not cost the last move.
+                    if (control.kind === "refs") sessionRefs.set(param, value);
+                    else memory.remember(graphKey(backend), param, control.kind, value);
                     // Replace ON implies 100% strength: grey the slider out.
                     if (param === "replace") {
                         controlsByParam.get("denoise")?.setDisabled?.(Boolean(value));
@@ -851,10 +898,10 @@ export async function openStudio(node, persist) {
             instance.kind = control.kind;
             controlInstances.push(instance);
             if (control.param) controlsByParam.set(control.param, instance);
-            const kept = sticky.get(control.param);
-            if (kept && kept.kind === control.kind) {
-                // What the user set outlives the file's default.
-                instance.set(kept.value);
+            if (kept !== undefined) {
+                // What the person set outlives the file's default.
+                try { instance.set(kept); }
+                catch (err) { console.warn(`[TS Studio] could not restore '${control.param}'`, err); }
             } else if ((control.kind === "number" || control.kind === "slider"
                         || control.kind === "prompt")
                        && backend.spec.params.has(control.param)) {
@@ -876,7 +923,7 @@ export async function openStudio(node, persist) {
                 if (slot && textarea) {
                     promptTools = mountPromptTools({
                         textarea, slot, api, objectInfo, t, locale,
-                        initialStyles: stylesSticky,
+                        initialStyles: memory.recall(graphKey(backend), "__styles", "styles") || [],
                     });
                 }
             }
@@ -1299,9 +1346,10 @@ export async function openStudio(node, persist) {
         }
         const uiMode = UI_MODES.find((m) => m.id === state.ui_mode)
             || UI_MODES.find((m) => m.backendModes.includes(backend.manifest.mode));
-        // Sticky values must not fight the snapshot: it replaces them wholesale.
-        sticky.clear();
-        stylesSticky = [];
+        // A snapshot replaces the deck wholesale, so nothing carried from the
+        // last render may leak into it. What it sets is then remembered like
+        // any other change — after a recreate, that IS the current state.
+        sessionRefs.clear();
         selectMode(uiMode?.id || backend.manifest.mode);
         selectBackend(backend);
 

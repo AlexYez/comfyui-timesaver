@@ -42,6 +42,13 @@ const STRINGS = {
         devPassExpired: "Expired",
         devOff: "Leave testing mode",
         devLocalMissing: "No local build is configured — run studio_pack.py dev",
+        memory: "Remembered settings",
+        memoryNote: "Every control keeps what you set it to — per model for the "
+            + "ones that mean something different there, and across models for "
+            + "the prompt, the seed and the frame.",
+        memoryCount: (n) => (n ? `${n} model(s) remembered` : "nothing remembered yet"),
+        memoryForget: "Reset to defaults",
+        memoryDone: "Reset. The deck now shows what the backend files say.",
     },
     ru: {
         open: "Настройки",
@@ -72,6 +79,13 @@ const STRINGS = {
         devPassExpired: "Истёкший",
         devOff: "Выйти из режима тестирования",
         devLocalMissing: "Локальная сборка не задана — запустите studio_pack.py dev",
+        memory: "Запомненные настройки",
+        memoryNote: "Каждый регулятор держит то, что вы задали: своё для каждой "
+            + "модели там, где значение у них разное, и общее для промпта, сида "
+            + "и формата.",
+        memoryCount: (n) => (n ? `запомнено моделей: ${n}` : "пока ничего не запомнено"),
+        memoryForget: "Вернуть значения по умолчанию",
+        memoryDone: "Сброшено. Дека показывает то, что записано в самих бэкендах.",
     },
 };
 
@@ -276,6 +290,43 @@ export function createSettingsPanel(options) {
             passAction.textContent = t.passEnter;
             passAction.onclick = () => options.pass.prompt();
         }
+    }
+
+    // What the studio remembers, and the way out of it. The escape hatch
+    // matters: a value kept from a month ago is a value nobody can explain,
+    // and hunting for the one control that still carries it is worse than
+    // starting the deck over.
+    if (options.memory) {
+        const row = document.createElement("div");
+        row.className = "ts-settings__row";
+        const caption = document.createElement("span");
+        caption.className = "ts-settings__label";
+        caption.textContent = t.memory;
+        const note = document.createElement("span");
+        note.className = "ts-settings__note";
+        note.textContent = t.memoryNote;
+        const line = document.createElement("div");
+        line.className = "ts-settings__choice";
+        const count = document.createElement("span");
+        count.className = "ts-settings__note";
+        count.style.flex = "1";
+        const forget = document.createElement("button");
+        forget.type = "button";
+        forget.className = "ts-settings__opt";
+        forget.style.flex = "0 0 auto";
+        forget.textContent = t.memoryForget;
+        const refreshCount = () => {
+            count.textContent = t.memoryCount(options.memory.stats().graphs);
+        };
+        forget.addEventListener("click", () => {
+            options.memory.forget();
+            refreshCount();
+            count.textContent = t.memoryDone;
+        });
+        line.append(count, forget);
+        row.append(caption, note, line);
+        body.appendChild(row);
+        refreshCount();
     }
 
     // Testing section. Built empty and filled only when the server says the
