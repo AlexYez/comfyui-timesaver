@@ -136,10 +136,16 @@ export function groupByFamily(backends) {
             families.set(family, {
                 family,
                 label: backend.manifest.family_label || family,
+                // What a subscription pass must open for this family. 0 is
+                // free; the studio never asks for a pass to run those.
+                tier: Number(backend.manifest.tier || 0),
                 modes: new Map(),
             });
         }
-        families.get(family).modes.set(backend.manifest.mode, backend);
+        const entry = families.get(family);
+        // A family is as paid as its most restricted backend.
+        entry.tier = Math.max(entry.tier, Number(backend.manifest.tier || 0));
+        entry.modes.set(backend.manifest.mode, backend);
     }
     return families;
 }

@@ -24,6 +24,7 @@ import { createSettingsPanel, readSetting, settingsStrings }
 import { uploadImage, makeDropZone, annotatedImageUrl } from "../../_studio/_dnd.js";
 import { buildStudioState, studioStateFromPng } from "../../_studio/_pnginfo.js";
 import { createQueuePanel } from "../../_studio/_queue.js";
+import { createGate } from "../../_studio/_gate.js";
 
 // Rail tabs are UI modes, not backend modes. "Generate" covers both t2i and
 // edit: the same act with or without reference images, so the user picks a
@@ -385,10 +386,13 @@ export async function openStudio(node, persist) {
     const sessionId = persist.sessionId || newSessionId();
     persist.setSessionId(sessionId);
 
+    const gate = createGate({ api, onChange: () => rebuildModelRow?.() });
+    await gate.refresh();
     const optionalIndex = buildOptionalIndex(objectInfo);
     const runner = createRunner(api);
     const values = {};      // param -> value for the active backend
     let activeBackend = null;
+    let rebuildModelRow = null;
     let queueCount = 0;
 
     const present = new Set([...families.values()].flatMap((f) => [...f.modes.keys()]));
@@ -428,6 +432,7 @@ export async function openStudio(node, persist) {
             queuePanel.teardown();
             helpPanel.teardown?.();
             settingsPanel.teardown?.();
+            gate.teardown?.();
             inpaintMode?.teardown();
             for (const instance of controlInstances) instance.teardown?.();
             promptTools?.teardown();
@@ -649,17 +654,37 @@ export async function openStudio(node, persist) {
             const option = document.createElement("option");
             option.value = role.family.family;
             const usable = role.primary.available || role.edit?.available;
-            option.textContent = usable ? role.label : `${role.label} — ${t.backendBroken}`;
+            const locked = !gate.opens(role.family.tier || 0);
+            option.textContent = !usable ? `${role.label} — ${t.backendBroken}`
+                : locked ? `🔒 ${gate.strings.lockedSuffix(role.label)}` : role.label;
             option.disabled = !usable;
             option.selected = role.family.family === backend.manifest.family;
             select.appendChild(option);
         }
         select.addEventListener("change", () => {
             const role = familiesForMode(activeModeId).get(select.value);
+            // Reaching for a paid family is how most people meet the pass:
+            // ask for a code, and put the picker back where it was.
+            if (role && !gate.opens(role.family.tier || 0)) {
+                select.value = backend.manifest.family;
+                gate.prompt();
+                return;
+            }
             const next = role?.primary?.available ? role.primary
                 : (role?.edit?.available ? role.edit : null);
             if (next) selectBackend(next);
         });
+        // Redrawn when a pass is activated, so locks lift without a reload.
+        rebuildModelRow = () => {
+            for (const option of select.options) {
+                const role = roles.get(option.value);
+                if (!role) continue;
+                const locked = !gate.opens(role.family.tier || 0);
+                const usable = role.primary.available || role.edit?.available;
+                option.textContent = !usable ? `${role.label} — ${t.backendBroken}`
+                    : locked ? `🔒 ${gate.strings.lockedSuffix(role.label)}` : role.label;
+            }
+        };
         modelRow.appendChild(select);
         modelSection.appendChild(modelRow);
         shell.deck.appendChild(modelSection);
