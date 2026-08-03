@@ -237,12 +237,28 @@ registerControlKind("size", (control, ctx) => {
         button.className = "ts-studio__aspect";
         button.textContent = aspect;
         const ratio = parseAspect(aspect);
-        // One constant area rather than one constant side, so a 16:9 and a
-        // 9:16 read as the same picture turned, not as two different sizes.
-        const box = 30;
-        const width = Math.round(box * Math.sqrt(ratio));
-        button.style.width = `${Math.max(32, Math.min(58, width))}px`;
-        button.style.height = `${Math.max(22, Math.min(58, Math.round(width / ratio)))}px`;
+        // The button IS the frame, so its proportion has to be exactly the
+        // one written on it. Both sides come from one constant area (a 16:9
+        // and a 9:16 read as the same picture turned), and the fitting is a
+        // UNIFORM scale — clamping one side alone is what used to squash 9:16
+        // into something closer to 3:4.
+        const AREA_SIDE = 34;       // side of the square with the same area
+        const MIN_WIDTH = 26;       // narrower than this and the label breaks
+        const MAX_SIDE = 56;        // taller than this and the row gets silly
+        const rawWidth = AREA_SIDE * Math.sqrt(ratio);
+        const rawHeight = AREA_SIDE / Math.sqrt(ratio);
+        const scale = Math.min(
+            MAX_SIDE / Math.max(rawWidth, rawHeight),
+            Math.max(1, MIN_WIDTH / rawWidth),
+        );
+        // Height follows the width that actually got used, so the drawn
+        // proportion is as close to the written one as whole pixels allow.
+        const width = Math.round(rawWidth * scale);
+        const height = Math.round(width / ratio);
+        button.style.width = `${width}px`;
+        button.style.height = `${height}px`;
+        // A narrow frame gets a narrower label rather than a wider frame.
+        if (width < 34) button.style.fontSize = "9px";
         button.addEventListener("click", () => { state.aspect = aspect; sync(); });
         buttons.set(aspect, button);
         return button;
