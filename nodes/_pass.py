@@ -36,6 +36,7 @@ import base64
 import hashlib
 import json
 import logging
+import os
 import re
 import time
 import urllib.error
@@ -56,9 +57,21 @@ ACTIVE_DAYS = 35
 
 TIER_NAMES = {1: "base", 2: "pro", 3: "ultimate"}
 
-BASE_URL = "https://files.timesavervfx.com/ai/comfyui/launcher"
+# Where key material is published. Overridable in the environment for a
+# mirror or a test rig; read through base_url() rather than captured at import,
+# because a default argument bound at definition time cannot be overridden at
+# all — which is how it silently ignored every override until now.
+BASE_URL = os.environ.get(
+    "TS_PASS_URL", "https://files.timesavervfx.com/ai/comfyui/launcher").rstrip("/")
 KEYS_PATH = "keys"
-REVOKED_URL = f"{BASE_URL}/revoked.txt"
+
+
+def base_url() -> str:
+    return BASE_URL.rstrip("/")
+
+
+def revoked_url() -> str:
+    return f"{base_url()}/revoked.txt"
 
 # Product-neutral on purpose: Video and Audio studios read the same file.
 PASS_DIR = "ts-pass"
@@ -90,12 +103,15 @@ def _b64url_to_bytes(text: str) -> bytes:
     return base64.b64decode(padded)
 
 
-def verify_token(token: str, public_key_b64: str = PUBLIC_KEY_B64) -> dict | None:
+def verify_token(token: str, public_key_b64: str | None = None) -> dict | None:
     """Parsed payload of a signed token, or None.
 
     Never raises: a corrupt file on disk must not break the studio, it must
     simply mean "no pass".
     """
+    # Read now, not at definition: a default argument would freeze the key at
+    # import and quietly ignore any later change (a fork, a rotation, a test).
+    public_key_b64 = public_key_b64 or PUBLIC_KEY_B64
     try:
         from cryptography.exceptions import InvalidSignature
         from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
@@ -265,13 +281,13 @@ def _fetch(url: str) -> str | None:
 
 def is_revoked(kid: str) -> bool:
     """Was this key pulled after issue? A network failure means "assume fine"."""
-    body = _fetch(REVOKED_URL)
+    body = _fetch(revoked_url())
     if body is None:
         return False
     return any(line.strip() == kid for line in body.splitlines())
 
 
-def activate(code_or_token: str, *, base_url: str = BASE_URL) -> dict:
+def activate(code_or_token: str, *, url_base: str | None = None) -> dict:
     """Turn what the user typed into a stored pass.
 
     Accepts either a subscription code (fetches its token) or a token pasted
@@ -286,7 +302,8 @@ def activate(code_or_token: str, *, base_url: str = BASE_URL) -> dict:
     code = normalize_code(raw)
     if not code:
         raise ValueError("the code is too short")
-    token = _fetch(f"{base_url}/{KEYS_PATH}/{code_to_key_file(code)}.txt")
+    token = _fetch(f"{(url_base or base_url()).rstrip('/')}"
+                   f"/{KEYS_PATH}/{code_to_key_file(code)}.txt")
     if not token:
         raise ValueError("no key with this code was found")
     if not verify_token(token):
