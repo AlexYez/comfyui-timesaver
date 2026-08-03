@@ -276,14 +276,15 @@ export function createInpaintMode(ctx) {
         await setImageFromBlob(await response.blob(), name);
     }
 
-    const dropTeardown = makeDropZone(empty, {
-        max: 1,
-        onDrop: async ([item]) => setImageFromBlob(await item.getBlob(), item.name),
-    });
-    const dropTeardown2 = makeDropZone(mask.element, {
-        max: 1,
-        onDrop: async ([item]) => setImageFromBlob(await item.getBlob(), item.name),
-    });
+    // Three zones for one intention. The empty state and the mask canvas are
+    // the obvious targets, but a drop that lands on the toolbar or the margin
+    // around them used to fall through to the page and be lost — so the mode's
+    // whole surface accepts as well.
+    const acceptDrop = { max: 1,
+        onDrop: async ([item]) => setImageFromBlob(await item.getBlob(), item.name) };
+    const dropTeardown = makeDropZone(empty, acceptDrop);
+    const dropTeardown2 = makeDropZone(mask.element, acceptDrop);
+    const dropTeardown3 = makeDropZone(root, acceptDrop);
 
     // ── Cleanup engine: LaMa live routes ────────────────────────────────── //
     let cleaning = false;
@@ -376,6 +377,7 @@ export function createInpaintMode(ctx) {
             hidePreview();
             dropTeardown();
             dropTeardown2();
+            dropTeardown3();
             mask.teardown();
         },
     };

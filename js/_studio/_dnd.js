@@ -77,7 +77,13 @@ registerDropSource({
 // carries file_url — HTTP access to the bytes, no disk paths.
 registerDropSource({
     id: "artius",
-    sniff: (dt) => [...(dt?.types || [])].includes(ARTIUS_MIME),
+    // The MIME is the contract, but it is not always visible: a drag that
+    // starts inside the browser's shadow root can reach a dragover with its
+    // types stripped. Artius also parks the payload on window for exactly
+    // this case (its canvas bridge relies on the same fallback), so a drag
+    // in flight from it is accepted either way.
+    sniff: (dt) => [...(dt?.types || [])].includes(ARTIUS_MIME)
+        || Boolean(window.__tsArtiusDraggedAsset),
     extract: async (dt) => {
         const raw = dt.getData(ARTIUS_MIME) || window.__tsArtiusDraggedAsset || "";
         const payload = typeof raw === "string" ? JSON.parse(raw || "null") : raw;

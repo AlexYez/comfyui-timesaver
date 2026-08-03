@@ -1193,7 +1193,12 @@ export async function openStudio(node, persist) {
     /** A dropped image either recreates its session or becomes the source. */
     async function acceptDroppedImage(item) {
         const blob = await item.getBlob();
-        const found = await studioStateFromPng(blob);
+        // Inpaint and Upscale work ON an image, so a drop there is always the
+        // image to work on — even a studio render, which used to hijack the
+        // drop and restore its whole session instead. Rebuilding a session is
+        // its own act: the Recreate button, or the browser's own command.
+        const worksOnSource = activeModeId === "inpaint" || activeModeId === "upscale";
+        const found = worksOnSource ? null : await studioStateFromPng(blob);
         if (found) return applyStudioState(found.state);
         const annotated = await uploadImage(api, blob, item.name || "dropped.png");
         if (activeModeId === "inpaint") {
