@@ -84,7 +84,7 @@
  "clip_loader": {
   "class_type": "CLIPLoader",
   "inputs": {
-   "clip_name": "krea2\\qwen3vl_4b_bf16.safetensors",
+   "clip_name": "krea2\\Qwen3-VL-4B-Instruct-abliterated_int8.safetensors",
    "type": "krea2"
   },
   "_meta": {

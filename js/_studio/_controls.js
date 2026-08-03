@@ -145,7 +145,15 @@ registerControlKind("prompt", (control, ctx) => {
     return {
         element: section,
         get: () => area.value,
-        set: (value) => { area.value = String(value ?? ""); },
+        // Setting a control is a value change like any other — every other
+        // kind reports one from its set(). The prompt must too: the deck is
+        // rebuilt on every model and mode switch, and the text carried across
+        // is restored through here. Staying silent would leave the words
+        // visible in the box while the run went out without them.
+        set: (value) => {
+            area.value = String(value ?? "");
+            ctx.onChange(control.param, area.value);
+        },
     };
 });
 

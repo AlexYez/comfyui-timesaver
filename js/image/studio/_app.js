@@ -336,6 +336,20 @@ function ensureAppStyles() {
     document.head.appendChild(style);
 }
 
+// The studio that is on screen right now, if any. Kept at module level so a
+// caller arriving from outside — an asset browser asking to rebuild a session
+// — can hand its state to the open studio instead of opening a second one.
+let openInstance = null;
+
+/**
+ * The studio currently on screen, or null.
+ *
+ * @returns {?object} Shell handle, extended with `applyStudioState(state)`.
+ */
+export function openStudioInstance() {
+    return openInstance?.isOpen?.() ? openInstance : null;
+}
+
 /** Open the studio for one node instance. Returns the overlay handle. */
 export async function openStudio(node, persist) {
     ensureAppStyles();
@@ -388,6 +402,7 @@ export async function openStudio(node, persist) {
         modes: modeIds.map((id) => ({ id, title: t.modes[id] || id, icon: ICONS[id] || ICONS.generate })),
         onMode: (id) => selectMode(id),
         onClose: () => {
+            openInstance = null;
             stageDropTeardown?.();
             gallery.teardown?.();
             queuePanel.teardown();
@@ -1174,6 +1189,10 @@ export async function openStudio(node, persist) {
             console.warn(`[TS Studio] backend ${backend.id}:`, backend.problems.join("; "));
         }
     }
+    // Reachable from outside: an asset browser can hand a snapshot straight to
+    // the open studio (see js/_studio/_asset_actions.js).
+    shell.applyStudioState = (state) => applyStudioState(state);
+    openInstance = shell;
     return shell;
 }
 

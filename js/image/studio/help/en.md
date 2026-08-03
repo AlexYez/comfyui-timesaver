@@ -53,6 +53,10 @@ Every result carries a snapshot of its settings in a PNG text chunk of its own �
 
 The prompt is additionally written into the standard metadata (through TS Image Prompt Injector), so Artius Browser and other viewers show it exactly as they do for ordinary generations.
 
+The same is available from the Artius browser: right-click an image and choose **Restore studio session**. The studio opens — or the one already on screen is reused — with that render's settings back in place. It works both when the studio is closed and when the browser is open inside it, in the Library tab.
+
+Artius also marks studio work on the thumbnails: the badge names the mode and the model ("Generate · Krea 2 Turbo"), and the tooltip adds seed, steps, CFG and repaint strength. Images made elsewhere look as they always did. If older work shows no badge yet, press Rebuild Cache in the browser.
+
 ## Missing models
 
 When a family lacks its file, the deck shows a list: **Download** searches Hugging Face and fetches with live progress (speed, ETA, SHA256 verification) — one model at a time, with a total bar above. An interrupted download resumes where it stopped.
