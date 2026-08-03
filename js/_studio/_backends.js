@@ -47,6 +47,9 @@ export async function loadBackends(fetcher, objectInfo, apiFetcher = null) {
             if (res.ok) {
                 for (const name of await res.json()) {
                     if (!String(name).endsWith(".json")) continue;
+                    // An installed pack leaves a stamp beside its graphs; it is
+                    // bookkeeping, not a backend, and would read as a broken one.
+                    if (String(name).endsWith("pack.json")) continue;
                     const encoded = encodeURIComponent(`ts-studio/workflows/${name}`);
                     sources.push({ rel: `user:${name}`, tier: "user",
                                    url: `/userdata/${encoded}`, viaApi: true });

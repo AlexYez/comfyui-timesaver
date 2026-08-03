@@ -96,6 +96,16 @@ The same is available from the Artius browser: right-click an image and choose *
 
 Artius also marks studio work on the thumbnails: the badge names the mode and the model ("Generate · Krea 2 Turbo"), and the tooltip adds seed, steps, CFG and repaint strength. Images made elsewhere look as they always did. If older work shows no badge yet, press Rebuild Cache in the browser.
 
+## Packs and the subscription
+
+Some models arrive not with the pack itself but in **content packs** — the Packs screen on the left rail. Everything that exists is shown there: a cover, what it does, what is new this month. The catalogue is open to everyone; no key is needed to look.
+
+Models from a pack you do not have appear in the model list too — greyed out, marked "in a pack". Clicking one opens Packs on that card.
+
+The month's code comes with a subscription (Boosty, Patreon, VK) and is entered once: Packs → Get access, or Settings → Subscription. With no internet, paste the token from the same post instead of the code. A key runs for a month from the moment it is activated, not from the moment it was issued.
+
+**What is installed keeps working.** The key is needed only to receive a pack or an update to one; once installed, a pack keeps working after the subscription lapses. Settings shows the date the key runs to, and a Forget button that wipes the key from this machine without touching anything already installed.
+
 ## Missing models
 
 When a family lacks its file, the deck shows a list: **Download** searches Hugging Face and fetches with live progress (speed, ETA, SHA256 verification) — one model at a time, with a total bar above. An interrupted download resumes where it stopped.

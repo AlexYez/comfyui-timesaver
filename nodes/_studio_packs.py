@@ -22,6 +22,7 @@ from __future__ import annotations
 import io
 import json
 import logging
+import os
 import shutil
 import urllib.error
 import urllib.request
@@ -34,7 +35,14 @@ from . import _pass
 logger = logging.getLogger("comfyui_timesaver.studio_packs")
 LOG_PREFIX = "[TS Packs]"
 
-BASE_URL = "https://files.timesavervfx.com/ai/comfyui/studio"
+# Delivery lives in its own public repository: the catalogue has to be
+# readable by everyone (it is the showcase), and the paid archives beside it
+# are encrypted, so a listable tree costs nothing. An install pointed at a
+# different host — the author's own file storage, a mirror — only needs this
+# overridden in the environment.
+BASE_URL = os.environ.get(
+    "TS_STUDIO_PACKS_URL",
+    "https://raw.githubusercontent.com/AlexYez/ts-studio-packs/main").rstrip("/")
 CATALOG_URL = f"{BASE_URL}/index.json"
 
 # Product id, so Video and Audio studios can share the catalogue later.
@@ -118,8 +126,13 @@ def pack_url(entry: dict, secrets: dict, *, base_url: str = BASE_URL,
              product: str = PRODUCT) -> str | None:
     """Address of a pack's archive, or None when the pass does not open it.
 
-    The tier secret is the path segment, so a pass that lacks it literally
-    cannot construct the URL.
+    Two shapes, because the two places a pack can be hosted leak differently:
+
+    * plain — the tier secret IS the path segment, so a pass without it cannot
+      construct the URL. Right for a file host that does not list directories.
+    * encrypted — the address is public and boring, and the secret is the key
+      instead. Required anywhere the file tree can be browsed (a public git
+      repository), where a secret in the path would be printed on the page.
     """
     tier = int(entry.get("tier") or 0)
     if not tier:
@@ -127,7 +140,35 @@ def pack_url(entry: dict, secrets: dict, *, base_url: str = BASE_URL,
     secret = (secrets or {}).get(str(tier))
     if not secret:
         return None
+    if entry.get("enc"):
+        return f"{base_url}/paid/{product}/{entry['file']}"
     return f"{base_url}/paid/{secret}/{product}/{entry['file']}"
+
+
+ENC_MAGIC = b"TSPK1"
+_NONCE_BYTES = 12
+
+
+def pack_key(secret: str) -> bytes:
+    """AES key for a tier secret. Domain-separated so it is this and nothing
+    else the secret unlocks."""
+    import hashlib
+    return hashlib.sha256(f"ts-studio-pack:{secret}".encode("utf-8")).digest()
+
+
+def decrypt_pack(blob: bytes, secret: str) -> bytes:
+    """Undo `encrypt_pack`. Raises ValueError on a wrong key or a torn file."""
+    from cryptography.exceptions import InvalidTag
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
+    if not blob.startswith(ENC_MAGIC):
+        raise ValueError("this is not an encrypted pack")
+    nonce = blob[len(ENC_MAGIC):len(ENC_MAGIC) + _NONCE_BYTES]
+    try:
+        return AESGCM(pack_key(secret)).decrypt(
+            nonce, blob[len(ENC_MAGIC) + _NONCE_BYTES:], ENC_MAGIC)
+    except InvalidTag as error:
+        raise ValueError("the pack did not open with this pass") from error
 
 
 def _safe_members(archive: zipfile.ZipFile) -> list[zipfile.ZipInfo]:
@@ -175,6 +216,11 @@ def install_pack(entry: dict, *, base_url: str = BASE_URL,
         data = _fetch_bytes(url)
         if data is None:
             raise RuntimeError("the pack could not be downloaded")
+        if entry.get("enc"):
+            secret = (state.get("secrets") or {}).get(str(tier))
+            if not secret:
+                raise PermissionError("this pass does not carry the key for that tier")
+            data = decrypt_pack(data, secret)
 
     target = root / str(entry["id"]).replace("/", "-")
     staging = target.with_name(target.name + ".incoming")

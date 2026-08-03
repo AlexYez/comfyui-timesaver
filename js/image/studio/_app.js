@@ -25,6 +25,7 @@ import { uploadImage, makeDropZone, annotatedImageUrl } from "../../_studio/_dnd
 import { buildStudioState, studioStateFromPng } from "../../_studio/_pnginfo.js";
 import { createQueuePanel } from "../../_studio/_queue.js";
 import { createGate } from "../../_studio/_gate.js";
+import { createShowcase } from "../../_studio/_showcase.js";
 
 // Rail tabs are UI modes, not backend modes. "Generate" covers both t2i and
 // edit: the same act with or without reference images, so the user picks a
@@ -40,6 +41,10 @@ const UI_MODES = [
 // never cost the text someone just wrote.
 const STICKY_KINDS = new Set(["prompt", "seed", "size", "loras", "refs"]);
 
+// Marks a picker entry that stands for a model the catalogue offers but this
+// machine does not have. Prefixed so it can never collide with a family id.
+const GHOST_PREFIX = "offer:";
+
 // Rail icons. All drawn on the same 24 grid, same stroke weight, round joins —
 // each shape is symmetric about its own centre so nothing reads as skewed at
 // 17px. Generate: a four-point spark. Inpaint: a pencil, because that is what
@@ -54,6 +59,8 @@ const ICONS = {
     inpaint: `<svg ${ICON_ATTRS}><path d="M4 20l.9-3.7L15.6 5.6a2.05 2.05 0 0 1 2.9 2.9L7.7 19.1z"/><path d="M13.9 7.3l2.8 2.8"/></svg>`,
     upscale: `<svg ${ICON_ATTRS}><path d="M4 9V4h5"/><path d="M20 15v5h-5"/><path d="M4 4l6 6"/><path d="M20 20l-6-6"/></svg>`,
     settings: `<svg ${ICON_ATTRS}><path d="M4 7h7M15 7h5M4 12h11M19 12h1M4 17h3M11 17h9"/><circle cx="13" cy="7" r="2"/><circle cx="17" cy="12" r="2"/><circle cx="9" cy="17" r="2"/></svg>`,
+    // Packs: a box seen head-on, with the seam a parcel has.
+    packs: `<svg ${ICON_ATTRS}><path d="M4 8.5l8-4 8 4v7l-8 4-8-4z"/><path d="M4 8.5l8 4 8-4"/><path d="M12 12.5v7"/></svg>`,
 };
 
 const STRINGS = {
@@ -104,6 +111,8 @@ const STRINGS = {
         requiresMissing: (p) => `Add the required image first (${p}).`,
         pngRestored: (f) => `Settings restored from the image (${f}).`,
         pngNotStudio: "This image carries no studio settings.",
+        packsNewMode: "The pack brings a new section — reopen the studio to see it.",
+        inPack: "in a pack",
         pngNoBackend: (id) => `The image was made by backend '${id}', which is not available here.`,
         modes: { generate: "Generate", t2i: "Generate", edit: "Edit",
                  inpaint: "Inpaint", upscale: "Upscale" },
@@ -235,6 +244,8 @@ const STRINGS = {
         requiresMissing: (p) => `Сначала добавьте обязательное изображение (${p}).`,
         pngRestored: (f) => `Настройки восстановлены из изображения (${f}).`,
         pngNotStudio: "В этом изображении нет настроек студии.",
+        packsNewMode: "Набор добавил новый раздел — откройте студию заново, чтобы он появился.",
+        inPack: "в наборе",
         pngNoBackend: (id) => `Изображение сделано бэкендом '${id}', он здесь недоступен.`,
         modes: { generate: "Генерация", t2i: "Генерация", edit: "Редактирование",
                  inpaint: "Inpaint", upscale: "Upscale" },
@@ -381,18 +392,27 @@ export async function openStudio(node, persist) {
     const objectInfo = await (await api.fetchApi("/object_info")).json();
     // Backend workflow files are WEB_DIRECTORY statics: /extensions/* lives
     // OUTSIDE the /api prefix that api.fetchApi prepends, so plain fetch.
-    const backends = await loadBackends((url) => fetch(url), objectInfo, (url) => api.fetchApi(url));
-    const families = groupByFamily(backends);
+    const readBackends = () =>
+        loadBackends((url) => fetch(url), objectInfo, (url) => api.fetchApi(url));
+    // Not const: installing a pack adds backend files, and the studio rereads
+    // them in place rather than asking to be reopened.
+    let backends = await readBackends();
+    let families = groupByFamily(backends);
     const sessionId = persist.sessionId || newSessionId();
     persist.setSessionId(sessionId);
 
-    const gate = createGate({ api, onChange: () => rebuildModelRow?.() });
+    const gate = createGate({ api, onChange: () => showcase?.refresh() });
     await gate.refresh();
     const optionalIndex = buildOptionalIndex(objectInfo);
     const runner = createRunner(api);
     const values = {};      // param -> value for the active backend
     let activeBackend = null;
-    let rebuildModelRow = null;
+    let showcase = null;            // built once the shell exists; see below
+    // Models the catalogue offers that this machine does not have. They are
+    // shown in the picker greyed out — a studio with nothing installed would
+    // otherwise give no hint that Krea 2 or Ideogram exist at all.
+    let offers = [];
+    let catalogData = null;         // last read of the packs catalogue
     let queueCount = 0;
 
     const present = new Set([...families.values()].flatMap((f) => [...f.modes.keys()]));
@@ -400,6 +420,38 @@ export async function openStudio(node, persist) {
     const modeIds = uiModes.map((m) => m.id);
     const backendModesOf = (uiMode) =>
         UI_MODES.find((m) => m.id === uiMode)?.backendModes || [uiMode];
+
+    /**
+     * Rebuild the offer list from the packs catalogue.
+     *
+     * A family counts as offered only while it is absent here: once a pack is
+     * installed its models are real entries, and the ghost must not linger
+     * beside them.
+     */
+    function setOffers(data) {
+        // Kept so the list can be recomputed after backends reload: removing a
+        // pack tells us about it while its families are still loaded, and an
+        // offer worked out at that moment would look like it is already here.
+        if (data) catalogData = data;
+        const seen = new Set();
+        offers = [];
+        for (const pack of catalogData?.packs || []) {
+            if (pack.installed) continue;
+            for (const family of pack.families || []) {
+                if (!family?.family || families.has(family.family)) continue;
+                if (seen.has(family.family)) continue;
+                seen.add(family.family);
+                offers.push({ ...family, packId: pack.id });
+            }
+        }
+    }
+
+    /** Offered families that would serve this UI mode. */
+    function offersForMode(uiMode) {
+        const modes = backendModesOf(uiMode);
+        return offers.filter((offer) =>
+            (offer.modes || []).some((mode) => modes.includes(mode)));
+    }
 
     /** Families offering any backend of this UI mode, with their roles. */
     function familiesForMode(uiMode) {
@@ -432,6 +484,7 @@ export async function openStudio(node, persist) {
             queuePanel.teardown();
             helpPanel.teardown?.();
             settingsPanel.teardown?.();
+            showcase.teardown?.();
             gate.teardown?.();
             inpaintMode?.teardown();
             for (const instance of controlInstances) instance.teardown?.();
@@ -545,6 +598,11 @@ export async function openStudio(node, persist) {
         onChange: (key, value) => {
             if (key === "browserSide") shell.setSidePlacement(value);
         },
+        pass: {
+            state: () => gate.state(),
+            clear: () => gate.forget().then((state) => { showcase?.refresh(); return state; }),
+            prompt: () => gate.prompt(),
+        },
     });
     shell.setSidePlacement(readSetting("browserSide"));
 
@@ -556,9 +614,40 @@ export async function openStudio(node, persist) {
     settingsButton.innerHTML = ICONS.settings;
     settingsButton.addEventListener("click", () => {
         helpPanel.close?.();
+        showcase?.close();
         settingsPanel.toggle();
     });
     shell.rail.appendChild(settingsButton);
+
+    // The showcase is where a person sees what a subscription buys, and where
+    // an installed pack turns into models in the picker.
+    showcase = createShowcase({
+        host: shell.stage,
+        api,
+        onCatalog: (data) => setOffers(data),
+        onInstalled: () => reloadBackends(),
+        onWantAccess: () => gate.prompt(),
+    });
+    // Read the catalogue once at startup rather than on first open: the deck
+    // needs the offers to draw them, and a studio that never opens this screen
+    // should still show what it is missing. Failure is silent — the studio
+    // works offline, it just cannot offer anything.
+    showcase.refresh().then(() => {
+        if (offers.length && activeModeId) selectMode(activeModeId);
+    }).catch(() => {});
+
+    const packsButton = document.createElement("button");
+    packsButton.type = "button";
+    packsButton.className = "ts-studio__railbtn";
+    packsButton.title = showcase.strings.open;
+    packsButton.setAttribute("aria-label", showcase.strings.open);
+    packsButton.innerHTML = ICONS.packs;
+    packsButton.addEventListener("click", () => {
+        helpPanel.close?.();
+        settingsPanel.close();
+        showcase.toggle();
+    });
+    shell.rail.appendChild(packsButton);
 
     const helpButton = document.createElement("button");
     helpButton.type = "button";
@@ -568,6 +657,7 @@ export async function openStudio(node, persist) {
     helpButton.textContent = "?";
     helpButton.addEventListener("click", () => {
         settingsPanel.close();
+        showcase.close();
         helpPanel.toggle();
     });
     shell.rail.appendChild(helpButton);
@@ -654,37 +744,38 @@ export async function openStudio(node, persist) {
             const option = document.createElement("option");
             option.value = role.family.family;
             const usable = role.primary.available || role.edit?.available;
-            const locked = !gate.opens(role.family.tier || 0);
-            option.textContent = !usable ? `${role.label} — ${t.backendBroken}`
-                : locked ? `🔒 ${gate.strings.lockedSuffix(role.label)}` : role.label;
+            // A backend that is here is a backend that runs: what a pack
+            // brought stays usable whether or not a pass is current. The pass
+            // buys the delivery, not the running (nodes/_pass.py).
+            option.textContent = usable ? role.label : `${role.label} — ${t.backendBroken}`;
             option.disabled = !usable;
             option.selected = role.family.family === backend.manifest.family;
             select.appendChild(option);
         }
+        // Models the catalogue offers but this machine does not have. Showing
+        // them greyed out is how anyone learns a subscription exists at all.
+        const ghosts = offersForMode(activeModeId || backend.manifest.mode);
+        for (const ghost of ghosts) {
+            const option = document.createElement("option");
+            option.value = `${GHOST_PREFIX}${ghost.family}`;
+            option.textContent = `🔒 ${ghost.label} — ${t.inPack}`;
+            select.appendChild(option);
+        }
         select.addEventListener("change", () => {
-            const role = familiesForMode(activeModeId).get(select.value);
-            // Reaching for a paid family is how most people meet the pass:
-            // ask for a code, and put the picker back where it was.
-            if (role && !gate.opens(role.family.tier || 0)) {
+            if (select.value.startsWith(GHOST_PREFIX)) {
+                // Reaching for something not installed is how most people meet
+                // the packs screen: show it there, and put the picker back.
                 select.value = backend.manifest.family;
-                gate.prompt();
+                settingsPanel.close();
+                helpPanel.close?.();
+                showcase.open();
                 return;
             }
+            const role = familiesForMode(activeModeId).get(select.value);
             const next = role?.primary?.available ? role.primary
                 : (role?.edit?.available ? role.edit : null);
             if (next) selectBackend(next);
         });
-        // Redrawn when a pass is activated, so locks lift without a reload.
-        rebuildModelRow = () => {
-            for (const option of select.options) {
-                const role = roles.get(option.value);
-                if (!role) continue;
-                const locked = !gate.opens(role.family.tier || 0);
-                const usable = role.primary.available || role.edit?.available;
-                option.textContent = !usable ? `${role.label} — ${t.backendBroken}`
-                    : locked ? `🔒 ${gate.strings.lockedSuffix(role.label)}` : role.label;
-            }
-        };
         modelRow.appendChild(select);
         modelSection.appendChild(modelRow);
         shell.deck.appendChild(modelSection);
@@ -842,6 +933,28 @@ export async function openStudio(node, persist) {
     function selectBackend(backend) {
         activeBackend = backend;
         buildDeck(backend);
+    }
+
+    /**
+     * Reread the backend files after a pack is installed or removed.
+     *
+     * Rebuilding the deck for the current mode is enough for new models,
+     * which is what packs carry. A pack introducing a whole new mode would
+     * also need the rail rebuilt — it says so rather than half-showing it.
+     */
+    async function reloadBackends() {
+        backends = await readBackends();
+        families = groupByFamily(backends);
+        setOffers(null);            // against the families that exist now
+        const nowPresent = new Set([...families.values()]
+            .flatMap((family) => [...family.modes.keys()]));
+        const unseen = UI_MODES.some((mode) => !modeIds.includes(mode.id)
+            && mode.backendModes.some((backendMode) => nowPresent.has(backendMode)));
+        if (unseen) setStatus(t.packsNewMode);
+        if (activeModeId) {
+            activeBackend = null;           // the old object is from the old read
+            selectMode(activeModeId);
+        }
     }
 
     let inpaintMode = null;

@@ -21,6 +21,14 @@ const STRINGS = {
         browserSideNote: "Which edge the library and session panel occupy.",
         sideLeft: "Left",
         sideRight: "Right",
+        pass: "Subscription",
+        passNote: "Installed packs keep working without it — a pass is needed "
+            + "only to receive new ones.",
+        passActive: (date) => `Active until ${date}`,
+        passExpired: "Expired",
+        passNone: "No pass on this machine",
+        passEnter: "Enter a code",
+        passForget: "Forget",
     },
     ru: {
         open: "Настройки",
@@ -30,6 +38,14 @@ const STRINGS = {
         browserSideNote: "У какого края располагается панель библиотеки и сессии.",
         sideLeft: "Слева",
         sideRight: "Справа",
+        pass: "Подписка",
+        passNote: "Установленные наборы работают и без неё — ключ нужен только "
+            + "чтобы получать новые.",
+        passActive: (date) => `Активна до ${date}`,
+        passExpired: "Истекла",
+        passNone: "Ключа на этой машине нет",
+        passEnter: "Ввести код",
+        passForget: "Забыть",
     },
 };
 
@@ -122,6 +138,9 @@ export function ensureSettingsStyles() {
  * @param {object} options
  * @param {HTMLElement} options.host Element the panel mounts into.
  * @param {(key: string, value: *) => void} options.onChange Applied live.
+ * @param {{state: () => object, clear: () => Promise<object>,
+ *          prompt: () => void}} [options.pass] Subscription row; omitted in a
+ *          studio built without one.
  * @returns {{open: () => void, close: () => void, toggle: () => void,
  *            isOpen: () => boolean, element: HTMLElement, teardown: () => void}}
  */
@@ -190,10 +209,61 @@ export function createSettingsPanel(options) {
          { value: "right", label: t.sideRight }],
     ));
 
+    // The pass belongs here rather than in the gate dialog: the dialog is for
+    // getting one, this is for seeing what you have — and for dropping it,
+    // which matters on a shared or handed-on machine.
+    let passState = null;
+    const passRow = document.createElement("div");
+    passRow.className = "ts-settings__row";
+    const passLabel = document.createElement("span");
+    passLabel.className = "ts-settings__label";
+    passLabel.textContent = t.pass;
+    const passNote = document.createElement("span");
+    passNote.className = "ts-settings__note";
+    passNote.textContent = t.passNote;
+    const passLine = document.createElement("div");
+    passLine.className = "ts-settings__choice";
+    const passStatus = document.createElement("span");
+    passStatus.className = "ts-settings__note";
+    passStatus.style.flex = "1";
+    const passAction = document.createElement("button");
+    passAction.type = "button";
+    passAction.className = "ts-settings__opt";
+    passAction.style.flex = "0 0 auto";
+    passLine.append(passStatus, passAction);
+    passRow.append(passLabel, passNote, passLine);
+    if (options.pass) body.appendChild(passRow);
+
+    function renderPass() {
+        const state = passState || {};
+        if (state.state === "active") {
+            passStatus.textContent = t.passActive(
+                new Date(state.expiresAt).toLocaleDateString());
+            passAction.textContent = t.passForget;
+            passAction.onclick = async () => {
+                passState = await options.pass.clear();
+                renderPass();
+            };
+        } else {
+            passStatus.textContent = state.state === "expired" || state.state === "revoked"
+                ? t.passExpired : t.passNone;
+            passAction.textContent = t.passEnter;
+            passAction.onclick = () => options.pass.prompt();
+        }
+    }
+
     options.host.appendChild(panel);
 
     function setOpen(open) {
         panel.classList.toggle("is-open", open);
+        // Read the pass as the panel opens: it can change in the gate dialog
+        // while this panel sits behind it.
+        if (open && options.pass) {
+            Promise.resolve(options.pass.state()).then((state) => {
+                passState = state;
+                renderPass();
+            });
+        }
     }
 
     return {

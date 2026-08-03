@@ -248,9 +248,23 @@ export function createGate(options) {
         }
     }
 
+    /** Drop the stored pass. Installed material keeps working — see _pass.py. */
+    async function forget() {
+        try {
+            const response = await api.fetchApi("/ts_pass/clear", { method: "POST" });
+            state = await response.json();
+        } catch (err) {
+            console.warn("[TS Studio] could not clear the pass", err);
+        }
+        renderStatus();
+        onChange?.(state);
+        return state;
+    }
+
     return {
         element: overlay,
         refresh,
+        forget,
         /** Everything free is open; paid needs an active pass of that tier. */
         opens: (tier) => !tier || (state.state === "active" && (state.tier || 0) >= tier),
         state: () => state,

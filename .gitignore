@@ -57,3 +57,6 @@ comfyui-pack-testing-guide.md
 /_verify_quantile.py
 /code-review-report.md
 .openrouter
+
+# Built packs for the studio (author-side artefacts, uploaded not committed)
+/dist/
