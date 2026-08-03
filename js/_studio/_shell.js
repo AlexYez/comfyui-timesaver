@@ -42,16 +42,26 @@ export function ensureShellStyles() {
    widths are CSS variables, everything else is minmax/percent. */
 .ts-studio__resizer{position:absolute;top:0;bottom:0;width:7px;z-index:9;cursor:col-resize}
 .ts-studio__resizer:hover,.ts-studio__resizer.is-active{background:var(--ts-accent-soft)}
+.ts-studio__side.is-collapsed .ts-studio__resizer{pointer-events:none}
 .ts-studio__stage{position:relative;min-width:0;min-height:0;background:var(--ts-sunken)}
 .ts-studio__side{position:relative;display:flex;flex-direction:column;min-height:0;
     width:var(--ts-studio-side-w,280px);
     border-right:1px solid var(--ts-border);background:var(--ts-elevated)}
-.ts-studio__side.is-collapsed{width:26px}
+/* Folded, the panel is nothing but the hairline that divided it from the
+   stage — no 26px stub with its own border beside the divider, which read as
+   two lines. The tab is the only thing left, and it hangs off that line. */
+.ts-studio__side.is-collapsed{width:0}
 .ts-studio__side.is-collapsed>*:not(.ts-studio__sidegrip){display:none}
-.ts-studio__sidegrip{position:absolute;right:0;top:50%;transform:translateY(-50%);z-index:10;
-    width:14px;height:56px;display:flex;align-items:center;justify-content:center;
-    border:1px solid var(--ts-border);border-right:none;border-radius:var(--ts-radius) 0 0 var(--ts-radius);
-    background:var(--ts-elevated);color:var(--ts-muted);cursor:pointer;padding:0}
+.ts-studio__sidegrip{position:absolute;right:0;top:50%;z-index:10;
+    /* Sits OUTSIDE the panel in both states, so folding does not move it and
+       the tab always looks attached to the divider rather than inset in the
+       panel. */
+    transform:translate(100%,-50%);
+    width:13px;height:54px;display:flex;align-items:center;justify-content:center;
+    border:1px solid var(--ts-border);border-left:none;
+    border-radius:0 var(--ts-radius) var(--ts-radius) 0;
+    background:var(--ts-elevated);color:var(--ts-muted);cursor:pointer;padding:0;
+    box-shadow:var(--ts-shadow-sm)}
 /* The asset browser can live on either edge (Settings). Mirroring is a matter
    of column order and which side owns the divider and the grip — nothing in
    the panel itself changes. */
@@ -60,13 +70,14 @@ export function ensureShellStyles() {
     border-left:1px solid var(--ts-border)}
 .ts-studio--side-right .ts-studio__deck{order:1}
 .ts-studio--side-right .ts-studio__stage{order:2}
-.ts-studio--side-right .ts-studio__sidegrip{right:auto;left:0;border-right:1px solid var(--ts-border);
-    border-left:none;border-radius:0 var(--ts-radius) var(--ts-radius) 0}
-.ts-studio--side-right .ts-studio__sidegrip.is-collapsed{transform:translateY(-50%) scaleX(-1)}
+.ts-studio--side-right .ts-studio__sidegrip{right:auto;left:0;
+    border-left:1px solid var(--ts-border);border-right:none;
+    border-radius:var(--ts-radius) 0 0 var(--ts-radius);
+    transform:translate(-100%,-50%)}
 /* On this side the panel's own tab strip runs into the corner the fullscreen
    close button occupies, so it yields the same reserved room the other
    top-edge bars do. */
-.ts-studio--side-right .ts-studio__side>*:first-child,
+.ts-studio--side-right .ts-studio__side>*:first-child:not(.ts-studio__sidegrip),
 .ts-studio--side-right .ts-studio__gallerytabs{padding-right:var(--ts-fs-safe-right)}
 .ts-studio__sidegrip:hover{color:var(--ts-text)}
 .ts-studio__section{display:flex;flex-direction:column;gap:5px}
