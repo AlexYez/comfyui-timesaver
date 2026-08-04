@@ -74,6 +74,17 @@ class TS_StudioInpaintCrop(IO.ComfyNode):
                         "— otherwise it paints a scene of its own inside the mask."
                     ),
                 ),
+                IO.Int.Input(
+                    "snap_px", default=64, min=8, max=256, step=8,
+                    tooltip=(
+                        "Side multiple the processed crop is rounded up to. The "
+                        "VAE divides by 8 or 16 and the transformer patches the "
+                        "latent on top of that, so a size off the grid costs an "
+                        "internal pad and a resize on the way back. 64 is the "
+                        "safe general answer; Qwen wants 56, whose arithmetic "
+                        "follows its own encoder rather than a power of two."
+                    ),
+                ),
                 IO.Float.Input(
                     "feather_pct", default=3.0, min=0.0, max=25.0, step=0.5,
                     tooltip=(
@@ -110,6 +121,7 @@ class TS_StudioInpaintCrop(IO.ComfyNode):
         megapixels: float,
         context_pct: float,
         denoise: float,
+        snap_px: int,
         feather_pct: float,
     ) -> IO.NodeOutput:
         if image.ndim != 4:
@@ -137,6 +149,7 @@ class TS_StudioInpaintCrop(IO.ComfyNode):
             feather_pct=float(feather_pct),
             denoise=float(denoise),
             max_linear=1.0 if refining else None,
+            snap_px=int(snap_px),
         )
         if result is None:
             # Пустая маска — не ошибка: перерисовывать нечего. Отдаём кадр целиком

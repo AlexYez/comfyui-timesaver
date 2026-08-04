@@ -38,6 +38,37 @@ import * as memory from "../../_studio/_memory.js";
 // пугающе, а полезного там ещё нет.
 const PREVIEW_SKIP_STEPS = 2;
 
+// Какой этап идёт прямо сейчас — по классу считающегося узла.
+//
+// Полоса шагов сэмплера появляется поздно: до неё грузятся веса (десятки
+// секунд), считается текстовый энкодер, кодируется картинка. Раньше всё это
+// время окно молчало, и отличить «работает» от «зависло» было нельзя.
+// Порядок проверок важен: имена классов пересекаются («VAELoader» содержит и
+// «VAE», и «Loader»), поэтому список идёт от частного к общему.
+const STAGE_BY_CLASS = [
+    [/InpaintCrop/i, "crop"],
+    [/InpaintRestore/i, "restore"],
+    // Собственные ноды пака сами делают всю работу целиком — у Klein это
+    // TSSmartInpaint, и он же занимает почти всё время прогона.
+    [/SmartInpaint|LamaCleanup/i, "sample"],
+    [/Loader$|Loader[A-Z]|LoraStack/i, "load"],
+    [/TextEncode|Conditioning|Designer|Guider|Scheduler|Sigmas/i, "prompt"],
+    [/VAEEncode|NoiseMask|DifferentialDiffusion|ModelSampling|CFG/i, "encode"],
+    [/VAEDecode/i, "decode"],
+    [/Sampler|KSampler|Noise$/i, "sample"],
+    [/SaveImage|StudioOutput|PreviewImage/i, "save"],
+    // Маркеры студии исполняются мгновенно; называть их этапом — только мигать
+    // подписью, поэтому они остаются в общем «работаю».
+];
+
+function stageOf(classType) {
+    const name = String(classType || "");
+    for (const [pattern, stage] of STAGE_BY_CLASS) {
+        if (pattern.test(name)) return stage;
+    }
+    return "other";
+}
+
 const UI_MODES = [
     { id: "generate", backendModes: ["t2i", "edit"] },
     { id: "inpaint", backendModes: ["inpaint"] },
@@ -95,6 +126,17 @@ const STRINGS = {
         seedHintRandom: "New seed every run",
         seedHintFixed: "This seed is used every run",
         advanced: "Advanced",
+        stages: {
+            load: "Loading the model",
+            prompt: "Reading the prompt",
+            encode: "Preparing the image",
+            sample: "Drawing",
+            decode: "Assembling the picture",
+            crop: "Taking the crop",
+            restore: "Putting it back",
+            save: "Saving",
+            other: "Working",
+        },
         run: "Run",
         sourceGone: "The image of this sitting is no longer on disk — drop it in again.",
         stop: "Stop",
@@ -176,6 +218,10 @@ const STRINGS = {
             repaintTip: "Diffusion repaint: paint the mask, describe the change, press Run",
             brush: "Brush size ([ and ])",
             eraser: "Eraser — paint to take mask away (E, or hold Alt)",
+            keep: "Save",
+            keepTip: "Keep this version in the library. Repaints are drafts until you do.",
+            kept: "Saved to the library.",
+            keepFailed: (m) => `Could not save: ${m}`,
             brushMode: "Brush",
             brushModeTip: "Paint the mask (E switches, Alt erases while held)",
             eraserMode: "Eraser",
@@ -242,6 +288,17 @@ const STRINGS = {
         seedHintRandom: "Новый сид на каждый запуск",
         seedHintFixed: "Этот сид используется на каждом запуске",
         advanced: "Дополнительно",
+        stages: {
+            load: "Загружаю модель",
+            prompt: "Читаю промпт",
+            encode: "Готовлю изображение",
+            sample: "Рисую",
+            decode: "Собираю картинку",
+            crop: "Беру вырез",
+            restore: "Возвращаю на место",
+            save: "Сохраняю",
+            other: "Работаю",
+        },
         run: "Run",
         sourceGone: "Картинки этой сессии больше нет на диске — перетащите её заново.",
         stop: "Стоп",
@@ -323,6 +380,10 @@ const STRINGS = {
             repaintTip: "Диффузионная перерисовка: маска + описание изменения + Run",
             brush: "Размер кисти ([ и ])",
             eraser: "Ластик — стирает маску (E, или удерживая Alt)",
+            keep: "Сохранить",
+            keepTip: "Оставить эту версию в библиотеке. До этого перерисовки — черновики.",
+            kept: "Сохранено в библиотеку.",
+            keepFailed: (m) => `Не удалось сохранить: ${m}`,
             brushMode: "Кисть",
             brushModeTip: "Рисовать маску (E переключает, Alt стирает пока зажат)",
             eraserMode: "Ластик",
@@ -1173,6 +1234,21 @@ export async function openStudio(node, persist) {
             inpaintMode = createInpaintMode({
                 api, t, sessionId,
                 onEngineChange: () => {},
+                /** Перенести черновик в библиотеку и показать его в галерее. */
+                keepDraft: async (draft) => {
+                    const response = await api.fetchApi("/ts_studio/keep", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            ...draft,
+                            family: activeBackend?.manifest?.family || "studio",
+                        }),
+                    });
+                    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                    const image = await response.json();
+                    gallery.add({ image, params: {}, state: null });
+                    return image;
+                },
                 // Смена картинки на холсте — не изменение контрола, и раньше
                 // она в снимок рабочего места не попадала: он писался только на
                 // правку деки и на закрытие. Если студию закрывали не кнопкой
@@ -1301,6 +1377,31 @@ export async function openStudio(node, persist) {
         // Считаем превью этого прогона: пропуск первых шагов должен работать
         // на каждом запуске, а не один раз за сессию.
         let previewsSeen = 0;
+        let runStage = "";
+        let samplerFraction = null;
+        let nodesDone = 0;
+        let nodesTotal = 0;
+
+        /**
+         * Нарисовать ход: заполнение полосы и словами — что происходит.
+         *
+         * Сэмплер занимает последнюю треть шкалы, всё остальное — первые две.
+         * Так видно и что идёт подготовка, и сколько её осталось, а прыжок в
+         * конце не съедает весь ход одним махом.
+         */
+        function paintProgress() {
+            if (!deckWidgets) return;
+            const nodePart = nodesTotal > 0 ? nodesDone / nodesTotal : 0;
+            const pct = samplerFraction === null
+                ? Math.round(nodePart * 66)
+                : Math.round(66 + samplerFraction * 34);
+            deckWidgets.progress.classList.add("is-active");
+            deckWidgets.progressFill.style.width = `${Math.max(2, Math.min(100, pct))}%`;
+            const label = t.stages[runStage] || t.stages.other;
+            const steps = samplerFraction === null ? "" : ` ${Math.round(samplerFraction * 100)}%`;
+            deckWidgets.hint.textContent = queueCount > 1
+                ? `${label}${steps} · ${t.queued(queueCount)}` : `${label}${steps}`;
+        }
         const dropParams = [];
         for (const [name, annotated] of Object.entries(values.__refs || {})) {
             if (!target.spec.params.has(name)) continue;
@@ -1403,10 +1504,25 @@ export async function openStudio(node, persist) {
                 // the ts_studio chunk even though the studio sends no
                 // LiteGraph workflow of its own.
                 pngInfo: { ts_studio: studioState },
+                // Ход прогона складывается из двух источников. Узлы дают
+                // грубую канву («шестой из девяти»), сэмплер — точный ход
+                // внутри своего шага. Пока сэмплер не начал, полоса живёт по
+                // узлам: раньше она просто стояла пустой всё время загрузки.
+                onNode: (nodeId) => {
+                    const stage = stageOf(patched?.[nodeId]?.class_type);
+                    runStage = stage;
+                    if (stage !== "sample") samplerFraction = null;
+                    paintProgress();
+                },
+                onNodeProgress: (done, total) => {
+                    nodesDone = done;
+                    nodesTotal = total;
+                    paintProgress();
+                },
                 onProgress: (value, max) => {
-                    const pct = max ? Math.round((value / max) * 100) : 0;
-                    deckWidgets.progress.classList.add("is-active");
-                    deckWidgets.progressFill.style.width = `${pct}%`;
+                    samplerFraction = max ? value / max : null;
+                    runStage = "sample";
+                    paintProgress();
                 },
                 onPreview: (blob) => {
                     // Первые шаги — почти чистый шум: быстрый декодер латента
@@ -1425,16 +1541,19 @@ export async function openStudio(node, persist) {
                     deckWidgets.progress.classList.remove("is-active");
                     for (const image of images) {
                         const result = { image, params: { ...runValues }, state: studioState };
-                        gallery.add(result);
+                        gallery.add(result);   // лента сессии показывает и черновики
                         showResult(result);
                         persist.setResultPath(resultRelPath(image));
                         if (activeModeId === "inpaint" && inpaintMode) {
                             inpaintMode.hidePreview();
+                            // Тип берётся у самого результата: перерисовки
+                            // приходят из временной папки, а не из библиотеки.
                             const url = "/view?" + new URLSearchParams({
                                 filename: image.filename,
                                 subfolder: image.subfolder || "",
-                                type: "output",
+                                type: image.type || "output",
                             });
+                            inpaintMode.noteDraft?.(image.type === "temp" ? image : null);
                             inpaintMode.acceptRepaintResult(url, image.filename)
                                 .catch(() => {});
                         }

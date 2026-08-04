@@ -144,6 +144,28 @@ export function createInpaintMode(ctx) {
     };
     document.addEventListener("keydown", onAltDown);
     document.addEventListener("keyup", onAltUp);
+    // Кнопка «сохранить»: перерисовки уходят в черновики, а в библиотеку
+    // попадает только то, что человек оставил. Проб бывает десяток — раньше
+    // все они ложились рядом с настоящими работами.
+    const keep = document.createElement("button");
+    keep.type = "button";
+    keep.className = "ts-inp__segbtn ts-inp__keep";
+    keep.textContent = ctx.t.inp.keep;
+    keep.title = ctx.t.inp.keepTip;
+    keep.disabled = true;
+    keep.addEventListener("click", async () => {
+        const draft = state.lastDraft;
+        if (!draft) return;
+        keep.disabled = true;
+        try {
+            const answer = await ctx.keepDraft?.(draft);
+            setStatus(answer ? ctx.t.inp.kept : ctx.t.inp.keepFailed(""));
+        } catch (err) {
+            setStatus(ctx.t.inp.keepFailed(String(err?.message || err)));
+            keep.disabled = false;
+        }
+    });
+
     const clear = tool("✕", ctx.t.inp.clear);
     clear.addEventListener("click", () => mask.clearMask());
     const undoBtn = tool("↶", ctx.t.inp.undo);
@@ -153,7 +175,7 @@ export function createInpaintMode(ctx) {
 
     const sep1 = separator();
     const sep2 = separator();
-    bar.append(seg, sep1, brush, paintSeg, clear, sep2, undoBtn, redoBtn);
+    bar.append(seg, sep1, brush, paintSeg, clear, sep2, undoBtn, redoBtn, keep);
 
     const status = document.createElement("div");
     status.className = "ts-inp__status";
@@ -261,6 +283,7 @@ export function createInpaintMode(ctx) {
     const state = {
         engine: "cleanup",
         sourceAnnotated: "",   // upload name of the CURRENT canvas image
+        lastDraft: null,       // {filename, subfolder, type} последнего черновика
         cleanupWorking: "",    // LaMa working_path chain
         versions: [],          // unified command stack: {kind, url, annotated, working}
         cursor: -1,
@@ -277,8 +300,13 @@ export function createInpaintMode(ctx) {
         async undo() {
             if (mask.canUndo()) { mask.undo(); return; }
             if (state.cursor > 0) {
+                // Версия, из которой уходим, помнит маску, которой её сделали.
+                // Возвращая кадр, возвращаем и её: человек нажал «отменить»,
+                // чтобы попробовать ещё раз — рисовать то же самое заново он
+                // не подписывался.
+                const cameFrom = state.versions[state.cursor];
                 state.cursor -= 1;
-                await applyVersion(state.versions[state.cursor]);
+                await applyVersion(state.versions[state.cursor], cameFrom);
             }
             syncButtons();
         },
@@ -297,10 +325,12 @@ export function createInpaintMode(ctx) {
         redoBtn.disabled = !mask.canRedo() && state.cursor >= state.versions.length - 1;
     }
 
-    async function applyVersion(version) {
+    async function applyVersion(version, maskFrom = null) {
         await mask.loadImage(version.url);
         state.sourceAnnotated = version.annotated || "";
         state.cleanupWorking = version.working || "";
+        if (maskFrom?.mask) await mask.setMaskFromUrl(maskFrom.mask);
+        ctx.onSourceChange?.();
     }
 
     function segButton(label, title) {
@@ -398,8 +428,9 @@ export function createInpaintMode(ctx) {
             state.cleanupWorking = payload.working_path;
             const url = `/ts_lama_cleanup/view?filepath=${encodeURIComponent(payload.working_path)}`
                 + `&v=${Date.now()}`;
+            const usedMask = mask.hasMask() ? mask.maskDataUrl() : "";
             await mask.loadImage(url);
-            history.push({ kind: "cleanup", url,
+            history.push({ kind: "cleanup", url, mask: usedMask,
                            annotated: state.sourceAnnotated, working: payload.working_path });
             const seconds = ((performance.now() - started) / 1000).toFixed(1);
             setStatus(ctx.t.inp.cleaned(seconds));
@@ -434,21 +465,33 @@ export function createInpaintMode(ctx) {
         return { source_image: source, mask: maskAnnotated };
     }
 
+    /** Запомнить черновик, который сейчас на холсте, и открыть «сохранить». */
+    function noteDraft(image) {
+        state.lastDraft = image || null;
+        keep.disabled = !image;
+    }
+
     async function acceptRepaintResult(url, name) {
         const response = await fetch(url);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const blob = await response.blob();
         const annotated = await uploadImage(ctx.api, blob, name || "repaint.png");
+        // Снимок маски делается ДО загрузки результата: `loadImage` очищает
+        // холст маски, и после него взять её уже неоткуда.
+        const usedMask = mask.hasMask() ? mask.maskDataUrl() : "";
         const objectUrl = URL.createObjectURL(blob);
         await mask.loadImage(objectUrl);
         state.sourceAnnotated = annotated;
         state.cleanupWorking = "";
-        history.push({ kind: "repaint", url: objectUrl, annotated, working: "" });
+        history.push({ kind: "repaint", url: objectUrl, annotated, working: "", mask: usedMask });
         setStatus(ctx.t.inp.repainted);
         ctx.onSourceChange?.();
     }
 
-    setEngine("cleanup");
+    // Открываемся на Repaint: за перерисовкой сюда приходят чаще, а Cleanup
+    // срабатывает сам по окончании мазка — попасть в него случайно значит
+    // потерять нарисованное.
+    setEngine("repaint");
     syncButtons();
 
     return {
@@ -458,6 +501,7 @@ export function createInpaintMode(ctx) {
         setImageFromBlob,
         collectRunValues,
         acceptRepaintResult,
+        noteDraft,
         hasImage: () => mask.hasImage(),
         hasMask: () => mask.hasMask(),
         maskDataUrl: () => (mask.hasMask() ? mask.maskDataUrl() : ""),

@@ -77,8 +77,15 @@ FEATHER_GROW_FACTOR = 1.5
 # раздувалась бы восьмикратно.
 MAX_LINEAR = 3.0
 
-# Стороны выреза кратны этому: 16 делится на 8, поэтому годится и восьмикратным
-# VAE (SDXL, Qwen), и шестнадцатикратным (Flux 2, Krea).
+# Кратность сторон обрабатываемого выреза. Это НЕ мелочь: у VAE свой делитель
+# (замерено — `ae` и `qwen_image_vae` делят на 8, оба `flux2-vae` на 16), а
+# трансформер поверх него режет латент на патчи, обычно 2x2. Промах даёт
+# внутренний паддинг и лишнюю пересборку размера на возврате.
+#
+# Здесь лежит только значение по умолчанию для `TS Smart Inpaint`, у которого
+# своя история и свои умолчания. Студия задаёт кратность на семейство: 64 как
+# надёжная общая (кратна и 8, и 16, и 32), 56 у Qwen — его арифметика завязана
+# на собственный энкодер и не сводится к степени двойки.
 SNAP_PX = 16
 
 # Известная область обязана занимать не меньше этой доли выреза. Правило автора
@@ -425,6 +432,7 @@ def plan_and_crop(
     context_pct: float,
     feather_pct: float,
     resize_method: str = "lanczos",
+    snap_px: int | None = None,
     color_correct: bool = True,
     max_linear: float | None = None,
     denoise: float = 1.0,
@@ -524,8 +532,9 @@ def plan_and_crop(
     cap = max_linear if max_linear is not None else (
         MAX_LINEAR_REPLACE if replacing else MAX_LINEAR)
     scale = fine_upscale_factor(float(x1 - x0), float(y1 - y0), float(megapixels), cap)
-    out_h = max(SNAP_PX, int(math.ceil((y1 - y0) * scale / SNAP_PX) * SNAP_PX))
-    out_w = max(SNAP_PX, int(math.ceil((x1 - x0) * scale / SNAP_PX) * SNAP_PX))
+    snap = int(snap_px) if snap_px else SNAP_PX
+    out_h = max(snap, int(math.ceil((y1 - y0) * scale / snap) * snap))
+    out_w = max(snap, int(math.ceil((x1 - x0) * scale / snap) * snap))
 
     crop_chw = crop.movedim(-1, 1)
     crop_up = comfy.utils.common_upscale(

@@ -38,6 +38,17 @@ class TS_StudioOutput(IO.ComfyNode):
                     "filename_prefix", default="ts_studio/session",
                     tooltip="Save path prefix under output/. The studio sets it per session.",
                 ),
+                IO.Combo.Input(
+                    "folder", options=["output", "temp"], default="output",
+                    optional=True, socketless=True,
+                    tooltip=(
+                        "Where the result lands. 'output' is the library — what "
+                        "the person keeps. 'temp' is a draft: it still comes back "
+                        "to the studio and its session strip, but never joins the "
+                        "library, so a dozen tries at one repaint do not bury the "
+                        "one picture that was wanted."
+                    ),
+                ),
                 IO.String.Input(
                     "studio_state", default="", optional=True, socketless=True,
                     tooltip=(
@@ -55,10 +66,13 @@ class TS_StudioOutput(IO.ComfyNode):
         )
 
     @classmethod
-    def execute(cls, image, filename_prefix: str, studio_state: str = "") -> IO.NodeOutput:
+    def execute(cls, image, filename_prefix: str, folder: str = "output",
+                studio_state: str = "") -> IO.NodeOutput:
         cls._attach_state(studio_state)
+        where = (IO.FolderType.temp if str(folder).strip().lower() == "temp"
+                 else IO.FolderType.output)
         results = UI.ImageSaveHelper.save_images(
-            image, filename_prefix=filename_prefix, folder_type=IO.FolderType.output, cls=cls,
+            image, filename_prefix=filename_prefix, folder_type=where, cls=cls,
         )
         return IO.NodeOutput(ui={"images": results})
 

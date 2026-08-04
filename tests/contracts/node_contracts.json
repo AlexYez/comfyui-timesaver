@@ -1929,6 +1929,12 @@
         "max": 8.0,
         "min": 0.1,
         "step": 0.1
+      },
+      "snap_px": {
+        "default": 64,
+        "max": 256,
+        "min": 8,
+        "step": 8
       }
     }
   },
@@ -2059,6 +2065,9 @@
     "widgets": {
       "filename_prefix": {
         "default": "ts_studio/session"
+      },
+      "folder": {
+        "default": "output"
       },
       "studio_state": {
         "default": ""

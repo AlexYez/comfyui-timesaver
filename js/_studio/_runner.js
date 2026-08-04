@@ -28,6 +28,21 @@ export function createRunner(api) {
             if (detail?.prompt_id) {
                 executingPromptId = detail.node === null ? null : detail.prompt_id;
             }
+            // Какой узел сейчас считается. Полоса шагов сэмплера появляется
+            // поздно, а до неё идут загрузка весов, текстовый энкодер и VAE —
+            // минуты тишины, за которые непонятно, жив ли вообще прогон.
+            const job = jobs.get(detail?.prompt_id ?? executingPromptId)
+                || (jobs.size === 1 ? jobs.values().next().value : null);
+            if (job && detail?.node !== undefined) job.callbacks.onNode?.(detail.node);
+        }),
+        // Свежие сборки ComfyUI шлют ещё и покомпонентный прогресс: сколько
+        // узлов графа пройдено. Это тот самый «общий» ход, которого не хватало.
+        track("progress_state", ({ detail }) => {
+            const job = jobs.get(detail?.prompt_id ?? executingPromptId);
+            if (!job || !detail?.nodes) return;
+            const nodes = Object.values(detail.nodes);
+            const done = nodes.filter((n) => n?.state === "finished").length;
+            job.callbacks.onNodeProgress?.(done, nodes.length);
         }),
         track("progress", ({ detail }) => {
             const job = jobs.get(detail?.prompt_id);
@@ -70,7 +85,8 @@ export function createRunner(api) {
 
     /**
      * @param {object} graph Patched prompt JSON.
-     * @param {object} callbacks {onQueued, onProgress, onPreview, onDone, onError, onCancelled}
+     * @param {object} callbacks {onQueued, onProgress, onNode, onNodeProgress,
+     *   onPreview, onDone, onError, onCancelled}
      * @param {object} [callbacks.pngInfo] Extra tEXt chunks for saved images,
      *   as {chunkName: value}. The studio has no LiteGraph workflow to send,
      *   so extra_pnginfo would otherwise be absent and a saver would have

@@ -11,6 +11,7 @@ out to the network unless someone asked for it.
 from __future__ import annotations
 
 import logging
+import shutil
 from pathlib import Path
 
 from ._deps import TSDependencyManager  # noqa: F401  (kept for import parity)
@@ -195,3 +196,59 @@ async def studio_pack_remove(request):
 # Registers routes only; the pack's loader skips files with no node mappings.
 NODE_CLASS_MAPPINGS: dict = {}
 NODE_DISPLAY_NAME_MAPPINGS: dict = {}
+
+@register_post("/api/ts_studio/keep")
+async def studio_keep(request):
+    """Перенести черновик перерисовки в библиотеку.
+
+    Перерисовка редко получается с первого раза: человек пробует пять-десять
+    вариантов, и раньше каждый из них ложился в библиотеку рядом с настоящими
+    работами. Теперь пробы пишутся во временную папку, а сюда приходит только
+    то, что понравилось, — по кнопке Save.
+
+    Тело: {"filename", "subfolder", "type", "family"}. Файл берётся из папки,
+    которую назвал ComfyUI (temp/output/input), и копируется в
+    `output/images/<family>/` под тем же именем. Пути проверяются: имя не
+    может увести за пределы своей папки.
+    """
+    try:
+        body = await request.json()
+    except Exception:                       # noqa: BLE001
+        return _json({"error": "expected a JSON body"}, status=400)
+
+    import folder_paths                     # доступен только внутри ComfyUI
+
+    roots = {
+        "temp": Path(folder_paths.get_temp_directory()),
+        "output": Path(folder_paths.get_output_directory()),
+        "input": Path(folder_paths.get_input_directory()),
+    }
+    root = roots.get(str(body.get("type") or "temp").strip().lower())
+    if root is None:
+        return _json({"error": "unknown folder type"}, status=400)
+
+    name = Path(str(body.get("filename") or "")).name
+    if not name:
+        return _json({"error": "no filename"}, status=400)
+    subfolder = str(body.get("subfolder") or "").replace("\\", "/").strip("/")
+    source = (root / subfolder / name).resolve()
+    try:
+        source.relative_to(root.resolve())
+    except ValueError:
+        return _json({"error": "path escapes its folder"}, status=400)
+    if not source.is_file():
+        return _json({"error": "no such file"}, status=404)
+
+    family = "".join(ch for ch in str(body.get("family") or "studio")
+                     if ch.isalnum() or ch in "-_") or "studio"
+    target_dir = Path(folder_paths.get_output_directory()) / "images" / family
+    target_dir.mkdir(parents=True, exist_ok=True)
+    target = target_dir / name
+    stem, suffix = target.stem, target.suffix
+    counter = 1
+    while target.exists():
+        target = target_dir / f"{stem}_{counter}{suffix}"
+        counter += 1
+    shutil.copy2(source, target)
+    logger.info("%s kept %s -> %s", LOG_PREFIX, source.name, target.name)
+    return _json({"filename": target.name, "subfolder": f"images/{family}", "type": "output"})

@@ -50,13 +50,15 @@ export function ensureShellStyles() {
 /* Folded, the panel is nothing but the hairline that divided it from the
    stage — no 26px stub with its own border beside the divider, which read as
    two lines. The tab is the only thing left, and it hangs off that line. */
-.ts-studio__side.is-collapsed{width:0}
+.ts-studio__side.is-collapsed{width:13px}
 .ts-studio__side.is-collapsed>*:not(.ts-studio__sidegrip){display:none}
 .ts-studio__sidegrip{position:absolute;right:0;top:50%;z-index:10;
-    /* Sits OUTSIDE the panel in both states, so folding does not move it and
-       the tab always looks attached to the divider rather than inset in the
-       panel. */
-    transform:translate(100%,-50%);
+    /* Ярлычок принадлежит панели и остаётся на ЕЁ стороне разделителя.
+       Раньше он висел снаружи, сдвинутый на свою ширину, и у свёрнутой панели
+       торчал в холст — выглядело так, будто это ручка сцены, а не панели.
+       Теперь его тело лежит там же, где сама панель, и при сворачивании он
+       не переезжает через линию. */
+    transform:translate(0,-50%);
     width:13px;height:54px;display:flex;align-items:center;justify-content:center;
     border:1px solid var(--ts-border);border-left:none;
     border-radius:0 var(--ts-radius) var(--ts-radius) 0;
@@ -73,7 +75,7 @@ export function ensureShellStyles() {
 .ts-studio--side-right .ts-studio__sidegrip{right:auto;left:0;
     border-left:1px solid var(--ts-border);border-right:none;
     border-radius:var(--ts-radius) 0 0 var(--ts-radius);
-    transform:translate(-100%,-50%)}
+    transform:translate(0,-50%)}
 /* On this side the panel's own tab strip runs into the corner the fullscreen
    close button occupies, so it yields the same reserved room the other
    top-edge bars do. */
@@ -153,8 +155,12 @@ export function createShell(options) {
         }
     }
 
-    function setSideCollapsed(collapsed) {
+    function setSideCollapsed(collapsed, remember = true) {
         side.classList.toggle("is-collapsed", collapsed);
+        // Сворачивание — такая же настройка рабочего места, как ширина
+        // колонок: свернул браузер ассетов, закрыл студию, открыл — он обязан
+        // остаться свёрнутым. Раньше он каждый раз разворачивался сам.
+        if (remember) rememberColumns({ sideCollapsed: collapsed });
         // The chevron points the way the panel will move, which flips with the
         // side the browser lives on.
         const rightSide = root.classList.contains("ts-studio--side-right");
@@ -170,15 +176,22 @@ export function createShell(options) {
         const right = placement === "right";
         root.classList.toggle("ts-studio--side-right", right);
         sideResizer.setEdge(right ? "left" : "right");
-        setSideCollapsed(side.classList.contains("is-collapsed"));
+        setSideCollapsed(side.classList.contains("is-collapsed"), false);
     }
 
     // ── fluid columns: draggable widths, persisted per install ──────────── //
     const WIDTH_KEY = "ts-studio.columns";
-    let widths = { deck: 340, side: 280 };
+    let widths = { deck: 340, side: 280, sideCollapsed: false };
     try {
         widths = { ...widths, ...JSON.parse(localStorage.getItem(WIDTH_KEY) || "{}") };
     } catch { /* defaults stand */ }
+
+    function rememberColumns(patch) {
+        widths = { ...widths, ...patch };
+        try {
+            localStorage.setItem(WIDTH_KEY, JSON.stringify(widths));
+        } catch { /* private mode */ }
+    }
     function applyWidths() {
         root.style.setProperty("--ts-studio-deck-w",
             `${Math.min(560, Math.max(240, widths.deck))}px`);
@@ -186,6 +199,7 @@ export function createShell(options) {
             `${Math.min(520, Math.max(200, widths.side))}px`);
     }
     applyWidths();
+    if (widths.sideCollapsed) setSideCollapsed(true, false);
 
     function makeResizer(host, edge, get, set) {
         const grip = document.createElement("div");
@@ -219,9 +233,7 @@ export function createShell(options) {
         const stop = () => {
             if (!grip.classList.contains("is-active")) return;
             grip.classList.remove("is-active");
-            try {
-                localStorage.setItem(WIDTH_KEY, JSON.stringify(widths));
-            } catch { /* private mode */ }
+            rememberColumns({});
         };
         grip.addEventListener("pointerup", stop);
         grip.addEventListener("pointercancel", stop);
