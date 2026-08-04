@@ -66,6 +66,15 @@ class TS_StudioInpaintCrop(IO.ComfyNode):
                     ),
                 ),
                 IO.Float.Input(
+                    "denoise", default=1.0, min=0.0, max=1.0, step=0.05,
+                    tooltip=(
+                        "How much of the masked area the sampler will replace. "
+                        "Full replacement leaves the model no pixels to anchor on, "
+                        "so the crop then takes more context and is enlarged less "
+                        "— otherwise it paints a scene of its own inside the mask."
+                    ),
+                ),
+                IO.Float.Input(
                     "feather_pct", default=3.0, min=0.0, max=25.0, step=0.5,
                     tooltip=(
                         "Width of the soft edge used when the repaint is pasted "
@@ -92,6 +101,7 @@ class TS_StudioInpaintCrop(IO.ComfyNode):
         mask: torch.Tensor,
         megapixels: float,
         context_pct: float,
+        denoise: float,
         feather_pct: float,
     ) -> IO.NodeOutput:
         if image.ndim != 4:
@@ -103,6 +113,7 @@ class TS_StudioInpaintCrop(IO.ComfyNode):
             megapixels=float(megapixels),
             context_pct=float(context_pct),
             feather_pct=float(feather_pct),
+            denoise=float(denoise),
         )
         if result is None:
             # Пустая маска — не ошибка: перерисовывать нечего. Отдаём кадр целиком

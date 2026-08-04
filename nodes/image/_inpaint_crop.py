@@ -49,6 +49,20 @@ FEATHER_FLOOR_PX = 2
 FEATHER_CEIL_PX = 256
 CONTEXT_CEIL_PX = 1024
 
+# Контекст в процентах от маски — правильная метрика для крупных выделений и
+# бесполезная для мелких: 8% от мазка в 40 пикселей это три пикселя окружения,
+# по которым модель не поймёт ни масштаба, ни освещения. Поэтому у отступа есть
+# абсолютный пол: не меньше этого и не меньше доли короткой стороны кадра.
+# (Практика Inpaint Crop & Stitch: относительный фактор плюс абсолютный запас;
+# у автора в рабочих схемах контекст-фактор 2.0, а не дефолтные 1.2.)
+CONTEXT_FLOOR_PX = 64
+CONTEXT_FLOOR_IMAGE_PCT = 3.0
+
+# Растушёвка возврата считается от стороны ВЫРЕЗА, а не от маски. От маски она
+# давала ноль на мелких правках (шов виден) и сотни пикселей на крупных
+# (результат размывается). 1–3% стороны выреза — то, что держат в C&S.
+FEATHER_OF_CROP_FLOOR_PX = 4
+
 # Потолок увеличения мелкого выреза: без него маска в пару десятков пикселей
 # раздувалась бы восьмикратно.
 MAX_LINEAR = 3.0
@@ -65,6 +79,16 @@ SNAP_PX = 16
 # что вокруг. Проверено живьём: при контексте 8% маска занимала три четверти
 # выреза, и «зелёное яблоко» получалось целой картинкой внутри пятна.
 KNOWN_AREA_MIN = 0.5
+
+# При полной замене (denoise близко к единице) у модели нет пиксельной опоры
+# внутри маски вообще: и масштаб, и свет она берёт только из видимого known-
+# региона. Поэтому там требования жёстче — известного нужно три четверти, а
+# увеличивать вырез сильнее чем вдвое вредно: чем крупнее холст, тем крупнее
+# «натуральный масштаб» того, что модель на нём рисует. (Impact Pack держит
+# crop_factor 3.0 — это 89% известного; ориентир по апскейлу — не более 2–3x.)
+REPLACE_DENOISE = 0.6
+KNOWN_AREA_MIN_REPLACE = 0.75
+MAX_LINEAR_REPLACE = 2.0
 
 
 def pad_for_known_area(mask_w: float, mask_h: float, known_min: float = KNOWN_AREA_MIN) -> float:
@@ -354,7 +378,8 @@ def plan_and_crop(
     feather_pct: float,
     resize_method: str = "lanczos",
     color_correct: bool = True,
-    max_linear: float = MAX_LINEAR,
+    max_linear: float | None = None,
+    denoise: float = 1.0,
 ) -> tuple[torch.Tensor, torch.Tensor, CropPlan] | None:
     """Вырезать область маски с контекстом и привести её к бюджету.
 
@@ -379,32 +404,45 @@ def plan_and_crop(
     ty0, ty1, tx0, tx1 = tight
     mask_min_side = float(min(ty1 - ty0, tx1 - tx0))
 
-    feather_px = pct_to_px(float(feather_pct), mask_min_side, FEATHER_FLOOR_PX, FEATHER_CEIL_PX)
+    # Контекст: проценты от маски, но не меньше абсолютного пола и не меньше
+    # того, при котором маска займёт меньше половины выреза.
     context_px = pct_to_px(float(context_pct), mask_min_side, 0.0, CONTEXT_CEIL_PX)
-    # Кольцу для цветокоррекции нужен сохранённый запас вокруг маски — растим
-    # контекст до аналитического минимума, даже если человек поставил ноль.
-    pad_px = max(context_px, float(CC_ANALYSIS_MARGIN_PX)) if color_correct else context_px
-    # ...и до половины площади выреза: модели нужно, от чего отталкиваться.
-    # Настройка контекста поднимает эту границу, но опустить её не может —
-    # ниже неё перерисовка перестаёт быть перерисовкой и становится рисованием
-    # заново.
-    pad_px = max(pad_px, pad_for_known_area(float(tx1 - tx0), float(ty1 - ty0)))
+    floor_px = max(
+        float(CONTEXT_FLOOR_PX),
+        CONTEXT_FLOOR_IMAGE_PCT / 100.0 * float(min(img_h, img_w)),
+    )
+    pad_px = max(context_px, floor_px)
+    if color_correct:
+        # Кольцу для цветокоррекции нужен сохранённый запас вокруг маски.
+        pad_px = max(pad_px, float(CC_ANALYSIS_MARGIN_PX))
+    replacing = float(denoise) >= REPLACE_DENOISE
+    known_min = KNOWN_AREA_MIN_REPLACE if replacing else KNOWN_AREA_MIN
+    pad_px = max(pad_px, pad_for_known_area(float(tx1 - tx0), float(ty1 - ty0), known_min))
 
-    soft = gaussian_blur_2d(m, feather_px).clamp(0.0, 1.0) if feather_px > 0 else m
-    box = mask_bbox(soft) or tight
-    sy0, sy1, sx0, sx1 = box
     pad = int(round(pad_px))
-    y0 = max(0, sy0 - pad)
-    y1 = min(img_h, sy1 + pad)
-    x0 = max(0, sx0 - pad)
-    x1 = min(img_w, sx1 + pad)
+    y0 = max(0, ty0 - pad)
+    y1 = min(img_h, ty1 + pad)
+    x0 = max(0, tx0 - pad)
+    x1 = min(img_w, tx1 + pad)
     if y1 - y0 <= 0 or x1 - x0 <= 0:
         return None
+
+    # Растушёвка — от стороны ВЫРЕЗА, а не маски. От маски она давала единицы
+    # пикселей на мелких правках (шов было видно) и сотни на крупных (результат
+    # размывался). Полоса перехода лежит внутри контекстного запаса, поэтому
+    # мягкий край не срезается рамкой.
+    feather_px = pct_to_px(
+        float(feather_pct), float(min(y1 - y0, x1 - x0)),
+        FEATHER_OF_CROP_FLOOR_PX, FEATHER_CEIL_PX,
+    )
+    soft = gaussian_blur_2d(m, feather_px).clamp(0.0, 1.0) if feather_px > 0 else m
 
     crop = image[:, y0:y1, x0:x1, :].contiguous()
     alpha = soft[:1, y0:y1, x0:x1].unsqueeze(-1).contiguous()   # [1, h, w, 1]
 
-    scale = fine_upscale_factor(float(x1 - x0), float(y1 - y0), float(megapixels), max_linear)
+    cap = max_linear if max_linear is not None else (
+        MAX_LINEAR_REPLACE if replacing else MAX_LINEAR)
+    scale = fine_upscale_factor(float(x1 - x0), float(y1 - y0), float(megapixels), cap)
     out_h = max(SNAP_PX, int(math.ceil((y1 - y0) * scale / SNAP_PX) * SNAP_PX))
     out_w = max(SNAP_PX, int(math.ceil((x1 - x0) * scale / SNAP_PX) * SNAP_PX))
 
@@ -423,7 +461,20 @@ def plan_and_crop(
     # мягкий край не смягчает ничего — он лишь сдвигает фактическую границу на
     # половину пера, и она перестаёт совпадать с альфой, по которой мы потом
     # вклеиваем. Мягкость нужна ровно в одном месте — в композите на возврате.
-    mask_up = (resize_spatial(m[:1, y0:y1, x0:x1], out_h, out_w, "bilinear") >= 0.5).to(m.dtype)
+    #
+    # Заодно жёсткую маску растим на ширину растушёвки: иначе внешняя половина
+    # мягкой полосы подмешивает пиксели, которых модель не касалась, — а они
+    # прошли круговой рейс VAE и несут его цветовой сдвиг. Вся рампа обязана
+    # лежать внутри честно перерисованного.
+    hard = (m[:1, y0:y1, x0:x1] >= 0.5).to(m.dtype)
+    grow = int(math.ceil(3.0 * feather_px))
+    if grow > 0:
+        # Дилатация max-пулом: дёшево и без зависимостей.
+        k = 2 * grow + 1
+        hard = torch.nn.functional.max_pool2d(
+            hard.unsqueeze(0), kernel_size=k, stride=1, padding=grow,
+        ).squeeze(0)
+    mask_up = (resize_spatial(hard, out_h, out_w, "bilinear") >= 0.5).to(m.dtype)
 
     plan = CropPlan(
         y0=y0, y1=y1, x0=x0, x1=x1, out_w=out_w, out_h=out_h,
