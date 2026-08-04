@@ -24,7 +24,11 @@ export function outputPrefix(family, now = new Date()) {
     const pad = (n) => String(n).padStart(2, "0");
     const date = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
     const time = `${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
-    const model = String(family || "studio").replace(/[^\w.-]+/g, "-");
+    // The family id comes from a pack manifest, so it is not ours to trust:
+    // separators are folded away, and a name made only of dots would still be
+    // a step up the tree.
+    let model = String(family || "studio").replace(/[^\w.-]+/g, "-");
+    if (!model || /^\.+$/.test(model)) model = "studio";
     return `images/${model}/${model}_${date}_${time}`;
 }
 
@@ -53,21 +57,21 @@ export async function restoreResults(fetcher, sessionId) {
     const response = await fetcher("/history?max_items=512");
     if (!response.ok) return [];
     const history = await response.json();
-    const marker = `ts_studio/${sessionId}/`;
     const found = [];
+    // Which sitting a picture belongs to is written in its run snapshot, not in
+    // its path: the output tree is organised for a person (images/<model>/), so
+    // the folder says nothing about the session. History comes back oldest
+    // first, which is the order the gallery wants.
     for (const entry of Object.values(history)) {
-        const stamp = entry?.status?.completed ? 1 : 0;
-        if (!stamp) continue;
+        if (!entry?.status?.completed) continue;
+        if (!sessionId || readSessionId(entry) !== sessionId) continue;
         for (const output of Object.values(entry.outputs || {})) {
             for (const image of output.images || []) {
-                const folder = String(image.subfolder || "").replace(/\\/g, "/") + "/";
-                if (folder.startsWith(marker)) {
-                    found.push({ image, params: readRunParams(entry) });
-                }
+                if ((image.type || "output") !== "output") continue;
+                found.push({ image, params: readRunParams(entry) });
             }
         }
     }
-    found.sort((a, b) => resultRelPath(a.image).localeCompare(resultRelPath(b.image)));
     return found;
 }
 
