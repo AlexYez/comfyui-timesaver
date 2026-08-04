@@ -57,6 +57,33 @@ MAX_LINEAR = 3.0
 # VAE (SDXL, Qwen), и шестнадцатикратным (Flux 2, Krea).
 SNAP_PX = 16
 
+# Известная область обязана занимать не меньше этой доли выреза. Правило автора
+# LanPaint (scraed/LanPaint#83: «keep the known region no less than 50% of the
+# picture»), и оно же лечит главную беду тугого выреза: когда маска занимает
+# почти весь кадр, модели не от чего оттолкнуться, и она рисует внутри маски
+# самостоятельную сцену в своём натуральном масштабе вместо продолжения того,
+# что вокруг. Проверено живьём: при контексте 8% маска занимала три четверти
+# выреза, и «зелёное яблоко» получалось целой картинкой внутри пятна.
+KNOWN_AREA_MIN = 0.5
+
+
+def pad_for_known_area(mask_w: float, mask_h: float, known_min: float = KNOWN_AREA_MIN) -> float:
+    """Насколько отступить от рамки маски, чтобы она заняла меньше `known_min`
+    площади выреза.
+
+    Решается точно: (w+2p)(h+2p) >= w*h / (1-known_min).
+    """
+    if mask_w <= 0 or mask_h <= 0:
+        return 0.0
+    target = mask_w * mask_h / max(1e-6, 1.0 - known_min)
+    # 4p² + 2p(w+h) + wh - target = 0
+    b = 2.0 * (mask_w + mask_h)
+    c = mask_w * mask_h - target
+    disc = b * b - 16.0 * c
+    if disc <= 0:
+        return 0.0
+    return max(0.0, (-b + math.sqrt(disc)) / 8.0)
+
 
 def pct_to_px(pct: float, base_px: float, floor_px: float, ceil_px: float) -> float:
     """Проценты от размера маски — в пиксели, с зажимом в [floor_px, ceil_px].
@@ -357,6 +384,11 @@ def plan_and_crop(
     # Кольцу для цветокоррекции нужен сохранённый запас вокруг маски — растим
     # контекст до аналитического минимума, даже если человек поставил ноль.
     pad_px = max(context_px, float(CC_ANALYSIS_MARGIN_PX)) if color_correct else context_px
+    # ...и до половины площади выреза: модели нужно, от чего отталкиваться.
+    # Настройка контекста поднимает эту границу, но опустить её не может —
+    # ниже неё перерисовка перестаёт быть перерисовкой и становится рисованием
+    # заново.
+    pad_px = max(pad_px, pad_for_known_area(float(tx1 - tx0), float(ty1 - ty0)))
 
     soft = gaussian_blur_2d(m, feather_px).clamp(0.0, 1.0) if feather_px > 0 else m
     box = mask_bbox(soft) or tight
@@ -385,7 +417,13 @@ def plan_and_crop(
     # Маску масштабируем билинейно независимо от выбранного метода: у lanczos
     # одноканальная ветка возвращает транспонированный тензор, а bislerp —
     # сферическая интерполяция векторов, для альфы бессмысленная.
-    mask_up = resize_spatial(soft[:1, y0:y1, x0:x1], out_h, out_w, "bilinear").clamp(0.0, 1.0)
+    #
+    # Сэмплеру отдаём ЖЁСТКУЮ маску, а не растушёванную. LanPaint всё равно
+    # бинаризует её по порогу 0.5 у себя внутри (`KSamplerX0Inpaint`), поэтому
+    # мягкий край не смягчает ничего — он лишь сдвигает фактическую границу на
+    # половину пера, и она перестаёт совпадать с альфой, по которой мы потом
+    # вклеиваем. Мягкость нужна ровно в одном месте — в композите на возврате.
+    mask_up = (resize_spatial(m[:1, y0:y1, x0:x1], out_h, out_w, "bilinear") >= 0.5).to(m.dtype)
 
     plan = CropPlan(
         y0=y0, y1=y1, x0=x0, x1=x1, out_w=out_w, out_h=out_h,
