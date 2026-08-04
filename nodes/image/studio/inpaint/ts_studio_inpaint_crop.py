@@ -26,7 +26,7 @@ from ._plan import PLAN_TYPE, CropPlanHolder
 logger = logging.getLogger("comfyui_timesaver.ts_studio_inpaint_crop")
 LOG_PREFIX = "[TS Studio Inpaint Crop]"
 
-from ..._inpaint_crop import plan_and_crop  # noqa: E402  (после логгера — читается вместе с ним)
+from ..._inpaint_crop import REPLACE_DENOISE, plan_and_crop  # noqa: E402  (после логгера — читается вместе с ним)
 
 
 class TS_StudioInpaintCrop(IO.ComfyNode):
@@ -116,12 +116,27 @@ class TS_StudioInpaintCrop(IO.ComfyNode):
             raise RuntimeError(
                 f"{LOG_PREFIX} image must be [B,H,W,C], got {tuple(image.shape)}"
             )
+        # Доработка НЕ увеличивает вырез.
+        #
+        # Замерено 2026-08-04 на одном сиде: тот же вырез, та же маска, сила
+        # 0.45. При бюджете 0.8 МП (увеличение в 1.28 раза) кожа выходила
+        # потрескавшейся — модель «дорисовывала детали» по интерполированным
+        # пикселям и запекала их в сетку трещин. При родном масштабе того же
+        # выреза — чистое лицо. Разница только в увеличении.
+        #
+        # Смысл прямой: доработка улучшает то, что есть, а не выдумывает то,
+        # чего нет. Бюджет мегапикселей при этом продолжает работать вниз —
+        # большая маска по-прежнему ужимается до него, чтобы не разорить
+        # память. Полная замена увеличивать по-прежнему вправе: там пикселей
+        # под маской всё равно не остаётся.
+        refining = float(denoise) < REPLACE_DENOISE
         result = plan_and_crop(
             image, mask,
             megapixels=float(megapixels),
             context_pct=float(context_pct),
             feather_pct=float(feather_pct),
             denoise=float(denoise),
+            max_linear=1.0 if refining else None,
         )
         if result is None:
             # Пустая маска — не ошибка: перерисовывать нечего. Отдаём кадр целиком

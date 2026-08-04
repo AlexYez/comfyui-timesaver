@@ -98,12 +98,52 @@ export function createInpaintMode(ctx) {
     brush.title = ctx.t.inp.brush;
     brush.addEventListener("input", () => mask.setBrush(Number(brush.value)));
 
-    const eraser = tool("◐", ctx.t.inp.eraser);
-    eraser.addEventListener("click", () => {
-        const on = !eraser.classList.contains("is-active");
+    // Кисть и ластик — парный переключатель, а не безымянный значок.
+    //
+    // Ластик тут был и раньше — одинокой кнопкой «◐» с подсказкой, и его
+    // просто не находили. Инструмент, который нельзя увидеть, всё равно что
+    // отсутствует, поэтому теперь это сегмент с подписями, как везде: видно,
+    // что режима два, и видно, какой включён. Alt зажимает ластик на время —
+    // привычка из любого редактора; клавиша E переключает.
+    const paintSeg = document.createElement("div");
+    paintSeg.className = "ts-inp__seg";
+    const brushBtn = document.createElement("button");
+    brushBtn.type = "button";
+    brushBtn.className = "ts-inp__segbtn is-active";
+    brushBtn.textContent = ctx.t.inp.brushMode;
+    brushBtn.title = ctx.t.inp.brushModeTip;
+    const eraser = document.createElement("button");
+    eraser.type = "button";
+    eraser.className = "ts-inp__segbtn";
+    eraser.textContent = ctx.t.inp.eraserMode;
+    eraser.title = ctx.t.inp.eraser;
+    paintSeg.append(brushBtn, eraser);
+
+    /** @param {boolean} on ластик включён */
+    function setEraser(on) {
         eraser.classList.toggle("is-active", on);
+        brushBtn.classList.toggle("is-active", !on);
         mask.setEraser(on);
-    });
+    }
+    brushBtn.addEventListener("click", () => setEraser(false));
+    eraser.addEventListener("click", () => setEraser(true));
+
+    // Alt — временный ластик: отпустил, и снова кисть. Слушатели на документе,
+    // потому что клавишу могут нажать, когда фокус на ползунке или промпте;
+    // снимаются в teardown вместе со всем остальным.
+    let eraserBeforeAlt = null;
+    const onAltDown = (event) => {
+        if (event.key !== "Alt" || eraserBeforeAlt !== null) return;
+        eraserBeforeAlt = eraser.classList.contains("is-active");
+        if (!eraserBeforeAlt) setEraser(true);
+    };
+    const onAltUp = (event) => {
+        if (event.key !== "Alt" || eraserBeforeAlt === null) return;
+        setEraser(eraserBeforeAlt);
+        eraserBeforeAlt = null;
+    };
+    document.addEventListener("keydown", onAltDown);
+    document.addEventListener("keyup", onAltUp);
     const clear = tool("✕", ctx.t.inp.clear);
     clear.addEventListener("click", () => mask.clearMask());
     const undoBtn = tool("↶", ctx.t.inp.undo);
@@ -113,7 +153,7 @@ export function createInpaintMode(ctx) {
 
     const sep1 = separator();
     const sep2 = separator();
-    bar.append(seg, sep1, brush, eraser, clear, sep2, undoBtn, redoBtn);
+    bar.append(seg, sep1, brush, paintSeg, clear, sep2, undoBtn, redoBtn);
 
     const status = document.createElement("div");
     status.className = "ts-inp__status";
@@ -313,6 +353,7 @@ export function createInpaintMode(ctx) {
         empty.style.display = "none";
         mask.element.style.display = "";
         syncButtons();
+        ctx.onSourceChange?.();
     }
 
     async function setImageFromUrl(url, name) {
@@ -404,6 +445,7 @@ export function createInpaintMode(ctx) {
         state.cleanupWorking = "";
         history.push({ kind: "repaint", url: objectUrl, annotated, working: "" });
         setStatus(ctx.t.inp.repainted);
+        ctx.onSourceChange?.();
     }
 
     setEngine("cleanup");
@@ -439,7 +481,10 @@ export function createInpaintMode(ctx) {
         },
         showPreview,
         hidePreview,
+        toggleEraser: () => setEraser(!eraser.classList.contains("is-active")),
         teardown: () => {
+            document.removeEventListener("keydown", onAltDown);
+            document.removeEventListener("keyup", onAltUp);
             hidePreview();
             dropTeardown();
             dropTeardown2();

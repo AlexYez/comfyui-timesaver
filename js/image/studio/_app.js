@@ -24,6 +24,7 @@ import { createSettingsPanel, readSetting, settingsStrings }
 import { uploadImage, makeDropZone, annotatedImageUrl } from "../../_studio/_dnd.js";
 import { buildStudioState, studioStateFromPng } from "../../_studio/_pnginfo.js";
 import { loadWorkspace, saveWorkspace } from "../../_studio/_workspace.js";
+import { REPLACE_DENOISE } from "../../_studio/_crop_geometry.js";
 import { createQueuePanel } from "../../_studio/_queue.js";
 import { createGate } from "../../_studio/_gate.js";
 import { createShowcase } from "../../_studio/_showcase.js";
@@ -32,6 +33,11 @@ import * as memory from "../../_studio/_memory.js";
 // Rail tabs are UI modes, not backend modes. "Generate" covers both t2i and
 // edit: the same act with or without reference images, so the user picks a
 // model and the references appear when that model can use them (plan §9).
+// Сколько первых латентных превью не показывать. Первые шаги — почти чистый
+// шум: быстрый декодер показывает его честно, и поверх лица это выглядит
+// пугающе, а полезного там ещё нет.
+const PREVIEW_SKIP_STEPS = 2;
+
 const UI_MODES = [
     { id: "generate", backendModes: ["t2i", "edit"] },
     { id: "inpaint", backendModes: ["inpaint"] },
@@ -90,6 +96,13 @@ const STRINGS = {
         seedHintFixed: "This seed is used every run",
         advanced: "Advanced",
         run: "Run",
+        sourceGone: "The image of this sitting is no longer on disk — drop it in again.",
+        stop: "Stop",
+        stopTip: "Stop the run in progress. Anything running from the canvas is left alone.",
+        stopAll: "Stop all",
+        stopAllTip: "Drop every studio run still queued.",
+        stopping: "Stopping the current run…",
+        stoppingAll: (n) => `Stopping ${n} run${n === 1 ? "" : "s"}…`,
         runHint: "Ctrl+Enter",
         queued: (n) => `${n} in queue`,
         cancel: "Cancel",
@@ -162,19 +175,16 @@ const STRINGS = {
             cleanupTip: "Instant object removal (LaMa): paint and release — no prompt needed",
             repaintTip: "Diffusion repaint: paint the mask, describe the change, press Run",
             brush: "Brush size ([ and ])",
-            eraser: "Eraser — paint to remove mask",
+            eraser: "Eraser — paint to take mask away (E, or hold Alt)",
+            brushMode: "Brush",
+            brushModeTip: "Paint the mask (E switches, Alt erases while held)",
+            eraserMode: "Eraser",
             clear: "Clear the mask",
             undo: "Undo (Ctrl+Z)", redo: "Redo (Ctrl+Y)",
             empty: "Drop an image here, pick a session result, or drag from the Library.",
             cleaning: "Cleaning…",
             cleaned: (s) => `Cleaned in ${s} s`,
             repainted: "Repainted — the result is on the canvas and in the gallery.",
-            stop: "Stop",
-            stopTip: "Stop the run in progress. Anything running from the canvas is left alone.",
-            stopAll: "Stop all",
-            stopAllTip: "Drop every studio run still queued.",
-            stopping: "Stopping the current run…",
-            stoppingAll: (n) => `Stopping ${n} run${n === 1 ? "" : "s"}…`,
             needImage: "Add an image to inpaint first.",
             needMask: "Paint a mask first.",
             // Cleanup consumes the mask the moment a stroke ends, so "paint a
@@ -233,6 +243,13 @@ const STRINGS = {
         seedHintFixed: "Этот сид используется на каждом запуске",
         advanced: "Дополнительно",
         run: "Run",
+        sourceGone: "Картинки этой сессии больше нет на диске — перетащите её заново.",
+        stop: "Стоп",
+        stopTip: "Остановить текущий прогон. То, что считается с холста, не трогается.",
+        stopAll: "Снять очередь",
+        stopAllTip: "Убрать из очереди все прогоны студии.",
+        stopping: "Останавливаю текущий прогон…",
+        stoppingAll: (n) => `Останавливаю прогонов: ${n}…`,
         runHint: "Ctrl+Enter",
         queued: (n) => `в очереди: ${n}`,
         cancel: "Отмена",
@@ -305,19 +322,16 @@ const STRINGS = {
             cleanupTip: "Мгновенное удаление объектов (LaMa): закрасьте и отпустите — промпт не нужен",
             repaintTip: "Диффузионная перерисовка: маска + описание изменения + Run",
             brush: "Размер кисти ([ и ])",
-            eraser: "Ластик — стирает маску",
+            eraser: "Ластик — стирает маску (E, или удерживая Alt)",
+            brushMode: "Кисть",
+            brushModeTip: "Рисовать маску (E переключает, Alt стирает пока зажат)",
+            eraserMode: "Ластик",
             clear: "Очистить маску",
             undo: "Отменить (Ctrl+Z)", redo: "Вернуть (Ctrl+Y)",
             empty: "Перетащите изображение, выберите результат сессии или тяните из Библиотеки.",
             cleaning: "Очистка…",
             cleaned: (s) => `Очищено за ${s} с`,
             repainted: "Перерисовано — результат на холсте и в галерее.",
-            stop: "Стоп",
-            stopTip: "Остановить текущий прогон. То, что считается с холста, не трогается.",
-            stopAll: "Снять очередь",
-            stopAllTip: "Убрать из очереди все прогоны студии.",
-            stopping: "Останавливаю текущий прогон…",
-            stoppingAll: (n) => `Останавливаю прогонов: ${n}…`,
             needImage: "Сначала добавьте изображение.",
             needMask: "Сначала нарисуйте маску.",
             needRepaint: "Cleanup срабатывает сам, пока вы красите. Чтобы область "
@@ -414,6 +428,10 @@ export async function openStudio(node, persist) {
     // them in place rather than asking to be reopened.
     let backends = await readBackends();
     let families = groupByFamily(backends);
+    // Была ли у узла своя сессия. Пустая означает либо новый узел, либо
+    // обнулённые ComfyUI свойства — во втором случае рабочее место лежит под
+    // прежним идентификатором, и строгий поиск его не найдёт.
+    const hadSession = Boolean(persist.sessionId);
     const sessionId = persist.sessionId || newSessionId();
     persist.setSessionId(sessionId);
 
@@ -532,6 +550,11 @@ export async function openStudio(node, persist) {
                        && (event.key === "[" || event.key === "]")) {
                 event.preventDefault();
                 inpaintMode.brushDelta(event.key === "]" ? 6 : -6);
+            } else if (activeModeId === "inpaint" && inpaintMode
+                       && (event.key === "e" || event.key === "E")
+                       && !event.ctrlKey && !event.metaKey && !event.altKey) {
+                event.preventDefault();
+                inpaintMode.toggleEraser();
             } else if (event.key === "F1") {
                 event.preventDefault();
                 helpPanel.toggle();
@@ -901,10 +924,6 @@ export async function openStudio(node, persist) {
                     if (control.kind === "refs") sessionRefs.set(param, value);
                     else memory.remember(graphKey(backend), param, control.kind, value);
                     rememberWorkspace();
-                    // Replace ON implies 100% strength: grey the slider out.
-                    if (param === "replace") {
-                        controlsByParam.get("denoise")?.setDisabled?.(Boolean(value));
-                    }
                     // A filled reference sends the run to the edit graph,
                     // which takes its frame from that image.
                     if (param === "__refs") {
@@ -1103,14 +1122,19 @@ export async function openStudio(node, persist) {
     function rememberWorkspace() {
         if (restoringWorkspace) return;
         clearTimeout(workspaceTimer);
-        workspaceTimer = setTimeout(() => {
-            const state = currentStudioState();
-            if (state) saveWorkspace(sessionId, state);
-        }, 500);
+        workspaceTimer = setTimeout(rememberWorkspaceNow, 500);
     }
 
-    /** Последняя запись — синхронно, страница может уходить. */
+    /**
+     * Записать рабочее место целиком, включая нарисованную маску.
+     *
+     * Маска снимается и здесь, а не только на закрытии: закрытие бывает
+     * ненастоящим — перезагрузка страницы, пересборка графа, — и тогда
+     * последней записью оказывается именно отложенная. Дорого это не выходит:
+     * запись случается на правку деки и на смену картинки, а не на каждый мазок.
+     */
     function rememberWorkspaceNow() {
+        if (restoringWorkspace) return;
         clearTimeout(workspaceTimer);
         const state = currentStudioState();
         if (!state) return;
@@ -1149,6 +1173,12 @@ export async function openStudio(node, persist) {
             inpaintMode = createInpaintMode({
                 api, t, sessionId,
                 onEngineChange: () => {},
+                // Смена картинки на холсте — не изменение контрола, и раньше
+                // она в снимок рабочего места не попадала: он писался только на
+                // правку деки и на закрытие. Если студию закрывали не кнопкой
+                // (перезагрузка страницы, пересборка графа), исходник терялся —
+                // вкладка возвращалась, а холст был пуст.
+                onSourceChange: () => rememberWorkspace(),
             });
             shell.stage.appendChild(inpaintMode.element);
             const selectedUrl = stageImg.src && stageImg.style.display !== "none" ? stageImg.src : "";
@@ -1214,15 +1244,38 @@ export async function openStudio(node, persist) {
             runValues[param] = value;
         }
         runValues.seed = seed;
-        if (typeof values.replace === "boolean") {
-            // Замена — это denoise 1.0 у любой модели. У Klein переключатель
-            // ещё и приходит в саму ноду; у остальных семейств его в графе нет,
-            // и передавать его туда нельзя — патчер справедливо ругается на
-            // параметр, которого граф не объявлял.
+        // Режим выводится из силы, а не из отдельного тумблера.
+        //
+        // Раньше их было два — ползунок и переключатель Replace, — и при
+        // включённом переключателе ползунок ничего не значил. Теперь шкала
+        // одна: её последняя ступень И ЕСТЬ замена. Всё, что ниже порога, —
+        // доработка.
+        const strength = Number(runValues.denoise);
+        if (Number.isFinite(strength)) {
+            const replacing = strength >= REPLACE_DENOISE;
+            if (replacing) runValues.denoise = 1.0;
+            // Klein принимает режим прямо в ноду; у остальных семейств такого
+            // входа в графе нет, и передавать его туда нельзя — патчер
+            // справедливо ругается на параметр, которого граф не объявлял.
             if (target.spec.params.has("replace") || target.spec.literals?.has("replace")) {
-                runValues.replace = values.replace;
+                runValues.replace = replacing;
             }
-            if (values.replace) runValues.denoise = 1.0;
+            // Доработка идёт БЕЗ размышлений LanPaint.
+            //
+            // Его внутренний цикл согласует перерисованное с окружением, и на
+            // полной замене это то, что нужно. На доработке он же уводит
+            // результат далеко за запрошенную силу: замерено на одном сиде —
+            // средний сдвиг пикселя внутри маски 69.5 против 32.8 у обычного
+            // прохода, и молодое лицо при силе 0.45 возвращалось пожилым.
+            //
+            // Ноль размышлений вырождает LanPaint в обычный сэмплер: сверено
+            // с настоящим KSampler на том же сиде — среднее расхождение 0.057
+            // из 255. То есть это и есть классический инпэйнт, только без
+            // второй ветки в графе. Заодно доработка ускоряется в девять раз
+            // (24 с против 209 с).
+            if (!replacing && target.spec.params.has("think_steps")) {
+                runValues.think_steps = 0;
+            }
         }
         // Styles append to the prompt the same way the selector node does —
         // what runs is exactly what the gallery params will replay.
@@ -1245,6 +1298,9 @@ export async function openStudio(node, persist) {
         }
         // Filled reference slots become image params; empty ones become
         // dropParams so the patcher removes their optional branches.
+        // Считаем превью этого прогона: пропуск первых шагов должен работать
+        // на каждом запуске, а не один раз за сессию.
+        let previewsSeen = 0;
         const dropParams = [];
         for (const [name, annotated] of Object.entries(values.__refs || {})) {
             if (!target.spec.params.has(name)) continue;
@@ -1353,6 +1409,12 @@ export async function openStudio(node, persist) {
                     deckWidgets.progressFill.style.width = `${pct}%`;
                 },
                 onPreview: (blob) => {
+                    // Первые шаги — почти чистый шум: быстрый декодер латента
+                    // показывает его честно, и выглядит это пугающе, особенно
+                    // когда оно лежит поверх лица. Ничего полезного там ещё
+                    // нет, поэтому показ начинается с третьего шага.
+                    previewsSeen += 1;
+                    if (previewsSeen <= PREVIEW_SKIP_STEPS) return;
                     if (activeModeId === "inpaint" && inpaintMode) inpaintMode.showPreview(blob);
                     else showPreviewBlob(blob);
                 },
@@ -1528,7 +1590,15 @@ export async function openStudio(node, persist) {
         if (!url) return;
         if (uiMode === "inpaint") {
             ensureInpaintMounted();
-            await inpaintMode.setImageFromUrl(url).catch(() => {});
+            // Молча проглоченная ошибка здесь и выглядела как «вкладка
+            // вернулась, а холст пустой»: файл исходника мог не пережить
+            // сессию, и об этом никто не узнавал. Теперь это видно в статусе.
+            try {
+                await inpaintMode.setImageFromUrl(url);
+            } catch (err) {
+                console.warn("[TS Studio] source not restored", source, err);
+                setStatus(t.sourceGone);
+            }
         } else if (uiMode === "upscale") {
             upscaleSource = source;
             stageImg.src = url;
@@ -1603,7 +1673,7 @@ export async function openStudio(node, persist) {
         // последнее рабочее место вообще — иначе она открывалась бы пустой
         // всегда. Не получилось применить — открываемся как раньше, с первой
         // вкладки: рабочее место не должно быть причиной не открыться.
-        const saved = loadWorkspace(sessionId, !node);
+        const saved = loadWorkspace(sessionId, !node || !hadSession);
         let restored = false;
         if (saved?.state) {
             restoringWorkspace = true;
