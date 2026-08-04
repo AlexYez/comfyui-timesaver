@@ -170,6 +170,10 @@ const STRINGS = {
             repainted: "Repainted — the result is on the canvas and in the gallery.",
             needImage: "Add an image to inpaint first.",
             needMask: "Paint a mask first.",
+            // Cleanup consumes the mask the moment a stroke ends, so "paint a
+            // mask" is true and useless — the person did paint one.
+            needRepaint: "Cleanup runs on its own as you paint. To have a model "
+                + "repaint the area, switch to Repaint first.",
             paintFailed: (m) => `Failed: ${m}`,
         },
         pt: {
@@ -303,6 +307,8 @@ const STRINGS = {
             repainted: "Перерисовано — результат на холсте и в галерее.",
             needImage: "Сначала добавьте изображение.",
             needMask: "Сначала нарисуйте маску.",
+            needRepaint: "Cleanup срабатывает сам, пока вы красите. Чтобы область "
+                + "перерисовала модель, переключитесь на Repaint.",
             paintFailed: (m) => `Ошибка: ${m}`,
         },
         pt: {

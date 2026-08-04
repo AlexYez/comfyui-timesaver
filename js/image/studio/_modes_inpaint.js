@@ -327,7 +327,15 @@ export function createInpaintMode(ctx) {
     // ── Repaint: values for the standard run path ───────────────────────── //
     async function collectRunValues() {
         if (!mask.hasImage()) throw new Error(ctx.t.inp.needImage);
-        if (!mask.hasMask()) throw new Error(ctx.t.inp.needMask);
+        if (!mask.hasMask()) {
+            // In Cleanup a stroke is spent the moment it ends — LaMa runs and
+            // the cleaned image comes back with an empty mask. Telling someone
+            // who just painted to "paint a mask" is technically true and
+            // completely unhelpful; the real answer is which engine is armed.
+            throw new Error(state.engine === "cleanup"
+                ? (ctx.t.inp.needRepaint || ctx.t.inp.needMask)
+                : ctx.t.inp.needMask);
+        }
         capturePreviewBox();
         const maskBlob = await (await fetch(mask.maskDataUrl())).blob();
         const maskAnnotated = await uploadImage(ctx.api, maskBlob, "inpaint_mask.png");
