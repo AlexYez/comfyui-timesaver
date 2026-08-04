@@ -136,7 +136,7 @@
   "class_type": "VAEEncode",
   "inputs": {
    "pixels": [
-    "p_image",
+    "inpaint_crop",
     0
    ],
    "vae": [
@@ -153,8 +153,8 @@
     0
    ],
    "mask": [
-    "p_mask",
-    0
+    "inpaint_crop",
+    1
    ]
   }
  },
@@ -221,7 +221,7 @@
   "class_type": "LanPaint_MaskBlend",
   "inputs": {
    "image1": [
-    "p_image",
+    "inpaint_crop",
     0
    ],
    "image2": [
@@ -229,8 +229,8 @@
     0
    ],
    "mask": [
-    "p_mask",
-    0
+    "inpaint_crop",
+    1
    ],
    "blend_overlap": 9
   }
@@ -239,7 +239,7 @@
   "class_type": "TS_StudioOutput",
   "inputs": {
    "image": [
-    "blend",
+    "inpaint_restore",
     0
    ],
    "filename_prefix": "ts_studio/session"
@@ -248,7 +248,62 @@
  "studio_manifest": {
   "class_type": "TS_StudioManifest",
   "inputs": {
-   "manifest": "{\n  \"schema_version\": \"1.0.0\",\n  \"id\": \"z-image/inpaint\",\n  \"label\": {\n    \"en\": \"Inpaint\",\n    \"ru\": \"Inpaint\"\n  },\n  \"family\": \"z-image\",\n  \"family_label\": \"Z-Image Turbo\",\n  \"tier\": 0,\n  \"mode\": \"inpaint\",\n  \"order\": 30,\n  \"controls\": [\n    {\n      \"param\": \"prompt\",\n      \"kind\": \"prompt\",\n      \"superprompt\": true\n    },\n    {\n      \"param\": \"seed\",\n      \"kind\": \"seed\"\n    },\n    {\n      \"param\": \"denoise\",\n      \"kind\": \"slider\",\n      \"min\": 0.1,\n      \"max\": 1.0,\n      \"step\": 0.05,\n      \"label\": {\n        \"en\": \"Repaint strength\",\n        \"ru\": \"Сила перерисовки\"\n      },\n      \"default\": 1.0,\n      \"tooltip\": {\n        \"en\": \"How much of the masked area is redrawn. 0.1-0.25 refines what is already there; 0.3-0.5 reworks it noticeably; 0.6-1.0 replaces the content.\",\n        \"ru\": \"Насколько сильно перерисовывается область. 0.1–0.25 — уточнение того, что есть; 0.3–0.5 — заметная переработка; 0.6–1.0 — замена содержимого.\"\n      }\n    },\n    {\n      \"param\": \"loras\",\n      \"kind\": \"loras\",\n      \"max\": 8,\n      \"strength\": [\n        -2.0,\n        2.0\n      ]\n    },\n    {\n      \"param\": \"think_steps\",\n      \"kind\": \"number\",\n      \"advanced\": true,\n      \"min\": 1,\n      \"max\": 12,\n      \"label\": {\n        \"en\": \"Think steps (quality)\",\n        \"ru\": \"Шаги размышления (качество)\"\n      }\n    },\n    {\n      \"param\": \"steps\",\n      \"kind\": \"number\",\n      \"advanced\": true,\n      \"min\": 1,\n      \"max\": 60,\n      \"label\": {\n        \"en\": \"Steps\",\n        \"ru\": \"Шаги\"\n      }\n    },\n    {\n      \"param\": \"cfg\",\n      \"kind\": \"number\",\n      \"advanced\": true,\n      \"min\": 0,\n      \"max\": 15,\n      \"step\": 0.1,\n      \"label\": {\n        \"en\": \"CFG\",\n        \"ru\": \"CFG\"\n      }\n    }\n  ],\n  \"refs\": {\n    \"max\": 0\n  },\n  \"requires\": [\n    \"source_image\",\n    \"mask\"\n  ],\n  \"negative_prompt\": false,\n  \"models\": [\n    {\n      \"title\": \"studio:model\",\n      \"input\": \"unet_name\",\n      \"folder\": \"diffusion_models\",\n      \"match\": \"z.?image.*turbo|Artius_ZImage\"\n    },\n    {\n      \"title\": \"studio:clip\",\n      \"input\": \"clip_name\",\n      \"folder\": \"text_encoders\",\n      \"match\": \"qwen_3_4b\"\n    },\n    {\n      \"title\": \"studio:vae\",\n      \"input\": \"vae_name\",\n      \"folder\": \"vae\",\n      \"match\": \"^ae\\\\.safetensors$\"\n    }\n  ],\n  \"dependencies\": [\n    {\n      \"pack\": \"LanPaint\",\n      \"nodes\": [\n        \"LanPaint_KSampler\",\n        \"LanPaint_MaskBlend\"\n      ]\n    }\n  ]\n}"
+   "manifest": "{\n  \"schema_version\": \"1.0.0\",\n  \"id\": \"z-image/inpaint\",\n  \"label\": {\n    \"en\": \"Inpaint\",\n    \"ru\": \"Inpaint\"\n  },\n  \"family\": \"z-image\",\n  \"family_label\": \"Z-Image Turbo\",\n  \"tier\": 0,\n  \"mode\": \"inpaint\",\n  \"order\": 30,\n  \"controls\": [\n    {\n      \"param\": \"prompt\",\n      \"kind\": \"prompt\",\n      \"superprompt\": true\n    },\n    {\n      \"param\": \"seed\",\n      \"kind\": \"seed\"\n    },\n    {\n      \"param\": \"denoise\",\n      \"kind\": \"slider\",\n      \"min\": 0.1,\n      \"max\": 1.0,\n      \"step\": 0.05,\n      \"label\": {\n        \"en\": \"Repaint strength\",\n        \"ru\": \"Сила перерисовки\"\n      },\n      \"default\": 1.0,\n      \"tooltip\": {\n        \"en\": \"How much of the masked area is redrawn. 0.1-0.25 refines what is already there; 0.3-0.5 reworks it noticeably; 0.6-1.0 replaces the content.\",\n        \"ru\": \"Насколько сильно перерисовывается область. 0.1–0.25 — уточнение того, что есть; 0.3–0.5 — заметная переработка; 0.6–1.0 — замена содержимого.\"\n      }\n    },\n    {\n      \"param\": \"megapixels\",\n      \"kind\": \"slider\",\n      \"min\": 0.5,\n      \"max\": 4.0,\n      \"step\": 0.1,\n      \"default\": 1.0,\n      \"label\": {\n        \"en\": \"Processing resolution\",\n        \"ru\": \"Разрешение обработки\"\n      },\n      \"tooltip\": {\n        \"en\": \"Megapixels the masked crop is redrawn at. A small selection is upscaled toward this budget (more detail, slower); an oversized one is scaled down to it.\",\n        \"ru\": \"В скольких мегапикселях перерисовывается вырезанный по маске фрагмент. Маленькое выделение увеличивается до этого бюджета (больше деталей, дольше), слишком большое — уменьшается.\"\n      }\n    },\n    {\n      \"param\": \"context_pct\",\n      \"kind\": \"slider\",\n      \"min\": 0.0,\n      \"max\": 50.0,\n      \"step\": 1.0,\n      \"default\": 8.0,\n      \"label\": {\n        \"en\": \"Context around the mask\",\n        \"ru\": \"Контекст вокруг маски\"\n      },\n      \"tooltip\": {\n        \"en\": \"How much of the surroundings goes into the crop, as a percent of the mask. More context helps the model match what is around; it also enlarges the crop, so less of the budget lands on the mask.\",\n        \"ru\": \"Сколько окружения попадает в вырез, в процентах от маски. Больше контекста — модель лучше попадает в окружение, но вырез растёт, и на саму маску приходится меньше бюджета.\"\n      }\n    },\n    {\n      \"param\": \"loras\",\n      \"kind\": \"loras\",\n      \"max\": 8,\n      \"strength\": [\n        -2.0,\n        2.0\n      ]\n    },\n    {\n      \"param\": \"think_steps\",\n      \"kind\": \"number\",\n      \"advanced\": true,\n      \"min\": 1,\n      \"max\": 12,\n      \"label\": {\n        \"en\": \"Think steps (quality)\",\n        \"ru\": \"Шаги размышления (качество)\"\n      }\n    },\n    {\n      \"param\": \"steps\",\n      \"kind\": \"number\",\n      \"advanced\": true,\n      \"min\": 1,\n      \"max\": 60,\n      \"label\": {\n        \"en\": \"Steps\",\n        \"ru\": \"Шаги\"\n      }\n    },\n    {\n      \"param\": \"cfg\",\n      \"kind\": \"number\",\n      \"advanced\": true,\n      \"min\": 0,\n      \"max\": 15,\n      \"step\": 0.1,\n      \"label\": {\n        \"en\": \"CFG\",\n        \"ru\": \"CFG\"\n      }\n    }\n  ],\n  \"refs\": {\n    \"max\": 0\n  },\n  \"requires\": [\n    \"source_image\",\n    \"mask\"\n  ],\n  \"negative_prompt\": false,\n  \"models\": [\n    {\n      \"title\": \"studio:model\",\n      \"input\": \"unet_name\",\n      \"folder\": \"diffusion_models\",\n      \"match\": \"z.?image.*turbo|Artius_ZImage\"\n    },\n    {\n      \"title\": \"studio:clip\",\n      \"input\": \"clip_name\",\n      \"folder\": \"text_encoders\",\n      \"match\": \"qwen_3_4b\"\n    },\n    {\n      \"title\": \"studio:vae\",\n      \"input\": \"vae_name\",\n      \"folder\": \"vae\",\n      \"match\": \"^ae\\\\.safetensors$\"\n    }\n  ],\n  \"dependencies\": [\n    {\n      \"pack\": \"LanPaint\",\n      \"nodes\": [\n        \"LanPaint_KSampler\",\n        \"LanPaint_MaskBlend\"\n      ]\n    }\n  ]\n}"
+  }
+ },
+ "p_megapixels": {
+  "class_type": "TS_StudioInputNumber",
+  "inputs": {
+   "value": 1.0,
+   "param_name": "megapixels",
+   "label": ""
+  }
+ },
+ "p_context": {
+  "class_type": "TS_StudioInputNumber",
+  "inputs": {
+   "value": 8.0,
+   "param_name": "context_pct",
+   "label": ""
+  }
+ },
+ "inpaint_crop": {
+  "class_type": "TS_StudioInpaintCrop",
+  "inputs": {
+   "image": [
+    "p_image",
+    0
+   ],
+   "mask": [
+    "p_mask",
+    0
+   ],
+   "megapixels": [
+    "p_megapixels",
+    0
+   ],
+   "context_pct": [
+    "p_context",
+    0
+   ],
+   "feather_pct": 10.0
+  }
+ },
+ "inpaint_restore": {
+  "class_type": "TS_StudioInpaintRestore",
+  "inputs": {
+   "image": [
+    "p_image",
+    0
+   ],
+   "patch": [
+    "blend",
+    0
+   ],
+   "plan": [
+    "inpaint_crop",
+    2
+   ]
   }
  }
 }

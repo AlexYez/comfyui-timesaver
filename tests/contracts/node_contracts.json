@@ -1899,6 +1899,40 @@
       }
     }
   },
+  "TS_StudioInpaintCrop": {
+    "api": "v3",
+    "category": null,
+    "class_name": "TS_StudioInpaintCrop",
+    "display_name": "TS Studio Inpaint Crop",
+    "python_file": "nodes/image/studio/inpaint/ts_studio_inpaint_crop.py",
+    "widgets": {
+      "context_pct": {
+        "default": 8.0,
+        "max": 50.0,
+        "min": 0.0,
+        "step": 0.5
+      },
+      "feather_pct": {
+        "default": 3.0,
+        "max": 25.0,
+        "min": 0.0,
+        "step": 0.5
+      },
+      "megapixels": {
+        "default": 1.0,
+        "max": 8.0,
+        "min": 0.1,
+        "step": 0.1
+      }
+    }
+  },
+  "TS_StudioInpaintRestore": {
+    "api": "v3",
+    "category": null,
+    "class_name": "TS_StudioInpaintRestore",
+    "display_name": "TS Studio Inpaint Restore",
+    "python_file": "nodes/image/studio/inpaint/ts_studio_inpaint_restore.py"
+  },
   "TS_StudioInputImage": {
     "api": "v3",
     "category": null,
