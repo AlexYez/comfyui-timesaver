@@ -450,6 +450,7 @@ python tools/verify_live_sync.py --sync # долить отставшее
 | `tests/test_studio_runner.py` | отправка и отмена: студия не глушит рендер с холста, превью без id, снимок в PNG |
 | `tests/test_studio_session.py` | куда пишется файл и как сессия находится обратно |
 | `tests/test_studio_asset_actions.py` | реестр действий над ассетом — общий контракт с Artius |
+| `tests/test_studio_asset_providers.py` | кто рисует «Библиотеку»: живой Artius выигрывает, полузагруженный — нет |
 | `tests/test_studio_gui_e2e.py` | живой интерфейс в браузере: память значений, промпт, формы кнопок, кисть, панель |
 | `tests/test_browser_smoke.py` | нода переживает создание в графе, консоль чистая |
 
