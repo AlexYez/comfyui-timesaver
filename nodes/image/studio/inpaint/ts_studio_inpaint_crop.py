@@ -1,0 +1,127 @@
+"""Вырез по маске для перерисовки: первая половина пары.
+
+Перерисовывать весь кадр — дорого и глупо: модель тратит всю свою способность
+на пиксели, которые никто не просил менять, а маленькая правка получает столько
+разрешения, сколько ей досталось от кадра. Эта нода вырезает область маски с
+запасом контекста и приводит вырез к выбранному бюджету мегапикселей — тому
+разрешению, на котором модель действительно рисует детали.
+
+Вторая половина — `TS_StudioInpaintRestore`: она возвращает перерисованный
+вырез на место. Между ними стоит любой сэмплер; в студии это LanPaint.
+
+Технология общая со `TS Smart Inpaint` — `nodes/image/_inpaint_crop.py`.
+
+node_id: TS_StudioInpaintCrop
+"""
+from __future__ import annotations
+
+import logging
+
+import torch
+from comfy_api.v0_0_2 import IO
+
+from ..markers._marker_shared import CATEGORY
+from ._plan import PLAN_TYPE, CropPlanHolder
+
+logger = logging.getLogger("comfyui_timesaver.ts_studio_inpaint_crop")
+LOG_PREFIX = "[TS Studio Inpaint Crop]"
+
+from ..._inpaint_crop import plan_and_crop  # noqa: E402  (после логгера — читается вместе с ним)
+
+
+class TS_StudioInpaintCrop(IO.ComfyNode):
+    @classmethod
+    def define_schema(cls) -> IO.Schema:
+        return IO.Schema(
+            node_id="TS_StudioInpaintCrop",
+            display_name="TS Studio Inpaint Crop",
+            category=CATEGORY,
+            description=(
+                "Crops the masked area with a context band and scales it to the "
+                "processing budget, so a repaint spends the model's resolution "
+                "where the mask is instead of on the whole frame. Feed the crop "
+                "and its mask to any inpainting sampler, then hand the result "
+                "plus this node's plan to TS Studio Inpaint Restore."
+            ),
+            inputs=[
+                IO.Image.Input("image", tooltip="Full source frame."),
+                IO.Mask.Input("mask", tooltip="Painted mask: white = repaint."),
+                IO.Float.Input(
+                    "megapixels", default=1.0, min=0.1, max=8.0, step=0.1,
+                    tooltip=(
+                        "Resolution the crop is actually processed at. Small "
+                        "selections are enlarged toward it (up to 3x) for detail; "
+                        "oversized ones are reduced to it so a big mask in an 8K "
+                        "frame cannot hang the machine."
+                    ),
+                ),
+                IO.Float.Input(
+                    "context_pct", default=8.0, min=0.0, max=50.0, step=0.5,
+                    tooltip=(
+                        "How much context to take around the mask, as a percent "
+                        "of the mask's own size. More context helps the model "
+                        "match the surroundings; it also enlarges the crop, so "
+                        "less of the budget lands on the mask itself. Values "
+                        "below the 32px colour-analysis ring change nothing."
+                    ),
+                ),
+                IO.Float.Input(
+                    "feather_pct", default=3.0, min=0.0, max=25.0, step=0.5,
+                    tooltip=(
+                        "Width of the soft edge used when the repaint is pasted "
+                        "back, as a percent of the mask's own size."
+                    ),
+                ),
+            ],
+            outputs=[
+                IO.Image.Output(display_name="crop"),
+                IO.Mask.Output(display_name="crop_mask"),
+                PLAN_TYPE.Output(
+                    display_name="plan",
+                    tooltip="Crop geometry and its soft edge — feed to TS Studio Inpaint Restore.",
+                ),
+                IO.Image.Output(display_name="source", tooltip="The frame, passed through."),
+            ],
+            search_aliases=["studio inpaint crop", "crop to mask for inpaint"],
+        )
+
+    @classmethod
+    def execute(
+        cls,
+        image: torch.Tensor,
+        mask: torch.Tensor,
+        megapixels: float,
+        context_pct: float,
+        feather_pct: float,
+    ) -> IO.NodeOutput:
+        if image.ndim != 4:
+            raise RuntimeError(
+                f"{LOG_PREFIX} image must be [B,H,W,C], got {tuple(image.shape)}"
+            )
+        result = plan_and_crop(
+            image, mask,
+            megapixels=float(megapixels),
+            context_pct=float(context_pct),
+            feather_pct=float(feather_pct),
+        )
+        if result is None:
+            # Пустая маска — не ошибка: перерисовывать нечего. Отдаём кадр целиком
+            # и план во весь кадр, чтобы возврат положил ответ ровно назад и
+            # граф не падал на полпути.
+            logger.info("%s empty mask — the frame passes through unchanged", LOG_PREFIX)
+            plan = CropPlanHolder.whole_frame(image)
+            return IO.NodeOutput(image, torch.zeros_like(image[:1, ..., 0]), plan, image)
+
+        crop, crop_mask, plan = result
+        logger.info(
+            "%s crop=%dx%d -> %dx%d (%.2f MP) context=%.1f%%->%dpx feather=%.1f%%->%dpx",
+            LOG_PREFIX, plan.crop_w, plan.crop_h, plan.out_w, plan.out_h,
+            plan.out_w * plan.out_h / 1_000_000.0,
+            float(context_pct), int(round(plan.context_px)),
+            float(feather_pct), int(round(plan.feather_px)),
+        )
+        return IO.NodeOutput(crop, crop_mask, CropPlanHolder(plan), image)
+
+
+NODE_CLASS_MAPPINGS = {"TS_StudioInpaintCrop": TS_StudioInpaintCrop}
+NODE_DISPLAY_NAME_MAPPINGS = {"TS_StudioInpaintCrop": "TS Studio Inpaint Crop"}
