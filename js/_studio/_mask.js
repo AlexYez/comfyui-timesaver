@@ -189,8 +189,21 @@ export function createMaskCanvas(options = {}) {
      */
     function previewBrush() {
         if (!state.image) return;
-        const rect = canvas.getBoundingClientRect();
-        const at = cursorAt || { cssX: rect.width / 2, cssY: rect.height / 2 };
+        // Кольцо показываем В ЦЕНТРЕ КАРТИНКИ, а не там, где курсор был в
+        // прошлый раз. Размер кисти меняют слайдером — курсор в этот момент на
+        // слайдере, и оставшаяся от него точка обычно где-то с краю: круг
+        // всплывал в стороне и ничего не показывал. Под курсором кольцо и так
+        // живёт постоянно, поэтому там, где мышь над холстом, ничего не трогаем.
+        let at = cursorAt;
+        if (!hovering || !at) {
+            const rect = canvas.getBoundingClientRect();
+            at = state.imageW > 0
+                ? {
+                    cssX: state.offsetX + (state.imageW * state.scale) / 2,
+                    cssY: state.offsetY + (state.imageH * state.scale) / 2,
+                }
+                : { cssX: rect.width / 2, cssY: rect.height / 2 };
+        }
         placeCursor(at.cssX, at.cssY);
         cursor.classList.add("is-preview");
         clearTimeout(previewTimer);
@@ -319,6 +332,33 @@ export function createMaskCanvas(options = {}) {
         canRedo: () => state.redo.length > 0,
         hasMask,
         maskDataUrl,
+        /**
+         * Положить на холст готовую маску — тем же снимком, что отдаёт
+         * `maskDataUrl`. Нужно, чтобы закрытая и снова открытая студия
+         * возвращала нарисованное, а не чистый холст: картинка без своей маски
+         * — это половина работы.
+         *
+         * Размер приводится к холсту маски, потому что источник мог прийти в
+         * другом разрешении (например, после перерисовки). Шаг ложится в
+         * историю отмены как обычный мазок.
+         */
+        setMaskFromUrl: (url) => new Promise((resolve) => {
+            if (!url || !maskCanvas) { resolve(false); return; }
+            const img = new Image();
+            img.onload = () => {
+                state.undo.push(snapshot());
+                state.redo.length = 0;
+                maskCtx.globalCompositeOperation = "source-over";
+                maskCtx.clearRect(0, 0, maskCanvas.width, maskCanvas.height);
+                maskCtx.drawImage(img, 0, 0, maskCanvas.width, maskCanvas.height);
+                tintDirty = true;
+                redraw();
+                options.onMaskChanged?.();
+                resolve(true);
+            };
+            img.onerror = () => resolve(false);
+            img.src = url;
+        }),
         hasImage: () => Boolean(state.image),
         teardown: () => observer.disconnect(),
     };

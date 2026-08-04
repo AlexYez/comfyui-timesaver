@@ -9,6 +9,7 @@
 // The mask survives switching engines — paint once, try both.
 
 import { TS_UI_CLASS, ensureThemeStyles } from "../../_theme.js";
+import { cropBox } from "../../_studio/_crop_geometry.js";
 import { createMaskCanvas } from "../../_studio/_mask.js";
 import { makeDropZone, uploadImage } from "../../_studio/_dnd.js";
 
@@ -51,6 +52,12 @@ function ensureInpaintStyles() {
     object-fit:contain;border:1px solid var(--ts-border);border-radius:var(--ts-radius-sm);
     background:var(--ts-sunken);display:none}
 .ts-inp__pip.is-active{display:block}
+/* Превью НА МЕСТЕ правки — не карточка в углу, а сама правка на своём месте.
+   Рамка, скругление и непрозрачный фон здесь рисуют прямоугольник поверх
+   картинки, даже когда содержимое обрезано по форме маски: именно это и
+   выглядело «квадратом». Потолок высоты сплющивал вытянутые правки. */
+.ts-inp__pip.is-inplace{border:0;border-radius:0;background:transparent;
+    max-height:none;max-width:none;object-fit:fill}
 `;
     document.head.appendChild(style);
 }
@@ -112,65 +119,103 @@ export function createInpaintMode(ctx) {
     status.className = "ts-inp__status";
     status.style.display = "none";
 
-    const pip = document.createElement("img");
+    const pip = document.createElement("canvas");
     pip.className = "ts-inp__pip";
-    pip.alt = "";
     root.append(mask.element, empty, bar, status, pip);
 
-    let pipUrl = "";
     let previewBox = null;   // frozen at run start: where the mask was painted
 
     function capturePreviewBox() {
+        // Замораживаем на момент запуска: маску можно продолжать править, а
+        // превью обязано остаться там, откуда его взяли.
         const bbox = mask.maskBBox?.();
-        previewBox = bbox ? { bbox, css: mask.imageRectToCss(bbox) } : null;
+        if (!bbox) { previewBox = null; return; }
+        const image = mask.imageSize();
+        const box = cropBox({
+            imageW: image.w, imageH: image.h,
+            mask: { x: bbox.x, y: bbox.y, w: bbox.w, h: bbox.h },
+            contextPct: ctx.getContextPct?.() ?? 25,
+            denoise: ctx.getDenoise?.() ?? 1,
+        });
+        if (!box) { previewBox = null; return; }
+        const crop = { x: box.x0, y: box.y0, w: box.x1 - box.x0, h: box.y1 - box.y0 };
+        previewBox = {
+            crop,
+            css: mask.imageRectToCss(crop),
+            alpha: mask.maskDataUrl(),
+            feather: Math.max(2, Math.round(Math.min(bbox.w, bbox.h) * 0.05)),
+        };
     }
 
+    /**
+     * Показать то, что модель рисует прямо сейчас, ровно по нарисованной маске.
+     *
+     * Приходит латентный предпросмотр ВЫРЕЗА — не всего кадра и не рамки маски.
+     * Поэтому он кладётся в рамку выреза (её считает та же геометрия, что и
+     * нода), а затем обрезается по форме маски с мягким краем: человек видит
+     * правку на её месте и в её масштабе, а не квадрат поверх картинки.
+     *
+     * Предпросмотр приходит маленьким по своей природе (это быстрый декодер
+     * латента), поэтому включено сглаживание — иначе он лезет квадратами.
+     */
     async function showPreview(blob) {
-        // The preview belongs WHERE THE MASK WAS PAINTED. Two shapes arrive:
-        // a full-frame latent preview (LanPaint recipes) — crop our bbox out
-        // of it; a crop preview (TSSmartInpaint) — its aspect matches the
-        // mask region, place it whole. Distinguish by aspect ratio.
         if (!previewBox) capturePreviewBox();
-        if (pipUrl) URL.revokeObjectURL(pipUrl);
+        const bitmap = await createImageBitmap(blob);
         if (!previewBox) {
-            pipUrl = URL.createObjectURL(blob);
-            pip.src = pipUrl;
+            // Маски нет — показываем как есть, в углу.
+            pip.width = bitmap.width; pip.height = bitmap.height;
+            const plain = pip.getContext("2d");
+            plain.imageSmoothingEnabled = true;
+            plain.imageSmoothingQuality = "high";
+            plain.clearRect(0, 0, pip.width, pip.height);
+            plain.drawImage(bitmap, 0, 0);
             pip.style.cssText = "";
+            pip.classList.remove("is-inplace");
             pip.classList.add("is-active");
+            bitmap.close?.();
             return;
         }
-        const bitmap = await createImageBitmap(blob);
-        const image = mask.imageSize();
-        const frameAspect = image.w / image.h;
-        const previewAspect = bitmap.width / bitmap.height;
-        const { bbox, css } = previewBox;
-        let source = bitmap;
-        if (Math.abs(previewAspect - frameAspect) / frameAspect < 0.12) {
-            const sx = bitmap.width / image.w;
-            const sy = bitmap.height / image.h;
-            const cut = document.createElement("canvas");
-            cut.width = Math.max(1, Math.round(bbox.w * sx));
-            cut.height = Math.max(1, Math.round(bbox.h * sy));
-            cut.getContext("2d").drawImage(bitmap,
-                bbox.x * sx, bbox.y * sy, bbox.w * sx, bbox.h * sy,
-                0, 0, cut.width, cut.height);
-            source = cut;
+        const { crop, css, alpha, feather } = previewBox;
+        const w = Math.max(1, Math.round(css.width));
+        const h = Math.max(1, Math.round(css.height));
+        pip.width = w;
+        pip.height = h;
+        const c = pip.getContext("2d");
+        c.imageSmoothingEnabled = true;
+        c.imageSmoothingQuality = "high";
+        c.clearRect(0, 0, w, h);
+        c.drawImage(bitmap, 0, 0, w, h);
+        bitmap.close?.();
+
+        if (alpha) {
+            // Маска приходит белыми штрихами на прозрачном — это готовая альфа.
+            // Оставляем от превью только её форму, слегка размывая край.
+            const shape = await loadImage(alpha);
+            c.globalCompositeOperation = "destination-in";
+            const blur = feather * (w / Math.max(1, crop.w));
+            c.filter = blur > 0.5 ? `blur(${blur.toFixed(1)}px)` : "none";
+            c.drawImage(shape, crop.x, crop.y, crop.w, crop.h, 0, 0, w, h);
+            c.filter = "none";
+            c.globalCompositeOperation = "source-over";
         }
-        pipUrl = source instanceof HTMLCanvasElement
-            ? source.toDataURL("image/png") : URL.createObjectURL(blob);
-        pip.src = pipUrl;
         pip.style.cssText = `left:${css.left}px;top:${css.top}px;` +
-            `width:${css.width}px;height:${css.height}px;right:auto;bottom:auto;` +
-            `object-fit:cover;`;
-        pip.classList.add("is-active");
-        if (source !== bitmap) bitmap.close?.();
+            `width:${css.width}px;height:${css.height}px;right:auto;bottom:auto;`;
+        pip.classList.add("is-inplace", "is-active");
     }
+
+    function loadImage(src) {
+        return new Promise((resolve, reject) => {
+            const img = new Image();
+            img.onload = () => resolve(img);
+            img.onerror = reject;
+            img.src = src;
+        });
+    }
+
     function hidePreview() {
-        pip.classList.remove("is-active");
+        pip.classList.remove("is-active", "is-inplace");
         pip.style.cssText = "";
         previewBox = null;
-        if (pipUrl && pipUrl.startsWith("blob:")) URL.revokeObjectURL(pipUrl);
-        pipUrl = "";
     }
 
     const state = {
@@ -372,6 +417,19 @@ export function createInpaintMode(ctx) {
         collectRunValues,
         acceptRepaintResult,
         hasImage: () => mask.hasImage(),
+        hasMask: () => mask.hasMask(),
+        maskDataUrl: () => (mask.hasMask() ? mask.maskDataUrl() : ""),
+        setMaskFromUrl: (url) => mask.setMaskFromUrl(url),
+        /**
+         * Что сейчас лежит на холсте — в терминах снимка сессии.
+         *
+         * Отличается от `collectRunValues` тем, что ничего никуда не грузит:
+         * снимок рабочего места пишется на каждое движение, и загрузка файла
+         * на сервер при каждом мазке была бы неуместной. Отдаётся то, что уже
+         * лежит на сервере — исходник и, если он есть, рабочий файл очистки.
+         */
+        currentSources: () => (state.sourceAnnotated
+            ? { source_image: state.sourceAnnotated } : {}),
         undo: () => history.undo(),
         redo: () => history.redo(),
         brushDelta: (delta) => {

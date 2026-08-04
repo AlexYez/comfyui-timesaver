@@ -1,0 +1,456 @@
+{
+ "p_prompt": {
+  "class_type": "TS_StudioInputText",
+  "inputs": {
+   "value": "",
+   "param_name": "prompt",
+   "label": ""
+  }
+ },
+ "p_image": {
+  "class_type": "TS_StudioInputImage",
+  "inputs": {
+   "value": "",
+   "param_name": "source_image",
+   "label": ""
+  }
+ },
+ "p_mask": {
+  "class_type": "TS_StudioInputMask",
+  "inputs": {
+   "value": "",
+   "param_name": "mask",
+   "label": ""
+  }
+ },
+ "p_think": {
+  "class_type": "TS_StudioInputNumber",
+  "inputs": {
+   "value": 5,
+   "param_name": "think_steps",
+   "label": ""
+  }
+ },
+ "p_steps": {
+  "class_type": "TS_StudioInputNumber",
+  "inputs": {
+   "value": 12,
+   "param_name": "steps",
+   "label": ""
+  }
+ },
+ "p_cfg": {
+  "class_type": "TS_StudioInputNumber",
+  "inputs": {
+   "value": 4.0,
+   "param_name": "cfg",
+   "label": ""
+  },
+  "_note": "Четвёрка — значение из официального примера Ideogram4 + LanPaint (DualModelGuider cfg=4). Семёрка, стоявшая раньше, тянула к промпту так сильно, что модель переставала смотреть на окружение."
+ },
+ "p_seed": {
+  "class_type": "TS_StudioInputSeed",
+  "inputs": {
+   "value": 0,
+   "param_name": "seed"
+  }
+ },
+ "model_loader": {
+  "class_type": "UNETLoader",
+  "inputs": {
+   "unet_name": "ideogram\\ideogram4_fp8_scaled.safetensors",
+   "weight_dtype": "default"
+  },
+  "_meta": {
+   "title": "studio:model"
+  }
+ },
+ "lora_stack": {
+  "class_type": "TS_StudioLoraStack",
+  "inputs": {
+   "model": [
+    "model_loader",
+    0
+   ]
+  }
+ },
+ "uncond_loader": {
+  "class_type": "UNETLoader",
+  "inputs": {
+   "unet_name": "ideogram\\ideogram4_unconditional_fp8_scaled.safetensors",
+   "weight_dtype": "default"
+  },
+  "_meta": {
+   "title": "studio:model_uncond"
+  }
+ },
+ "cfg_override": {
+  "class_type": "CFGOverride",
+  "inputs": {
+   "model": [
+    "differential",
+    0
+   ],
+   "cfg": 3.0,
+   "start_percent": 0.7,
+   "end_percent": 1.0
+  }
+ },
+ "clip_loader": {
+  "class_type": "CLIPLoader",
+  "inputs": {
+   "clip_name": "ideogram\\qwen3vl_8b_fp8_scaled.safetensors",
+   "type": "ideogram4"
+  },
+  "_meta": {
+   "title": "studio:clip"
+  }
+ },
+ "vae_loader": {
+  "class_type": "VAELoader",
+  "inputs": {
+   "vae_name": "flux2\\flux2-vae-v2.safetensors"
+  },
+  "_meta": {
+   "title": "studio:vae"
+  }
+ },
+ "encode_pos": {
+  "class_type": "CLIPTextEncode",
+  "inputs": {
+   "text": [
+    "designer",
+    0
+   ],
+   "clip": [
+    "clip_loader",
+    0
+   ]
+  }
+ },
+ "neg_zero": {
+  "class_type": "ConditioningZeroOut",
+  "inputs": {
+   "conditioning": [
+    "encode_pos",
+    0
+   ]
+  }
+ },
+ "guider": {
+  "class_type": "DualModelGuider",
+  "inputs": {
+   "model": [
+    "cfg_override",
+    0
+   ],
+   "positive": [
+    "encode_pos",
+    0
+   ],
+   "cfg": [
+    "p_cfg",
+    0
+   ],
+   "model_negative": [
+    "uncond_loader",
+    0
+   ],
+   "negative": [
+    "neg_zero",
+    0
+   ]
+  },
+  "_note": "negative — это ConditioningZeroOut, и так и должно быть. У Ideogram 4 classifier-free guidance асимметричный: безусловный проход идёт по отдельной модели с выброшенными текстовыми токенами, отдельной строки негатива схема не предусматривает. Официальный пример ComfyUI (Ideogram4 + LanPaint) собран ровно так."
+ },
+ "sampler_sel": {
+  "class_type": "KSamplerSelect",
+  "inputs": {
+   "sampler_name": "euler"
+  }
+ },
+ "size": {
+  "class_type": "GetImageSize",
+  "inputs": {
+   "image": [
+    "inpaint_crop",
+    0
+   ]
+  },
+  "_note": "Размер берётся с ВЫРЕЗА, а не с исходного кадра: Ideogram4Scheduler сдвигает сигмы по разрешению, и схема шума обязана относиться к тому латенту, который сэмплируется. С размером исходника модель получала чужое расписание и сваливалась в плоское тёмное пятно с выдуманной типографикой."
+ },
+ "sigmas": {
+  "class_type": "Ideogram4Scheduler",
+  "inputs": {
+   "steps": [
+    "p_steps",
+    1
+   ],
+   "width": [
+    "size",
+    0
+   ],
+   "height": [
+    "size",
+    1
+   ],
+   "mu": [
+    "p_mu",
+    0
+   ],
+   "std": [
+    "p_std",
+    0
+   ]
+  }
+ },
+ "noise": {
+  "class_type": "RandomNoise",
+  "inputs": {
+   "noise_seed": [
+    "p_seed",
+    0
+   ]
+  }
+ },
+ "encode_latent": {
+  "class_type": "VAEEncode",
+  "inputs": {
+   "pixels": [
+    "inpaint_crop",
+    0
+   ],
+   "vae": [
+    "vae_loader",
+    0
+   ]
+  }
+ },
+ "latent_mask": {
+  "class_type": "SetLatentNoiseMask",
+  "inputs": {
+   "samples": [
+    "encode_latent",
+    0
+   ],
+   "mask": [
+    "inpaint_crop",
+    2
+   ]
+  }
+ },
+ "sample": {
+  "class_type": "LanPaint_SamplerCustomAdvanced",
+  "inputs": {
+   "noise": [
+    "noise",
+    0
+   ],
+   "guider": [
+    "guider",
+    0
+   ],
+   "sampler": [
+    "sampler_sel",
+    0
+   ],
+   "sigmas": [
+    "sigmas_denoise",
+    1
+   ],
+   "latent_image": [
+    "latent_mask",
+    0
+   ],
+   "LanPaint_NumSteps": [
+    "p_think",
+    1
+   ],
+   "LanPaint_Lambda": 16.0,
+   "LanPaint_StepSize": 0.2,
+   "LanPaint_Beta": 1.0,
+   "LanPaint_Friction": 15.0,
+   "LanPaint_PromptMode": "Image First",
+   "LanPaint_EarlyStop": 1,
+   "LanPaint_Info": "TS Image Studio",
+   "LanPaint_InnerThreshold": 0.0,
+   "LanPaint_InnerPatience": 1
+  }
+ },
+ "decode": {
+  "class_type": "VAEDecode",
+  "inputs": {
+   "samples": [
+    "sample",
+    0
+   ],
+   "vae": [
+    "vae_loader",
+    0
+   ]
+  }
+ },
+ "studio_out": {
+  "class_type": "TS_StudioOutput",
+  "inputs": {
+   "image": [
+    "inpaint_restore",
+    0
+   ],
+   "filename_prefix": "ts_studio/session"
+  }
+ },
+ "studio_manifest": {
+  "class_type": "TS_StudioManifest",
+  "inputs": {
+   "manifest": "{\n  \"schema_version\": \"1.0.0\",\n  \"id\": \"ideogram/inpaint\",\n  \"label\": {\n    \"en\": \"Inpaint\",\n    \"ru\": \"Inpaint\"\n  },\n  \"family\": \"ideogram\",\n  \"family_label\": \"Ideogram 4\",\n  \"tier\": 0,\n  \"mode\": \"inpaint\",\n  \"order\": 30,\n  \"controls\": [\n    {\n      \"param\": \"prompt\",\n      \"kind\": \"prompt\",\n      \"superprompt\": true\n    },\n    {\n      \"param\": \"design_json\",\n      \"kind\": \"designer\",\n      \"provider\": \"ideogram\",\n      \"label\": {\n        \"en\": \"Layout\",\n        \"ru\": \"Макет\"\n      }\n    },\n    {\n      \"param\": \"preset\",\n      \"kind\": \"choice\",\n      \"default\": \"Turbo\",\n      \"label\": {\n        \"en\": \"Preset\",\n        \"ru\": \"Пресет\"\n      },\n      \"options\": [\n        {\n          \"value\": \"Quality\",\n          \"label\": {\n            \"en\": \"Quality\",\n            \"ru\": \"Качество\"\n          },\n          \"tooltip\": {\n            \"en\": \"48 steps — the most refined typography and detail, and the slowest.\",\n            \"ru\": \"48 шагов — самая чистая типографика и детали, и самый долгий рендер.\"\n          },\n          \"values\": {\n            \"steps\": 48,\n            \"mu\": 0.0,\n            \"std\": 1.5\n          }\n        },\n        {\n          \"value\": \"Default\",\n          \"label\": {\n            \"en\": \"Normal\",\n            \"ru\": \"Обычный\"\n          },\n          \"tooltip\": {\n            \"en\": \"20 steps — the balanced setting.\",\n            \"ru\": \"20 шагов — сбалансированный режим.\"\n          },\n          \"values\": {\n            \"steps\": 20,\n            \"mu\": 0.0,\n            \"std\": 1.75\n          }\n        },\n        {\n          \"value\": \"Turbo\",\n          \"label\": {\n            \"en\": \"Turbo\",\n            \"ru\": \"Турбо\"\n          },\n          \"tooltip\": {\n            \"en\": \"12 steps — quick drafts.\",\n            \"ru\": \"12 шагов — быстрые наброски.\"\n          },\n          \"values\": {\n            \"steps\": 12,\n            \"mu\": 0.5,\n            \"std\": 1.75\n          }\n        }\n      ]\n    },\n    {\n      \"param\": \"seed\",\n      \"kind\": \"seed\"\n    },\n    {\n      \"param\": \"replace\",\n      \"kind\": \"toggle\",\n      \"default\": false,\n      \"label\": {\n        \"en\": \"Replace (full redraw)\",\n        \"ru\": \"Replace (полная перерисовка)\"\n      },\n      \"tooltip\": {\n        \"en\": \"Regenerate the masked region from scratch instead of reworking what is there. The strength slider is ignored — replacement always runs at full strength, the only mode this sampler is built for.\",\n        \"ru\": \"Перерисовать область с нуля, а не переработать то, что есть. Слайдер силы при этом не используется: замена всегда идёт на полную, это единственный режим, на который рассчитан сэмплер.\"\n      }\n    },\n    {\n      \"param\": \"denoise\",\n      \"kind\": \"slider\",\n      \"min\": 0.1,\n      \"max\": 0.5,\n      \"step\": 0.05,\n      \"default\": 0.35,\n      \"label\": {\n        \"en\": \"Repaint strength\",\n        \"ru\": \"Сила перерисовки\"\n      },\n      \"tooltip\": {\n        \"en\": \"How far the masked area is reworked while keeping what is there. 0.1-0.2 refines texture and detail, 0.3-0.5 reshapes it. To replace the content entirely, turn Replace on.\",\n        \"ru\": \"Насколько перерабатывается область с сохранением того, что в ней есть. 0.1–0.2 — уточнение текстуры и деталей, 0.3–0.5 — заметное изменение формы. Для полной замены включите Replace.\"\n      }\n    },\n    {\n      \"param\": \"megapixels\",\n      \"kind\": \"slider\",\n      \"min\": 0.5,\n      \"max\": 4.0,\n      \"step\": 0.1,\n      \"default\": 0.8,\n      \"label\": {\n        \"en\": \"Processing resolution\",\n        \"ru\": \"Разрешение обработки\"\n      },\n      \"tooltip\": {\n        \"en\": \"Megapixels the masked crop is redrawn at. A small selection is upscaled toward this budget (more detail, slower); an oversized one is scaled down to it.\",\n        \"ru\": \"В скольких мегапикселях перерисовывается вырезанный по маске фрагмент. Маленькое выделение увеличивается до этого бюджета (больше деталей, дольше), слишком большое — уменьшается.\"\n      }\n    },\n    {\n      \"param\": \"context_pct\",\n      \"kind\": \"slider\",\n      \"min\": 0.0,\n      \"max\": 100.0,\n      \"step\": 1.0,\n      \"default\": 60.0,\n      \"label\": {\n        \"en\": \"Context around the mask\",\n        \"ru\": \"Контекст вокруг маски\"\n      },\n      \"tooltip\": {\n        \"en\": \"How much of the surroundings goes into the crop, as a percent of the mask. More context helps the model match what is around; it also enlarges the crop, so less of the budget lands on the mask.\",\n        \"ru\": \"Сколько окружения попадает в вырез, в процентах от маски. Больше контекста — модель лучше попадает в окружение, но вырез растёт, и на саму маску приходится меньше бюджета.\"\n      }\n    },\n    {\n      \"param\": \"loras\",\n      \"kind\": \"loras\",\n      \"max\": 8,\n      \"strength\": [\n        -2.0,\n        2.0\n      ]\n    },\n    {\n      \"param\": \"think_steps\",\n      \"kind\": \"number\",\n      \"advanced\": true,\n      \"min\": 1,\n      \"max\": 12,\n      \"label\": {\n        \"en\": \"Think steps (quality)\",\n        \"ru\": \"Шаги размышления (качество)\"\n      },\n      \"default\": 2,\n      \"tooltip\": {\n        \"en\": \"How many times the sampler re-checks the repaint against its surroundings on every step. Each turn is another pass through the model, so this is the main quality-versus-time knob: 2 is enough for an ordinary repaint, 5+ for a hard one.\",\n        \"ru\": \"Сколько раз на каждом шаге сэмплер сверяет перерисовку с окружением. Каждый заход — это ещё один проход через модель, поэтому здесь и решается «качество против времени»: 2 хватает обычной правке, 5 и больше — сложной.\"\n      }\n    },\n    {\n      \"param\": \"steps\",\n      \"kind\": \"number\",\n      \"advanced\": true,\n      \"min\": 1,\n      \"max\": 60,\n      \"label\": {\n        \"en\": \"Steps\",\n        \"ru\": \"Шаги\"\n      },\n      \"default\": 12\n    },\n    {\n      \"param\": \"cfg\",\n      \"kind\": \"number\",\n      \"advanced\": true,\n      \"min\": 0,\n      \"max\": 15,\n      \"step\": 0.1,\n      \"label\": {\n        \"en\": \"CFG\",\n        \"ru\": \"CFG\"\n      }\n    }\n  ],\n  \"refs\": {\n    \"max\": 0\n  },\n  \"requires\": [\n    \"source_image\",\n    \"mask\"\n  ],\n  \"negative_prompt\": false,\n  \"models\": [\n    {\n      \"title\": \"studio:model\",\n      \"input\": \"unet_name\",\n      \"folder\": \"diffusion_models\",\n      \"match\": \"ideogram4_(fp8|int8)(?!.*uncond)\"\n    },\n    {\n      \"title\": \"studio:model_uncond\",\n      \"input\": \"unet_name\",\n      \"folder\": \"diffusion_models\",\n      \"match\": \"ideogram4_unconditional\"\n    },\n    {\n      \"title\": \"studio:clip\",\n      \"input\": \"clip_name\",\n      \"folder\": \"text_encoders\",\n      \"match\": \"qwen3vl_8b\"\n    },\n    {\n      \"title\": \"studio:vae\",\n      \"input\": \"vae_name\",\n      \"folder\": \"vae\",\n      \"match\": \"flux2.*flux2-vae-v2\"\n    }\n  ],\n  \"dependencies\": [\n    {\n      \"pack\": \"LanPaint\",\n      \"nodes\": [\n        \"LanPaint_SamplerCustomAdvanced\",\n        \"LanPaint_MaskBlend\"\n      ]\n    }\n  ],\n  \"designer\": {\n    \"param\": \"design_json\",\n    \"mode_param\": \"mode\",\n    \"caption_param\": \"auto_caption\",\n    \"preset\": \"Ideogram Prompt Enhance\"\n  },\n  \"literals\": {\n    \"mode\": {\n      \"node\": \"designer\",\n      \"input\": \"mode\"\n    }\n  },\n  \"prompt_source\": {\n    \"node\": \"designer\",\n    \"slot\": 0\n  },\n  \"_note_context\": \"Умолчание контекста 60 при потолке 100 — шире, чем у остальных семейств (25/50). Ideogram 4 обучен КОМПОНОВАТЬ кадр, а не продолжать чужой: чем меньше вокруг маски видимой сцены, тем увереннее он рисует внутри выреза самостоятельную композицию в своём масштабе. Подсказка у контрола общая для всех семейств намеренно — одни и те же слова у одного и того же ползунка; причина отличия живёт здесь и в project_memory/reference_ideogram_inpaint.md.\"\n}"
+  }
+ },
+ "p_design": {
+  "class_type": "TS_StudioInputText",
+  "inputs": {
+   "value": "",
+   "param_name": "design_json",
+   "label": ""
+  }
+ },
+ "p_caption": {
+  "class_type": "TS_StudioInputText",
+  "inputs": {
+   "value": "",
+   "param_name": "auto_caption",
+   "label": ""
+  }
+ },
+ "designer": {
+  "class_type": "TS_IdeogramDesigner",
+  "_meta": {
+   "title": "studio:designer"
+  },
+  "inputs": {
+   "design_json": [
+    "p_design",
+    0
+   ],
+   "mode": "auto",
+   "auto_prompt": "",
+   "auto_caption": [
+    "p_caption",
+    0
+   ],
+   "auto_seed": 0
+  }
+ },
+ "p_denoise": {
+  "class_type": "TS_StudioInputNumber",
+  "inputs": {
+   "value": 0.35,
+   "param_name": "denoise",
+   "label": ""
+  }
+ },
+ "sigmas_denoise": {
+  "class_type": "SplitSigmasDenoise",
+  "inputs": {
+   "sigmas": [
+    "sigmas",
+    0
+   ],
+   "denoise": [
+    "p_denoise",
+    0
+   ]
+  }
+ },
+ "p_mu": {
+  "class_type": "TS_StudioInputNumber",
+  "inputs": {
+   "value": 0.5,
+   "param_name": "mu",
+   "label": ""
+  },
+  "_meta": {
+   "title": "studio:mu"
+  }
+ },
+ "p_std": {
+  "class_type": "TS_StudioInputNumber",
+  "inputs": {
+   "value": 1.75,
+   "param_name": "std",
+   "label": ""
+  },
+  "_meta": {
+   "title": "studio:std"
+  }
+ },
+ "p_megapixels": {
+  "class_type": "TS_StudioInputNumber",
+  "inputs": {
+   "value": 0.8,
+   "param_name": "megapixels",
+   "label": ""
+  }
+ },
+ "p_context": {
+  "class_type": "TS_StudioInputNumber",
+  "inputs": {
+   "value": 60.0,
+   "param_name": "context_pct",
+   "label": ""
+  },
+  "_note": "Контекста больше, чем у остальных семейств. Ideogram 4 обучен КОМПОНОВАТЬ кадр, а не продолжать чужой: чем меньше вокруг маски видимой сцены, тем увереннее он рисует внутри выреза самостоятельную композицию в своём масштабе. Широкое окружение — единственное, что удерживает его в масштабе исходника."
+ },
+ "inpaint_crop": {
+  "class_type": "TS_StudioInpaintCrop",
+  "inputs": {
+   "image": [
+    "p_image",
+    0
+   ],
+   "mask": [
+    "p_mask",
+    0
+   ],
+   "megapixels": [
+    "p_megapixels",
+    0
+   ],
+   "context_pct": [
+    "p_context",
+    0
+   ],
+   "feather_pct": 5.0,
+   "denoise": [
+    "p_denoise",
+    0
+   ]
+  }
+ },
+ "inpaint_restore": {
+  "class_type": "TS_StudioInpaintRestore",
+  "inputs": {
+   "image": [
+    "p_image",
+    0
+   ],
+   "patch": [
+    "decode",
+    0
+   ],
+   "plan": [
+    "inpaint_crop",
+    3
+   ]
+  }
+ },
+ "differential": {
+  "class_type": "DifferentialDiffusion",
+  "inputs": {
+   "model": [
+    "lora_stack",
+    0
+   ]
+  }
+ }
+}

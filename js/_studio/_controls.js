@@ -871,7 +871,12 @@ registerControlKind("slider", (control, ctx) => {
     const max = Number(control.max ?? 1);
     const step = Number(control.step ?? 0.05);
     const decimals = String(step).includes(".") ? String(step).split(".")[1].length : 0;
-    let value = Number(control.default ?? min);
+    // Умолчание зажимается в диапазон так же, как и любое присвоение. Без
+    // этого значение вне [min, max] жило только в JS: ползунок вставал в
+    // ближайший конец, подпись показывала третье число, а в граф уходило
+    // четвёртое. Один раз это уже стоило часа измерений — манифест просил 60
+    // при потолке 50, и молча работали старые 25.
+    let value = Math.min(max, Math.max(min, Number(control.default ?? min)));
 
     const wrap = document.createElement("div");
     wrap.className = "ts-studio__section ts-studio__slider";

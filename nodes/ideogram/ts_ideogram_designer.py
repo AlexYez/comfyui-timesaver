@@ -175,16 +175,24 @@ class TS_IdeogramDesigner(IO.ComfyNode):
             # prose, and re-serialize compactly (the format Ideogram 4 expects).
             json_prompt = _extract_json_object(raw)
             if not json_prompt:
-                # The raw text still goes downstream — a caption that Ideogram
-                # can half-read beats failing the run — but silence here meant a
-                # truncated or malformed reply looked exactly like a good one.
-                logger.warning(
-                    "%s Auto caption is not valid JSON (truncated or wrapped in prose); "
-                    "passing the raw text through. Press Generate Prompt again if the "
-                    "result looks wrong.",
+                # Ideogram 4 is trained on structured JSON captions, and its
+                # official inference validates prompts against that schema
+                # (ComfyUI's own Ideogram4 template says so outright). Free text
+                # is accepted but read loosely — that is how "detailed woman
+                # head" came back as a poster with invented typography.
+                #
+                # So the text is not passed through bare any more: it is placed
+                # into the smallest valid caption, verbatim and as the only
+                # field. Nothing is added to what was written — only the
+                # envelope the model expects is put around it.
+                json_prompt = json.dumps(
+                    {"high_level_description": raw}, ensure_ascii=False)
+                logger.info(
+                    "%s Caption was plain text; wrapped verbatim into the minimal "
+                    "JSON schema Ideogram 4 expects. Press Generate Prompt for a "
+                    "full structured caption with style and background.",
                     LOG_PREFIX,
                 )
-                json_prompt = raw
             # Push the fresh caption back to the node UI (the Auto panel shows it).
             return IO.NodeOutput(json_prompt, width, height, ui={"ts_ideo_auto": [json_prompt]})
         json_prompt, _aspect = build_caption(design_json or "")

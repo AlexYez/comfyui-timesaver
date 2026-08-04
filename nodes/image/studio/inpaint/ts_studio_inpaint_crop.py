@@ -85,6 +85,14 @@ class TS_StudioInpaintCrop(IO.ComfyNode):
             outputs=[
                 IO.Image.Output(display_name="crop"),
                 IO.Mask.Output(display_name="crop_mask"),
+                IO.Mask.Output(
+                    display_name="crop_mask_soft",
+                    tooltip=(
+                        "The same mask with its soft edge kept. Feed this one when "
+                        "Differential Diffusion patches the model: it turns the ramp "
+                        "into a per-pixel denoise schedule instead of throwing it away."
+                    ),
+                ),
                 PLAN_TYPE.Output(
                     display_name="plan",
                     tooltip="Crop geometry and its soft edge — feed to TS Studio Inpaint Restore.",
@@ -121,9 +129,10 @@ class TS_StudioInpaintCrop(IO.ComfyNode):
             # граф не падал на полпути.
             logger.info("%s empty mask — the frame passes through unchanged", LOG_PREFIX)
             plan = CropPlanHolder.whole_frame(image)
-            return IO.NodeOutput(image, torch.zeros_like(image[:1, ..., 0]), plan, image)
+            empty = torch.zeros_like(image[:1, ..., 0])
+            return IO.NodeOutput(image, empty, empty, plan, image)
 
-        crop, crop_mask, plan = result
+        crop, crop_mask, crop_soft, plan = result
         logger.info(
             "%s crop=%dx%d -> %dx%d (%.2f MP) context=%.1f%%->%dpx feather=%.1f%%->%dpx",
             LOG_PREFIX, plan.crop_w, plan.crop_h, plan.out_w, plan.out_h,
@@ -131,7 +140,8 @@ class TS_StudioInpaintCrop(IO.ComfyNode):
             float(context_pct), int(round(plan.context_px)),
             float(feather_pct), int(round(plan.feather_px)),
         )
-        return IO.NodeOutput(crop, crop_mask, CropPlanHolder(plan), image)
+        soft = crop_soft if crop_soft is not None else crop_mask
+        return IO.NodeOutput(crop, crop_mask, soft, CropPlanHolder(plan), image)
 
 
 NODE_CLASS_MAPPINGS = {"TS_StudioInpaintCrop": TS_StudioInpaintCrop}

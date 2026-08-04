@@ -64,12 +64,49 @@ function readPersisted(node, name) {
     return "";
 }
 
+// Сессия узла — ещё и здесь, а не только в его свойствах.
+//
+// ComfyUI пересобирает граф у себя за спиной (автосохранение, переключение
+// вкладок воркфлоу, откат): узел получает `properties` из того снимка, что
+// лежал на диске, и всё, что студия записала после него, исчезает. Живьём это
+// выглядело так: порисовал, закрыл студию, открыл — и она открылась пустой, с
+// новой сессией, потому что старую у ноды стёрли. Галерея сессии теряется тем
+// же способом.
+//
+// Поэтому идентификатор дублируется в памяти страницы по номеру узла. Свойства
+// остаются главным каналом (они уезжают в файл воркфлоу и переживают
+// перезагрузку), а эта карта лечит ровно тот случай, когда их обнулили посреди
+// работы: значение возвращается на место при первом же обращении.
+const sessionByNode = new Map();
+
+function rememberSession(node, id) {
+    if (node?.id !== undefined && id) sessionByNode.set(String(node.id), String(id));
+}
+
+function persistedSession(node) {
+    const stored = readPersisted(node, W_SESSION);
+    if (stored) {
+        rememberSession(node, stored);
+        return stored;
+    }
+    const kept = node?.id !== undefined ? sessionByNode.get(String(node.id)) : "";
+    if (kept) {
+        // Свойства обнулили — возвращаем своё.
+        setWidgetValue(node, W_SESSION, kept);
+        return kept;
+    }
+    return "";
+}
+
 /** How a studio instance stores its session: in its node when it has one. */
 function persistFor(node) {
     if (!node) return detachedPersist();
     return {
-        sessionId: readPersisted(node, W_SESSION),
-        setSessionId: (id) => setWidgetValue(node, W_SESSION, id),
+        sessionId: persistedSession(node),
+        setSessionId: (id) => {
+            setWidgetValue(node, W_SESSION, id);
+            rememberSession(node, id);
+        },
         setResultPath: (path) => {
             setWidgetValue(node, W_RESULT, path);
             node.graph?.setDirtyCanvas(true, true);
@@ -202,7 +239,10 @@ function setupStudioNode(node) {
         // Values restored from the workflow land AFTER onNodeCreated; mirror
         // them into properties so both channels agree (§12.5.12).
         node.properties ||= {};
-        node.properties[W_SESSION] = readPersisted(node, W_SESSION);
+        // Через `persistedSession`, а не напрямую: если граф пересобрали и
+        // свойства приехали пустыми, сессия этой сессии восстанавливается из
+        // памяти страницы вместо того, чтобы начаться заново.
+        node.properties[W_SESSION] = persistedSession(node);
         node.properties[W_RESULT] = readPersisted(node, W_RESULT);
     };
 }

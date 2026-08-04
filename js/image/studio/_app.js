@@ -23,6 +23,7 @@ import { createSettingsPanel, readSetting, settingsStrings }
     from "../../_studio/_settings.js";
 import { uploadImage, makeDropZone, annotatedImageUrl } from "../../_studio/_dnd.js";
 import { buildStudioState, studioStateFromPng } from "../../_studio/_pnginfo.js";
+import { loadWorkspace, saveWorkspace } from "../../_studio/_workspace.js";
 import { createQueuePanel } from "../../_studio/_queue.js";
 import { createGate } from "../../_studio/_gate.js";
 import { createShowcase } from "../../_studio/_showcase.js";
@@ -168,6 +169,12 @@ const STRINGS = {
             cleaning: "Cleaning…",
             cleaned: (s) => `Cleaned in ${s} s`,
             repainted: "Repainted — the result is on the canvas and in the gallery.",
+            stop: "Stop",
+            stopTip: "Stop the run in progress. Anything running from the canvas is left alone.",
+            stopAll: "Stop all",
+            stopAllTip: "Drop every studio run still queued.",
+            stopping: "Stopping the current run…",
+            stoppingAll: (n) => `Stopping ${n} run${n === 1 ? "" : "s"}…`,
             needImage: "Add an image to inpaint first.",
             needMask: "Paint a mask first.",
             // Cleanup consumes the mask the moment a stroke ends, so "paint a
@@ -305,6 +312,12 @@ const STRINGS = {
             cleaning: "Очистка…",
             cleaned: (s) => `Очищено за ${s} с`,
             repainted: "Перерисовано — результат на холсте и в галерее.",
+            stop: "Стоп",
+            stopTip: "Остановить текущий прогон. То, что считается с холста, не трогается.",
+            stopAll: "Снять очередь",
+            stopAllTip: "Убрать из очереди все прогоны студии.",
+            stopping: "Останавливаю текущий прогон…",
+            stoppingAll: (n) => `Останавливаю прогонов: ${n}…`,
             needImage: "Сначала добавьте изображение.",
             needMask: "Сначала нарисуйте маску.",
             needRepaint: "Cleanup срабатывает сам, пока вы красите. Чтобы область "
@@ -357,6 +370,7 @@ function ensureAppStyles() {
 .ts-istudio__modelrow{display:flex;align-items:center;gap:6px}
 .ts-istudio__modelrow select{flex:1}
 .ts-istudio__runwrap{display:flex;flex-direction:column;gap:4px}
+.ts-istudio__stop{width:100%}
 .ts-istudio__runhint{text-align:center;color:var(--ts-muted);font-size:var(--ts-fs-xs)}
 .ts-istudio__progress{height:3px;border-radius:2px;background:var(--ts-border-soft);overflow:hidden;display:none}
 .ts-istudio__progress.is-active{display:block}
@@ -416,6 +430,8 @@ export async function openStudio(node, persist) {
     let offers = [];
     let catalogData = null;         // last read of the packs catalogue
     let queueCount = 0;
+    // Идентификаторы своих прогонов: по ним работает остановка.
+    const liveRuns = new Set();
 
     const present = new Set([...families.values()].flatMap((f) => [...f.modes.keys()]));
     const uiModes = UI_MODES.filter((m) => m.backendModes.some((b) => present.has(b)));
@@ -484,6 +500,7 @@ export async function openStudio(node, persist) {
             // rather than on the timer — the page may be leaving.
             captureValues();
             memory.flush();
+            rememberWorkspaceNow();
             openInstance = null;
             stageDropTeardown?.();
             gallery.teardown?.();
@@ -883,6 +900,7 @@ export async function openStudio(node, persist) {
                     // a closed tab or a reload must not cost the last move.
                     if (control.kind === "refs") sessionRefs.set(param, value);
                     else memory.remember(graphKey(backend), param, control.kind, value);
+                    rememberWorkspace();
                     // Replace ON implies 100% strength: grey the slider out.
                     if (param === "replace") {
                         controlsByParam.get("denoise")?.setDisabled?.(Boolean(value));
@@ -988,27 +1006,117 @@ export async function openStudio(node, persist) {
         runButton.className = "ts-ui-btn ts-ui-btn--primary";
         runButton.textContent = t.run;
         runButton.addEventListener("click", () => run());
+        // Остановка стоит там же, где запуск, и появляется только когда есть
+        // что останавливать. Снимает ТОЛЬКО свои прогоны: рендер, запущенный с
+        // холста ComfyUI, не наш и трогать его нельзя.
+        const stopButton = document.createElement("button");
+        stopButton.type = "button";
+        stopButton.className = "ts-ui-btn ts-istudio__stop";
+        stopButton.textContent = t.stop;
+        stopButton.title = t.stopTip;
+        stopButton.style.display = "none";
+        stopButton.addEventListener("click", () => stopRuns(false));
+
+        const stopAllButton = document.createElement("button");
+        stopAllButton.type = "button";
+        stopAllButton.className = "ts-ui-btn ts-istudio__stop";
+        stopAllButton.textContent = t.stopAll;
+        stopAllButton.title = t.stopAllTip;
+        stopAllButton.style.display = "none";
+        stopAllButton.addEventListener("click", () => stopRuns(true));
+
         const hint = document.createElement("div");
         hint.className = "ts-istudio__runhint";
         hint.textContent = t.runHint;
-        runWrap.append(runButton, progress, hint);
+        runWrap.append(runButton, stopButton, stopAllButton, progress, hint);
         foot.appendChild(runWrap);
         shell.deck.appendChild(foot);
-        deckWidgets = { runButton, progress, progressFill, hint };
+        deckWidgets = { runButton, stopButton, stopAllButton, progress, progressFill, hint };
     }
 
     let deckWidgets = null;
 
     function updateHint() {
-        if (deckWidgets) {
-            deckWidgets.hint.textContent = queueCount > 0
-                ? `${t.runHint} · ${t.queued(queueCount)}` : t.runHint;
+        if (!deckWidgets) return;
+        deckWidgets.hint.textContent = queueCount > 0
+            ? `${t.runHint} · ${t.queued(queueCount)}` : t.runHint;
+        // Останавливать нечего — кнопок нет. Снять всю очередь предлагаем
+        // только когда в ней действительно больше одного прогона.
+        deckWidgets.stopButton.style.display = liveRuns.size > 0 ? "" : "none";
+        deckWidgets.stopAllButton.style.display = liveRuns.size > 1 ? "" : "none";
+    }
+
+    /**
+     * Остановить свои прогоны. `all` — снять всю очередь студии, иначе только
+     * тот, что считается прямо сейчас. Чужое из очереди ComfyUI не трогаем:
+     * рантаймер шлёт /interrupt лишь когда исполняется именно наш прогон.
+     */
+    async function stopRuns(all) {
+        const ids = [...liveRuns];
+        if (!ids.length) return;
+        setStatus(all ? t.stoppingAll(ids.length) : t.stopping);
+        const targets = all ? ids : ids.slice(0, 1);
+        for (const id of targets) {
+            try {
+                await runner.cancel(id);
+            } catch (err) {
+                console.warn("[TS Studio] stop failed", err);
+            }
         }
     }
 
     function selectBackend(backend) {
         activeBackend = backend;
         buildDeck(backend);
+        rememberWorkspace();
+    }
+
+    // ── рабочее место: что было на экране, то и будет ───────────────────── //
+    //
+    // Значения контролов помнит `_memory.js`. Здесь запоминается остальное —
+    // вкладка, модель и исходники, — потому что без них возвращение в студию
+    // означает собирать рабочее место заново. Снимок того же формата, что
+    // уезжает в PNG, и применяется тем же `applyStudioState`.
+    let workspaceTimer = null;
+    let restoringWorkspace = false;
+
+    function currentStudioState() {
+        if (!activeBackend) return null;
+        const inpaintSources = activeModeId === "inpaint" && inpaintMode
+            ? inpaintMode.currentSources?.() || {} : {};
+        return buildStudioState({
+            backendId: activeBackend.manifest.id,
+            family: activeBackend.manifest.family,
+            familyLabel: activeBackend.manifest.family_label,
+            mode: activeBackend.manifest.mode,
+            uiMode: activeModeId,
+            values: { ...values },
+            loras: Array.isArray(values.loras) ? values.loras : [],
+            styles: promptTools?.getStyleNames() || [],
+            size: controlsByParam.get("size")?.get(),
+            sessionId,
+            sources: { ...inpaintSources, ...(values.__refs || {}) },
+        });
+    }
+
+    /** Отложенная запись: правка ползунка не должна писать в хранилище. */
+    function rememberWorkspace() {
+        if (restoringWorkspace) return;
+        clearTimeout(workspaceTimer);
+        workspaceTimer = setTimeout(() => {
+            const state = currentStudioState();
+            if (state) saveWorkspace(sessionId, state);
+        }, 500);
+    }
+
+    /** Последняя запись — синхронно, страница может уходить. */
+    function rememberWorkspaceNow() {
+        clearTimeout(workspaceTimer);
+        const state = currentStudioState();
+        if (!state) return;
+        const mask = activeModeId === "inpaint" && inpaintMode?.hasMask?.()
+            ? inpaintMode.maskDataUrl?.() || "" : "";
+        saveWorkspace(sessionId, state, mask);
     }
 
     /**
@@ -1061,6 +1169,7 @@ export async function openStudio(node, persist) {
     function selectMode(modeId) {
         shell.setMode(modeId);
         activeModeId = modeId;
+        rememberWorkspace();
         if (modeId === "inpaint") ensureInpaintMounted();
         else leaveInpaint();
         const roles = familiesForMode(modeId);
@@ -1106,7 +1215,13 @@ export async function openStudio(node, persist) {
         }
         runValues.seed = seed;
         if (typeof values.replace === "boolean") {
-            runValues.replace = values.replace;
+            // Замена — это denoise 1.0 у любой модели. У Klein переключатель
+            // ещё и приходит в саму ноду; у остальных семейств его в графе нет,
+            // и передавать его туда нельзя — патчер справедливо ругается на
+            // параметр, которого граф не объявлял.
+            if (target.spec.params.has("replace") || target.spec.literals?.has("replace")) {
+                runValues.replace = values.replace;
+            }
             if (values.replace) runValues.denoise = 1.0;
         }
         // Styles append to the prompt the same way the selector node does —
@@ -1221,7 +1336,13 @@ export async function openStudio(node, persist) {
         try {
             queueCount += 1;
             updateHint();
-            await runner.submit(patched, {
+            const promptId = await runner.submit(patched, {
+                onQueued: (id) => {
+                    // Помним свои прогоны поимённо: остановка обязана снимать
+                    // только их и не трогать то, что человек запустил с холста.
+                    liveRuns.add(id);
+                    updateHint();
+                },
                 // The snapshot travels as extra_pnginfo so the saver writes
                 // the ts_studio chunk even though the studio sends no
                 // LiteGraph workflow of its own.
@@ -1237,6 +1358,7 @@ export async function openStudio(node, persist) {
                 },
                 onDone: (images) => {
                     queueCount -= 1;
+                    liveRuns.delete(promptId);
                     updateHint();
                     deckWidgets.progress.classList.remove("is-active");
                     for (const image of images) {
@@ -1258,12 +1380,14 @@ export async function openStudio(node, persist) {
                 },
                 onError: (message) => {
                     queueCount -= 1;
+                    liveRuns.delete(promptId);
                     updateHint();
                     deckWidgets.progress.classList.remove("is-active");
                     setStatus(t.runFailed(message));
                 },
                 onCancelled: () => {
                     queueCount -= 1;
+                    liveRuns.delete(promptId);
                     updateHint();
                     deckWidgets.progress.classList.remove("is-active");
                 },
@@ -1388,6 +1512,10 @@ export async function openStudio(node, persist) {
             .map((key) => sources[key] || "");
         if (refs.some(Boolean)) controlsByParam.get("__refs")?.set(refs);
         await restoreSources(sources, uiMode?.id || backend.manifest.mode);
+        if (sources.mask && (uiMode?.id || backend.manifest.mode) === "inpaint") {
+            const maskUrl = annotatedImageUrl(sources.mask);
+            if (maskUrl) await inpaintMode?.setMaskFromUrl?.(maskUrl).catch(() => {});
+        }
         setStatus(t.recreated(backend.manifest.family_label || backend.manifest.family));
         return true;
     }
@@ -1469,7 +1597,29 @@ export async function openStudio(node, persist) {
     const firstAvailable = available.find((b) => bootModes.includes(b.manifest.mode))
         || available[0];
     if (firstAvailable) {
-        selectMode(modeIds[0]);
+        // Сначала — рабочее место прошлого раза. Студия, открытая из ноды,
+        // возвращается к своей сессии; открытая без ноды (из браузера
+        // ассетов) получает новую сессию каждый раз, поэтому ей отдаётся
+        // последнее рабочее место вообще — иначе она открывалась бы пустой
+        // всегда. Не получилось применить — открываемся как раньше, с первой
+        // вкладки: рабочее место не должно быть причиной не открыться.
+        const saved = loadWorkspace(sessionId, !node);
+        let restored = false;
+        if (saved?.state) {
+            restoringWorkspace = true;
+            try {
+                restored = await applyStudioState(saved.state);
+                if (restored && saved.mask && activeModeId === "inpaint") {
+                    await inpaintMode?.setMaskFromUrl?.(saved.mask);
+                }
+            } catch (err) {
+                console.warn("[TS Studio] workspace not restored", err);
+                restored = false;
+            } finally {
+                restoringWorkspace = false;
+            }
+        }
+        if (!restored) selectMode(modeIds[0]);
     } else {
         const note = document.createElement("div");
         note.className = "ts-studio__galleryempty";
