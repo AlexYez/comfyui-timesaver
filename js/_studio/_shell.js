@@ -23,6 +23,9 @@ export function ensureShellStyles() {
     grid-template-columns:44px auto var(--ts-studio-deck-w,340px) minmax(0,1fr);
     width:100%;height:100%;min-height:0;background:var(--ts-bg);color:var(--ts-text);
     font-size:var(--ts-fs)}
+/* Коробка вкладок режимов: существует, только чтобы их можно было
+   пересобрать; на раскладку не влияет. */
+.ts-studio__railmodes{display:contents}
 .ts-studio__rail{display:flex;flex-direction:column;align-items:center;gap:4px;
     padding:8px 0;border-right:1px solid var(--ts-border);background:var(--ts-elevated)}
 .ts-studio__railbtn{position:relative;width:32px;height:32px;display:flex;align-items:center;
@@ -96,18 +99,40 @@ export function createShell(options) {
     rail.className = "ts-studio__rail";
     rail.setAttribute("role", "tablist");
     const railButtons = new Map();
-    for (const mode of options.modes) {
-        const button = document.createElement("button");
-        button.type = "button";
-        button.className = "ts-studio__railbtn";
-        button.title = mode.title;
-        button.setAttribute("role", "tab");
-        button.setAttribute("aria-label", mode.title);
-        button.innerHTML = mode.icon;
-        button.addEventListener("click", () => options.onMode?.(mode.id));
-        rail.appendChild(button);
-        railButtons.set(mode.id, button);
+    // Вкладки режимов живут в своей коробке, чтобы их можно было пересобрать,
+    // не тронув всё остальное в рельсе (настройки, наборы, справка, ярлычок
+    // панели добавляются приложением ПОСЛЕ распорки). `display:contents`
+    // оставляет кнопки прямыми детьми рельса для раскладки.
+    const modeHost = document.createElement("div");
+    modeHost.className = "ts-studio__railmodes";
+    rail.appendChild(modeHost);
+
+    /**
+     * Пересобрать вкладки режимов.
+     *
+     * Нужно потому, что набор разделов зависит от установленных моделей:
+     * выключили пак — раздел, который держался только на нём, обязан исчезнуть
+     * сразу, а не «после переоткрытия студии».
+     *
+     * @param {{id: string, title: string, icon: string}[]} modes
+     */
+    function setModes(modes) {
+        modeHost.replaceChildren();
+        railButtons.clear();
+        for (const mode of modes || []) {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = "ts-studio__railbtn";
+            button.title = mode.title;
+            button.setAttribute("role", "tab");
+            button.setAttribute("aria-label", mode.title);
+            button.innerHTML = mode.icon;
+            button.addEventListener("click", () => options.onMode?.(mode.id));
+            modeHost.appendChild(button);
+            railButtons.set(mode.id, button);
+        }
     }
+    setModes(options.modes);
     const spacer = document.createElement("div");
     spacer.className = "ts-studio__railspacer";
     rail.appendChild(spacer);
@@ -251,7 +276,7 @@ export function createShell(options) {
         // `deck` is the rebuildable body; `deckFrame` is the column that keeps
         // the resizer across rebuilds.
         root, deck: deckBody, deckFrame: deck, stage, side, rail,
-        setMode, setSideCollapsed, setSidePlacement,
+        setMode, setModes, setSideCollapsed, setSidePlacement,
         /** Какая вкладка боковой панели была открыта в прошлый раз. */
         panelTab: () => widths.panelTab || "",
         rememberPanelTab: (which) => rememberColumns({ panelTab: String(which || "") }),

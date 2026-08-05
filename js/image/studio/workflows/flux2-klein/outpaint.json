@@ -1,0 +1,304 @@
+{
+ "p_prompt": {
+  "class_type": "TS_StudioInputText",
+  "inputs": {
+   "value": "Fully outpaint the image with no empty areas, no black or white borders, and no unfilled regions. Seamlessly extend the scene, strictly continuing all background elements, lighting, colors, textures, and perspective so the new parts blend perfectly with the original frame. Preserve the style, mood, and main subjects exactly, avoiding any new characters, text, or unrelated objects. Pay special attention to edges, patterns, and structural continuity, ensuring the outpainted regions naturally align with existing geometry. The final result must look like a fully complete and harmonious image, with every pixel convincingly rendered and integrated into the scene.",
+   "param_name": "prompt",
+   "label": ""
+  }
+ },
+ "p_image": {
+  "class_type": "TS_StudioInputImage",
+  "inputs": {
+   "value": "",
+   "param_name": "source_image",
+   "label": "Source"
+  }
+ },
+ "p_frame": {
+  "class_type": "TS_StudioInputText",
+  "inputs": {
+   "value": "16:9",
+   "param_name": "frame",
+   "label": ""
+  }
+ },
+ "p_mp": {
+  "class_type": "TS_StudioInputNumber",
+  "inputs": {
+   "value": 1.5,
+   "param_name": "megapixels",
+   "label": ""
+  }
+ },
+ "p_steps": {
+  "class_type": "TS_StudioInputNumber",
+  "inputs": {
+   "value": 4,
+   "param_name": "steps",
+   "label": ""
+  }
+ },
+ "p_cfg": {
+  "class_type": "TS_StudioInputNumber",
+  "inputs": {
+   "value": 1.0,
+   "param_name": "cfg",
+   "label": ""
+  }
+ },
+ "p_seed": {
+  "class_type": "TS_StudioInputSeed",
+  "inputs": {
+   "value": 0,
+   "param_name": "seed"
+  }
+ },
+ "model_loader": {
+  "class_type": "UNETLoader",
+  "inputs": {
+   "unet_name": "flux2\\flux-2-klein-9b-fp8.safetensors",
+   "weight_dtype": "default"
+  },
+  "_meta": {
+   "title": "studio:model"
+  }
+ },
+ "lora_stack": {
+  "class_type": "TS_StudioLoraStack",
+  "inputs": {
+   "model": [
+    "model_loader",
+    0
+   ]
+  }
+ },
+ "clip_loader": {
+  "class_type": "CLIPLoader",
+  "inputs": {
+   "clip_name": "flux2\\qwen_3_8b_fp8mixed.safetensors",
+   "type": "flux2"
+  },
+  "_meta": {
+   "title": "studio:clip"
+  }
+ },
+ "vae_loader": {
+  "class_type": "VAELoader",
+  "inputs": {
+   "vae_name": "flux2\\flux2-vae.safetensors"
+  },
+  "_meta": {
+   "title": "studio:vae"
+  }
+ },
+ "reframe": {
+  "class_type": "TS_ResolutionSelector",
+  "inputs": {
+   "aspect_ratio": "16:9",
+   "resolution": [
+    "p_mp",
+    0
+   ],
+   "custom_ratio": [
+    "p_frame",
+    0
+   ],
+   "original_aspect": false,
+   "image": [
+    "p_image",
+    0
+   ]
+  }
+ },
+ "frame_size": {
+  "class_type": "GetImageSize",
+  "inputs": {
+   "image": [
+    "reframe",
+    0
+   ]
+  }
+ },
+ "encode_pos": {
+  "class_type": "CLIPTextEncode",
+  "inputs": {
+   "text": [
+    "p_prompt",
+    0
+   ],
+   "clip": [
+    "clip_loader",
+    0
+   ]
+  }
+ },
+ "encode_frame": {
+  "class_type": "VAEEncode",
+  "inputs": {
+   "pixels": [
+    "reframe",
+    0
+   ],
+   "vae": [
+    "vae_loader",
+    0
+   ]
+  }
+ },
+ "reference": {
+  "class_type": "ReferenceLatent",
+  "inputs": {
+   "conditioning": [
+    "encode_pos",
+    0
+   ],
+   "latent": [
+    "encode_frame",
+    0
+   ]
+  }
+ },
+ "neg_zero": {
+  "class_type": "ConditioningZeroOut",
+  "inputs": {
+   "conditioning": [
+    "encode_pos",
+    0
+   ]
+  }
+ },
+ "guider": {
+  "class_type": "CFGGuider",
+  "inputs": {
+   "model": [
+    "lora_stack",
+    0
+   ],
+   "positive": [
+    "reference",
+    0
+   ],
+   "negative": [
+    "neg_zero",
+    0
+   ],
+   "cfg": [
+    "p_cfg",
+    0
+   ]
+  }
+ },
+ "sampler_sel": {
+  "class_type": "KSamplerSelect",
+  "inputs": {
+   "sampler_name": "euler"
+  }
+ },
+ "sigmas": {
+  "class_type": "Flux2Scheduler",
+  "inputs": {
+   "steps": [
+    "p_steps",
+    1
+   ],
+   "width": [
+    "frame_size",
+    0
+   ],
+   "height": [
+    "frame_size",
+    1
+   ]
+  }
+ },
+ "noise": {
+  "class_type": "RandomNoise",
+  "inputs": {
+   "noise_seed": [
+    "p_seed",
+    0
+   ]
+  }
+ },
+ "sample": {
+  "class_type": "SamplerCustomAdvanced",
+  "inputs": {
+   "noise": [
+    "noise",
+    0
+   ],
+   "guider": [
+    "guider",
+    0
+   ],
+   "sampler": [
+    "sampler_sel",
+    0
+   ],
+   "sigmas": [
+    "sigmas",
+    0
+   ],
+   "latent_image": [
+    "encode_frame",
+    0
+   ]
+  }
+ },
+ "decode": {
+  "class_type": "VAEDecode",
+  "inputs": {
+   "samples": [
+    "sample",
+    0
+   ],
+   "vae": [
+    "vae_loader",
+    0
+   ]
+  }
+ },
+ "color_match": {
+  "class_type": "TS_Color_Match",
+  "inputs": {
+   "reference": [
+    "p_image",
+    0
+   ],
+   "target": [
+    "decode",
+    0
+   ],
+   "mode": "mkl",
+   "device": "auto",
+   "strength": 1.0,
+   "enable": true,
+   "match_mask": "none",
+   "mask_size": 0,
+   "compute_max_side": 1024,
+   "mkl_sample_points": 500000,
+   "sinkhorn_max_points": 2048,
+   "reuse_reference": true,
+   "temporal_smoothing": false,
+   "chunk_size": 4,
+   "logging": false
+  }
+ },
+ "studio_out": {
+  "class_type": "TS_StudioOutput",
+  "inputs": {
+   "image": [
+    "color_match",
+    0
+   ],
+   "filename_prefix": "ts_studio/session"
+  }
+ },
+ "studio_manifest": {
+  "class_type": "TS_StudioManifest",
+  "inputs": {
+   "manifest": "{\n  \"schema_version\": \"1.0.0\",\n  \"id\": \"flux2-klein/outpaint\",\n  \"label\": {\n    \"en\": \"Outpaint\",\n    \"ru\": \"Расширение кадра\"\n  },\n  \"family\": \"flux2-klein\",\n  \"family_label\": \"Flux 2 Klein\",\n  \"tier\": 2,\n  \"mode\": \"outpaint\",\n  \"order\": 10,\n  \"requires\": [\n    \"source_image\"\n  ],\n  \"controls\": [\n    {\n      \"param\": \"prompt\",\n      \"kind\": \"prompt\",\n      \"superprompt\": true\n    },\n    {\n      \"param\": \"frame\",\n      \"kind\": \"choice\",\n      \"label\": {\n        \"en\": \"New frame\",\n        \"ru\": \"Новый кадр\"\n      },\n      \"options\": [\n        {\n          \"value\": \"21:9\",\n          \"label\": \"21:9\"\n        },\n        {\n          \"value\": \"16:9\",\n          \"label\": \"16:9\"\n        },\n        {\n          \"value\": \"3:2\",\n          \"label\": \"3:2\"\n        },\n        {\n          \"value\": \"4:3\",\n          \"label\": \"4:3\"\n        },\n        {\n          \"value\": \"1:1\",\n          \"label\": \"1:1\"\n        },\n        {\n          \"value\": \"3:4\",\n          \"label\": \"3:4\"\n        },\n        {\n          \"value\": \"2:3\",\n          \"label\": \"2:3\"\n        },\n        {\n          \"value\": \"9:16\",\n          \"label\": \"9:16\"\n        },\n        {\n          \"value\": \"9:21\",\n          \"label\": \"9:21\"\n        }\n      ],\n      \"default\": \"16:9\"\n    },\n    {\n      \"param\": \"megapixels\",\n      \"kind\": \"slider\",\n      \"min\": 0.5,\n      \"max\": 4.0,\n      \"step\": 0.1,\n      \"default\": 1.5,\n      \"label\": {\n        \"en\": \"Result size\",\n        \"ru\": \"Размер результата\"\n      },\n      \"unit\": \"MP\"\n    },\n    {\n      \"param\": \"seed\",\n      \"kind\": \"seed\"\n    },\n    {\n      \"param\": \"loras\",\n      \"kind\": \"loras\",\n      \"max\": 8,\n      \"strength\": [\n        -2.0,\n        2.0\n      ]\n    },\n    {\n      \"param\": \"steps\",\n      \"kind\": \"number\",\n      \"min\": 1,\n      \"max\": 50,\n      \"step\": 1,\n      \"advanced\": true,\n      \"label\": {\n        \"en\": \"Steps\",\n        \"ru\": \"Шаги\"\n      },\n      \"default\": 4\n    },\n    {\n      \"param\": \"cfg\",\n      \"kind\": \"number\",\n      \"min\": 1.0,\n      \"max\": 10.0,\n      \"step\": 0.1,\n      \"advanced\": true,\n      \"label\": {\n        \"en\": \"CFG\",\n        \"ru\": \"CFG\"\n      },\n      \"default\": 1.0\n    }\n  ],\n  \"models\": [\n    {\n      \"title\": \"studio:model\",\n      \"input\": \"unet_name\",\n      \"folder\": \"diffusion_models\",\n      \"match\": \"flux.?2.?klein.*(9b|4b)|ArtiusFlux\"\n    },\n    {\n      \"title\": \"studio:clip\",\n      \"input\": \"clip_name\",\n      \"folder\": \"text_encoders\",\n      \"match\": \"qwen_3_(8b|4b)\"\n    },\n    {\n      \"title\": \"studio:vae\",\n      \"input\": \"vae_name\",\n      \"folder\": \"vae\",\n      \"match\": \"flux2-vae\"\n    }\n  ]\n}"
+  }
+ }
+}

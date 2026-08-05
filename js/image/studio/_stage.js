@@ -20,6 +20,7 @@
 import { TS_UI_CLASS } from "../../_theme.js";
 import { createCompare } from "../../_studio/_compare.js";
 import { createTileGrid } from "../../_studio/_tilegrid.js";
+import { createOutpaintFrame } from "../../_studio/_outframe.js";
 import { attachZoomPan, clampScale } from "../../_studio/_zoompan.js";
 
 /**
@@ -74,6 +75,11 @@ export function createStage(options) {
 
     const tiles = createTileGrid();
     zoom.appendChild(tiles.element);
+
+    // Рамка будущего кадра — для расширения: показывает, куда именно
+    // дорисуется картинка, ещё до запуска.
+    const outframe = createOutpaintFrame();
+    zoom.appendChild(outframe.element);
 
     element.append(empty, zoom);
 
@@ -141,6 +147,7 @@ export function createStage(options) {
     /** Показать картинку. Снимает шторку и возвращает вписанный вид. */
     function show(url, { caption: text = "", state = null, keepSource = false } = {}) {
         hideCompare();
+        outframe.hide();
         fit();
         if (!keepSource) source = "";
         image.src = url;
@@ -157,8 +164,9 @@ export function createStage(options) {
 
     return {
         element,
-        /** Сетка тайлов и шторка отданы наружу целиком — у них свои контракты. */
+        /** Сетка тайлов и рамка кадра отданы наружу — у них свои контракты. */
         tiles,
+        outframe,
 
         show,
         /** Промежуточный кадр: без сброса зума и подписи — это не результат. */
@@ -256,6 +264,7 @@ export function createStage(options) {
         teardown() {
             compare.teardown?.();
             tiles.hide();
+            outframe.hide();
             element.remove();
             caption.remove();
         },

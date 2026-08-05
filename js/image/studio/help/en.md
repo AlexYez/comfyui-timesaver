@@ -7,6 +7,7 @@ A fullscreen studio for generating and editing images. Everything under the hood
 - **Generate** — text-to-image and instruction editing in one mode. Describe the picture, pick a model, format and resolution, press **Run** (Ctrl+Enter). When the model can use references (Flux 2 Klein, Qwen Image Edit), slots appear under the prompt: leave them empty for a plain generation, fill one and the run switches to editing, taking its frame from the first reference.
 
 - **Inpaint** — two engines on one canvas. **Cleanup**: paint over an object and release — it vanishes in a second (LaMa, no prompt). **Repaint**: mask + description + Run — a diffusion model redraws the region.
+- **Outpaint** — extend the frame. Bring in an image, pick a new aspect (**21:9 … 9:21**) and the result size: the stage shows exactly where it will grow — the original stays put, the new areas are hatched, the final size sits under the frame. **Run** paints the edges in, continuing the scene, and the colour is matched back to the original. Runs on Flux 2 Klein, so the section appears only with that pack.
 - **Upscale** — enlarge the result selected in the gallery, or whatever you drop onto the stage. The factor is a choice of **1x / 2x / 4x** (1x being a second pass at the original size), and the model comes from the same list as everywhere else: each one enlarges by its own recipe.
 
 ## The prompt field

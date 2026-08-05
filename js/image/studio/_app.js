@@ -44,11 +44,19 @@ import * as memory from "../../_studio/_memory.js";
 // пугающе, а полезного там ещё нет.
 const PREVIEW_SKIP_STEPS = 2;
 
+// Разделы интерфейса. Раздел появляется в рельсе, только если хотя бы одно
+// живое семейство умеет его режим: пустых вкладок в студии не бывает — модели
+// приезжают паками, и нечем занять раздел, для которого пак не установлен.
 const UI_MODES = [
     { id: "generate", backendModes: ["t2i", "edit"] },
     { id: "inpaint", backendModes: ["inpaint"] },
+    { id: "outpaint", backendModes: ["outpaint"] },
     { id: "upscale", backendModes: ["upscale"] },
 ];
+
+// Режимы, работающие НАД картинкой на сцене: им нужен исходник, и они его
+// показывают. Отличаются от генерации, которая начинается с пустого места.
+const SOURCE_MODES = new Set(["upscale", "outpaint"]);
 
 // Marks a picker entry that stands for a model the catalogue offers but this
 // machine does not have. Prefixed so it can never collide with a family id.
@@ -67,6 +75,9 @@ const ICONS = {
     generate: `<svg ${ICON_ATTRS}><path d="M11 3.5l1.7 4.3 4.3 1.7-4.3 1.7L11 15.5 9.3 11.2 5 9.5l4.3-1.7z"/><path d="M18 14.5l.85 2.15 2.15.85-2.15.85L18 20.5l-.85-2.15L15 17.5l2.15-.85z"/></svg>`,
     inpaint: `<svg ${ICON_ATTRS}><path d="M4 20l.9-3.7L15.6 5.6a2.05 2.05 0 0 1 2.9 2.9L7.7 19.1z"/><path d="M13.9 7.3l2.8 2.8"/></svg>`,
     upscale: `<svg ${ICON_ATTRS}><path d="M4 9V4h5"/><path d="M20 15v5h-5"/><path d="M4 4l6 6"/><path d="M20 20l-6-6"/></svg>`,
+    // Расширение кадра: рамка пошире вокруг рамки поуже — ровно то, что
+    // происходит с картинкой.
+    outpaint: `<svg ${ICON_ATTRS}><rect x="3" y="5" width="18" height="14" rx="1.5"/><rect x="8" y="9" width="8" height="6" rx="1"/></svg>`,
     settings: `<svg ${ICON_ATTRS}><path d="M4 7h7M15 7h5M4 12h11M19 12h1M4 17h3M11 17h9"/><circle cx="13" cy="7" r="2"/><circle cx="17" cy="12" r="2"/><circle cx="9" cy="17" r="2"/></svg>`,
     // Packs: a box seen head-on, with the seam a parcel has.
     packs: `<svg ${ICON_ATTRS}><path d="M4 8.5l8-4 8 4v7l-8 4-8-4z"/><path d="M4 8.5l8 4 8-4"/><path d="M12 12.5v7"/></svg>`,
@@ -141,11 +152,12 @@ const STRINGS = {
         requiresMissing: (p) => `Add the required image first (${p}).`,
         pngRestored: (f) => `Settings restored from the image (${f}).`,
         pngNotStudio: "This image carries no studio settings.",
-        packsNewMode: "The pack brings a new section — reopen the studio to see it.",
         inPack: "in a pack",
         pngNoBackend: (id) => `The image was made by backend '${id}', which is not available here.`,
         modes: { generate: "Generate", t2i: "Generate", edit: "Edit",
-                 inpaint: "Inpaint", upscale: "Upscale" },
+                 inpaint: "Inpaint", outpaint: "Outpaint", upscale: "Upscale" },
+        outNeedsImage: "Bring in an image first — outpaint extends what is there.",
+        outFrame: (w, h) => `${w} × ${h}`,
         tabQueue: "Queue",
         recreate: "Recreate",
         recreateTip: "Restore the mode, settings and source image this result was made with",
@@ -307,11 +319,12 @@ const STRINGS = {
         requiresMissing: (p) => `Сначала добавьте обязательное изображение (${p}).`,
         pngRestored: (f) => `Настройки восстановлены из изображения (${f}).`,
         pngNotStudio: "В этом изображении нет настроек студии.",
-        packsNewMode: "Набор добавил новый раздел — откройте студию заново, чтобы он появился.",
         inPack: "в наборе",
         pngNoBackend: (id) => `Изображение сделано бэкендом '${id}', он здесь недоступен.`,
         modes: { generate: "Генерация", t2i: "Генерация", edit: "Редактирование",
-                 inpaint: "Inpaint", upscale: "Upscale" },
+                 inpaint: "Inpaint", outpaint: "Outpaint", upscale: "Upscale" },
+        outNeedsImage: "Сначала принесите картинку — расширять пока нечего.",
+        outFrame: (w, h) => `${w} × ${h}`,
         tabQueue: "Очередь",
         recreate: "Повторить",
         recreateTip: "Восстановить режим, настройки и исходник, с которыми сделан результат",
@@ -511,11 +524,28 @@ export async function openStudio(node, persist) {
     // Идентификаторы своих прогонов: по ним работает остановка.
     const liveRuns = new Set();
 
-    const present = new Set([...families.values()].flatMap((f) => [...f.modes.keys()]));
-    const uiModes = UI_MODES.filter((m) => m.backendModes.some((b) => present.has(b)));
-    const modeIds = uiModes.map((m) => m.id);
+    /**
+     * Разделы, которым есть чем работать.
+     *
+     * Пустых вкладок в студии не бывает: модели приезжают паками, и раздел,
+     * для которого не установлено ни одного семейства, — это обещание,
+     * которое нечем выполнить. Считается заново после каждой перечитки
+     * бэкендов, потому что пак можно включить и выключить не выходя из студии.
+     */
+    function availableModes(list) {
+        const present = new Set([...list.values()].flatMap((f) => [...f.modes.keys()]));
+        return UI_MODES.filter((m) => m.backendModes.some((b) => present.has(b)));
+    }
+
+    let uiModes = availableModes(families);
+    let modeIds = uiModes.map((m) => m.id);
     const backendModesOf = (uiMode) =>
         UI_MODES.find((m) => m.id === uiMode)?.backendModes || [uiMode];
+    const railModes = (list) => list.map((m) => ({
+        id: m.id,
+        title: t.modes[m.id] || m.id,
+        icon: ICONS[m.id] || ICONS.generate,
+    }));
 
     /**
      * Что на этой машине выключено и каким уровнем её показывать.
@@ -563,6 +593,27 @@ export async function openStudio(node, persist) {
         });
     }
 
+    /**
+     * Показать, куда дорисуется кадр.
+     *
+     * Зовётся при каждом поводе, от которого рамка могла измениться: смена
+     * пропорции или размера, новая картинка, переход в раздел. «21:9» само по
+     * себе ничего не говорит — человек должен видеть, сколько допишется слева
+     * и справа.
+     */
+    function paintOutFrame() {
+        if (activeModeId !== "outpaint" || !stage.hasImage()) {
+            stage.outframe.hide();
+            return;
+        }
+        stage.outframe.show({
+            imageRect: stage.imageRect(),
+            hostRect: stage.hostRect(),
+            aspect: String(values.frame || "16:9"),
+            megapixels: Number(values.megapixels || 1.5),
+        });
+    }
+
     /** Семейства, которые студия показывает; скрытые уезжают в серый список. */
     function takeFamilies(list) {
         const split = applyPackState(groupByFamily(list), packState);
@@ -601,7 +652,7 @@ export async function openStudio(node, persist) {
         label: t.appLabel,
         closeTitle: t.close,
         collapseTitle: t.collapse,
-        modes: modeIds.map((id) => ({ id, title: t.modes[id] || id, icon: ICONS[id] || ICONS.generate })),
+        modes: railModes(uiModes),
         onMode: (id) => selectMode(id),
         onClose: () => {
             // Last read before everything is torn down, then written now
@@ -693,6 +744,7 @@ export async function openStudio(node, persist) {
         // апскейл, она обязана вернуться вместе с рабочим местом.
         stage.show(asset.url, { caption: asset.name || "", keepSource: true });
         stage.setSource(asset.annotated || "");
+        requestAnimationFrame(() => paintOutFrame());
     }
 
     function showPreviewBlob(blob) {
@@ -1006,6 +1058,7 @@ export async function openStudio(node, persist) {
                 getSize: () => controlsByParam.get("size")?.get(),
                 onChange: (param, value) => {
                     values[param] = value;
+                    if (param === "frame" || param === "megapixels") paintOutFrame();
                     // Written as it changes, not only when the deck is rebuilt:
                     // a closed tab or a reload must not cost the last move.
                     if (control.kind === "refs") sessionRefs.set(param, value);
@@ -1262,15 +1315,16 @@ export async function openStudio(node, persist) {
         packState = await readPackState();
         families = takeFamilies(backends);
         setOffers(null);            // against the families that exist now
-        const nowPresent = new Set([...families.values()]
-            .flatMap((family) => [...family.modes.keys()]));
-        const unseen = UI_MODES.some((mode) => !modeIds.includes(mode.id)
-            && mode.backendModes.some((backendMode) => nowPresent.has(backendMode)));
-        if (unseen) setStatus(t.packsNewMode);
-        if (activeModeId) {
-            activeBackend = null;           // the old object is from the old read
-            selectMode(activeModeId);
-        }
+        // Набор разделов зависит от установленных моделей: пак принёс новый —
+        // вкладка появляется, выключили последний поддерживающий — исчезает.
+        uiModes = availableModes(families);
+        modeIds = uiModes.map((m) => m.id);
+        shell.setModes(railModes(uiModes));
+        activeBackend = null;               // the old object is from the old read
+        // Раздел, из-под которого ушла последняя модель, оставлять нельзя:
+        // человек оказался бы в пустой вкладке без единого способа выйти.
+        const next = modeIds.includes(activeModeId) ? activeModeId : modeIds[0];
+        if (next) selectMode(next);
     }
 
     let inpaintMode = null;
@@ -1332,6 +1386,9 @@ export async function openStudio(node, persist) {
         // Инпэйнт рисует на собственном холсте и сцены не касается.
         if (modeId !== "inpaint") stage.restore(modeId);
         tiles.hide();
+        // Рамка расширения принадлежит своему разделу; в остальных её нет.
+        stage.outframe.hide();
+        requestAnimationFrame(() => paintOutFrame());
         rememberWorkspace();
         if (modeId === "inpaint") ensureInpaintMounted();
         else leaveInpaint();
@@ -1434,7 +1491,7 @@ export async function openStudio(node, persist) {
                 return;
             }
         }
-        if (activeModeId === "upscale") {
+        if (SOURCE_MODES.has(activeModeId)) {
             // A dropped image wins over the gallery selection: it is the more
             // deliberate act of the two.
             if (stage.source()) {
@@ -1454,7 +1511,8 @@ export async function openStudio(node, persist) {
                     return;
                 }
             } else {
-                setStatus(t.upscaleNeedsImage);
+                setStatus(activeModeId === "outpaint"
+                    ? t.outNeedsImage : t.upscaleNeedsImage);
                 return;
             }
         }
@@ -1583,6 +1641,9 @@ export async function openStudio(node, persist) {
                     // показывает его честно, и поверх лица это выглядит
                     // пугающе, а полезного там ещё нет.
                     if (!shot.show) return;
+                    // Пришёл настоящий кадр нового размера — рамка своё
+                    // отслужила: дальше заполнение видно по самой картинке.
+                    if (activeModeId === "outpaint") stage.outframe.hide();
                     if (activeModeId === "inpaint" && inpaintMode) inpaintMode.showPreview(blob);
                     else showPreviewBlob(blob);
                 },
@@ -1798,19 +1859,22 @@ export async function openStudio(node, persist) {
         // image to work on — even a studio render, which used to hijack the
         // drop and restore its whole session instead. Rebuilding a session is
         // its own act: the Recreate button, or the browser's own command.
-        const worksOnSource = activeModeId === "inpaint" || activeModeId === "upscale";
+        const worksOnSource = activeModeId === "inpaint" || SOURCE_MODES.has(activeModeId);
         const found = worksOnSource ? null : await studioStateFromPng(blob);
         if (found) return applyStudioState(found.state);
         const annotated = await uploadImage(api, blob, item.name || "dropped.png");
         if (activeModeId === "inpaint") {
             ensureInpaintMounted();
             await inpaintMode.setImageFromBlob(blob, item.name || "dropped.png");
-        } else if (activeModeId === "upscale") {
+        } else if (SOURCE_MODES.has(activeModeId)) {
             // Новая картинка отменяет старое сравнение: шторка показывает
             // пару прошлого прогона и накрыла бы собой то, что человек только
             // что принёс. `show` снимает её сам.
             stage.show(URL.createObjectURL(blob), { keepSource: true });
             stage.setSource(annotated);
+            // Рамка считается по настоящему размеру кадра — ждём, пока
+            // браузер его узнает.
+            requestAnimationFrame(() => paintOutFrame());
         } else {
             const current = controlsByParam.get("__refs")?.get() || [];
             const slot = current.findIndex((v) => !v);

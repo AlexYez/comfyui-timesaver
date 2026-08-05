@@ -3,6 +3,7 @@
  "workflows": [
   "flux2-klein/edit.json",
   "flux2-klein/inpaint.json",
+  "flux2-klein/outpaint.json",
   "flux2-klein/t2i.json",
   "flux2-klein/upscale.json",
   "ideogram/inpaint.json",
