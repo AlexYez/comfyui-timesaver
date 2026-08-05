@@ -10,9 +10,11 @@ import { TS_UI_CLASS, ensureThemeStyles, getUiLanguage, pickLocaleStrings } from
 import { createShell, deckSection } from "../../_studio/_shell.js";
 import { ensureControlStyles, getControlRenderer, randomSeed } from "../../_studio/_controls.js";
 import { createGallery } from "../../_studio/_gallery.js";
-import { createCompare } from "../../_studio/_compare.js";
-import { attachZoomPan, clampScale } from "../../_studio/_zoompan.js";
-import { createTileGrid, splitterGrid } from "../../_studio/_tilegrid.js";
+import { splitterGrid } from "../../_studio/_tilegrid.js";
+import { createStage } from "./_stage.js";
+import { createRunProgress } from "./_progress.js";
+import { backendForRun, buildOffers, offersForModes, packReadiness,
+    rolesForModes } from "./_catalog.js";
 import { createRunner } from "../../_studio/_runner.js";
 import { applyPackState, loadBackends, groupByFamily } from "../../_studio/_backends.js";
 import { patchBackend } from "../../_studio/_markers.js";
@@ -40,37 +42,6 @@ import * as memory from "../../_studio/_memory.js";
 // шум: быстрый декодер показывает его честно, и поверх лица это выглядит
 // пугающе, а полезного там ещё нет.
 const PREVIEW_SKIP_STEPS = 2;
-
-// Какой этап идёт прямо сейчас — по классу считающегося узла.
-//
-// Полоса шагов сэмплера появляется поздно: до неё грузятся веса (десятки
-// секунд), считается текстовый энкодер, кодируется картинка. Раньше всё это
-// время окно молчало, и отличить «работает» от «зависло» было нельзя.
-// Порядок проверок важен: имена классов пересекаются («VAELoader» содержит и
-// «VAE», и «Loader»), поэтому список идёт от частного к общему.
-const STAGE_BY_CLASS = [
-    [/InpaintCrop/i, "crop"],
-    [/InpaintRestore/i, "restore"],
-    // Собственные ноды пака сами делают всю работу целиком — у Klein это
-    // TSSmartInpaint, и он же занимает почти всё время прогона.
-    [/SmartInpaint|LamaCleanup/i, "sample"],
-    [/Loader$|Loader[A-Z]|LoraStack/i, "load"],
-    [/TextEncode|Conditioning|Designer|Guider|Scheduler|Sigmas/i, "prompt"],
-    [/VAEEncode|NoiseMask|DifferentialDiffusion|ModelSampling|CFG/i, "encode"],
-    [/VAEDecode/i, "decode"],
-    [/Sampler|KSampler|Noise$/i, "sample"],
-    [/SaveImage|StudioOutput|PreviewImage/i, "save"],
-    // Маркеры студии исполняются мгновенно; называть их этапом — только мигать
-    // подписью, поэтому они остаются в общем «работаю».
-];
-
-function stageOf(classType) {
-    const name = String(classType || "");
-    for (const [pattern, stage] of STAGE_BY_CLASS) {
-        if (pattern.test(name)) return stage;
-    }
-    return "other";
-}
 
 const UI_MODES = [
     { id: "generate", backendModes: ["t2i", "edit"] },
@@ -577,8 +548,7 @@ export async function openStudio(node, persist) {
         const nodes = Object.values(graph || {});
         const splitter = nodes.find((node) => node?.class_type === "TS_ImageTileSplitter");
         if (!splitter) return null;
-        const width = stageImg.naturalWidth || 0;
-        const height = stageImg.naturalHeight || 0;
+        const { width, height } = stage.naturalSize();
         if (!(width > 0 && height > 0)) return null;
         // Увеличение стоит перед резкой, поэтому сетка считается по конечному
         // размеру, а не по исходному.
@@ -590,32 +560,6 @@ export async function openStudio(node, persist) {
             tileHeight: Number(splitter.inputs?.tile_height) || 0,
             overlap: Number(splitter.inputs?.overlap) || 0,
         });
-    }
-
-    /**
-     * Готов ли пак к работе на этой машине.
-     *
-     * Считается по живым бэкендам, а не по каталогу: какие файлы моделей нужны,
-     * знает манифест каждого графа, и студия уже сверила их с тем, что стоит.
-     * Отвечать на этот вопрос до запуска, а не красной ошибкой через десять
-     * минут ожидания, — половина смысла менеджера.
-     *
-     * @returns {{ready:number,total:number,missing:string[]}|null} null, если
-     *          пака здесь нет и проверять нечего.
-     */
-    function packReadiness(pack) {
-        const names = new Set((pack?.families || [])
-            .map((item) => (typeof item === "string" ? item : item?.family))
-            .filter(Boolean));
-        const mine = backends.filter((backend) => names.has(backend.manifest?.family));
-        if (!mine.length) return null;
-        const missing = [...new Set(mine.flatMap((backend) => (backend.problems || [])
-            .map((problem) => `${backend.manifest?.mode || backend.id}: ${problem}`)))];
-        return {
-            total: mine.length,
-            ready: mine.filter((backend) => backend.available).length,
-            missing,
-        };
     }
 
     /** Семейства, которые студия показывает; скрытые уезжают в серый список. */
@@ -637,55 +581,19 @@ export async function openStudio(node, persist) {
         // pack tells us about it while its families are still loaded, and an
         // offer worked out at that moment would look like it is already here.
         if (data) catalogData = data;
-        const seen = new Set();
-        offers = [];
-        // Скрытое семейство остаётся в списке моделей серым — иначе выключение
-        // пака выглядело бы как пропажа модели, и вернуть её было бы неоткуда.
-        for (const item of hiddenFamilies) {
-            seen.add(item.family);
-            offers.push({ ...item, label: item.label, packId: item.packId });
-        }
-        for (const pack of catalogData?.packs || []) {
-            if (pack.installed || pack.builtin) continue;
-            for (const family of pack.families || []) {
-                // Каталог сборки перечисляет семейства именами, удалённый —
-                // описаниями. Живут оба, поэтому читаем оба.
-                const name = typeof family === "string" ? family : family?.family;
-                if (!name || families.has(name)) continue;
-                if (seen.has(name)) continue;
-                seen.add(name);
-                const described = typeof family === "string"
-                    ? { family: name, label: pack.name?.[locale] || pack.name?.en || name,
-                        modes: pack.modes || [] }
-                    : family;
-                offers.push({ ...described, packId: pack.id });
-            }
-        }
+        offers = buildOffers({
+            families, hidden: hiddenFamilies, catalog: catalogData, locale,
+        });
     }
 
     /** Offered families that would serve this UI mode. */
     function offersForMode(uiMode) {
-        const modes = backendModesOf(uiMode);
-        return offers.filter((offer) =>
-            (offer.modes || []).some((mode) => modes.includes(mode)));
+        return offersForModes(offers, backendModesOf(uiMode));
     }
 
     /** Families offering any backend of this UI mode, with their roles. */
     function familiesForMode(uiMode) {
-        const modes = backendModesOf(uiMode);
-        const out = new Map();
-        for (const family of families.values()) {
-            const found = modes.map((m) => family.modes.get(m)).filter(Boolean);
-            if (!found.length) continue;
-            // The primary backend runs when no reference is filled in; the
-            // edit backend takes over as soon as one is. Only Generate has
-            // that pairing — Inpaint and Upscale must not sprout reference
-            // slots just because the family can also edit (measured).
-            const primary = family.modes.get(modes[0]) || found[0];
-            const edit = modes.includes("edit") ? (family.modes.get("edit") || null) : null;
-            out.set(family.family, { family, primary, edit, label: family.label });
-        }
-        return out;
+        return rolesForModes(families, backendModesOf(uiMode));
     }
 
     const shell = createShell({
@@ -746,138 +654,48 @@ export async function openStudio(node, persist) {
         },
     });
 
-    // ── stage ───────────────────────────────────────────────────────────── //
-    const stageFit = document.createElement("div");
-    // Own token scope (nested scopes are harmless): stage chrome keeps its
-    // colours even if a mode ever hoists it out of the shell.
-    stageFit.className = `${TS_UI_CLASS} ts-istudio__stagefit`;
-    const stageEmpty = document.createElement("div");
-    stageEmpty.className = "ts-istudio__stageempty";
-    stageEmpty.textContent = t.stageEmpty;
-    const stageImg = document.createElement("img");
-    stageImg.style.display = "none";
-    stageImg.alt = "";
-    const caption = document.createElement("div");
-    caption.className = "ts-istudio__caption";
-    caption.style.display = "none";
-    const captionText = document.createElement("span");
-    // Recreate lives with the image it describes, and only appears when the
-    // studio actually knows how that image was made.
-    const recreateButton = document.createElement("button");
-    recreateButton.type = "button";
-    recreateButton.className = "ts-istudio__recreate";
-    recreateButton.textContent = t.recreate;
-    recreateButton.title = t.recreateTip;
-    recreateButton.style.display = "none";
-    caption.append(captionText, recreateButton);
-    // Всё, что показывает сцена, лежит внутри коробки зума: колесо приближает,
-    // средняя кнопка таскает, кнопка в углу возвращает вписанный вид.
-    const stageZoom = document.createElement("div");
-    stageZoom.className = "ts-istudio__zoom";
-    stageZoom.append(stageImg);
-    // Шторка «до и после» — для апскейла: результат нельзя оценить, глядя
-    // только на результат.
-    const compare = createCompare({ before: t.cmp.before, after: t.cmp.after });
-    stageZoom.appendChild(compare.element);
-    stageFit.append(stageEmpty, stageZoom);
-
-    // Сетка тайлов ложится поверх картинки на время тайлового прохода.
-    const tiles = createTileGrid();
-    stageZoom.appendChild(tiles.element);
-
-    const stageFitBtn = document.createElement("button");
-    stageFitBtn.type = "button";
-    stageFitBtn.className = "ts-istudio__fit";
-    stageFitBtn.textContent = "⤢";
-    stageFitBtn.title = t.fitView;
-    stageFit.appendChild(stageFitBtn);
-
-    const stageView = { scale: 1, x: 0, y: 0 };
-    function paintStageView() {
-        stageZoom.style.transform =
-            `translate(${stageView.x}px, ${stageView.y}px) scale(${stageView.scale})`;
-        stageFitBtn.classList.toggle("is-active", stageView.scale !== 1
-            || stageView.x !== 0 || stageView.y !== 0);
-    }
-    function fitStage() {
-        stageView.scale = 1;
-        stageView.x = 0;
-        stageView.y = 0;
-        paintStageView();
-    }
-    attachZoomPan(stageFit, {
-        zoomAt(clientX, clientY, factor) {
-            const rect = stageFit.getBoundingClientRect();
-            const x = clientX - rect.left;
-            const y = clientY - rect.top;
-            // Вписанный вид — это масштаб 1: картинка уже подогнана правилами
-            // CSS. Поэтому нижняя граница здесь единица, а не доля от неё.
-            const next = clampScale(stageView.scale * factor, 1);
-            if (next === stageView.scale) return;
-            stageView.x = x - ((x - stageView.x) / stageView.scale) * next;
-            stageView.y = y - ((y - stageView.y) / stageView.scale) * next;
-            stageView.scale = next;
-            paintStageView();
+    // ── сцена ───────────────────────────────────────────────────────────── //
+    // Всё, что показывает картинку, живёт в одном модуле: кадр, зум, шторка,
+    // сетка тайлов, подпись и память сцены по режимам (`_stage.js`).
+    const stage = createStage({
+        host: shell.stage,
+        strings: {
+            empty: t.stageEmpty,
+            fitView: t.fitView,
+            recreate: t.recreate,
+            recreateTip: t.recreateTip,
+            compare: { before: t.cmp.before, after: t.cmp.after },
         },
-        panBy(dx, dy) {
-            stageView.x += dx;
-            stageView.y += dy;
-            paintStageView();
+        onRecreate: (state) => {
+            applyStudioState(state).catch((err) => setStatus(String(err?.message || err)));
         },
-        reset: fitStage,
+        onChange: () => rememberWorkspace(),
     });
-    stageFitBtn.addEventListener("click", fitStage);
-    shell.stage.append(stageFit, caption);
+    const tiles = stage.tiles;
 
     let selectedResult = null;
-    // An image dropped into Upscale outranks the gallery selection.
-    let upscaleSource = "";
-
-    function setCaption(text, state) {
-        captionText.textContent = text || "";
-        recreateButton.style.display = state ? "" : "none";
-        recreateButton.onclick = state ? () => {
-            applyStudioState(state).catch((err) => setStatus(String(err?.message || err)));
-        } : null;
-        caption.style.display = (text || state) ? "" : "none";
-    }
 
     function showResult(result) {
         selectedResult = result;
-        compare.hide();
-        comparePair = null;
-        fitStage();
-        upscaleSource = "";
-        stageImg.src = `/view?filename=${encodeURIComponent(result.image.filename)}` +
-            `&subfolder=${encodeURIComponent(result.image.subfolder || "")}&type=output`;
-        stageImg.style.display = "";
-        stageEmpty.style.display = "none";
-        rememberWorkspace();
         const params = result.params || {};
         const bits = [];
         if (params.width && params.height) bits.push(`${params.width} × ${params.height}`);
         if (params.seed !== undefined) bits.push(`seed ${params.seed}`);
-        setCaption(bits.join(" · "), result.state || null);
+        stage.show(
+            `/view?filename=${encodeURIComponent(result.image.filename)}`
+            + `&subfolder=${encodeURIComponent(result.image.subfolder || "")}&type=output`,
+            { caption: bits.join(" · "), state: result.state || null });
     }
 
     function showLibraryAsset(asset) {
-        compare.hide();
-        comparePair = null;
-        fitStage();
-        stageImg.src = asset.url;
         // Картинка из библиотеки — тоже то, что на экране: если её взяли под
         // апскейл, она обязана вернуться вместе с рабочим местом.
-        if (asset.annotated) upscaleSource = asset.annotated;
-        rememberWorkspace();
-        stageImg.style.display = "";
-        stageEmpty.style.display = "none";
-        setCaption(asset.name || "", null);
+        stage.show(asset.url, { caption: asset.name || "", keepSource: true });
+        stage.setSource(asset.annotated || "");
     }
 
     function showPreviewBlob(blob) {
-        stageImg.src = URL.createObjectURL(blob);
-        stageImg.style.display = "";
-        stageEmpty.style.display = "none";
+        stage.showBlob(blob);
     }
 
     const helpPanel = createHelpPanel({
@@ -959,7 +777,7 @@ export async function openStudio(node, persist) {
         onCatalog: (data) => setOffers(data),
         onInstalled: () => reloadBackends(),
         onWantAccess: () => gate.prompt(),
-        readiness: (pack) => packReadiness(pack),
+        readiness: (pack) => packReadiness(pack, backends),
     });
     // Read the catalogue once at startup rather than on first open: the deck
     // needs the offers to draw them, and a studio that never opens this screen
@@ -1378,8 +1196,8 @@ export async function openStudio(node, persist) {
         let modeSources = {};
         if (activeModeId === "inpaint" && inpaintMode) {
             modeSources = inpaintMode.currentSources?.() || {};
-        } else if (upscaleSource) {
-            modeSources = { source_image: upscaleSource };
+        } else if (stage.source()) {
+            modeSources = { source_image: stage.source() };
         } else if (selectedResult?.image) {
             // После прогона на сцене лежит результат, а не то, что положили
             // руками: сохраняем именно его — это и есть «что было на экране».
@@ -1456,11 +1274,6 @@ export async function openStudio(node, persist) {
 
     let inpaintMode = null;
     let activeModeId = null;
-    // Сцена принадлежит режиму: исходник апскейла не имеет отношения к
-    // генерации и не должен там появляться.
-    const stageByMode = new Map();
-    // Что сейчас сравнивает шторка — чтобы вернуть её вместе со сценой.
-    let comparePair = null;
 
     function ensureInpaintMounted() {
         if (!inpaintMode) {
@@ -1490,73 +1303,33 @@ export async function openStudio(node, persist) {
                 onSourceChange: () => rememberWorkspace(),
             });
             shell.stage.appendChild(inpaintMode.element);
-            const selectedUrl = stageImg.src && stageImg.style.display !== "none" ? stageImg.src : "";
+            const selectedUrl = stage.url();
             if (selectedUrl) {
                 inpaintMode.setImageFromUrl(selectedUrl).catch(() => {});
             }
         }
         inpaintMode.element.style.display = "";
-        stageFit.style.display = "none";
-        caption.style.display = "none";
+        // Инпэйнт рисует на своём холсте — сцена вместе с подписью уходит.
+        stage.setVisible(false);
     }
 
     function leaveInpaint() {
         if (inpaintMode) inpaintMode.element.style.display = "none";
-        stageFit.style.display = "";
-    }
-
-    /**
-     * Что сейчас на сцене — в память режима, из которого уходим.
-     *
-     * Картинка принадлежит задаче: исходник апскейла не имеет отношения к
-     * генерации, и появляться там не должен. Раньше сцена была одна на всю
-     * студию, и картинка «переезжала» за человеком по вкладкам.
-     */
-    function rememberStage() {
-        if (!activeModeId) return;
-        stageByMode.set(activeModeId, {
-            src: stageImg.style.display === "none" ? "" : stageImg.src || "",
-            upscaleSource,
-            caption: caption.textContent || "",
-            compare: compare.isActive() ? comparePair : null,
-        });
-    }
-
-    /** Вернуть сцену того режима, в который входим. */
-    function restoreStage(modeId) {
-        const kept = stageByMode.get(modeId) || null;
-        upscaleSource = kept?.upscaleSource || "";
-        compare.hide();
-        if (kept?.compare?.before && kept?.compare?.after) {
-            compare.show(kept.compare.before, kept.compare.after);
-            stageImg.style.display = "none";
-            stageEmpty.style.display = "none";
-            return;
-        }
-        if (kept?.src) {
-            stageImg.src = kept.src;
-            stageImg.style.display = "";
-            stageEmpty.style.display = "none";
-        } else {
-            stageImg.removeAttribute("src");
-            stageImg.style.display = "none";
-            stageEmpty.style.display = "";
-        }
-        setCaption(kept?.caption || "", null);
-        fitStage();
+        stage.setVisible(true);
     }
 
     function selectMode(modeId) {
-        if (activeModeId && activeModeId !== modeId) rememberStage();
+        // Сцена принадлежит режиму: исходник апскейла не имеет отношения к
+        // генерации, и «переезжать» за человеком по вкладкам не должен.
+        if (activeModeId && activeModeId !== modeId) stage.remember(activeModeId);
         shell.setMode(modeId);
         activeModeId = modeId;
         // Промпт живёт по режимам: у инпэйнта своя задача, у генерации своя.
         // Снимок уходящей деки помечен её собственной областью (`deckScope`),
         // поэтому переключить область можно прямо здесь.
         memory.setScope(modeId);
-        // Сцена, шторка и исходник — свои у каждого режима. Инпэйнт рисует на
-        // собственном холсте и сцены не касается.
-        if (modeId !== "inpaint") restoreStage(modeId);
+        // Инпэйнт рисует на собственном холсте и сцены не касается.
+        if (modeId !== "inpaint") stage.restore(modeId);
         tiles.hide();
         rememberWorkspace();
         if (modeId === "inpaint") ensureInpaintMounted();
@@ -1575,12 +1348,12 @@ export async function openStudio(node, persist) {
      * family's edit graph — one rail tab, two backends.
      */
     function runBackend() {
-        if (activeModeId !== "generate" || !activeBackend) return activeBackend;
-        const role = familiesForMode("generate").get(activeBackend.manifest.family);
-        const hasRef = Object.values(values.__refs || {}).some(Boolean);
-        if (hasRef && role?.edit?.available) return role.edit;
-        if (!hasRef && role?.primary?.available) return role.primary;
-        return activeBackend;
+        return backendForRun({
+            mode: activeModeId,
+            backend: activeBackend,
+            roles: familiesForMode("generate"),
+            refs: values.__refs,
+        });
     }
 
     // ── run ─────────────────────────────────────────────────────────────── //
@@ -1658,22 +1431,14 @@ export async function openStudio(node, persist) {
         // Filled reference slots become image params; empty ones become
         // dropParams so the patcher removes their optional branches.
         // Что лежало на сцене до прогона — для шторки сравнения в апскейле.
-        const sourceBeforeRun = activeModeId === "upscale" && stageImg.src
-            && stageImg.style.display !== "none" ? stageImg.src : "";
-        // Считаем превью этого прогона: пропуск первых шагов должен работать
-        // на каждом запуске, а не один раз за сессию.
-        let previewsSeen = 0;
-        // Тайлы у своего резчика считаются по очереди: после
-        // TS_ImageBatchToImageList ComfyUI гоняет остаток графа по одному
-        // куску, и сэмплер стартует заново на каждом. Значит номер текущего
-        // тайла — это число перезапусков прогресса, а не догадка. Замерено:
-        // два тайла дали ровно два прогона 1..3.
-        let tileIndex = 0;
-        let lastSamplerValue = 0;
-        let runStage = "";
-        let samplerFraction = null;
-        let nodesDone = 0;
-        let nodesTotal = 0;
+        const sourceBeforeRun = activeModeId === "upscale" ? stage.url() : "";
+
+        // Весь ход прогона считает отдельный автомат (`_progress.js`): этап по
+        // узлу, номер тайла по перезапускам сэмплера, доля шагов. Здесь
+        // остаётся только показ.
+        const progress = createRunProgress({
+            classOf: (nodeId) => patched?.[nodeId]?.class_type || "",
+        });
 
         /**
          * Нарисовать ход: заполнение полосы и словами — что происходит.
@@ -1684,14 +1449,16 @@ export async function openStudio(node, persist) {
          */
         function paintProgress() {
             if (!deckWidgets) return;
-            const nodePart = nodesTotal > 0 ? nodesDone / nodesTotal : 0;
-            const pct = samplerFraction === null
+            const now = progress.get();
+            const nodePart = now.nodesTotal > 0 ? now.nodesDone / now.nodesTotal : 0;
+            const pct = now.samplerFraction === null
                 ? Math.round(nodePart * 66)
-                : Math.round(66 + samplerFraction * 34);
+                : Math.round(66 + now.samplerFraction * 34);
             deckWidgets.progress.classList.add("is-active");
             deckWidgets.progressFill.style.width = `${Math.max(2, Math.min(100, pct))}%`;
-            const label = t.stages[runStage] || t.stages.other;
-            const steps = samplerFraction === null ? "" : ` ${Math.round(samplerFraction * 100)}%`;
+            const label = t.stages[now.stage] || t.stages.other;
+            const steps = now.samplerFraction === null
+                ? "" : ` ${Math.round(now.samplerFraction * 100)}%`;
             deckWidgets.hint.textContent = queueCount > 1
                 ? `${label}${steps} · ${t.queued(queueCount)}` : `${label}${steps}`;
         }
@@ -1714,8 +1481,8 @@ export async function openStudio(node, persist) {
         if (activeModeId === "upscale") {
             // A dropped image wins over the gallery selection: it is the more
             // deliberate act of the two.
-            if (upscaleSource) {
-                runValues.source_image = upscaleSource;
+            if (stage.source()) {
+                runValues.source_image = stage.source();
             } else if (selectedResult) {
                 try {
                     const url = "/view?" + new URLSearchParams({
@@ -1787,8 +1554,8 @@ export async function openStudio(node, persist) {
         // загрузки моделей, и пустой экран в это время читается как «ничего не
         // происходит». Пока работа не началась, по клеткам бежит волна.
         if (activeModeId === "upscale") {
-            const area = stageImg.getBoundingClientRect();
-            const host = stageZoom.getBoundingClientRect();
+            const area = stage.imageRect();
+            const host = stage.hostRect();
             const grid = plannedTileGrid(patched, runValues);
             // Сетку рисуем только когда её геометрия известна точно. Там, где
             // режет движок (тайловый VAE), число приходит лишь с первым
@@ -1815,76 +1582,51 @@ export async function openStudio(node, persist) {
                 // внутри своего шага. Пока сэмплер не начал, полоса живёт по
                 // узлам: раньше она просто стояла пустой всё время загрузки.
                 onNode: (nodeId) => {
-                    const stage = stageOf(patched?.[nodeId]?.class_type);
+                    const { changed } = progress.node(nodeId);
                     // Сетка в апскейле живёт от нажатия до результата: она и
                     // есть индикатор этого режима. Гасить её на смене этапа
                     // значило бы мигать ею на каждом узле графа.
-                    if (stage !== runStage && activeModeId !== "upscale") tiles.hide();
-                    runStage = stage;
-                    if (stage !== "sample") samplerFraction = null;
+                    if (changed && activeModeId !== "upscale") tiles.hide();
                     paintProgress();
                 },
                 onNodeProgress: (done, total) => {
-                    nodesDone = done;
-                    nodesTotal = total;
+                    progress.nodes(done, total);
                     paintProgress();
                 },
                 onProgress: (value, max, nodeId) => {
-                    // Этап определяем по узлу из самого события: `executing`
-                    // на этой сборке приходит пустым, и без этого весь прогон
-                    // выглядел безликим «работаю».
-                    if (nodeId !== undefined && patched?.[nodeId]) {
-                        const stage = stageOf(patched[nodeId].class_type);
-                        if (stage !== runStage && activeModeId !== "upscale") tiles.hide();
-                        runStage = stage;
-                    }
-                    // Тайловый VAE отчитывается за КАЖДЫЙ тайл, и тогда `max`
-                    // — их число: сетку можно вести точно. Свой резчик наружу
-                    // не сообщает ничего, поэтому там сетка уже стоит (её
-                    // посчитали до запуска), а ход берётся долей от сэмплера.
-                    const perTile = (runStage === "decode" || runStage === "encode") && max > 1;
-                    const area = stageImg.getBoundingClientRect();
-                    const host = stageZoom.getBoundingClientRect();
-                    if (perTile) {
-                        if (!tiles.isActive() || tiles.size().total !== max) {
-                            tiles.showByCount(max, area, host);
+                    // Всё, «что это было», решает автомат: тайлы у движка,
+                    // который их считает, или номер куска по перезапуску
+                    // сэмплера у того, который молчит.
+                    const step = progress.progress(value, max, nodeId);
+                    const area = stage.imageRect();
+                    const host = stage.hostRect();
+                    if (step.kind === "tiles") {
+                        if (!tiles.isActive() || tiles.size().total !== step.tileTotal) {
+                            tiles.showByCount(step.tileTotal, area, host);
                         } else {
                             tiles.place(area, host);
                         }
-                        tiles.advance(value);
-                        nodesDone = Math.max(nodesDone, 0);
-                        paintProgress();
-                        return;
-                    }
-                    samplerFraction = max ? value / max : null;
-                    if (tiles.isActive()) {
-                        // Значение пошло назад — начался следующий тайл.
-                        if (value <= lastSamplerValue && lastSamplerValue > 0) {
-                            tileIndex += 1;
-                        }
-                        lastSamplerValue = value;
+                        tiles.advance(step.tileIndex);
+                    } else if (tiles.isActive()) {
                         tiles.place(area, host);
-                        tiles.advance(tileIndex);
+                        tiles.advance(step.tileIndex);
                     }
-                    runStage = "sample";
                     paintProgress();
                 },
                 onPreview: (blob) => {
+                    const shot = progress.preview(PREVIEW_SKIP_STEPS);
                     // Пока стоит сетка, превью — это НЕ кадр целиком, а один
-                    // конкретный тайл. Раньше он растягивался во весь экран, и
-                    // человек видел мельтешение обрывков; теперь он вписан в
-                    // свою клетку — туда, где окажется в готовом кадре. Кадр
-                    // собирается на глазах в том же порядке, в каком считается.
+                    // конкретный тайл, и место у него своё: там, где он окажется
+                    // в готовом кадре. Раньше он растягивался во весь экран, и
+                    // человек видел мельтешение обрывков.
                     if (tiles.isActive()) {
-                        tiles.setCellImage(tileIndex, blob);
+                        tiles.setCellImage(shot.tileIndex, blob);
                         return;
                     }
                     // Первые шаги — почти чистый шум: быстрый декодер латента
-                    // показывает его честно, и выглядит это пугающе, особенно
-                    // когда оно лежит поверх лица. Ничего полезного там ещё
-                    // нет, поэтому показ начинается с третьего шага.
-                    previewsSeen += 1;
-                    if (previewsSeen <= PREVIEW_SKIP_STEPS) return;
+                    // показывает его честно, и поверх лица это выглядит
+                    // пугающе, а полезного там ещё нет.
+                    if (!shot.show) return;
                     if (activeModeId === "inpaint" && inpaintMode) inpaintMode.showPreview(blob);
                     else showPreviewBlob(blob);
                 },
@@ -1908,9 +1650,7 @@ export async function openStudio(node, persist) {
                                 subfolder: image.subfolder || "",
                                 type: image.type || "output",
                             });
-                            if (compare.show(sourceBeforeRun, resultUrl)) {
-                                comparePair = { before: sourceBeforeRun, after: resultUrl };
-                                stageImg.style.display = "none";
+                            if (stage.showCompare(sourceBeforeRun, resultUrl)) {
                                 setStatus(t.cmp.shown);
                             }
                         }
@@ -1952,7 +1692,7 @@ export async function openStudio(node, persist) {
     }
 
     function setStatus(message) {
-        setCaption(message, null);
+        stage.setCaption(message, null);
         console.warn("[TS Studio]", message);
     }
 
@@ -2090,10 +1830,8 @@ export async function openStudio(node, persist) {
                 setStatus(t.sourceGone);
             }
         } else if (uiMode === "upscale") {
-            upscaleSource = source;
-            stageImg.src = url;
-            stageImg.style.display = "";
-            stageEmpty.style.display = "none";
+            stage.show(url, { keepSource: true });
+            stage.setSource(source);
         }
     }
 
@@ -2112,17 +1850,11 @@ export async function openStudio(node, persist) {
             ensureInpaintMounted();
             await inpaintMode.setImageFromBlob(blob, item.name || "dropped.png");
         } else if (activeModeId === "upscale") {
-            upscaleSource = annotated;
-            // Новая картинка отменяет старое сравнение: шторка показывает пару
-            // прошлого прогона и накрыла бы собой то, что человек только что
-            // принёс.
-            compare.hide();
-            comparePair = null;
-            fitStage();
-            stageImg.src = URL.createObjectURL(blob);
-            stageImg.style.display = "";
-            stageEmpty.style.display = "none";
-            rememberWorkspace();
+            // Новая картинка отменяет старое сравнение: шторка показывает
+            // пару прошлого прогона и накрыла бы собой то, что человек только
+            // что принёс. `show` снимает её сам.
+            stage.show(URL.createObjectURL(blob), { keepSource: true });
+            stage.setSource(annotated);
         } else {
             const current = controlsByParam.get("__refs")?.get() || [];
             const slot = current.findIndex((v) => !v);
@@ -2146,7 +1878,7 @@ export async function openStudio(node, persist) {
     });
     shell.activeMode = () => activeModeId;
 
-    const stageDropTeardown = makeDropZone(stageFit, {
+    const stageDropTeardown = makeDropZone(stage.element, {
         max: 1,
         onDrop: async ([item]) => {
             try {
