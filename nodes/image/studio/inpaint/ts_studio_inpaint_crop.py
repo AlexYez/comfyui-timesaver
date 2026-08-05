@@ -81,8 +81,8 @@ class TS_StudioInpaintCrop(IO.ComfyNode):
                         "VAE divides by 8 or 16 and the transformer patches the "
                         "latent on top of that, so a size off the grid costs an "
                         "internal pad and a resize on the way back. 64 is the "
-                        "safe general answer; Qwen wants 56, whose arithmetic "
-                        "follows its own encoder rather than a power of two."
+                        "safe general answer; Qwen follows its own encoder on a "
+                        "56 grid, where 112 also keeps the latent side even."
                     ),
                 ),
                 IO.Float.Input(
