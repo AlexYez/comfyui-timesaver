@@ -46,11 +46,18 @@ export function ensurePromptToolStyles() {
     border:none;background:var(--ts-elevated);color:var(--ts-text);font-size:10px;line-height:1;
     cursor:pointer;padding:0}
 .ts-ptools__chips{display:flex;flex-wrap:wrap;gap:4px;padding-top:4px}
-.ts-ptools__chip{display:inline-flex;align-items:center;gap:5px;padding:2px 7px;
+.ts-ptools__chip{display:inline-flex;align-items:center;gap:5px;padding:2px 7px 2px 2px;
     border:1px solid var(--ts-border);border-radius:999px;background:var(--ts-sunken);
     color:var(--ts-text);font-size:var(--ts-fs-sm);cursor:pointer}
 .ts-ptools__chip:hover{border-color:var(--ts-border-strong)}
 .ts-ptools__chip span{color:var(--ts-muted)}
+/* Выбранный стиль показывается своей же картинкой — той, что стоит на карточке
+   в списке. Название стиля («Cinematic 35mm») говорит меньше, чем кадр в этом
+   стиле, а на выбранное смотрят чаще, чем в список. */
+.ts-ptools__chipthumb{width:20px;height:20px;border-radius:999px;object-fit:cover;
+    flex:0 0 auto;display:block;background:var(--ts-bg)}
+.ts-ptools__chip .ts-ptools__stylefallback{width:20px;height:20px;border-radius:999px;
+    font-size:var(--ts-fs-xs);flex:0 0 auto;aspect-ratio:auto}
 .ts-ptools__popover{position:absolute;z-index:40;left:0;right:0;top:calc(100% + 4px);
     display:none;flex-direction:column;gap:6px;padding:8px;max-height:340px;
     background:var(--ts-elevated);border:1px solid var(--ts-border);
@@ -445,6 +452,20 @@ export function mountPromptTools(options) {
             chip.title = t.pt.removeStyle;
             const x = document.createElement("span");
             x.textContent = "×";
+            if (style.preview) {
+                const thumb = document.createElement("img");
+                thumb.className = "ts-ptools__chipthumb";
+                thumb.alt = "";
+                thumb.loading = "lazy";
+                thumb.src = `/ts_styles/preview?path=${encodeURIComponent(style.preview)}`;
+                // Пропавшее превью не должно оставлять дыру в ярлычке.
+                thumb.addEventListener("error", () => {
+                    thumb.replaceWith(fallbackTile(styleName(style)));
+                }, { once: true });
+                chip.appendChild(thumb);
+            } else {
+                chip.appendChild(fallbackTile(styleName(style)));
+            }
             chip.append(document.createTextNode(styleName(style)), x);
             chip.addEventListener("click", () => {
                 state.styles = state.styles.filter((s) => s.id !== style.id);

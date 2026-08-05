@@ -306,7 +306,7 @@ const STRINGS = {
             save: "Сохраняю",
             other: "Работаю",
         },
-        cmp: { before: "было", after: "стало",
+        cmp: { before: "до", after: "после",
                shown: "Тяните шторку — слева исходник." },
         fitView: "Вписать в рабочую область (двойной клик; колесо — масштаб)",
         run: "Run",
@@ -961,6 +961,9 @@ export async function openStudio(node, persist) {
     // values still on screen belong to the old one — capturing under the wrong
     // key silently moved Inpaint's numbers onto Upscale.
     let deckGraphId = "";
+    // Режим, в котором собрана нынешняя дека. Снимок её значений помечается
+    // именно им: сборка новой деки происходит уже после смены режима.
+    let deckScope = "";
     // Set while the deck is rebuilt on purpose to forget: without it the
     // capture that precedes every rebuild would write the values still on
     // screen straight back into the store we just cleared.
@@ -978,19 +981,21 @@ export async function openStudio(node, persist) {
             try {
                 const value = instance.get();
                 if (instance.kind === "refs") sessionRefs.set(param, value);
-                else memory.remember(key, param, instance.kind, value);
+                else memory.remember(key, param, instance.kind, value, deckScope);
             } catch (err) {
                 console.warn(`[TS Studio] could not keep '${param}'`, err);
             }
         }
         if (promptTools) {
-            memory.remember(key, "__styles", "styles", promptTools.getSelectedStyles());
+            memory.remember(key, "__styles", "styles",
+                promptTools.getSelectedStyles(), deckScope);
         }
     }
 
     function buildDeck(backend) {
         captureValues();
         deckGraphId = graphKey(backend);
+        deckScope = activeModeId || backend.manifest.mode;
         for (const instance of controlInstances) instance.teardown?.();
         controlInstances = [];
         controlsByParam = new Map();
@@ -1393,6 +1398,16 @@ export async function openStudio(node, persist) {
     function selectMode(modeId) {
         shell.setMode(modeId);
         activeModeId = modeId;
+        // Промпт живёт по режимам: у инпэйнта своя задача, у генерации своя.
+        // Снимок уходящей деки помечен её собственной областью (`deckScope`),
+        // поэтому переключить область можно прямо здесь.
+        memory.setScope(modeId);
+        // Шторка сравнения принадлежит апскейлу: это его результат рядом с его
+        // исходником. В генерации она показывала бы чужую пару.
+        if (modeId !== "upscale" && compare.isActive()) {
+            compare.hide();
+            stageImg.style.display = stageImg.src ? "" : "none";
+        }
         rememberWorkspace();
         if (modeId === "inpaint") ensureInpaintMounted();
         else leaveInpaint();
@@ -1657,9 +1672,10 @@ export async function openStudio(node, persist) {
                     // сеткой поверх кадра, а не полосой внизу.
                     const tiled = (runStage === "decode" || runStage === "encode") && max > 1;
                     if (tiled) {
-                        if (!tiles.isActive()) {
-                            tiles.show(max, stageImg.getBoundingClientRect(), stageZoom.getBoundingClientRect());
-                        }
+                        const area = stageImg.getBoundingClientRect();
+                        const host = stageZoom.getBoundingClientRect();
+                        if (!tiles.isActive()) tiles.show(max, area, host);
+                        else tiles.place(area, host);
                         tiles.advance(value);
                         nodesDone = Math.max(nodesDone, 0);
                         paintProgress();
@@ -1670,6 +1686,13 @@ export async function openStudio(node, persist) {
                     paintProgress();
                 },
                 onPreview: (blob) => {
+                    // Пока идёт тайловый проход, превью — это НЕ кадр целиком,
+                    // а отдельные куски по 512 пикселей. Каждый такой кусок
+                    // подменял бы картинку на сцене целиком, и вместо работы
+                    // человек видел мельтешение тайлов, растянутых во весь
+                    // экран. Ход этого прохода показывает сетка поверх
+                    // неподвижного кадра — куски здесь просто выбрасываются.
+                    if (tiles.isActive()) return;
                     // Первые шаги — почти чистый шум: быстрый декодер латента
                     // показывает его честно, и выглядит это пугающе, особенно
                     // когда оно лежит поверх лица. Ничего полезного там ещё
@@ -1902,6 +1925,11 @@ export async function openStudio(node, persist) {
             await inpaintMode.setImageFromBlob(blob, item.name || "dropped.png");
         } else if (activeModeId === "upscale") {
             upscaleSource = annotated;
+            // Новая картинка отменяет старое сравнение: шторка показывает пару
+            // прошлого прогона и накрыла бы собой то, что человек только что
+            // принёс.
+            compare.hide();
+            fitStage();
             stageImg.src = URL.createObjectURL(blob);
             stageImg.style.display = "";
             stageEmpty.style.display = "none";

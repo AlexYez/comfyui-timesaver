@@ -45,11 +45,15 @@ export function ensureCompareStyles() {
     display:flex;align-items:center;justify-content:center;gap:3px}
 .ts-cmp__grip svg{display:block}
 .ts-cmp__taglayer{position:absolute;inset:0;pointer-events:none}
-.ts-cmp__tag{position:absolute;top:10px;padding:3px 10px;border-radius:var(--ts-radius-sm);
-    font-size:var(--ts-fs-sm);font-weight:600;letter-spacing:.02em;
-    color:#fff;background:rgba(0,0,0,.55);pointer-events:none}
-.ts-cmp__tag--before{left:10px}
-.ts-cmp__tag--after{right:10px}
+/* Подписи лежат поверх пользовательской картинки. Подложки под ними нет —
+   она резала кадр чёрной полосой; вместо неё тень, которая держит контраст и
+   на белом небе, и на чёрной тени. Цвет по той же причине не токен темы. */
+.ts-cmp__tag{position:absolute;top:12px;font-size:20px;font-weight:700;
+    letter-spacing:.06em;text-transform:uppercase;color:#fff;
+    text-shadow:0 1px 3px rgba(0,0,0,.9),0 0 14px rgba(0,0,0,.55);
+    pointer-events:none}
+.ts-cmp__tag--before{left:14px}
+.ts-cmp__tag--after{right:14px}
 `;
     document.head.appendChild(style);
 }

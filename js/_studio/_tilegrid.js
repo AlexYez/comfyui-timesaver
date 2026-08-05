@@ -105,19 +105,27 @@ export function createTileGrid() {
         show(count, area, host) {
             if (!(count > 1) || !area || !(area.height > 0)) return false;
             build(count, area.width / area.height);
-            // Сетка ложится РОВНО на картинку, а не на всю сцену: тайлы
-            // считаются по кадру, и клетки, висящие на пустом фоне, врали бы о
-            // том, где идёт работа.
-            if (host) {
-                element.style.left = `${area.left - host.left}px`;
-                element.style.top = `${area.top - host.top}px`;
-                element.style.width = `${area.width}px`;
-                element.style.height = `${area.height}px`;
-                element.style.right = "auto";
-                element.style.bottom = "auto";
-            }
+            this.place(area, host);
             element.classList.add("is-active");
             return true;
+        },
+        /**
+         * Положить сетку РОВНО на картинку, а не на всю сцену: тайлы считаются
+         * по кадру, и клетки, висящие на пустом фоне, врали бы о том, где идёт
+         * работа. Зовётся и на каждом шаге — картинку могли отмасштабировать
+         * или подвинуть, пока проход идёт.
+         *
+         * @param {DOMRect} area прямоугольник картинки
+         * @param {DOMRect} host прямоугольник коробки, в которой лежит сетка
+         */
+        place(area, host) {
+            if (!host || !area || !(area.height > 0)) return;
+            element.style.left = `${area.left - host.left}px`;
+            element.style.top = `${area.top - host.top}px`;
+            element.style.width = `${area.width}px`;
+            element.style.height = `${area.height}px`;
+            element.style.right = "auto";
+            element.style.bottom = "auto";
         },
         /** Сколько тайлов готово. */
         advance(done) {
