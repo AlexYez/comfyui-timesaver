@@ -157,9 +157,25 @@ export function openFullscreenOverlay(content, options = {}) {
     keyAnchor.setAttribute("aria-hidden", "true");
     modal.append(keyAnchor);
 
-    // Unified close control (top-right). Same button, same place, every editor.
+    // Закрытие живёт в СОБСТВЕННОЙ верхней полосе, а не поверх содержимого.
+    //
+    // Раньше кнопка висела `position:fixed` в правом верхнем углу, и каждый
+    // редактор был обязан помнить про её угол (`--ts-fs-safe-right`). Помнили
+    // не все и не всегда: панель инструментов инпэйнта, а потом и кнопка
+    // сброса масштаба на сцене успели на неё налезть. Полоса решает это раз и
+    // навсегда: у кнопки своя строка, содержимое начинается под ней, и
+    // налезать больше нечему.
     let closeButton = null;
+    let topbar = null;
     if (showClose) {
+        topbar = doc.createElement("div");
+        topbar.className = "ts-ui-fs-topbar";
+        if (label) {
+            const title = doc.createElement("span");
+            title.className = "ts-ui-fs-title";
+            title.textContent = label;
+            topbar.append(title);
+        }
         closeButton = doc.createElement("button");
         closeButton.type = "button";
         closeButton.className = "ts-ui-btn ts-ui-btn--icon ts-ui-fs-close";
@@ -171,7 +187,10 @@ export function openFullscreenOverlay(content, options = {}) {
             event.stopPropagation();
             close();
         });
-        (frame || modal).append(closeButton);
+        topbar.append(closeButton);
+        const host = frame || modal;
+        host.classList.add("ts-ui-fs-hastopbar");
+        host.prepend(topbar);
     }
 
     const parkFocus = () => { try { keyAnchor.focus(); } catch { /* not focusable yet */ } };

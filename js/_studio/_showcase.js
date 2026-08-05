@@ -8,7 +8,8 @@
 // Previews are cached by the browser like any image; nothing is downloaded
 // until this screen is opened.
 
-import { TS_UI_CLASS, ensureThemeStyles, pickLocaleStrings } from "../_theme.js";
+import { TS_UI_CLASS, createPanelBackButton, ensureThemeStyles,
+    pickLocaleStrings } from "../_theme.js";
 
 const STYLE_ID = "ts-studio-showcase-styles";
 
@@ -65,7 +66,7 @@ export function ensureShowcaseStyles() {
     background:var(--ts-bg)}
 .ts-showcase.is-open{display:flex}
 .ts-showcase__head{display:flex;align-items:center;gap:8px;padding:8px 12px;
-    padding-right:var(--ts-fs-safe-right);border-bottom:1px solid var(--ts-border)}
+    border-bottom:1px solid var(--ts-border)}
 .ts-showcase__title{font-weight:700}
 .ts-showcase__body{flex:1;overflow-y:auto;padding:16px 18px;display:flex;
     flex-direction:column;gap:16px}
@@ -143,13 +144,8 @@ export function createShowcase(options) {
     const title = document.createElement("span");
     title.className = "ts-showcase__title";
     title.textContent = t.title;
-    const close = document.createElement("button");
-    close.type = "button";
-    close.className = "ts-ui-btn";
-    close.textContent = t.close;
-    close.style.marginLeft = "auto";
-    close.addEventListener("click", () => setOpen(false));
-    head.append(title, close);
+    const back = createPanelBackButton(t.close, () => setOpen(false));
+    head.append(back, title);
 
     const body = document.createElement("div");
     body.className = "ts-showcase__body";

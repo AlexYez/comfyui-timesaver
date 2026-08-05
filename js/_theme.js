@@ -98,6 +98,7 @@ function themeCss() {
      34px box plus the 12px inset on each side. Any bar or header that runs to
      the top edge reserves this much on its right so the two never overlap. */
   --ts-fs-safe-right:58px;
+  --ts-fs-topbar:42px;
 
   --ts-font:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
   --ts-fs-xs:10px;
@@ -235,16 +236,31 @@ function themeCss() {
    own size to sit on instead of the far corner of the screen. */
 .ts-ui-fs-frame{position:relative;display:flex;min-height:0;max-width:100%;max-height:100%;
   animation:ts-ui-dialog-in .16s ease-out}
-.ts-ui-modal--center .ts-ui-fs-close{position:absolute;top:10px;right:10px;box-shadow:none}
+.ts-ui-modal--center .ts-ui-fs-close{box-shadow:none}
 @keyframes ts-ui-dialog-in{from{opacity:0;transform:translateY(8px) scale(.985)}
   to{opacity:1;transform:none}}
 /* Unified fullscreen close button — every editor opened via openFullscreenOverlay
-   gets the SAME control in the SAME spot (top-right). It floats above whatever
-   the editor draws, so anything an editor puts along the top must keep out of
-   that corner: reserve --ts-fs-safe-right on the right of any top-edge bar,
-   header or panel rather than guessing an inset per node. */
-.ts-ui-fs-close{position:fixed;top:12px;right:12px;z-index:11050;width:34px;height:34px;
-  box-shadow:0 2px 10px rgba(0,0,0,.35)}
+   gets the SAME control in the SAME spot (top-right), on a bar of its own. */
+.ts-ui-fs-topbar{position:absolute;top:0;left:0;right:0;height:var(--ts-fs-topbar,42px);
+  z-index:11050;display:flex;align-items:center;justify-content:flex-end;gap:10px;
+  padding:0 10px;background:var(--ts-surface);border-bottom:1px solid var(--ts-border)}
+.ts-ui-fs-title{margin-right:auto;font-size:var(--ts-fs-sm);color:var(--ts-muted);
+  letter-spacing:.02em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* Содержимое начинается ПОД полосой — потому налезать на кнопку больше нечему.
+   Отступом, а не margin: содержимое редакторов растянуто на всю коробку по
+   высоте, и внешний отступ у такого элемента ничего не сдвинет. */
+.ts-ui-modal.ts-ui-fs-hastopbar{padding-top:var(--ts-fs-topbar,42px);box-sizing:border-box}
+.ts-ui-fs-frame.ts-ui-fs-hastopbar{padding-top:var(--ts-fs-topbar,42px);box-sizing:border-box}
+.ts-ui-fs-close{width:30px;height:30px;flex:0 0 auto}
+/* Под полосой резервировать угол больше не нужно: кнопка закрытия туда не
+   попадает. Резерв остаётся объявленным для редакторов без полосы, а здесь
+   схлопывается до обычного поля — иначе у каждой шапки справа так и висела бы
+   мёртвая полоса в 58 px. */
+.ts-ui-modal.ts-ui-fs-hastopbar,.ts-ui-fs-frame.ts-ui-fs-hastopbar{--ts-fs-safe-right:12px}
+/* Возврат с внутреннего экрана редактора. Стоит СЛЕВА, у названия экрана:
+   справа вверху живёт закрытие всей студии, и две одинаковые кнопки рядом
+   заставляли бы гадать, какая из них что закроет. */
+.ts-ui-back{width:28px;height:28px;flex:0 0 auto}
 /* Hidden focus anchor: parks keyboard focus so ComfyUI's graph hotkeys
    (Ctrl+Z → ChangeTracker) stay out of an open editor. See CLAUDE.md §12.5. */
 .ts-ui-keyanchor{position:fixed;left:-9999px;top:-9999px;width:1px;height:1px;opacity:0;
@@ -385,6 +401,27 @@ function launchIconSvg() {
  *   The label is shared; what the editor is for legitimately differs per node.
  * @returns {HTMLButtonElement}
  */
+/**
+ * Кнопка «назад» для экрана, живущего внутри редактора (наборы, настройки,
+ * справка). Одна стрелка и один размер на весь пак.
+ *
+ * @param {string} label подпись для подсказки и озвучки
+ * @param {() => void} [onBack]
+ * @returns {HTMLButtonElement}
+ */
+export function createPanelBackButton(label, onBack) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "ts-ui-btn ts-ui-btn--icon ts-ui-back";
+    button.title = label;
+    button.setAttribute("aria-label", label);
+    button.innerHTML = '<svg viewBox="0 0 16 16" width="14" height="14" fill="none"'
+        + ' stroke="currentColor" stroke-width="1.7" stroke-linecap="round"'
+        + ' stroke-linejoin="round"><path d="M9.5 3.5 5 8l4.5 4.5"/></svg>';
+    if (typeof onBack === "function") button.addEventListener("click", onBack);
+    return button;
+}
+
 export function createOpenInterfaceButton(onOpen, options = {}) {
     const button = document.createElement("button");
     button.type = "button";

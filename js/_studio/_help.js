@@ -6,7 +6,7 @@
 // stage, rendering the app's markdown pages (en/ru) with a tiny built-in
 // converter — no external libraries, CSP-clean.
 
-import { TS_UI_CLASS, ensureThemeStyles } from "../_theme.js";
+import { TS_UI_CLASS, createPanelBackButton, ensureThemeStyles } from "../_theme.js";
 
 const STYLE_ID = "ts-studio-help-styles";
 const HINTS_KEY = "ts-studio.hints";
@@ -20,9 +20,9 @@ export function ensureHelpStyles() {
 .ts-help{position:absolute;inset:0;z-index:8;display:none;flex-direction:column;
     background:var(--ts-bg)}
 .ts-help.is-open{display:flex}
-/* Keeps its own controls out from under the fullscreen close button. */
+/* Своя шапка экрана: возврат слева, дальше название и переключатель. */
 .ts-help__head{display:flex;align-items:center;gap:8px;padding:8px 12px;
-    padding-right:var(--ts-fs-safe-right);border-bottom:1px solid var(--ts-border)}
+    border-bottom:1px solid var(--ts-border)}
 .ts-help__title{font-weight:700}
 .ts-help__body{flex:1;overflow-y:auto;padding:14px 18px;max-width:760px}
 .ts-help__body h1{font-size:16px;margin:0 0 8px}
@@ -107,12 +107,8 @@ export function createHelpPanel(options) {
     hintToggle.addEventListener("change", () =>
         applyHintSetting(options.studioRoot, hintToggle.checked));
     hintRow.append(hintToggle, document.createTextNode(options.t.help.hintsToggle));
-    const close = document.createElement("button");
-    close.type = "button";
-    close.className = "ts-ui-btn";
-    close.textContent = options.t.help.closeLabel;
-    close.addEventListener("click", () => toggle(false));
-    head.append(title, hintRow, close);
+    const back = createPanelBackButton(options.t.help.closeLabel, () => toggle(false));
+    head.append(back, title, hintRow);
     const body = document.createElement("div");
     body.className = "ts-help__body";
     panel.append(head, body);

@@ -8,7 +8,8 @@
 // The panel renders from a declared list, so adding a setting is one entry
 // here plus one reader wherever it applies.
 
-import { TS_UI_CLASS, ensureThemeStyles, pickLocaleStrings } from "../_theme.js";
+import { TS_UI_CLASS, createPanelBackButton, ensureThemeStyles,
+    pickLocaleStrings } from "../_theme.js";
 
 // The panel owns its own wording: it is the only place these lines appear, and
 // keeping them here means adding a setting does not touch the app's table.
@@ -149,9 +150,9 @@ export function ensureSettingsStyles() {
     background:var(--ts-bg)}
 .ts-settings.is-open{display:flex}
 /* The panel runs to the top edge, so its own Close keeps clear of the
-   fullscreen close button in the corner. */
+   own screen inside the studio: back on the left, nothing on the right. */
 .ts-settings__head{display:flex;align-items:center;gap:8px;padding:8px 12px;
-    padding-right:var(--ts-fs-safe-right);border-bottom:1px solid var(--ts-border)}
+    border-bottom:1px solid var(--ts-border)}
 .ts-settings__title{font-weight:700}
 .ts-settings__body{flex:1;overflow-y:auto;padding:16px 18px;max-width:560px;
     display:flex;flex-direction:column;gap:18px}
@@ -197,13 +198,8 @@ export function createSettingsPanel(options) {
     const title = document.createElement("span");
     title.className = "ts-settings__title";
     title.textContent = t.title;
-    const close = document.createElement("button");
-    close.type = "button";
-    close.className = "ts-ui-btn";
-    close.textContent = t.close;
-    close.style.marginLeft = "auto";
-    close.addEventListener("click", () => setOpen(false));
-    head.append(title, close);
+    const back = createPanelBackButton(t.close, () => setOpen(false));
+    head.append(back, title);
 
     const body = document.createElement("div");
     body.className = "ts-settings__body";

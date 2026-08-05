@@ -77,11 +77,21 @@ export async function loadBackends(fetcher, objectInfo, apiFetcher = null) {
         entry.available = entry.problems.length === 0;
     }
     // User override: same manifest id keeps only the user version.
+    //
+    // Перекрытие обязано быть слышным. Установленный набор молча заменяет
+    // встроенный граф того же id, и студия начинает считать по нему — включая
+    // случай, когда встроенный новее. Час замеров однажды ушёл именно сюда:
+    // правки в графе не действовали, потому что работал не он.
     const byId = new Map();
     for (const backend of backends) {
         const key = backend.manifest?.id || backend.id;
         const existing = byId.get(key);
-        if (!existing || backend.tier === "user") byId.set(key, backend);
+        if (!existing) { byId.set(key, backend); continue; }
+        if (backend.tier !== "user") continue;
+        backend.shadows = existing.id;
+        console.warn(`[TS Studio] installed pack '${backend.id}' overrides the built-in `
+            + `'${existing.id}' (${key}) — the studio runs the installed graph`);
+        byId.set(key, backend);
     }
     return [...byId.values()];
 }

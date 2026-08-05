@@ -12,6 +12,7 @@ import { ensureControlStyles, getControlRenderer, randomSeed } from "../../_stud
 import { createGallery } from "../../_studio/_gallery.js";
 import { createCompare } from "../../_studio/_compare.js";
 import { attachZoomPan, clampScale } from "../../_studio/_zoompan.js";
+import { createTileGrid } from "../../_studio/_tilegrid.js";
 import { createRunner } from "../../_studio/_runner.js";
 import { loadBackends, groupByFamily } from "../../_studio/_backends.js";
 import { patchBackend } from "../../_studio/_markers.js";
@@ -682,6 +683,10 @@ export async function openStudio(node, persist) {
     stageZoom.appendChild(compare.element);
     stageFit.append(stageEmpty, stageZoom);
 
+    // Сетка тайлов ложится поверх картинки на время тайлового прохода.
+    const tiles = createTileGrid();
+    stageZoom.appendChild(tiles.element);
+
     const stageFitBtn = document.createElement("button");
     stageFitBtn.type = "button";
     stageFitBtn.className = "ts-istudio__fit";
@@ -748,6 +753,7 @@ export async function openStudio(node, persist) {
             `&subfolder=${encodeURIComponent(result.image.subfolder || "")}&type=output`;
         stageImg.style.display = "";
         stageEmpty.style.display = "none";
+        rememberWorkspace();
         const params = result.params || {};
         const bits = [];
         if (params.width && params.height) bits.push(`${params.width} × ${params.height}`);
@@ -759,6 +765,10 @@ export async function openStudio(node, persist) {
         compare.hide();
         fitStage();
         stageImg.src = asset.url;
+        // Картинка из библиотеки — тоже то, что на экране: если её взяли под
+        // апскейл, она обязана вернуться вместе с рабочим местом.
+        if (asset.annotated) upscaleSource = asset.annotated;
+        rememberWorkspace();
         stageImg.style.display = "";
         stageEmpty.style.display = "none";
         setCaption(asset.name || "", null);
@@ -1253,8 +1263,25 @@ export async function openStudio(node, persist) {
 
     function currentStudioState() {
         if (!activeBackend) return null;
-        const inpaintSources = activeModeId === "inpaint" && inpaintMode
-            ? inpaintMode.currentSources?.() || {} : {};
+        // Исходник берётся у того режима, который сейчас на экране.
+        //
+        // Раньше спрашивали только инпэйнт, и апскейл после закрытия студии
+        // возвращался с пустой сценой: его картинка живёт не в холсте маски, а
+        // на самой сцене, и в снимок не попадала.
+        let modeSources = {};
+        if (activeModeId === "inpaint" && inpaintMode) {
+            modeSources = inpaintMode.currentSources?.() || {};
+        } else if (upscaleSource) {
+            modeSources = { source_image: upscaleSource };
+        } else if (selectedResult?.image) {
+            // После прогона на сцене лежит результат, а не то, что положили
+            // руками: сохраняем именно его — это и есть «что было на экране».
+            const image = selectedResult.image;
+            const sub = String(image.subfolder || "").replace(/\\/g, "/");
+            const path = sub ? `${sub}/${image.filename}` : image.filename;
+            modeSources = { source_image: `${path} [${image.type || "output"}]` };
+        }
+        const inpaintSources = modeSources;
         return buildStudioState({
             backendId: activeBackend.manifest.id,
             family: activeBackend.manifest.family,
@@ -1604,6 +1631,7 @@ export async function openStudio(node, persist) {
                 // узлам: раньше она просто стояла пустой всё время загрузки.
                 onNode: (nodeId) => {
                     const stage = stageOf(patched?.[nodeId]?.class_type);
+                    if (stage !== runStage) tiles.hide();
                     runStage = stage;
                     if (stage !== "sample") samplerFraction = null;
                     paintProgress();
@@ -1613,7 +1641,30 @@ export async function openStudio(node, persist) {
                     nodesTotal = total;
                     paintProgress();
                 },
-                onProgress: (value, max) => {
+                onProgress: (value, max, nodeId) => {
+                    // Этап определяем по узлу из самого события: `executing`
+                    // на этой сборке приходит пустым, и без этого весь прогон
+                    // выглядел безликим «работаю».
+                    if (nodeId !== undefined && patched?.[nodeId]) {
+                        const stage = stageOf(patched[nodeId].class_type);
+                        if (stage !== runStage) tiles.hide();
+                        runStage = stage;
+                    }
+                    // Тайловый VAE отчитывается за каждый тайл — по этому же
+                    // событию, только `max` там равен их числу, а не шагам
+                    // сэмплера. Отличаем по этапу: на кодировании и сборке
+                    // картинки прогресс — это тайлы, и показывать его надо
+                    // сеткой поверх кадра, а не полосой внизу.
+                    const tiled = (runStage === "decode" || runStage === "encode") && max > 1;
+                    if (tiled) {
+                        if (!tiles.isActive()) {
+                            tiles.show(max, stageImg.getBoundingClientRect(), stageZoom.getBoundingClientRect());
+                        }
+                        tiles.advance(value);
+                        nodesDone = Math.max(nodesDone, 0);
+                        paintProgress();
+                        return;
+                    }
                     samplerFraction = max ? value / max : null;
                     runStage = "sample";
                     paintProgress();
@@ -1633,6 +1684,7 @@ export async function openStudio(node, persist) {
                     liveRuns.delete(promptId);
                     updateHint();
                     deckWidgets.progress.classList.remove("is-active");
+                    tiles.hide();
                     for (const image of images) {
                         const result = { image, params: { ...runValues }, state: studioState };
                         gallery.add(result);   // лента сессии показывает и черновики
@@ -1853,6 +1905,7 @@ export async function openStudio(node, persist) {
             stageImg.src = URL.createObjectURL(blob);
             stageImg.style.display = "";
             stageEmpty.style.display = "none";
+            rememberWorkspace();
         } else {
             const current = controlsByParam.get("__refs")?.get() || [];
             const slot = current.findIndex((v) => !v);

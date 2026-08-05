@@ -46,7 +46,11 @@ export function createRunner(api) {
         }),
         track("progress", ({ detail }) => {
             const job = jobs.get(detail?.prompt_id);
-            if (job) job.callbacks.onProgress?.(detail.value, detail.max);
+            // Номер узла берётся ИЗ САМОГО прогресса: событие `executing` на
+            // части сборок ComfyUI приходит пустым, без node, и определить по
+            // нему этап нельзя. А здесь узел есть всегда — заодно это
+            // единственный способ отличить шаги сэмплера от тайлов VAE.
+            if (job) job.callbacks.onProgress?.(detail.value, detail.max, detail.node);
         }),
         track("b_preview", ({ detail }) => {
             // Binary previews carry no prompt id; they belong to whatever is

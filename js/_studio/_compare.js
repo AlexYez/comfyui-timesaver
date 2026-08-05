@@ -34,13 +34,22 @@ export function ensureCompareStyles() {
     /* Поверх пользовательской картинки: обязана читаться на любом кадре,
        поэтому не токен темы. */
     background:rgba(255,255,255,.9);box-shadow:0 0 0 1px rgba(0,0,0,.45)}
-.ts-cmp__grip{position:absolute;top:50%;left:50%;width:30px;height:30px;transform:translate(-50%,-50%);
-    border-radius:50%;background:rgba(255,255,255,.92);box-shadow:0 1px 4px rgba(0,0,0,.45);
-    display:flex;align-items:center;justify-content:center;color:#111;font-size:13px}
-.ts-cmp__tag{position:absolute;top:8px;padding:2px 7px;border-radius:var(--ts-radius-sm);
-    font-size:var(--ts-fs-xs);color:#fff;background:rgba(0,0,0,.55);pointer-events:none}
-.ts-cmp__tag--before{left:8px}
-.ts-cmp__tag--after{right:8px}
+/* Ручка — кружок тёмной темы, а не белая нашлёпка: студия тёмная, и светлое
+   пятно посреди кадра выбивалось из всего остального. Стрелки нарисованы
+   flex-раскладкой, а не текстовым глифом: глиф садится на базовую линию
+   шрифта и никогда не стоит ровно по центру круга. */
+.ts-cmp__grip{position:absolute;top:50%;left:50%;width:32px;height:32px;
+    transform:translate(-50%,-50%);border-radius:50%;
+    background:var(--ts-elevated);border:1px solid var(--ts-border-strong);
+    box-shadow:var(--ts-shadow-sm);color:var(--ts-text);
+    display:flex;align-items:center;justify-content:center;gap:3px}
+.ts-cmp__grip svg{display:block}
+.ts-cmp__taglayer{position:absolute;inset:0;pointer-events:none}
+.ts-cmp__tag{position:absolute;top:10px;padding:3px 10px;border-radius:var(--ts-radius-sm);
+    font-size:var(--ts-fs-sm);font-weight:600;letter-spacing:.02em;
+    color:#fff;background:rgba(0,0,0,.55);pointer-events:none}
+.ts-cmp__tag--before{left:10px}
+.ts-cmp__tag--after{right:10px}
 `;
     document.head.appendChild(style);
 }
@@ -66,7 +75,10 @@ export function createCompare(strings = {}) {
     handle.className = "ts-cmp__handle";
     const grip = document.createElement("div");
     grip.className = "ts-cmp__grip";
-    grip.textContent = "⇔";
+    grip.innerHTML = '<svg viewBox="0 0 20 12" width="20" height="12" fill="none"'
+        + ' stroke="currentColor" stroke-width="1.6" stroke-linecap="round"'
+        + ' stroke-linejoin="round"><path d="M7.5 2.5 4 6l3.5 3.5"/>'
+        + '<path d="M12.5 2.5 16 6l-3.5 3.5"/></svg>';
     handle.appendChild(grip);
     const tagBefore = document.createElement("div");
     tagBefore.className = "ts-cmp__tag ts-cmp__tag--before";
@@ -74,15 +86,30 @@ export function createCompare(strings = {}) {
     const tagAfter = document.createElement("div");
     tagAfter.className = "ts-cmp__tag ts-cmp__tag--after";
     tagAfter.textContent = strings.after || "after";
-    box.append(before, after, handle, tagBefore, tagAfter);
+    // Подписи лежат в собственных слоях во всю ширину коробки: только так
+    // проценты обрезки совпадают с положением шторки, а не отмеряются от
+    // ширины самой надписи.
+    const tagLayerBefore = document.createElement("div");
+    tagLayerBefore.className = "ts-cmp__taglayer";
+    tagLayerBefore.appendChild(tagBefore);
+    const tagLayerAfter = document.createElement("div");
+    tagLayerAfter.className = "ts-cmp__taglayer";
+    tagLayerAfter.appendChild(tagAfter);
+    box.append(before, after, handle, tagLayerBefore, tagLayerAfter);
     element.appendChild(box);
 
     let split = 0.5;
 
     function paint() {
+        const pct = (split * 100).toFixed(2);
         // Правая часть — результат: обрезаем его слева по шторке.
-        after.style.clipPath = `inset(0 0 0 ${(split * 100).toFixed(2)}%)`;
-        handle.style.left = `${(split * 100).toFixed(2)}%`;
+        after.style.clipPath = `inset(0 0 0 ${pct}%)`;
+        handle.style.left = `${pct}%`;
+        // Подписи живут в своих половинах и режутся той же линией. Утащил
+        // шторку до упора влево — «до» исчезло вместе со своей половиной, и
+        // сразу видно, что на экране только результат.
+        tagLayerBefore.style.clipPath = `inset(0 ${(100 - split * 100).toFixed(2)}% 0 0)`;
+        tagLayerAfter.style.clipPath = `inset(0 0 0 ${pct}%)`;
     }
 
     function setFromClientX(clientX) {
