@@ -351,6 +351,23 @@ def local_catalog(path: Path | None = None) -> dict:
     }
 
 
+def _family_names(entry: dict) -> list[str]:
+    """Имена семейств пака, в каком бы виде их ни записали.
+
+    Каталог сборки перечисляет их строками (`"krea2"`), а собранный каталог
+    доставки — описаниями (`{"family": "krea2", "label": …, "modes": […]}`).
+    Живут оба, и код, знающий только одну форму, тихо не находит ничего: ровно
+    так устаревший набор и остался висеть в менеджере после разделения паков
+    по моделям.
+    """
+    out = []
+    for item in (entry.get("families") or []):
+        name = item if isinstance(item, str) else (item or {}).get("family")
+        if name:
+            out.append(str(name))
+    return out
+
+
 def _cover_url(entry: dict, base: str = LOCAL_CATALOG_BASE) -> str:
     """A cover an <img> can load.
 
@@ -390,6 +407,13 @@ def merge_catalogs(local: dict, remote: dict, *, product: str = PRODUCT) -> list
         by_id[pack_id] = resolved
         order.append(pack_id)
 
+    # Семейства, которые уже едут в сборке. Нужны, чтобы не показывать паки
+    # прошлой раскладки: опубликованный `image/pro-2026-08` вёз krea2 вместе с
+    # ideogram, и после разделения по моделям он остался висеть отдельной
+    # карточкой «не установлен» в чужом уровне, предлагая то, что и так есть.
+    shipped = {name for entry in local.get("packs", [])
+               for name in _family_names(entry)}
+
     for entry in remote_packs:
         if not isinstance(entry, dict):
             continue
@@ -398,6 +422,11 @@ def merge_catalogs(local: dict, remote: dict, *, product: str = PRODUCT) -> list
             continue
         known = by_id.get(pack_id)
         if known is None:
+            families = set(_family_names(entry))
+            if families and families <= shipped:
+                logger.info("%s пропускаю пак %s: всё, что он везёт, уже в сборке",
+                            LOG_PREFIX, pack_id)
+                continue
             by_id[pack_id] = {**entry, "builtin": False, "cover": _cover_url(entry)}
             order.append(pack_id)
             continue

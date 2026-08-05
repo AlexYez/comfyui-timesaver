@@ -12,7 +12,7 @@ import { ensureControlStyles, getControlRenderer, randomSeed } from "../../_stud
 import { createGallery } from "../../_studio/_gallery.js";
 import { createCompare } from "../../_studio/_compare.js";
 import { attachZoomPan, clampScale } from "../../_studio/_zoompan.js";
-import { createTileGrid } from "../../_studio/_tilegrid.js";
+import { createTileGrid, splitterGrid } from "../../_studio/_tilegrid.js";
 import { createRunner } from "../../_studio/_runner.js";
 import { applyPackState, loadBackends, groupByFamily } from "../../_studio/_backends.js";
 import { patchBackend } from "../../_studio/_markers.js";
@@ -562,6 +562,37 @@ export async function openStudio(node, persist) {
     }
 
     /**
+     * Сколько клеток нарежет этот граф — и какой формы.
+     *
+     * Своя нода-резчик про свою сетку наружу не сообщает ничего, а показать
+     * её надо ДО того, как она отработает: между нажатием и первым событием
+     * проходят десятки секунд загрузки моделей. Поэтому геометрия считается
+     * здесь, по параметрам самого графа и размеру исходника.
+     *
+     * @param {object} graph готовый к отправке граф
+     * @param {object} runValues значения контролов этого прогона
+     * @returns {{cols:number,rows:number}|null} null, если резчика в графе нет
+     */
+    function plannedTileGrid(graph, run) {
+        const nodes = Object.values(graph || {});
+        const splitter = nodes.find((node) => node?.class_type === "TS_ImageTileSplitter");
+        if (!splitter) return null;
+        const width = stageImg.naturalWidth || 0;
+        const height = stageImg.naturalHeight || 0;
+        if (!(width > 0 && height > 0)) return null;
+        // Увеличение стоит перед резкой, поэтому сетка считается по конечному
+        // размеру, а не по исходному.
+        const scale = Number(run?.scale ?? run?.upscale ?? 1) || 1;
+        return splitterGrid({
+            width: Math.round(width * scale),
+            height: Math.round(height * scale),
+            tileWidth: Number(splitter.inputs?.tile_width) || 0,
+            tileHeight: Number(splitter.inputs?.tile_height) || 0,
+            overlap: Number(splitter.inputs?.overlap) || 0,
+        });
+    }
+
+    /**
      * Готов ли пак к работе на этой машине.
      *
      * Считается по живым бэкендам, а не по каталогу: какие файлы моделей нужны,
@@ -814,6 +845,7 @@ export async function openStudio(node, persist) {
     function showResult(result) {
         selectedResult = result;
         compare.hide();
+        comparePair = null;
         fitStage();
         upscaleSource = "";
         stageImg.src = `/view?filename=${encodeURIComponent(result.image.filename)}` +
@@ -830,6 +862,7 @@ export async function openStudio(node, persist) {
 
     function showLibraryAsset(asset) {
         compare.hide();
+        comparePair = null;
         fitStage();
         stageImg.src = asset.url;
         // Картинка из библиотеки — тоже то, что на экране: если её взяли под
@@ -1308,6 +1341,7 @@ export async function openStudio(node, persist) {
     async function stopRuns(all) {
         const ids = [...liveRuns];
         if (!ids.length) return;
+        tiles.hide();   // работа прекращена — сетке над кадром делать нечего
         setStatus(all ? t.stoppingAll(ids.length) : t.stopping);
         const targets = all ? ids : ids.slice(0, 1);
         for (const id of targets) {
@@ -1422,6 +1456,11 @@ export async function openStudio(node, persist) {
 
     let inpaintMode = null;
     let activeModeId = null;
+    // Сцена принадлежит режиму: исходник апскейла не имеет отношения к
+    // генерации и не должен там появляться.
+    const stageByMode = new Map();
+    // Что сейчас сравнивает шторка — чтобы вернуть её вместе со сценой.
+    let comparePair = null;
 
     function ensureInpaintMounted() {
         if (!inpaintMode) {
@@ -1466,19 +1505,59 @@ export async function openStudio(node, persist) {
         stageFit.style.display = "";
     }
 
+    /**
+     * Что сейчас на сцене — в память режима, из которого уходим.
+     *
+     * Картинка принадлежит задаче: исходник апскейла не имеет отношения к
+     * генерации, и появляться там не должен. Раньше сцена была одна на всю
+     * студию, и картинка «переезжала» за человеком по вкладкам.
+     */
+    function rememberStage() {
+        if (!activeModeId) return;
+        stageByMode.set(activeModeId, {
+            src: stageImg.style.display === "none" ? "" : stageImg.src || "",
+            upscaleSource,
+            caption: caption.textContent || "",
+            compare: compare.isActive() ? comparePair : null,
+        });
+    }
+
+    /** Вернуть сцену того режима, в который входим. */
+    function restoreStage(modeId) {
+        const kept = stageByMode.get(modeId) || null;
+        upscaleSource = kept?.upscaleSource || "";
+        compare.hide();
+        if (kept?.compare?.before && kept?.compare?.after) {
+            compare.show(kept.compare.before, kept.compare.after);
+            stageImg.style.display = "none";
+            stageEmpty.style.display = "none";
+            return;
+        }
+        if (kept?.src) {
+            stageImg.src = kept.src;
+            stageImg.style.display = "";
+            stageEmpty.style.display = "none";
+        } else {
+            stageImg.removeAttribute("src");
+            stageImg.style.display = "none";
+            stageEmpty.style.display = "";
+        }
+        setCaption(kept?.caption || "", null);
+        fitStage();
+    }
+
     function selectMode(modeId) {
+        if (activeModeId && activeModeId !== modeId) rememberStage();
         shell.setMode(modeId);
         activeModeId = modeId;
         // Промпт живёт по режимам: у инпэйнта своя задача, у генерации своя.
         // Снимок уходящей деки помечен её собственной областью (`deckScope`),
         // поэтому переключить область можно прямо здесь.
         memory.setScope(modeId);
-        // Шторка сравнения принадлежит апскейлу: это его результат рядом с его
-        // исходником. В генерации она показывала бы чужую пару.
-        if (modeId !== "upscale" && compare.isActive()) {
-            compare.hide();
-            stageImg.style.display = stageImg.src ? "" : "none";
-        }
+        // Сцена, шторка и исходник — свои у каждого режима. Инпэйнт рисует на
+        // собственном холсте и сцены не касается.
+        if (modeId !== "inpaint") restoreStage(modeId);
+        tiles.hide();
         rememberWorkspace();
         if (modeId === "inpaint") ensureInpaintMounted();
         else leaveInpaint();
@@ -1584,6 +1663,13 @@ export async function openStudio(node, persist) {
         // Считаем превью этого прогона: пропуск первых шагов должен работать
         // на каждом запуске, а не один раз за сессию.
         let previewsSeen = 0;
+        // Тайлы у своего резчика считаются по очереди: после
+        // TS_ImageBatchToImageList ComfyUI гоняет остаток графа по одному
+        // куску, и сэмплер стартует заново на каждом. Значит номер текущего
+        // тайла — это число перезапусков прогресса, а не догадка. Замерено:
+        // два тайла дали ровно два прогона 1..3.
+        let tileIndex = 0;
+        let lastSamplerValue = 0;
         let runStage = "";
         let samplerFraction = null;
         let nodesDone = 0;
@@ -1697,6 +1783,19 @@ export async function openStudio(node, persist) {
             setStatus(t.runFailed(err.message));
             return;
         }
+        // Сетка встаёт на кадр ДО отправки: дальше идут десятки секунд
+        // загрузки моделей, и пустой экран в это время читается как «ничего не
+        // происходит». Пока работа не началась, по клеткам бежит волна.
+        if (activeModeId === "upscale") {
+            const area = stageImg.getBoundingClientRect();
+            const host = stageZoom.getBoundingClientRect();
+            const grid = plannedTileGrid(patched, runValues);
+            // Сетку рисуем только когда её геометрия известна точно. Там, где
+            // режет движок (тайловый VAE), число приходит лишь с первым
+            // событием — до него честнее мягкое ожидание, чем сетка наугад.
+            if (grid) tiles.prepare(grid, area, host);
+            else tiles.warm(area, host);
+        }
         try {
             queueCount += 1;
             updateHint();
@@ -1717,7 +1816,10 @@ export async function openStudio(node, persist) {
                 // узлам: раньше она просто стояла пустой всё время загрузки.
                 onNode: (nodeId) => {
                     const stage = stageOf(patched?.[nodeId]?.class_type);
-                    if (stage !== runStage) tiles.hide();
+                    // Сетка в апскейле живёт от нажатия до результата: она и
+                    // есть индикатор этого режима. Гасить её на смене этапа
+                    // значило бы мигать ею на каждом узле графа.
+                    if (stage !== runStage && activeModeId !== "upscale") tiles.hide();
                     runStage = stage;
                     if (stage !== "sample") samplerFraction = null;
                     paintProgress();
@@ -1733,37 +1835,50 @@ export async function openStudio(node, persist) {
                     // выглядел безликим «работаю».
                     if (nodeId !== undefined && patched?.[nodeId]) {
                         const stage = stageOf(patched[nodeId].class_type);
-                        if (stage !== runStage) tiles.hide();
+                        if (stage !== runStage && activeModeId !== "upscale") tiles.hide();
                         runStage = stage;
                     }
-                    // Тайловый VAE отчитывается за каждый тайл — по этому же
-                    // событию, только `max` там равен их числу, а не шагам
-                    // сэмплера. Отличаем по этапу: на кодировании и сборке
-                    // картинки прогресс — это тайлы, и показывать его надо
-                    // сеткой поверх кадра, а не полосой внизу.
-                    const tiled = (runStage === "decode" || runStage === "encode") && max > 1;
-                    if (tiled) {
-                        const area = stageImg.getBoundingClientRect();
-                        const host = stageZoom.getBoundingClientRect();
-                        if (!tiles.isActive()) tiles.show(max, area, host);
-                        else tiles.place(area, host);
+                    // Тайловый VAE отчитывается за КАЖДЫЙ тайл, и тогда `max`
+                    // — их число: сетку можно вести точно. Свой резчик наружу
+                    // не сообщает ничего, поэтому там сетка уже стоит (её
+                    // посчитали до запуска), а ход берётся долей от сэмплера.
+                    const perTile = (runStage === "decode" || runStage === "encode") && max > 1;
+                    const area = stageImg.getBoundingClientRect();
+                    const host = stageZoom.getBoundingClientRect();
+                    if (perTile) {
+                        if (!tiles.isActive() || tiles.size().total !== max) {
+                            tiles.showByCount(max, area, host);
+                        } else {
+                            tiles.place(area, host);
+                        }
                         tiles.advance(value);
                         nodesDone = Math.max(nodesDone, 0);
                         paintProgress();
                         return;
                     }
                     samplerFraction = max ? value / max : null;
+                    if (tiles.isActive()) {
+                        // Значение пошло назад — начался следующий тайл.
+                        if (value <= lastSamplerValue && lastSamplerValue > 0) {
+                            tileIndex += 1;
+                        }
+                        lastSamplerValue = value;
+                        tiles.place(area, host);
+                        tiles.advance(tileIndex);
+                    }
                     runStage = "sample";
                     paintProgress();
                 },
                 onPreview: (blob) => {
-                    // Пока идёт тайловый проход, превью — это НЕ кадр целиком,
-                    // а отдельные куски по 512 пикселей. Каждый такой кусок
-                    // подменял бы картинку на сцене целиком, и вместо работы
-                    // человек видел мельтешение тайлов, растянутых во весь
-                    // экран. Ход этого прохода показывает сетка поверх
-                    // неподвижного кадра — куски здесь просто выбрасываются.
-                    if (tiles.isActive()) return;
+                    // Пока стоит сетка, превью — это НЕ кадр целиком, а один
+                    // конкретный тайл. Раньше он растягивался во весь экран, и
+                    // человек видел мельтешение обрывков; теперь он вписан в
+                    // свою клетку — туда, где окажется в готовом кадре. Кадр
+                    // собирается на глазах в том же порядке, в каком считается.
+                    if (tiles.isActive()) {
+                        tiles.setCellImage(tileIndex, blob);
+                        return;
+                    }
                     // Первые шаги — почти чистый шум: быстрый декодер латента
                     // показывает его честно, и выглядит это пугающе, особенно
                     // когда оно лежит поверх лица. Ничего полезного там ещё
@@ -1794,6 +1909,7 @@ export async function openStudio(node, persist) {
                                 type: image.type || "output",
                             });
                             if (compare.show(sourceBeforeRun, resultUrl)) {
+                                comparePair = { before: sourceBeforeRun, after: resultUrl };
                                 stageImg.style.display = "none";
                                 setStatus(t.cmp.shown);
                             }
@@ -1818,6 +1934,7 @@ export async function openStudio(node, persist) {
                     liveRuns.delete(promptId);
                     updateHint();
                     deckWidgets.progress.classList.remove("is-active");
+                    tiles.hide();
                     setStatus(t.runFailed(message));
                 },
                 onCancelled: () => {
@@ -2000,6 +2117,7 @@ export async function openStudio(node, persist) {
             // прошлого прогона и накрыла бы собой то, что человек только что
             // принёс.
             compare.hide();
+            comparePair = null;
             fitStage();
             stageImg.src = URL.createObjectURL(blob);
             stageImg.style.display = "";
