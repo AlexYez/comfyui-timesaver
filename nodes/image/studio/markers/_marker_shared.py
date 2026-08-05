@@ -29,7 +29,11 @@ LABEL_TOOLTIP = (
 
 
 def annotated_input_path(value: str) -> str:
-    """Absolute path of an annotated upload name ("sub/file.png [input]").
+    """Absolute path of an annotated upload name ("sub/file.png [temp]").
+
+    Пометка в скобках называет папку ComfyUI: студия кладёт рабочие файлы во
+    временную (`temp`), потому что входную индексируют сторонние браузеры
+    ассетов и маски начинали появляться в библиотеке рядом с работами.
 
     Raises RuntimeError with a TS-prefixed message when the file is missing —
     a backend run with an unset image parameter should fail with words, not a
@@ -41,7 +45,10 @@ def annotated_input_path(value: str) -> str:
     if not name:
         raise RuntimeError(f"{LOG_PREFIX} Image parameter is empty — the studio did not set it.")
     if not folder_paths.exists_annotated_filepath(name):
-        raise RuntimeError(f"{LOG_PREFIX} Image '{name}' was not found in the ComfyUI input folder.")
+        raise RuntimeError(
+            f"{LOG_PREFIX} Image '{name}' is gone. Working files live in ComfyUI's "
+            "temp folder, which is cleared on restart — drop the picture in again."
+        )
     return folder_paths.get_annotated_filepath(name)
 
 

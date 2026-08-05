@@ -11,6 +11,7 @@ import { createShell, deckSection } from "../../_studio/_shell.js";
 import { ensureControlStyles, getControlRenderer, randomSeed } from "../../_studio/_controls.js";
 import { createGallery } from "../../_studio/_gallery.js";
 import { createCompare } from "../../_studio/_compare.js";
+import { attachZoomPan, clampScale } from "../../_studio/_zoompan.js";
 import { createRunner } from "../../_studio/_runner.js";
 import { loadBackends, groupByFamily } from "../../_studio/_backends.js";
 import { patchBackend } from "../../_studio/_markers.js";
@@ -140,6 +141,7 @@ const STRINGS = {
         },
         cmp: { before: "before", after: "after",
                shown: "Drag the divider — the original is on the left." },
+        fitView: "Fit to the work area (double-click, or wheel to zoom)",
         run: "Run",
         sourceGone: "The image of this sitting is no longer on disk — drop it in again.",
         stop: "Stop",
@@ -221,6 +223,7 @@ const STRINGS = {
             repaintTip: "Diffusion repaint: paint the mask, describe the change, press Run",
             brush: "Brush size ([ and ])",
             eraser: "Eraser — paint to take mask away (E, or hold Alt)",
+            fit: "Fit to the work area (double-click, or wheel to zoom)",
             keep: "Save",
             keepTip: "Keep this version in the library. Repaints are drafts until you do.",
             kept: "Saved to the library.",
@@ -304,6 +307,7 @@ const STRINGS = {
         },
         cmp: { before: "было", after: "стало",
                shown: "Тяните шторку — слева исходник." },
+        fitView: "Вписать в рабочую область (двойной клик; колесо — масштаб)",
         run: "Run",
         sourceGone: "Картинки этой сессии больше нет на диске — перетащите её заново.",
         stop: "Стоп",
@@ -385,6 +389,7 @@ const STRINGS = {
             repaintTip: "Диффузионная перерисовка: маска + описание изменения + Run",
             brush: "Размер кисти ([ и ])",
             eraser: "Ластик — стирает маску (E, или удерживая Alt)",
+            fit: "Вписать в рабочую область (двойной клик; колесо — масштаб)",
             keep: "Сохранить",
             keepTip: "Оставить эту версию в библиотеке. До этого перерисовки — черновики.",
             kept: "Сохранено в библиотеку.",
@@ -435,8 +440,19 @@ function ensureAppStyles() {
     const style = document.createElement("style");
     style.id = APP_STYLE_ID;
     style.textContent = `
-.ts-istudio__stagefit{position:absolute;inset:12px;display:flex;align-items:center;justify-content:center}
+.ts-istudio__stagefit{position:absolute;inset:12px;display:flex;align-items:center;
+    justify-content:center;overflow:hidden;touch-action:none}
+/* Масштаб и сдвиг живут на этой коробке, а не на самой картинке: так их видно
+   в одном месте и так же ведёт себя шторка сравнения. */
+.ts-istudio__zoom{display:flex;align-items:center;justify-content:center;
+    width:100%;height:100%;transform-origin:0 0;will-change:transform}
 .ts-istudio__stagefit img{max-width:100%;max-height:100%;object-fit:contain;border-radius:4px}
+.ts-istudio__fit{position:absolute;right:10px;top:10px;z-index:6;width:26px;height:26px;
+    display:none;align-items:center;justify-content:center;padding:0;cursor:pointer;
+    border:1px solid var(--ts-border);border-radius:var(--ts-radius-sm);
+    background:var(--ts-elevated);color:var(--ts-muted);font-size:13px}
+.ts-istudio__fit.is-active{display:flex}
+.ts-istudio__fit:hover{color:var(--ts-text)}
 .ts-istudio__stageempty{color:var(--ts-muted);font-size:var(--ts-fs-lg)}
 .ts-istudio__caption{position:absolute;left:10px;bottom:10px;padding:3px 5px 3px 8px;
     display:flex;align-items:center;gap:8px;font-size:var(--ts-fs-sm);
@@ -655,11 +671,59 @@ export async function openStudio(node, persist) {
     recreateButton.title = t.recreateTip;
     recreateButton.style.display = "none";
     caption.append(captionText, recreateButton);
-    stageFit.append(stageEmpty, stageImg);
+    // Всё, что показывает сцена, лежит внутри коробки зума: колесо приближает,
+    // средняя кнопка таскает, кнопка в углу возвращает вписанный вид.
+    const stageZoom = document.createElement("div");
+    stageZoom.className = "ts-istudio__zoom";
+    stageZoom.append(stageImg);
     // Шторка «до и после» — для апскейла: результат нельзя оценить, глядя
     // только на результат.
     const compare = createCompare({ before: t.cmp.before, after: t.cmp.after });
-    stageFit.appendChild(compare.element);
+    stageZoom.appendChild(compare.element);
+    stageFit.append(stageEmpty, stageZoom);
+
+    const stageFitBtn = document.createElement("button");
+    stageFitBtn.type = "button";
+    stageFitBtn.className = "ts-istudio__fit";
+    stageFitBtn.textContent = "⤢";
+    stageFitBtn.title = t.fitView;
+    stageFit.appendChild(stageFitBtn);
+
+    const stageView = { scale: 1, x: 0, y: 0 };
+    function paintStageView() {
+        stageZoom.style.transform =
+            `translate(${stageView.x}px, ${stageView.y}px) scale(${stageView.scale})`;
+        stageFitBtn.classList.toggle("is-active", stageView.scale !== 1
+            || stageView.x !== 0 || stageView.y !== 0);
+    }
+    function fitStage() {
+        stageView.scale = 1;
+        stageView.x = 0;
+        stageView.y = 0;
+        paintStageView();
+    }
+    attachZoomPan(stageFit, {
+        zoomAt(clientX, clientY, factor) {
+            const rect = stageFit.getBoundingClientRect();
+            const x = clientX - rect.left;
+            const y = clientY - rect.top;
+            // Вписанный вид — это масштаб 1: картинка уже подогнана правилами
+            // CSS. Поэтому нижняя граница здесь единица, а не доля от неё.
+            const next = clampScale(stageView.scale * factor, 1);
+            if (next === stageView.scale) return;
+            stageView.x = x - ((x - stageView.x) / stageView.scale) * next;
+            stageView.y = y - ((y - stageView.y) / stageView.scale) * next;
+            stageView.scale = next;
+            paintStageView();
+        },
+        panBy(dx, dy) {
+            stageView.x += dx;
+            stageView.y += dy;
+            paintStageView();
+        },
+        reset: fitStage,
+    });
+    stageFitBtn.addEventListener("click", fitStage);
     shell.stage.append(stageFit, caption);
 
     let selectedResult = null;
@@ -678,6 +742,7 @@ export async function openStudio(node, persist) {
     function showResult(result) {
         selectedResult = result;
         compare.hide();
+        fitStage();
         upscaleSource = "";
         stageImg.src = `/view?filename=${encodeURIComponent(result.image.filename)}` +
             `&subfolder=${encodeURIComponent(result.image.subfolder || "")}&type=output`;
@@ -692,6 +757,7 @@ export async function openStudio(node, persist) {
 
     function showLibraryAsset(asset) {
         compare.hide();
+        fitStage();
         stageImg.src = asset.url;
         stageImg.style.display = "";
         stageEmpty.style.display = "none";

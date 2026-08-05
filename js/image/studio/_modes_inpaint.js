@@ -166,6 +166,10 @@ export function createInpaintMode(ctx) {
         }
     });
 
+    // Вернуть картинку в рабочую область целиком — после зума колесом.
+    const fitBtn = tool("⤢", ctx.t.inp.fit);
+    fitBtn.addEventListener("click", () => mask.fit());
+
     const clear = tool("✕", ctx.t.inp.clear);
     clear.addEventListener("click", () => mask.clearMask());
     const undoBtn = tool("↶", ctx.t.inp.undo);
@@ -175,7 +179,7 @@ export function createInpaintMode(ctx) {
 
     const sep1 = separator();
     const sep2 = separator();
-    bar.append(seg, sep1, brush, paintSeg, clear, sep2, undoBtn, redoBtn, keep);
+    bar.append(seg, sep1, brush, paintSeg, clear, sep2, undoBtn, redoBtn, fitBtn, keep);
 
     const status = document.createElement("div");
     status.className = "ts-inp__status";

@@ -8,6 +8,7 @@
 // LamaCleanup's engine stays untouched — this is the kit's own surface.
 
 import { TS_UI_CLASS, ensureThemeStyles, getThemeColors } from "../_theme.js";
+import { attachZoomPan, clampScale } from "./_zoompan.js";
 
 const STYLE_ID = "ts-studio-mask-styles";
 
@@ -49,6 +50,7 @@ export function createMaskCanvas(options = {}) {
         image: null, imageW: 0, imageH: 0,
         scale: 1, offsetX: 0, offsetY: 0,
         brush: 48, eraser: false, painting: false,
+        fitted: true,          // вид не трогали — подгоняем под область
         undo: [], redo: [],
     };
     let maskCanvas = null;   // full-resolution mask (white = repaint)
@@ -56,18 +58,34 @@ export function createMaskCanvas(options = {}) {
 
     const PAD = 10;
 
+    /** Масштаб, при котором картинка целиком видна в рабочей области. */
+    function fitScale() {
+        const rect = root.getBoundingClientRect();
+        if (!(state.imageW > 0) || !(rect.width > 0)) return 1;
+        const usableW = Math.max(1, rect.width - PAD * 2);
+        const usableH = Math.max(1, rect.height - PAD * 2);
+        return Math.min(usableW / state.imageW, usableH / state.imageH);
+    }
+
+    /** Вписать картинку целиком и поставить её по центру. */
+    function fit() {
+        const rect = root.getBoundingClientRect();
+        state.scale = fitScale();
+        state.offsetX = (rect.width - state.imageW * state.scale) / 2;
+        state.offsetY = (rect.height - state.imageH * state.scale) / 2;
+        state.fitted = true;
+        redraw();
+    }
+
     function resize() {
         const rect = root.getBoundingClientRect();
         canvas.width = Math.max(1, Math.round(rect.width));
         canvas.height = Math.max(1, Math.round(rect.height));
-        if (state.imageW > 0 && rect.width > 0) {
-            const usableW = Math.max(1, rect.width - PAD * 2);
-            const usableH = Math.max(1, rect.height - PAD * 2);
-            state.scale = Math.min(usableW / state.imageW, usableH / state.imageH);
-            state.offsetX = PAD + (usableW - state.imageW * state.scale) / 2;
-            state.offsetY = PAD + (usableH - state.imageH * state.scale) / 2;
-        }
-        redraw();
+        // Если человек приблизил и увёл картинку, менять её при изменении
+        // размера окна — значит терять место, на которое он смотрел. Подгоняем
+        // только пока вид не трогали.
+        if (state.imageW > 0 && rect.width > 0 && state.fitted) fit();
+        else redraw();
     }
     const observer = new ResizeObserver(resize);
     observer.observe(root);
@@ -157,6 +175,32 @@ export function createMaskCanvas(options = {}) {
         redraw();
         options.onMaskChanged?.();
     }
+
+    const detachZoomPan = attachZoomPan(canvas, {
+        zoomAt(clientX, clientY, factor) {
+            if (!state.image) return;
+            const rect = canvas.getBoundingClientRect();
+            const x = clientX - rect.left;
+            const y = clientY - rect.top;
+            const next = clampScale(state.scale * factor, fitScale());
+            if (next === state.scale) return;
+            // Точка под курсором остаётся на месте: сдвиг считается от неё, а
+            // не от угла. Иначе приближение уводит взгляд с того, что смотрят.
+            state.offsetX = x - ((x - state.offsetX) / state.scale) * next;
+            state.offsetY = y - ((y - state.offsetY) / state.scale) * next;
+            state.scale = next;
+            state.fitted = false;
+            redraw();
+        },
+        panBy(dx, dy) {
+            if (!state.image) return;
+            state.offsetX += dx;
+            state.offsetY += dy;
+            state.fitted = false;
+            redraw();
+        },
+        reset: () => { if (state.image) fit(); },
+    });
 
     // Мазок начинается только ПЕРВИЧНЫМ указателем: `isPrimary` отсекает
     // второй палец на тачскрине, из-за которого мазок начинался дважды и вёл
@@ -308,6 +352,8 @@ export function createMaskCanvas(options = {}) {
         state.undo.length = 0;
         state.redo.length = 0;
         canvas.classList.add("has-image");
+        // Новая картинка приходит вписанной целиком, каким бы ни был вид до неё.
+        state.fitted = true;
         resize();
     }
 
@@ -410,8 +456,13 @@ export function createMaskCanvas(options = {}) {
             img.src = url;
         }),
         hasImage: () => Boolean(state.image),
+        /** Вписать картинку в рабочую область целиком. */
+        fit,
+        /** Текущий масштаб — для подписи в интерфейсе. */
+        zoom: () => state.scale / (fitScale() || 1),
         teardown: () => {
             observer.disconnect();
+            detachZoomPan();
             window.removeEventListener("pointerup", stopAnywhere, true);
             window.removeEventListener("pointercancel", stopAnywhere, true);
             window.removeEventListener("blur", stopAnywhere);

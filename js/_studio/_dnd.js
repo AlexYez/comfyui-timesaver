@@ -10,14 +10,31 @@ export const STUDIO_ASSET_MIME = "application/x-ts-studio-asset";
 const ARTIUS_MIME = "application/x-timesaver-artius-asset";
 
 /** Upload a blob through /upload/image; returns the annotated name. */
-export async function uploadImage(api, blob, filename) {
+/** Куда студия кладёт свои рабочие файлы: см. пояснение в uploadImage. */
+export const WORK_FOLDER = "temp";
+
+export async function uploadImage(api, blob, filename, folder = WORK_FOLDER) {
     const form = new FormData();
     form.append("image", blob, filename);
+    // Служебные файлы студии — маски, снимки холста, референсы — уходят во
+    // ВРЕМЕННУЮ папку ComfyUI, а не во входную.
+    //
+    // Входную индексирует Artius Browser (его корни — output и input, список
+    // исключений зашит и не настраивается), и в библиотеке человека начинали
+    // появляться маски и промежуточные кадры вперемешку с работами. Временную
+    // он не смотрит, а ComfyUI чистит её сам — ровно то поведение, которого
+    // ждёшь от рабочего мусора.
+    //
+    // Цена известна и принята: после перезапуска ComfyUI временная папка
+    // пуста, и восстановленное рабочее место может не найти свой исходник —
+    // студия говорит об этом прямо (`sourceGone`), а не показывает пустой
+    // холст молча.
+    form.append("type", folder);
     const response = await api.fetchApi("/upload/image", { method: "POST", body: form });
     if (!response.ok) throw new Error(`upload HTTP ${response.status}`);
     const payload = await response.json();
-    const folder = payload.subfolder ? `${payload.subfolder}/` : "";
-    return `${folder}${payload.name} [${payload.type || "input"}]`;
+    const sub = payload.subfolder ? `${payload.subfolder}/` : "";
+    return `${sub}${payload.name} [${payload.type || folder}]`;
 }
 
 /**
