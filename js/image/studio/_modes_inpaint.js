@@ -72,6 +72,12 @@ export function createInpaintMode(ctx) {
     root.className = `${TS_UI_CLASS} ts-inp`;
 
     const mask = createMaskCanvas({
+        // Кнопки отмены и возврата живут на панели, а история мазков — внутри
+        // маски. Без этой связи кнопка «отменить» оставалась серой после
+        // первого же мазка: она включается по `canUndo()`, а пересчитать её
+        // после мазка было некому. Ctrl+Z при этом работал, и разойтись они
+        // могли сколько угодно.
+        onMaskChanged: () => syncButtons(),
         onStrokeEnd: () => { if (state.engine === "cleanup") runCleanup(); },
     });
     mask.element.style.display = "none";
@@ -171,7 +177,7 @@ export function createInpaintMode(ctx) {
     fitBtn.addEventListener("click", () => mask.fit());
 
     const clear = tool("✕", ctx.t.inp.clear);
-    clear.addEventListener("click", () => mask.clearMask());
+    clear.addEventListener("click", () => { mask.clearMask(); syncButtons(); });
     const undoBtn = tool("↶", ctx.t.inp.undo);
     const redoBtn = tool("↷", ctx.t.inp.redo);
     undoBtn.addEventListener("click", () => history.undo());

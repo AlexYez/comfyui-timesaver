@@ -29,7 +29,8 @@ import { createSettingsPanel, readSetting, settingsStrings }
 import { uploadImage, makeDropZone, annotatedImageUrl } from "../../_studio/_dnd.js";
 import { buildStudioState, studioStateFromPng } from "../../_studio/_pnginfo.js";
 import { loadWorkspace, saveWorkspace } from "../../_studio/_workspace.js";
-import { REPLACE_DENOISE } from "../../_studio/_crop_geometry.js";
+import { applyStrengthRule, collectDeckValues, collectRefs,
+    withStyles } from "./_runvalues.js";
 import { createQueuePanel } from "../../_studio/_queue.js";
 import { createGate } from "../../_studio/_gate.js";
 import { createShowcase } from "../../_studio/_showcase.js";
@@ -1366,56 +1367,14 @@ export async function openStudio(node, persist) {
         const seed = seedState.randomize ? randomSeed() : Number(seedState.value || 0);
         seedControl?.showSeed(seed);
 
-        const runValues = {};
-        for (const [param, value] of Object.entries(values)) {
-            if (param === "seed" || param === "loras" || param === "__refs") continue;
-            if (typeof value === "object" && value !== null) continue;
-            // The deck is built from one backend but a run may go to another
-            // (Generate → edit): only params that graph actually declares.
-            if (!target.spec.params.has(param) && !target.spec.literals?.has(param)) continue;
-            runValues[param] = value;
-        }
+        // Правила сбора значений живут отдельно (`_runvalues.js`): в граф идёт
+        // только объявленное им, сила определяет режим, стили дописываются так
+        // же, как это делает нода-селектор.
+        const runValues = collectDeckValues(values, target);
         runValues.seed = seed;
-        // Режим выводится из силы, а не из отдельного тумблера.
-        //
-        // Раньше их было два — ползунок и переключатель Replace, — и при
-        // включённом переключателе ползунок ничего не значил. Теперь шкала
-        // одна: её последняя ступень И ЕСТЬ замена. Всё, что ниже порога, —
-        // доработка.
-        const strength = Number(runValues.denoise);
-        if (Number.isFinite(strength)) {
-            const replacing = strength >= REPLACE_DENOISE;
-            if (replacing) runValues.denoise = 1.0;
-            // Klein принимает режим прямо в ноду; у остальных семейств такого
-            // входа в графе нет, и передавать его туда нельзя — патчер
-            // справедливо ругается на параметр, которого граф не объявлял.
-            if (target.spec.params.has("replace") || target.spec.literals?.has("replace")) {
-                runValues.replace = replacing;
-            }
-            // Доработка идёт БЕЗ размышлений LanPaint.
-            //
-            // Его внутренний цикл согласует перерисованное с окружением, и на
-            // полной замене это то, что нужно. На доработке он же уводит
-            // результат далеко за запрошенную силу: замерено на одном сиде —
-            // средний сдвиг пикселя внутри маски 69.5 против 32.8 у обычного
-            // прохода, и молодое лицо при силе 0.45 возвращалось пожилым.
-            //
-            // Ноль размышлений вырождает LanPaint в обычный сэмплер: сверено
-            // с настоящим KSampler на том же сиде — среднее расхождение 0.057
-            // из 255. То есть это и есть классический инпэйнт, только без
-            // второй ветки в графе. Заодно доработка ускоряется в девять раз
-            // (24 с против 209 с).
-            if (!replacing && target.spec.params.has("think_steps")) {
-                runValues.think_steps = 0;
-            }
-        }
-        // Styles append to the prompt the same way the selector node does —
-        // what runs is exactly what the gallery params will replay.
-        const styleTail = promptTools?.getStylePrompts().join(", ");
-        if (styleTail && typeof runValues.prompt === "string") {
-            const base = runValues.prompt.trim().replace(/[,\s]+$/, "");
-            runValues.prompt = base ? `${base}, ${styleTail}` : styleTail;
-        }
+        applyStrengthRule(runValues, target);
+        runValues.prompt = withStyles(runValues.prompt,
+            promptTools?.getStylePrompts().join(", "));
         // What the user typed — the metadata and the snapshot keep this, not
         // whatever a model-specific pipeline expands it into.
         const authoredPrompt = typeof runValues.prompt === "string" ? runValues.prompt : "";
@@ -1462,12 +1421,9 @@ export async function openStudio(node, persist) {
             deckWidgets.hint.textContent = queueCount > 1
                 ? `${label}${steps} · ${t.queued(queueCount)}` : `${label}${steps}`;
         }
-        const dropParams = [];
-        for (const [name, annotated] of Object.entries(values.__refs || {})) {
-            if (!target.spec.params.has(name)) continue;
-            if (annotated) runValues[name] = annotated;
-            else dropParams.push(name);
-        }
+        const refs = collectRefs(values.__refs, target);
+        Object.assign(runValues, refs.values);
+        const dropParams = refs.drop;
 
         if (activeModeId === "inpaint" && inpaintMode) {
             try {
