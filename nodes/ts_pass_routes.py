@@ -18,6 +18,7 @@ from ._deps import TSDependencyManager  # noqa: F401  (kept for import parity)
 from ._shared import make_route_registrars
 from . import _pass
 from . import _studio_dev
+from . import _studio_pack_state
 from . import _studio_packs
 
 logger = logging.getLogger("comfyui_timesaver.pass_routes")
@@ -191,6 +192,44 @@ async def studio_pack_remove(request):
     return _json({"removed": removed,
                   "packs": _studio_packs.describe_catalog(
                       _studio_packs.fetch_catalog())})
+
+
+@register_post("/api/ts_studio/packs/enable")
+async def studio_pack_enable(request):
+    """Show or hide one pack in the studio.
+
+    Nothing is deleted: a hidden pack keeps its graphs and its models, and the
+    switch back is the same call with `enabled: true`. Removing models is a
+    separate act with different consequences, and it is not this route.
+    """
+    try:
+        body = await request.json()
+    except Exception:                       # noqa: BLE001
+        return _json({"error": "expected a JSON body"}, status=400)
+    try:
+        _studio_pack_state.set_enabled(str(body.get("id") or ""),
+                                       bool(body.get("enabled", True)))
+    except (ValueError, RuntimeError) as error:
+        return _json({"error": str(error)}, status=400)
+    return _json({"packs": _studio_packs.describe_catalog(
+        _studio_packs.fetch_catalog())})
+
+
+@register_get("/api/ts_studio/packs/state")
+async def studio_pack_state(_request):
+    """Everything this machine knows on its own — and nothing over the network.
+
+    Separate from `/packs` because that route asks a host: two addresses, a
+    timeout each. The studio needs the answer to "what is here and what is
+    hidden" before it draws anything, and the manager should show six cards at
+    once rather than an empty screen until a server somewhere answers.
+
+    So this returns the full built-in catalogue, already joined with the pass
+    and the hidden state — the same shape `/packs` returns, minus delivery.
+    """
+    described = _studio_packs.describe_catalog({"products": {}})
+    described["local"] = True
+    return _json(described)
 
 
 # Registers routes only; the pack's loader skips files with no node mappings.

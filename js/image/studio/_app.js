@@ -14,7 +14,7 @@ import { createCompare } from "../../_studio/_compare.js";
 import { attachZoomPan, clampScale } from "../../_studio/_zoompan.js";
 import { createTileGrid } from "../../_studio/_tilegrid.js";
 import { createRunner } from "../../_studio/_runner.js";
-import { loadBackends, groupByFamily } from "../../_studio/_backends.js";
+import { applyPackState, loadBackends, groupByFamily } from "../../_studio/_backends.js";
 import { patchBackend } from "../../_studio/_markers.js";
 import { newSessionId, outputPrefix, resultRelPath, restoreResults } from "../../_studio/_session.js";
 import { mountPromptTools } from "../../_studio/_prompt_tools.js";
@@ -510,7 +510,12 @@ export async function openStudio(node, persist) {
     // Not const: installing a pack adds backend files, and the studio rereads
     // them in place rather than asking to be reopened.
     let backends = await readBackends();
-    let families = groupByFamily(backends);
+    // Что человек выключил и каким уровнем смотрит. Читается ДО первой сборки
+    // списка моделей и отдельным роутом от каталога: каталог может ждать
+    // недоступный хост, а то, что стоит на этой машине, ждать не должно.
+    let packState = await readPackState();
+    let hiddenFamilies = [];
+    let families = takeFamilies(backends);
     // Была ли у узла своя сессия. Пустая означает либо новый узел, либо
     // обнулённые ComfyUI свойства — во втором случае рабочее место лежит под
     // прежним идентификатором, и строгий поиск его не найдёт.
@@ -541,6 +546,55 @@ export async function openStudio(node, persist) {
         UI_MODES.find((m) => m.id === uiMode)?.backendModes || [uiMode];
 
     /**
+     * Что на этой машине выключено и каким уровнем её показывать.
+     *
+     * Молчаливый откат к «всё видно» — не лень: у пользователя этого файла
+     * нет вовсе, и упавший запрос не должен прятать половину студии.
+     */
+    async function readPackState() {
+        try {
+            const response = await api.fetchApi("/ts_studio/packs/state");
+            if (response.ok) return await response.json();
+        } catch (err) {
+            console.warn("[TS Studio] pack state unavailable", err);
+        }
+        return { disabled: [], viewTier: null, packs: [] };
+    }
+
+    /**
+     * Готов ли пак к работе на этой машине.
+     *
+     * Считается по живым бэкендам, а не по каталогу: какие файлы моделей нужны,
+     * знает манифест каждого графа, и студия уже сверила их с тем, что стоит.
+     * Отвечать на этот вопрос до запуска, а не красной ошибкой через десять
+     * минут ожидания, — половина смысла менеджера.
+     *
+     * @returns {{ready:number,total:number,missing:string[]}|null} null, если
+     *          пака здесь нет и проверять нечего.
+     */
+    function packReadiness(pack) {
+        const names = new Set((pack?.families || [])
+            .map((item) => (typeof item === "string" ? item : item?.family))
+            .filter(Boolean));
+        const mine = backends.filter((backend) => names.has(backend.manifest?.family));
+        if (!mine.length) return null;
+        const missing = [...new Set(mine.flatMap((backend) => (backend.problems || [])
+            .map((problem) => `${backend.manifest?.mode || backend.id}: ${problem}`)))];
+        return {
+            total: mine.length,
+            ready: mine.filter((backend) => backend.available).length,
+            missing,
+        };
+    }
+
+    /** Семейства, которые студия показывает; скрытые уезжают в серый список. */
+    function takeFamilies(list) {
+        const split = applyPackState(groupByFamily(list), packState);
+        hiddenFamilies = split.hidden;
+        return split.families;
+    }
+
+    /**
      * Rebuild the offer list from the packs catalogue.
      *
      * A family counts as offered only while it is absent here: once a pack is
@@ -554,13 +608,26 @@ export async function openStudio(node, persist) {
         if (data) catalogData = data;
         const seen = new Set();
         offers = [];
+        // Скрытое семейство остаётся в списке моделей серым — иначе выключение
+        // пака выглядело бы как пропажа модели, и вернуть её было бы неоткуда.
+        for (const item of hiddenFamilies) {
+            seen.add(item.family);
+            offers.push({ ...item, label: item.label, packId: item.packId });
+        }
         for (const pack of catalogData?.packs || []) {
-            if (pack.installed) continue;
+            if (pack.installed || pack.builtin) continue;
             for (const family of pack.families || []) {
-                if (!family?.family || families.has(family.family)) continue;
-                if (seen.has(family.family)) continue;
-                seen.add(family.family);
-                offers.push({ ...family, packId: pack.id });
+                // Каталог сборки перечисляет семейства именами, удалённый —
+                // описаниями. Живут оба, поэтому читаем оба.
+                const name = typeof family === "string" ? family : family?.family;
+                if (!name || families.has(name)) continue;
+                if (seen.has(name)) continue;
+                seen.add(name);
+                const described = typeof family === "string"
+                    ? { family: name, label: pack.name?.[locale] || pack.name?.en || name,
+                        modes: pack.modes || [] }
+                    : family;
+                offers.push({ ...described, packId: pack.id });
             }
         }
     }
@@ -859,6 +926,7 @@ export async function openStudio(node, persist) {
         onCatalog: (data) => setOffers(data),
         onInstalled: () => reloadBackends(),
         onWantAccess: () => gate.prompt(),
+        readiness: (pack) => packReadiness(pack),
     });
     // Read the catalogue once at startup rather than on first open: the deck
     // needs the offers to draw them, and a studio that never opens this screen
@@ -1336,7 +1404,10 @@ export async function openStudio(node, persist) {
      */
     async function reloadBackends() {
         backends = await readBackends();
-        families = groupByFamily(backends);
+        // Состояние паков перечитывается вместе с графами: выключатель в
+        // менеджере обязан действовать сразу, без переоткрытия студии.
+        packState = await readPackState();
+        families = takeFamilies(backends);
         setOffers(null);            // against the families that exist now
         const nowPresent = new Set([...families.values()]
             .flatMap((family) => [...family.modes.keys()]));

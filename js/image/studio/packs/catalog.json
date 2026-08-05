@@ -1,0 +1,86 @@
+{
+ "schema_version": "2.0.0",
+ "_about": "Каталог паков студии, который едет ВМЕСТЕ со сборкой. Здесь только то, как пак выглядит и к какому уровню относится: имя, описание, обложка, какие семейства он приносит и какие режимы в них есть. Ничего про доставку — адрес архива, версия и шифрование живут в удалённом каталоге (index.json) и подмешиваются сюда по id. Пак = одна модельная линия: человек выбирает модель, а не набор непонятного состава. Готовность считается не отсюда, а по самим графам: какие файлы моделей нужны, знает манифест каждого графа, и студия сверяет их с тем, что стоит на машине.",
+ "tiers": {
+  "0": { "id": "free", "en": "Free", "ru": "Free" },
+  "2": { "id": "pro", "en": "Pro", "ru": "Pro" },
+  "3": { "id": "ultimate", "en": "Ultimate", "ru": "Ultimate" }
+ },
+ "packs": [
+  {
+   "id": "image/z-image",
+   "tier": 0,
+   "families": ["z-image"],
+   "modes": ["t2i", "inpaint", "upscale"],
+   "cover": "covers/z-image.webp",
+   "name": { "en": "Z-Image Turbo", "ru": "Z-Image Turbo" },
+   "about": {
+    "en": "The everyday model: fast enough to try an idea ten times before lunch. Generate, inpaint and upscale, all on one small checkpoint.",
+    "ru": "Модель на каждый день: считает быстро, поэтому идею можно попробовать десять раз подряд. Генерация, перерисовка и апскейл на одном небольшом чекпоинте."
+   }
+  },
+  {
+   "id": "image/seedvr2",
+   "tier": 0,
+   "families": ["seedvr2"],
+   "modes": ["upscale"],
+   "cover": "covers/seedvr2.webp",
+   "before": "covers/seedvr2-before.webp",
+   "after": "covers/seedvr2-after.webp",
+   "name": { "en": "SeedVR2 restoration", "ru": "SeedVR2 — восстановление" },
+   "about": {
+    "en": "An upscaler that restores rather than sharpens: it rebuilds skin, hair and fabric instead of drawing edges over mush. Works in tiles, so image size is not the limit.",
+    "ru": "Апскейл, который восстанавливает, а не подчёркивает: заново собирает кожу, волосы и ткань вместо обводки по мылу. Работает тайлами, поэтому размер кадра не упирается в память."
+   }
+  },
+  {
+   "id": "image/flux2-klein",
+   "tier": 2,
+   "families": ["flux2-klein"],
+   "modes": ["t2i", "edit", "inpaint", "upscale"],
+   "cover": "covers/flux2-klein.webp",
+   "name": { "en": "Flux 2 Klein", "ru": "Flux 2 Klein" },
+   "about": {
+    "en": "Holds a scene together: geometry, hands, reflections and lettering survive an edit. The reference slots let it redraw from a picture, not only from words.",
+    "ru": "Держит сцену целиком: геометрия, руки, отражения и надписи переживают правку. Слоты референсов дают переписать кадр по картинке, а не только по словам."
+   }
+  },
+  {
+   "id": "image/qwen-image",
+   "tier": 2,
+   "families": ["qwen-image", "qwen-image-edit"],
+   "modes": ["t2i", "edit", "inpaint", "upscale"],
+   "cover": "covers/qwen-image.webp",
+   "name": { "en": "Qwen Image", "ru": "Qwen Image" },
+   "about": {
+    "en": "Reads a long prompt the way it was written and follows it — the model to reach for when the picture has many named parts. Comes with its own editing graph.",
+    "ru": "Читает длинный промпт так, как он написан, и следует ему — модель для кадров, где перечислено много всего. Приезжает вместе со своим графом редактирования."
+   }
+  },
+  {
+   "id": "image/krea2",
+   "tier": 3,
+   "families": ["krea2"],
+   "modes": ["t2i", "inpaint", "upscale"],
+   "cover": "covers/krea2.webp",
+   "name": { "en": "Krea 2 Turbo", "ru": "Krea 2 Turbo" },
+   "about": {
+    "en": "Photographic look without asking for one: skin keeps its texture, light falls off the way a lens sees it, and film grain is a decision rather than an accident.",
+    "ru": "Фотографичность без специальных просьб: кожа сохраняет фактуру, свет падает так, как его видит объектив, а зерно — решение, а не случайность."
+   }
+  },
+  {
+   "id": "image/ideogram",
+   "tier": 3,
+   "families": ["ideogram"],
+   "modes": ["t2i", "inpaint", "upscale"],
+   "cover": "covers/ideogram.webp",
+   "api": "ideogram",
+   "name": { "en": "Ideogram 4", "ru": "Ideogram 4" },
+   "about": {
+    "en": "Writes text on the picture and spells it right — posters, packaging, signage. Runs on Ideogram's API, so it needs a key rather than a local model file.",
+    "ru": "Пишет текст на картинке и не путает буквы — афиши, упаковка, вывески. Считает на стороне Ideogram, поэтому нужен ключ API, а не файл модели на диске."
+   }
+  }
+ ]
+}

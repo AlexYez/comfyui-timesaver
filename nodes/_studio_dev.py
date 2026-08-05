@@ -21,11 +21,18 @@ Written by hand or by `tools/studio_pack.py dev`:
       "localUrl": "file:///D:/…/dist/studio",   a build to read instead
       "source":   "live" | "local",             which of the two is in use
       "simulate": "off" | "none" | "expired",   how the pass should appear
+      "viewTier": null | 0 | 2 | 3,             ceiling: packs above it are
+                                                treated as undelivered
       "label":    "local dist"                  shown in the studio
     }
 
 The local address is remembered even while "live" is selected, so switching
 back and forth is one click rather than one path retyped.
+
+`viewTier` exists because the whole build currently ships every family, so
+without it the author cannot see what a Free user sees — the packs screen
+would be honest and the studio itself would not. It HIDES and never grants:
+read `_studio_pack_state.py` for why that distinction is the whole point.
 """
 from __future__ import annotations
 
@@ -78,9 +85,25 @@ def read_dev() -> dict:
         "source": source if source in SOURCES and (local_url or source == "live")
                   else "live",
         "simulate": simulate if simulate in SIMULATIONS else "off",
+        "viewTier": _read_view_tier(data.get("viewTier")),
         "label": str(data.get("label") or ""),
         "path": str(path),
     }
+
+
+def _read_view_tier(raw) -> int | None:
+    """A ceiling, or None for "show everything".
+
+    A junk value means no ceiling rather than the lowest one: a typo in a
+    hand-written file must not quietly hide half the studio.
+    """
+    if raw is None or raw == "":
+        return None
+    try:
+        tier = int(raw)
+    except (TypeError, ValueError):
+        return None
+    return tier if tier >= 0 else None
 
 
 def write_dev(settings: dict) -> dict:
@@ -98,6 +121,7 @@ def write_dev(settings: dict) -> dict:
         "localUrl": str(settings.get("localUrl") or "").rstrip("/"),
         "source": source,
         "simulate": simulate,
+        "viewTier": _read_view_tier(settings.get("viewTier")),
         "label": str(settings.get("label") or ""),
     }
     path.parent.mkdir(parents=True, exist_ok=True)

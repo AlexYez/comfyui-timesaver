@@ -139,6 +139,51 @@ function validateAgainstServer(entry, objectInfo) {
     }
 }
 
+/**
+ * Семейства, которых в студии быть не должно, — и почему.
+ *
+ * Спрятать семейство могут две разные вещи, и путать их нельзя: выключенный
+ * человеком пак предлагает вернуть переключатель, а пак выше потолка уровня
+ * предлагает сам пак. Поэтому ответ — причина, а не «да/нет».
+ *
+ * Потолок существует потому, что вся сборка сейчас едет одним куском: без него
+ * автор физически не может увидеть студию глазами бесплатного пользователя —
+ * экран паков был бы честным, а сам список моделей нет.
+ *
+ * @param {Map} families результат groupByFamily
+ * @param {{packs: object[], disabled: string[], viewTier: number|null}} state
+ * @returns {{families: Map, hidden: object[]}} hidden — то, что убрано, в виде
+ *          записей для серого списка: {family, label, modes, packId, why}
+ */
+export function applyPackState(families, state) {
+    const disabled = new Set(state?.disabled || []);
+    const ceiling = state?.viewTier;
+    const kept = new Map(families);
+    const hidden = [];
+    for (const pack of state?.packs || []) {
+        const tier = Number(pack.tier || 0);
+        let why = "";
+        if (disabled.has(pack.id)) why = "off";
+        else if (ceiling !== null && ceiling !== undefined && tier > Number(ceiling)) why = "tier";
+        if (!why) continue;
+        for (const name of pack.families || []) {
+            const key = typeof name === "string" ? name : name?.family;
+            const family = kept.get(key);
+            if (!family) continue;
+            kept.delete(key);
+            hidden.push({
+                family: key,
+                label: family.label,
+                modes: [...family.modes.keys()],
+                packId: pack.id,
+                tier,
+                why,
+            });
+        }
+    }
+    return { families: kept, hidden };
+}
+
 /** Group available backends by family for the model switcher. */
 export function groupByFamily(backends) {
     const families = new Map();

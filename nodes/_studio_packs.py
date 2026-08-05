@@ -317,32 +317,147 @@ def remove_pack(pack_id: str) -> bool:
     return True
 
 
-def describe_catalog(catalog: dict, *, product: str = PRODUCT) -> dict:
-    """Catalogue joined with what is installed and what the pass opens.
+# The catalogue that ships INSIDE the build: what a pack is, what it looks
+# like and which tier it belongs to. Lives next to the graphs it describes, so
+# the frontend reads it over HTTP as a static file and this module reads the
+# same bytes off disk — one file, no second copy to drift.
+LOCAL_CATALOG = (Path(__file__).resolve().parents[1]
+                 / "js" / "image" / "studio" / "packs" / "catalog.json")
 
-    One call gives the showcase everything it renders: entries, their state
-    and whether an update is waiting.
+# Where the frontend reaches the same folder, for turning a cover's relative
+# path into something an <img> can load.
+LOCAL_CATALOG_BASE = "/extensions/comfyui-timesaver/image/studio/packs"
+
+
+def local_catalog(path: Path | None = None) -> dict:
+    """Packs described by the build itself.
+
+    Absent or broken is not fatal: the studio then shows only what the remote
+    catalogue offers, which is exactly what a machine with no build-time
+    catalogue should see.
     """
+    source = path or LOCAL_CATALOG
+    try:
+        data = json.loads(source.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return {"packs": [], "tiers": {}}
+    except Exception as error:              # noqa: BLE001 - a bad file is not fatal
+        logger.warning("%s %s is unreadable: %s", LOG_PREFIX, source, error)
+        return {"packs": [], "tiers": {}}
+    packs = data.get("packs")
+    return {
+        "packs": [p for p in packs if isinstance(p, dict)] if isinstance(packs, list) else [],
+        "tiers": data.get("tiers") if isinstance(data.get("tiers"), dict) else {},
+    }
+
+
+def _cover_url(entry: dict, base: str = LOCAL_CATALOG_BASE) -> str:
+    """A cover an <img> can load.
+
+    The built-in catalogue stores relative paths — it sits next to its own
+    covers — while a remote catalogue carries full URLs, because a relative
+    one would resolve against ComfyUI instead of the host it came from.
+    """
+    cover = str(entry.get("cover") or entry.get("preview") or "")
+    if not cover or "://" in cover or cover.startswith("/"):
+        return cover
+    return f"{base}/{cover}"
+
+
+def merge_catalogs(local: dict, remote: dict, *, product: str = PRODUCT) -> list[dict]:
+    """Every pack that exists, whether it ships here or arrives over the wire.
+
+    The build's catalogue is the presentation (name, text, cover, tier); the
+    remote one adds delivery (version, file, encryption). Where both describe
+    the same id, delivery is layered onto presentation rather than replacing
+    it: a machine that is offline must still know what a pack IS.
+    """
+    remote_packs = (remote.get("products", {}).get(product, {}) or {}).get("packs", [])
+    by_id: dict[str, dict] = {}
+    order: list[str] = []
+
+    for entry in local.get("packs", []):
+        pack_id = str(entry.get("id") or "")
+        if not pack_id:
+            continue
+        resolved = {**entry, "builtin": True, "cover": _cover_url(entry)}
+        # Пара «до/после» у апскейлера — такие же относительные пути, как
+        # обложка: карточка вешает их на <img>, и относительный путь
+        # разрешился бы относительно ComfyUI, а не папки пака.
+        for key in ("before", "after"):
+            if entry.get(key):
+                resolved[key] = _cover_url({"cover": entry[key]})
+        by_id[pack_id] = resolved
+        order.append(pack_id)
+
+    for entry in remote_packs:
+        if not isinstance(entry, dict):
+            continue
+        pack_id = str(entry.get("id") or "")
+        if not pack_id:
+            continue
+        known = by_id.get(pack_id)
+        if known is None:
+            by_id[pack_id] = {**entry, "builtin": False, "cover": _cover_url(entry)}
+            order.append(pack_id)
+            continue
+        merged = {**known}
+        for key, value in entry.items():
+            # Presentation the build already carries wins: it is translated,
+            # it matches the graphs actually shipped, and it works offline.
+            if key in ("name", "about", "cover", "preview") and known.get(key):
+                continue
+            merged[key] = value
+        merged["builtin"] = True
+        merged["cover"] = known.get("cover") or _cover_url(entry)
+        by_id[pack_id] = merged
+
+    return [by_id[pack_id] for pack_id in order]
+
+
+def describe_catalog(catalog: dict, *, product: str = PRODUCT,
+                     local: dict | None = None) -> dict:
+    """Every pack, with its state, joined into what the manager renders.
+
+    One call answers all four questions a card asks: does it exist, is it
+    here, does the pass open it, and is the person showing it in the studio.
+    """
+    from . import _studio_pack_state
+
     state = current_pass()
     installed = read_installed()
     tier_held = int(state.get("tier") or 0) if state.get("state") == "active" else 0
+    hidden = _studio_pack_state.read_state()
+    ceiling = _studio_pack_state.view_tier()
 
     entries = []
-    for entry in (catalog.get("products", {}).get(product, {}) or {}).get("packs", []):
+    for entry in merge_catalogs(local if local is not None else local_catalog(),
+                                catalog, product=product):
         pack_id = str(entry.get("id") or "")
         here = installed.get(pack_id)
         tier = int(entry.get("tier") or 0)
+        hidden_why = _studio_pack_state.is_hidden(pack_id, tier, state=hidden,
+                                                  ceiling=ceiling)
         entries.append({
             **entry,
             "installed": bool(here),
             "installedVersion": (here or {}).get("version"),
-            "updateAvailable": bool(here and here.get("version") != entry.get("version")),
+            # A built-in pack is present by definition; only a delivered one
+            # can be behind on a version.
+            "updateAvailable": bool(here and entry.get("version")
+                                    and here.get("version") != entry.get("version")),
             "open": not tier or tier_held >= tier,
+            "present": bool(here) or bool(entry.get("builtin")),
+            "hidden": hidden_why,
+            "enabled": not hidden_why,
         })
     return {
         "product": product,
         "pass": state,
         "packs": entries,
+        "tiers": (local if local is not None else local_catalog()).get("tiers", {}),
+        "viewTier": ceiling,
+        "disabled": hidden["disabled"],
         "offline": bool(catalog.get("offline")),
         "updatedAt": catalog.get("updatedAt"),
     }

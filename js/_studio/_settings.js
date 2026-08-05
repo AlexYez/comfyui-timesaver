@@ -43,6 +43,11 @@ const STRINGS = {
         devPassExpired: "Expired",
         devOff: "Leave testing mode",
         devLocalMissing: "No local build is configured — run studio_pack.py dev",
+        devView: "Show the studio as",
+        devViewAll: "Everything",
+        devViewFree: "Free",
+        devViewPro: "Pro",
+        devViewUltimate: "Ultimate",
         memory: "Remembered settings",
         memoryNote: "Every control keeps what you set it to — per model for the "
             + "ones that mean something different there, and across models for "
@@ -80,6 +85,11 @@ const STRINGS = {
         devPassExpired: "Истёкший",
         devOff: "Выйти из режима тестирования",
         devLocalMissing: "Локальная сборка не задана — запустите studio_pack.py dev",
+        devView: "Показывать студию как",
+        devViewAll: "Всё",
+        devViewFree: "Free",
+        devViewPro: "Pro",
+        devViewUltimate: "Ultimate",
         memory: "Запомненные настройки",
         memoryNote: "Каждый регулятор держит то, что вы задали: своё для каждой "
             + "модели там, где значение у них разное, и общее для промпта, сида "
@@ -368,6 +378,22 @@ export function createSettingsPanel(options) {
               onPick: () => send({ simulate: "none" }) },
             { label: t.devPassExpired, active: dev.simulate === "expired",
               onPick: () => send({ simulate: "expired" }) },
+        ]));
+        // Потолок уровня: вся сборка едет одним куском, поэтому без него
+        // автор физически не может увидеть студию глазами бесплатного
+        // пользователя. Прячет и никогда не открывает — платное по-прежнему
+        // требует настоящего ключа.
+        const view = dev.viewTier === null || dev.viewTier === undefined
+            ? null : Number(dev.viewTier);
+        devRow.appendChild(subChoice(t.devView, [
+            { label: t.devViewAll, active: view === null,
+              onPick: () => send({ viewTier: null }) },
+            { label: t.devViewFree, active: view === 0,
+              onPick: () => send({ viewTier: 0 }) },
+            { label: t.devViewPro, active: view === 2,
+              onPick: () => send({ viewTier: 2 }) },
+            { label: t.devViewUltimate, active: view === 3,
+              onPick: () => send({ viewTier: 3 }) },
         ]));
 
         const leave = document.createElement("button");
