@@ -52,11 +52,26 @@ export function markOverlayAbove(element) {
 // dormant one from swallowing Escape forever.
 const OPEN_MIN_SIDE = 40;
 
-/** Is some foreign overlay currently stacked above the editors? */
+/**
+ * Is some foreign overlay currently stacked above the editors?
+ *
+ * Площади мало. Замерено на Artius: его просмотрщик висит в теле страницы
+ * постоянно и закрытым занимает весь экран — по одному размеру он выглядит
+ * открытым всегда, и Escape переставал закрывать студию совсем. Отличает
+ * закрытый от открытого другое: закрытый не берёт мышь (`pointer-events:none`).
+ * Элемент, сквозь который проходит указатель, не может быть тем, с чем человек
+ * сейчас работает, — значит и клавишу забирать ему не за что.
+ */
 function overlayAboveIsOpen(doc) {
+    const view = doc.defaultView || window;
     for (const node of doc.querySelectorAll(`[${ABOVE_ATTR}]`)) {
         const rect = node.getBoundingClientRect();
-        if (rect.width >= OPEN_MIN_SIDE && rect.height >= OPEN_MIN_SIDE) return true;
+        if (rect.width < OPEN_MIN_SIDE || rect.height < OPEN_MIN_SIDE) continue;
+        const style = view.getComputedStyle(node);
+        if (style.pointerEvents === "none") continue;
+        if (style.visibility === "hidden" || style.display === "none") continue;
+        if (Number(style.opacity) === 0) continue;
+        return true;
     }
     return false;
 }

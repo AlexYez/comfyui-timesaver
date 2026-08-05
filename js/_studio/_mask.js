@@ -130,6 +130,9 @@ export function createMaskCanvas(options = {}) {
     }
 
     let last = null;
+    let painterId = null;        // указатель, которым начали мазок
+    let strokeButtons = 1;       // маска кнопки, которой ведут мазок
+    let eraserBeforeStroke = null;  // инструмент до временного ластика
     function drawSegment(a, b) {
         const dist = Math.hypot(b.x - a.x, b.y - a.y);
         const steps = Math.max(1, Math.ceil(dist / Math.max(2, state.brush / 6 / state.scale)));
@@ -155,9 +158,22 @@ export function createMaskCanvas(options = {}) {
         options.onMaskChanged?.();
     }
 
+    // Мазок начинается только ПЕРВИЧНЫМ указателем: `isPrimary` отсекает
+    // второй палец на тачскрине, из-за которого мазок начинался дважды и вёл
+    // линию между пальцами.
+    //
+    // Левая кнопка рисует текущим инструментом, правая всегда стирает — на
+    // время своего мазка, не трогая выбранный в панели. Так устроен любой
+    // редактор, и это избавляет от беготни к переключателю ради одной правки.
     canvas.addEventListener("pointerdown", (event) => {
-        if (!state.image || event.button !== 0) return;
-        canvas.setPointerCapture(event.pointerId);
+        if (!state.image || event.isPrimary === false) return;
+        if (event.button !== 0 && event.button !== 2) return;
+        event.preventDefault();
+        try { canvas.setPointerCapture(event.pointerId); } catch { /* уже отпущен */ }
+        painterId = event.pointerId;
+        strokeButtons = event.button === 2 ? 2 : 1;
+        eraserBeforeStroke = state.eraser;
+        if (event.button === 2) state.eraser = true;
         state.undo.push(snapshot());
         state.redo.length = 0;
         state.painting = true;
@@ -166,6 +182,8 @@ export function createMaskCanvas(options = {}) {
         drawDot(p.x, p.y);
         redraw();
     });
+    // Правая кнопка стирает — своё меню тут только мешает.
+    canvas.addEventListener("contextmenu", (event) => event.preventDefault());
     // Where the ring sits. Kept across events so a size change can redraw it
     // without waiting for the pointer to move — the size of a brush is only
     // meaningful as a circle you can see.
@@ -219,6 +237,17 @@ export function createMaskCanvas(options = {}) {
         hovering = true;
         placeCursor(p.cssX, p.cssY);
         if (!state.painting) return;
+        // Кнопка — единственный источник правды.
+        //
+        // Флага `painting` недостаточно: `pointerup` теряется буднично —
+        // отпустили за пределами окна, сорвался перехват указателя, ушли по
+        // Alt+Tab посреди мазка. Флаг оставался поднятым, и кисть начинала
+        // рисовать по простому движению мыши. Поэтому на каждом движении
+        // спрашиваем у события, нажата ли левая кнопка ПРЯМО СЕЙЧАС.
+        if ((event.buttons & strokeButtons) === 0 || event.pointerId !== painterId) {
+            endStroke();
+            return;
+        }
         drawSegment(last, p);
         last = p;
         redraw();
@@ -226,11 +255,32 @@ export function createMaskCanvas(options = {}) {
     const endStroke = () => {
         if (!state.painting) return;
         state.painting = false;
+        // Правая кнопка стирала только на время своего мазка.
+        if (eraserBeforeStroke !== null) {
+            state.eraser = eraserBeforeStroke;
+            eraserBeforeStroke = null;
+        }
+        strokeButtons = 1;
+        if (painterId !== null) {
+            try { canvas.releasePointerCapture(painterId); } catch { /* уже отпущен */ }
+            painterId = null;
+        }
+        last = null;
         options.onMaskChanged?.();
         options.onStrokeEnd?.();
     };
     canvas.addEventListener("pointerup", endStroke);
     canvas.addEventListener("pointercancel", endStroke);
+    // Перехват может сорваться сам — например, когда элемент переверстали.
+    canvas.addEventListener("lostpointercapture", endStroke);
+    // Последняя линия обороны: отпустили кнопку где угодно, ушли из окна,
+    // переключили вкладку — мазок обязан закончиться там же, где закончился
+    // жест, а не висеть до следующего движения над холстом.
+    const stopAnywhere = () => endStroke();
+    window.addEventListener("pointerup", stopAnywhere, true);
+    window.addEventListener("pointercancel", stopAnywhere, true);
+    window.addEventListener("blur", stopAnywhere);
+    document.addEventListener("visibilitychange", stopAnywhere);
     canvas.addEventListener("pointerleave", () => {
         hovering = false;
         // A ring shown for a size change outlives the pointer leaving: that is
@@ -360,6 +410,12 @@ export function createMaskCanvas(options = {}) {
             img.src = url;
         }),
         hasImage: () => Boolean(state.image),
-        teardown: () => observer.disconnect(),
+        teardown: () => {
+            observer.disconnect();
+            window.removeEventListener("pointerup", stopAnywhere, true);
+            window.removeEventListener("pointercancel", stopAnywhere, true);
+            window.removeEventListener("blur", stopAnywhere);
+            document.removeEventListener("visibilitychange", stopAnywhere);
+        },
     };
 }

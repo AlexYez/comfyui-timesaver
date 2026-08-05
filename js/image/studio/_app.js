@@ -10,6 +10,7 @@ import { TS_UI_CLASS, ensureThemeStyles, getUiLanguage, pickLocaleStrings } from
 import { createShell, deckSection } from "../../_studio/_shell.js";
 import { ensureControlStyles, getControlRenderer, randomSeed } from "../../_studio/_controls.js";
 import { createGallery } from "../../_studio/_gallery.js";
+import { createCompare } from "../../_studio/_compare.js";
 import { createRunner } from "../../_studio/_runner.js";
 import { loadBackends, groupByFamily } from "../../_studio/_backends.js";
 import { patchBackend } from "../../_studio/_markers.js";
@@ -137,6 +138,8 @@ const STRINGS = {
             save: "Saving",
             other: "Working",
         },
+        cmp: { before: "before", after: "after",
+               shown: "Drag the divider — the original is on the left." },
         run: "Run",
         sourceGone: "The image of this sitting is no longer on disk — drop it in again.",
         stop: "Stop",
@@ -299,6 +302,8 @@ const STRINGS = {
             save: "Сохраняю",
             other: "Работаю",
         },
+        cmp: { before: "было", after: "стало",
+               shown: "Тяните шторку — слева исходник." },
         run: "Run",
         sourceGone: "Картинки этой сессии больше нет на диске — перетащите её заново.",
         stop: "Стоп",
@@ -651,6 +656,10 @@ export async function openStudio(node, persist) {
     recreateButton.style.display = "none";
     caption.append(captionText, recreateButton);
     stageFit.append(stageEmpty, stageImg);
+    // Шторка «до и после» — для апскейла: результат нельзя оценить, глядя
+    // только на результат.
+    const compare = createCompare({ before: t.cmp.before, after: t.cmp.after });
+    stageFit.appendChild(compare.element);
     shell.stage.append(stageFit, caption);
 
     let selectedResult = null;
@@ -668,6 +677,7 @@ export async function openStudio(node, persist) {
 
     function showResult(result) {
         selectedResult = result;
+        compare.hide();
         upscaleSource = "";
         stageImg.src = `/view?filename=${encodeURIComponent(result.image.filename)}` +
             `&subfolder=${encodeURIComponent(result.image.subfolder || "")}&type=output`;
@@ -681,6 +691,7 @@ export async function openStudio(node, persist) {
     }
 
     function showLibraryAsset(asset) {
+        compare.hide();
         stageImg.src = asset.url;
         stageImg.style.display = "";
         stageEmpty.style.display = "none";
@@ -821,6 +832,9 @@ export async function openStudio(node, persist) {
             showResult(result);
             persist.setResultPath(resultRelPath(result.image));
         },
+        // Какая вкладка панели открыта — такая же настройка рабочего места,
+        // как ширина колонок: выбрал браузер, вернулся — он и открыт.
+        onTab: (which) => shell.rememberPanelTab?.(which),
         mountLibrary: (host) => {
             let handle = null;
             pickAssetProvider().then((provider) => {
@@ -834,6 +848,17 @@ export async function openStudio(node, persist) {
         },
     });
     shell.side.appendChild(gallery.element);
+    // Установленный внешний браузер (Artius) — это то, ради чего панель и
+    // открывают: когда он есть, вкладка браузера и становится начальной.
+    // Явный выбор человека сильнее: если вкладку уже переключали, берётся она.
+    pickAssetProvider().then((provider) => {
+        const remembered = shell.panelTab?.();
+        if (remembered) {
+            gallery.showTab(remembered);
+            return;
+        }
+        if (provider && provider.id !== "fallback") gallery.showTab("library");
+    }).catch(() => { /* панель откроется на сессии */ });
     restoreResults((url) => api.fetchApi(url), sessionId).then((restored) => {
         if (restored.length) {
             gallery.setAll(restored);
@@ -1374,6 +1399,9 @@ export async function openStudio(node, persist) {
         }
         // Filled reference slots become image params; empty ones become
         // dropParams so the patcher removes their optional branches.
+        // Что лежало на сцене до прогона — для шторки сравнения в апскейле.
+        const sourceBeforeRun = activeModeId === "upscale" && stageImg.src
+            && stageImg.style.display !== "none" ? stageImg.src : "";
         // Считаем превью этого прогона: пропуск первых шагов должен работать
         // на каждом запуске, а не один раз за сессию.
         let previewsSeen = 0;
@@ -1544,6 +1572,20 @@ export async function openStudio(node, persist) {
                         gallery.add(result);   // лента сессии показывает и черновики
                         showResult(result);
                         persist.setResultPath(resultRelPath(image));
+                        // Апскейл показывает пару: слева то, что было.
+                        // Исходник запоминается до прогона — showResult его
+                        // сбрасывает, потому что дальше сцена живёт результатом.
+                        if (activeModeId === "upscale" && sourceBeforeRun) {
+                            const resultUrl = "/view?" + new URLSearchParams({
+                                filename: image.filename,
+                                subfolder: image.subfolder || "",
+                                type: image.type || "output",
+                            });
+                            if (compare.show(sourceBeforeRun, resultUrl)) {
+                                stageImg.style.display = "none";
+                                setStatus(t.cmp.shown);
+                            }
+                        }
                         if (activeModeId === "inpaint" && inpaintMode) {
                             inpaintMode.hidePreview();
                             // Тип берётся у самого результата: перерисовки

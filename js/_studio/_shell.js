@@ -47,41 +47,26 @@ export function ensureShellStyles() {
 .ts-studio__side{position:relative;display:flex;flex-direction:column;min-height:0;
     width:var(--ts-studio-side-w,280px);
     border-right:1px solid var(--ts-border);background:var(--ts-elevated)}
-/* Folded, the panel is nothing but the hairline that divided it from the
-   stage — no 26px stub with its own border beside the divider, which read as
-   two lines. The tab is the only thing left, and it hangs off that line. */
-.ts-studio__side.is-collapsed{width:13px}
-.ts-studio__side.is-collapsed>*:not(.ts-studio__sidegrip){display:none}
-.ts-studio__sidegrip{position:absolute;right:0;top:50%;z-index:10;
-    /* Ярлычок принадлежит панели и остаётся на ЕЁ стороне разделителя.
-       Раньше он висел снаружи, сдвинутый на свою ширину, и у свёрнутой панели
-       торчал в холст — выглядело так, будто это ручка сцены, а не панели.
-       Теперь его тело лежит там же, где сама панель, и при сворачивании он
-       не переезжает через линию. */
-    transform:translate(0,-50%);
-    width:13px;height:54px;display:flex;align-items:center;justify-content:center;
-    border:1px solid var(--ts-border);border-left:none;
-    border-radius:0 var(--ts-radius) var(--ts-radius) 0;
-    background:var(--ts-elevated);color:var(--ts-muted);cursor:pointer;padding:0;
-    box-shadow:var(--ts-shadow-sm)}
+/* Свёрнутая панель — ровно та линия, что отделяла её от сцены. Ни культи со
+   своей рамкой (читалась как вторая полоса), ни ярлычка на разделителе: он
+   неизбежно выбирал между второй линией и налезанием на холст. Разворачивает
+   панель обычная иконка в рельсе — там ей ничто не мешает и она одинаково
+   работает при любом положении браузера. */
+.ts-studio__side.is-collapsed{width:0}
+.ts-studio__side.is-collapsed>*{display:none}
 /* The asset browser can live on either edge (Settings). Mirroring is a matter
-   of column order and which side owns the divider and the grip — nothing in
-   the panel itself changes. */
+   of column order and which side owns the divider — nothing in the panel
+   itself changes. */
 .ts-studio--side-right{grid-template-columns:44px var(--ts-studio-deck-w,340px) minmax(0,1fr) auto}
 .ts-studio--side-right .ts-studio__side{order:3;border-right:none;
     border-left:1px solid var(--ts-border)}
 .ts-studio--side-right .ts-studio__deck{order:1}
 .ts-studio--side-right .ts-studio__stage{order:2}
-.ts-studio--side-right .ts-studio__sidegrip{right:auto;left:0;
-    border-left:1px solid var(--ts-border);border-right:none;
-    border-radius:var(--ts-radius) 0 0 var(--ts-radius);
-    transform:translate(0,-50%)}
 /* On this side the panel's own tab strip runs into the corner the fullscreen
    close button occupies, so it yields the same reserved room the other
    top-edge bars do. */
-.ts-studio--side-right .ts-studio__side>*:first-child:not(.ts-studio__sidegrip),
+.ts-studio--side-right .ts-studio__side>*:first-child,
 .ts-studio--side-right .ts-studio__gallerytabs{padding-right:var(--ts-fs-safe-right)}
-.ts-studio__sidegrip:hover{color:var(--ts-text)}
 .ts-studio__section{display:flex;flex-direction:column;gap:5px}
 .ts-studio__sectionhead{font-size:var(--ts-fs-xs);font-weight:700;letter-spacing:.05em;
     text-transform:uppercase;color:var(--ts-muted)}
@@ -126,6 +111,7 @@ export function createShell(options) {
     const spacer = document.createElement("div");
     spacer.className = "ts-studio__railspacer";
     rail.appendChild(spacer);
+    // Кнопка сворачивания браузера добавляется ниже, сразу после распорки.
 
     const deck = document.createElement("div");
     deck.className = "ts-studio__deck";
@@ -137,14 +123,23 @@ export function createShell(options) {
     const side = document.createElement("div");
     side.className = "ts-studio__side";
 
-    const grip = document.createElement("button");
-    grip.type = "button";
-    grip.className = "ts-studio__sidegrip";
-    grip.title = options.collapseTitle;
-    grip.setAttribute("aria-label", options.collapseTitle);
-    grip.textContent = "‹";
-    grip.addEventListener("click", () => setSideCollapsed(!side.classList.contains("is-collapsed")));
-    side.appendChild(grip);
+    // Переключатель браузера ассетов живёт в рельсе, а не на разделителе.
+    //
+    // Ярлычок на линии между панелью и сценой не имеет хорошего положения: с
+    // одной стороны он даёт свёрнутой панели вторую полосу, с другой лезет на
+    // холст. В рельсе он просто иконка среди иконок — не мешает ничему и
+    // ведёт себя одинаково, на каком бы краю ни жил сам браузер.
+    const sideToggle = document.createElement("button");
+    sideToggle.type = "button";
+    sideToggle.className = "ts-studio__railbtn ts-studio__sidetoggle";
+    sideToggle.title = options.collapseTitle;
+    sideToggle.setAttribute("aria-label", options.collapseTitle);
+    sideToggle.innerHTML = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none"'
+        + ' stroke="currentColor" stroke-width="1.7"><rect x="3" y="4" width="18"'
+        + ' height="16" rx="2"/><path d="M9 4v16"/></svg>';
+    sideToggle.addEventListener("click",
+        () => setSideCollapsed(!side.classList.contains("is-collapsed")));
+    rail.appendChild(sideToggle);
 
     root.append(rail, side, deck, stage);
 
@@ -161,10 +156,8 @@ export function createShell(options) {
         // колонок: свернул браузер ассетов, закрыл студию, открыл — он обязан
         // остаться свёрнутым. Раньше он каждый раз разворачивался сам.
         if (remember) rememberColumns({ sideCollapsed: collapsed });
-        // The chevron points the way the panel will move, which flips with the
-        // side the browser lives on.
-        const rightSide = root.classList.contains("ts-studio--side-right");
-        grip.textContent = collapsed === rightSide ? "‹" : "›";
+        // Кнопка подсвечена, когда панель открыта — как остальные в рельсе.
+        sideToggle.classList.toggle("is-active", !collapsed);
     }
 
     /**
@@ -176,12 +169,11 @@ export function createShell(options) {
         const right = placement === "right";
         root.classList.toggle("ts-studio--side-right", right);
         sideResizer.setEdge(right ? "left" : "right");
-        setSideCollapsed(side.classList.contains("is-collapsed"), false);
     }
 
     // ── fluid columns: draggable widths, persisted per install ──────────── //
     const WIDTH_KEY = "ts-studio.columns";
-    let widths = { deck: 340, side: 280, sideCollapsed: false };
+    let widths = { deck: 340, side: 280, sideCollapsed: false, panelTab: "" };
     try {
         widths = { ...widths, ...JSON.parse(localStorage.getItem(WIDTH_KEY) || "{}") };
     } catch { /* defaults stand */ }
@@ -199,7 +191,8 @@ export function createShell(options) {
             `${Math.min(520, Math.max(200, widths.side))}px`);
     }
     applyWidths();
-    if (widths.sideCollapsed) setSideCollapsed(true, false);
+    // Безусловно: кнопка обязана отражать состояние и при открытой панели.
+    setSideCollapsed(Boolean(widths.sideCollapsed), false);
 
     function makeResizer(host, edge, get, set) {
         const grip = document.createElement("div");
@@ -259,6 +252,9 @@ export function createShell(options) {
         // the resizer across rebuilds.
         root, deck: deckBody, deckFrame: deck, stage, side, rail,
         setMode, setSideCollapsed, setSidePlacement,
+        /** Какая вкладка боковой панели была открыта в прошлый раз. */
+        panelTab: () => widths.panelTab || "",
+        rememberPanelTab: (which) => rememberColumns({ panelTab: String(which || "") }),
         isSideCollapsed: () => side.classList.contains("is-collapsed"),
         parkFocus: overlay.parkFocus,
         close: overlay.close,

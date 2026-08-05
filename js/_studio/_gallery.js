@@ -67,7 +67,7 @@ export function createGallery(options) {
         button.className = "ts-studio__gallerytab";
         button.textContent = spec.label;
         if (spec.title) button.title = spec.title;
-        button.addEventListener("click", () => showTab(spec.id));
+        button.addEventListener("click", () => { showTab(spec.id); options.onTab?.(spec.id); });
         tabs.appendChild(button);
         spec.element.style.display = "none";
         return { spec, button };
@@ -105,8 +105,8 @@ export function createGallery(options) {
             libraryHandle = options.mountLibrary(libraryHost) || { unmount() {} };
         }
     }
-    sessionTab.addEventListener("click", () => showTab("session"));
-    libraryTab.addEventListener("click", () => showTab("library"));
+    sessionTab.addEventListener("click", () => { showTab("session"); options.onTab?.("session"); });
+    libraryTab.addEventListener("click", () => { showTab("library"); options.onTab?.("library"); });
 
     const results = [];
     let selectedCard = null;
