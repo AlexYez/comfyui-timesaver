@@ -1,5 +1,4 @@
 # Standard library imports
-import asyncio
 import hashlib
 import json
 import logging
@@ -48,6 +47,172 @@ try:
     import folder_paths
 except ImportError:
     folder_paths = None
+
+
+class _RunCancelled(BaseException):
+    """Stand-in for the engine's cancel signal when running outside ComfyUI.
+
+    Derived from BaseException on purpose, exactly like the engine's own class:
+    it has to travel through the broad ``except Exception`` around a download
+    without being mistaken for a file that merely failed.
+    """
+
+
+_INTERRUPT_ERROR = getattr(model_management, "InterruptProcessingException", None)
+
+
+class _EngineLinks:
+    """Handles into the running engine, looked up once and remembered.
+
+    Module-level state rather than class attributes: ComfyUI locks a V3 node's
+    class at registration, so ``cls.x = ...`` raises (CLAUDE.md §5).
+    """
+
+    prompt_queue = None
+    resolved = False
+
+
+_engine = _EngineLinks()
+
+
+def _prompt_queue():
+    """The engine's prompt queue, or None when there is nobody to ask.
+
+    Looked up lazily: at import time the server usually has no ``instance``
+    yet, so asking early would answer "never" for the whole session. Only a
+    successful lookup is remembered, so a later call still finds a server that
+    came up in between.
+    """
+    if _engine.resolved:
+        return _engine.prompt_queue
+    queue = None
+    try:
+        import server
+
+        queue = getattr(getattr(server.PromptServer, "instance", None), "prompt_queue", None)
+    except Exception as exc:  # no server, or it is not up yet
+        logger.debug("%s Prompt queue unavailable: %s", LOG_PREFIX, exc)
+    if queue is not None:
+        _engine.prompt_queue = queue
+        _engine.resolved = True
+    return queue
+
+
+class _RunProgress:
+    """One bar for the whole list, so the node stops being a mute green box.
+
+    The node used to report a bar per FILE, and only while that file's bytes
+    were moving. Everything else showed nothing at all: asking the server about
+    a model takes a round trip each, and a list of five could sit there for the
+    better part of a minute looking like the node had simply hung. What the
+    person is waiting on is the LIST, so that is what the bar measures — and it
+    only ever moves forwards.
+
+    Positions are counted in thousandths of a file so a long download still
+    advances between files instead of freezing on a whole number.
+    """
+
+    _SCALE = 1000
+    _MIN_STEP = 0.005  # ~half a percent of one file; the engine throttles too
+
+    def __init__(self, total_files: int) -> None:
+        self._total = max(1, int(total_files))
+        self._done = 0
+        self._sent = -1.0
+        self._bar = ProgressBar(self._total * self._SCALE) if ProgressBar else None
+
+    def file_done(self) -> None:
+        """One more file settled — from disk or from the server, both count."""
+        self._done = min(self._total, self._done + 1)
+        self._emit(float(self._done), force=True)
+
+    def bytes(self, done: int, total: int, phase: str = "download") -> None:
+        """Where the file in flight has got to, as a fraction of itself."""
+        fraction = (done / total) if total and total > 0 else 0.0
+        self._emit(self._done + min(1.0, max(0.0, fraction)))
+
+    def _emit(self, position: float, force: bool = False) -> None:
+        if self._bar is None:
+            return
+        if not force and position - self._sent < self._MIN_STEP:
+            return
+        self._sent = position
+        self._bar.update_absolute(int(position * self._SCALE), self._total * self._SCALE)
+
+
+class _RunGuard:
+    """A cancel signal for one node run that cannot be slept through.
+
+    ComfyUI's interrupt flag is one-shot: ``throw_exception_if_processing_
+    interrupted`` clears it with the very call that raises. Downloading happens
+    in a worker thread (the node is async), so while the bytes stream the
+    executor keeps stepping the rest of the graph, and every node it touches
+    asks that same question — whoever asks first takes the flag. The
+    downloading thread then never learns the button was pressed: it finishes
+    the current file and calmly starts the next one. That is exactly what
+    pressing Stop looked like from the outside.
+
+    So the guard watches two signals and latches on either:
+
+    * the flag itself — the fast path, for when we happen to ask first;
+    * the prompt this run belongs to is no longer in the queue's running set —
+      the reliable path, still true when a neighbouring node took the flag.
+
+    The second signal cannot false-positive during a healthy run: the node is
+    async, so the executor holds its prompt open until this thread returns.
+
+    A run with no prompt id (or no server to ask) falls back to the flag alone,
+    which is what the node did before.
+    """
+
+    _POLL_INTERVAL_S = 0.2
+
+    def __init__(self, prompt_id: str = "") -> None:
+        self._prompt_id = str(prompt_id or "")
+        self._cancelled = False
+        self._next_poll = 0.0
+
+    def cancelled(self, *, throttle: bool = False) -> bool:
+        """True once this run has been cancelled — and true forever after.
+
+        ``throttle`` is for the per-chunk check, which runs hundreds of times a
+        second: there it looks at the queue at most five times a second and
+        relies on the flag in between. Every other caller asks rarely enough to
+        deserve a straight answer, and gets one.
+        """
+        if self._cancelled:
+            return True
+        if _INTERRUPT_ERROR is not None:
+            try:
+                model_management.throw_exception_if_processing_interrupted()
+            except _INTERRUPT_ERROR:
+                self._cancelled = True
+                return True
+        now = time.monotonic()
+        if not throttle or now >= self._next_poll:
+            self._next_poll = now + self._POLL_INTERVAL_S
+            self._cancelled = self._prompt_finished()
+        return self._cancelled
+
+    def raise_if_cancelled(self, *, throttle: bool = False) -> None:
+        if self.cancelled(throttle=throttle):
+            raise (_INTERRUPT_ERROR or _RunCancelled)()
+
+    def _prompt_finished(self) -> bool:
+        if not self._prompt_id:
+            return False
+        queue = _prompt_queue()
+        if queue is None:
+            return False
+        try:
+            with queue.mutex:
+                return not any(item[1] == self._prompt_id
+                               for item in queue.currently_running.values())
+        except (AttributeError, IndexError, KeyError, TypeError) as exc:
+            # An engine that keeps this bookkeeping differently: fall back to
+            # the flag rather than cancelling a download on a guess.
+            logger.debug("%s Cannot read the running queue: %s", LOG_PREFIX, exc)
+            return False
 
 
 def _resolve_pack_version() -> str:
@@ -280,7 +445,14 @@ class TS_DownloadFilesNode(IO.ComfyNode):
         logger.info(f"{LOG_PREFIX} Checking connectivity to targets: {list(probes.keys())} ...")
         for base_url, probe_url in probes.items():
             try:
-                session.head(probe_url, timeout=cls._CONNECTIVITY_TIMEOUT, allow_redirects=True)
+                # Do NOT follow the redirect. The question here is only whether
+                # the HOST answers; a HuggingFace /resolve/ URL answers it with
+                # a 302 in one round trip, while chasing that redirect walks all
+                # the way to the CDN — two seconds, measured — and lands on the
+                # very request _probe_remote_file is about to make anyway. The
+                # file's real headers come from there, with the auth token this
+                # probe deliberately does not carry.
+                session.head(probe_url, timeout=cls._CONNECTIVITY_TIMEOUT, allow_redirects=False)
                 logger.info(f"{LOG_PREFIX} Target '{base_url}' is REACHABLE.")
                 return True
             except requests.RequestException:
@@ -498,19 +670,6 @@ class TS_DownloadFilesNode(IO.ComfyNode):
                     continue
             return model_path
         return ""
-
-    @staticmethod
-    def _raise_if_interrupted() -> None:
-        """Abort the run when the user pressed Cancel.
-
-        ComfyUI raises InterruptProcessingException, which derives from
-        BaseException — so it travels straight through the broad
-        ``except Exception`` handlers around the download without being
-        mistaken for a failed file.
-        """
-        if model_management is None:
-            return
-        model_management.throw_exception_if_processing_interrupted()
 
     @staticmethod
     def _is_within(root, candidate) -> bool:
@@ -814,16 +973,21 @@ class TS_DownloadFilesNode(IO.ComfyNode):
         return True
 
     @staticmethod
-    def _compute_sha256(file_path, chunk_size=8 * 1024 * 1024, desc=None):
+    def _compute_sha256(file_path, chunk_size=8 * 1024 * 1024, desc=None, progress_cb=None):
+        """Hash a file, reporting through the caller's progress channel.
+
+        Reading back a multi-gigabyte model takes minutes, so it has to be
+        visible. It reports through ``progress_cb`` rather than a bar of its
+        own: a second bar would reset the run's, and the run's is the one the
+        person is watching.
+        """
         hasher = hashlib.sha256()
         try:
             total = os.path.getsize(file_path)
         except OSError:
             total = 0
-        comfy_pbar = ProgressBar(total) if (ProgressBar and total > 0) else None
         progress_desc = desc or f"SHA256: {os.path.basename(file_path)}"
-        accumulated = 0
-        ui_update_threshold = 8 * 1024 * 1024
+        read = 0
         with open(file_path, "rb") as f, tqdm(
             total=total or None,
             unit='B', unit_scale=True, desc=progress_desc,
@@ -834,15 +998,10 @@ class TS_DownloadFilesNode(IO.ComfyNode):
                 if not chunk:
                     break
                 hasher.update(chunk)
-                chunk_len = len(chunk)
-                pbar.update(chunk_len)
-                if comfy_pbar:
-                    accumulated += chunk_len
-                    if accumulated >= ui_update_threshold:
-                        comfy_pbar.update(accumulated)
-                        accumulated = 0
-            if comfy_pbar and accumulated > 0:
-                comfy_pbar.update(accumulated)
+                read += len(chunk)
+                pbar.update(len(chunk))
+                if progress_cb is not None:
+                    progress_cb(read, total, "verify")
         return hasher.hexdigest()
 
     @classmethod
@@ -948,7 +1107,7 @@ class TS_DownloadFilesNode(IO.ComfyNode):
             return False
 
     @classmethod
-    def _download_single_file(cls, session, url, target_dir, skip_existing, verify_size, chunk_size_bytes, hf_domain_active, hf_token, ms_token, unzip_after_download, integrity_mode, progress_cb=None, honor_prompt_interrupt=True):
+    def _download_single_file(cls, session, url, target_dir, skip_existing, verify_size, chunk_size_bytes, hf_domain_active, hf_token, ms_token, unzip_after_download, integrity_mode, progress_cb=None, guard=None):
         response_get = None
         download_lock = None
         try:
@@ -1115,7 +1274,7 @@ class TS_DownloadFilesNode(IO.ComfyNode):
                         part_is_valid = True
                         if use_hf_sha256:
                             logger.info(f"{LOG_PREFIX} Verifying completed .part with HF SHA256...")
-                            part_sha256 = cls._compute_sha256(temp_file_path).lower()
+                            part_sha256 = cls._compute_sha256(temp_file_path, progress_cb=progress_cb).lower()
                             if part_sha256 != hf_expected_sha256:
                                 logger.error(f"{LOG_PREFIX} .part SHA256 mismatch. Removing corrupt partial.")
                                 cls._remove_file_silent(temp_file_path)
@@ -1218,15 +1377,12 @@ class TS_DownloadFilesNode(IO.ComfyNode):
 
             total_size = remote_file_size if remote_file_size > 0 else None
 
-            comfy_pbar = None
-            # The engine ProgressBar checks the prompt-interrupt flag on
-            # update; a service job (honor_prompt_interrupt=False) must not
-            # inherit that, so it skips the queue progress bar entirely.
-            if ProgressBar and total_size and honor_prompt_interrupt:
-                comfy_pbar = ProgressBar(total_size)
+            # Reporting goes through progress_cb and nothing else. This used to
+            # raise a second, file-sized ProgressBar of its own, which reset the
+            # node's bar to zero on every file — five models read as five
+            # separate jobs. The caller owns one bar for the whole list now
+            # (see _RunProgress); a service job passes its own callback.
 
-            downloaded_since_update = 0
-            ui_update_threshold = 1 * 1024 * 1024
             # Hash as the bytes go past. The file was being read back in full
             # afterwards purely to hash it — a second complete pass over a
             # multi-gigabyte model, minutes of disk time AFTER the progress bar
@@ -1242,16 +1398,16 @@ class TS_DownloadFilesNode(IO.ComfyNode):
                 initial=resume_byte_pos if file_mode == 'ab' else 0,
                 mininterval=1.0, ncols=100, unit_divisor=1024
             ) as pbar:
-                if comfy_pbar and resume_byte_pos > 0:
-                    comfy_pbar.update(resume_byte_pos)
+                if progress_cb is not None and resume_byte_pos > 0:
+                    progress_cb(resume_byte_pos, total_size or 0, "download")
                 for chunk in response_get.iter_content(chunk_size=chunk_size_bytes):
                     # Cancel used to do nothing here: a multi-gigabyte download
                     # ran to completion no matter what the user pressed, because
                     # nothing in this loop ever asked whether the run was still
                     # wanted. The partial file and its meta stay on disk, so the
                     # next run resumes instead of starting over.
-                    if honor_prompt_interrupt:
-                        cls._raise_if_interrupted()
+                    if guard is not None:
+                        guard.raise_if_cancelled(throttle=True)
                     if not chunk:
                         continue
                     f.write(chunk)
@@ -1260,15 +1416,7 @@ class TS_DownloadFilesNode(IO.ComfyNode):
                         progress_cb(resume_byte_pos + transferred, total_size or 0, "download")
                     if live_hash is not None:
                         live_hash.update(chunk)
-                    chunk_len = len(chunk)
-                    pbar.update(chunk_len)
-                    if comfy_pbar:
-                        downloaded_since_update += chunk_len
-                        if downloaded_since_update >= ui_update_threshold:
-                            comfy_pbar.update(downloaded_since_update)
-                            downloaded_since_update = 0
-                if comfy_pbar and downloaded_since_update > 0:
-                    comfy_pbar.update(downloaded_since_update)
+                    pbar.update(len(chunk))
 
             temp_final_size = cls._safe_int(os.path.getsize(temp_file_path), -1)
             if verify_size and remote_file_size > 0 and temp_final_size != remote_file_size:
@@ -1288,9 +1436,7 @@ class TS_DownloadFilesNode(IO.ComfyNode):
                     # Resumed download: the bytes from the earlier run never
                     # passed through this process, so the file has to be read.
                     logger.info(f"{LOG_PREFIX} Verifying HF SHA256 (resumed download)...")
-                    if progress_cb is not None:
-                        progress_cb(total_size or 0, total_size or 0, "verify")
-                    verified_sha256 = cls._compute_sha256(temp_file_path).lower()
+                    verified_sha256 = cls._compute_sha256(temp_file_path, progress_cb=progress_cb).lower()
                 if verified_sha256 != hf_expected_sha256:
                     logger.error(f"{LOG_PREFIX} HF SHA256 mismatch. Removing corrupted file.")
                     cls._remove_file_silent(temp_file_path)
@@ -1382,7 +1528,7 @@ class TS_DownloadFilesNode(IO.ComfyNode):
         return digest.hexdigest()
 
     @classmethod
-    async def execute(
+    def execute(
         cls,
         file_list: str,
         skip_existing: bool = True,
@@ -1396,16 +1542,26 @@ class TS_DownloadFilesNode(IO.ComfyNode):
         enable: bool = True,
         integrity_mode: str = "hf_sha256_auto",
     ) -> IO.NodeOutput:
-        """Async so a long download does not freeze the rest of the run.
+        """Synchronous on purpose: the rest of the graph is waiting on these files.
 
-        Downloading is blocking, socket-bound work that can last for hours. Held
-        directly, it stalled the executor for its whole duration; handed to a
-        worker thread and awaited, ComfyUI keeps serving progress and can run
-        the graph's independent branches meanwhile. The download code itself
-        stays synchronous — the thread is the only thing that changed.
+        This node exists to bring in the models the workflow cannot run without,
+        and it is an output node — nothing in the graph links to it, so nothing
+        in the graph is ordered after it either. Run asynchronously, the loaders
+        that need these very files were free to execute while the bytes were
+        still arriving. There is no branch worth overlapping with a download
+        whose whole point is to unblock the branches.
+
+        Holding the executor costs nothing elsewhere: ComfyUI runs the prompt
+        worker in its own thread (main.py starts it), so the HTTP server and the
+        websocket keep their event loop. Progress still reaches the node and the
+        Stop button still reaches us — both were measured, not assumed.
+
+        The run's id is read here, where the executor's context is ours, and
+        handed down: it is what lets the download notice that Stop was pressed
+        even when another node consumed the one-shot interrupt flag first (see
+        _RunGuard).
         """
-        return await asyncio.to_thread(
-            cls._execute_blocking,
+        return cls._execute_blocking(
             file_list,
             skip_existing,
             verify_size,
@@ -1417,7 +1573,18 @@ class TS_DownloadFilesNode(IO.ComfyNode):
             unzip_after_download,
             enable,
             integrity_mode,
+            cls._current_prompt_id(),
         )
+
+    @staticmethod
+    def _current_prompt_id() -> str:
+        """The id of the run being executed, or "" when there is no executor."""
+        try:
+            from comfy_execution.utils import get_executing_context
+        except ImportError:
+            return ""
+        context = get_executing_context()
+        return str(getattr(context, "prompt_id", "") or "")
 
     @classmethod
     def _execute_blocking(
@@ -1433,11 +1600,15 @@ class TS_DownloadFilesNode(IO.ComfyNode):
         unzip_after_download: bool = False,
         enable: bool = True,
         integrity_mode: str = "hf_sha256_auto",
+        prompt_id: str = "",
     ) -> IO.NodeOutput:
         if not enable:
             logger.info("%s Skipped (disabled).", LOG_PREFIX)
             return IO.NodeOutput()
 
+        # One guard for the whole list: cancelling is about the run, not about
+        # the file that happened to be in flight.
+        guard = _RunGuard(prompt_id)
         logger.info("%s Started.", LOG_PREFIX)
         chunk_size_bytes = max(1024, chunk_size_kb * 1024)
         integrity_mode_value = str(integrity_mode).strip().lower()
@@ -1460,6 +1631,8 @@ class TS_DownloadFilesNode(IO.ComfyNode):
         # network. A list whose models are all present now finishes without a
         # single request — previously it probed every url just to discover it
         # had nothing to download.
+        # One bar for the whole list, from the first file to the last.
+        progress = _RunProgress(len(files_to_download))
         pending = []
         satisfied = 0
         if skip_existing:
@@ -1470,6 +1643,7 @@ class TS_DownloadFilesNode(IO.ComfyNode):
                     pending.append(file_info)
                     continue
                 satisfied += 1
+                progress.file_done()
                 if unzip_after_download and local.lower().endswith(".zip"):
                     cls._extract_zip(local, file_info["target_dir"])
             if satisfied:
@@ -1483,8 +1657,14 @@ class TS_DownloadFilesNode(IO.ComfyNode):
         if not pending:
             logger.info("%s Done. Nothing to fetch: every file is already in place.", LOG_PREFIX)
             return IO.NodeOutput()
+        # Say how much is left and why the node is about to sit there: every one
+        # of these costs a round trip to the server before a single byte moves.
+        logger.info(
+            "%s %d file(s) still to check with the server.", LOG_PREFIX, len(pending),
+        )
         files_to_download = pending
 
+        guard.raise_if_cancelled()
         with cls._create_session_with_retries(proxy_url, total_retries=0) as probe_session:
             if not cls._check_connectivity_to_targets(files_to_download, probe_session, hf_domain):
                 logger.warning(f"{LOG_PREFIX} All target servers are unreachable. Switching to OFFLINE MODE. Execution finished.")
@@ -1495,13 +1675,19 @@ class TS_DownloadFilesNode(IO.ComfyNode):
 
         success = 0
         failed = 0
+        remaining = len(files_to_download)
         with cls._create_session_with_retries(proxy_url) as session:
-            for file_info in files_to_download:
-                cls._raise_if_interrupted()
-                if cls._download_single_file(session, file_info['url'], file_info['target_dir'], skip_existing, verify_size, chunk_size_bytes, active_mirror, hf_token, modelscope_token, unzip_after_download, integrity_mode_value):
+            for position, file_info in enumerate(files_to_download, 1):
+                guard.raise_if_cancelled()
+                logger.info(
+                    "%s Checking %d/%d: %s", LOG_PREFIX, position, remaining,
+                    os.path.basename(urlparse(file_info['url']).path) or file_info['url'],
+                )
+                if cls._download_single_file(session, file_info['url'], file_info['target_dir'], skip_existing, verify_size, chunk_size_bytes, active_mirror, hf_token, modelscope_token, unzip_after_download, integrity_mode_value, progress_cb=progress.bytes, guard=guard):
                     success += 1
                 else:
                     failed += 1
+                progress.file_done()
 
         logger.info("%s Done. Success: %d, Failed: %d", LOG_PREFIX, success, failed)
         return IO.NodeOutput()
