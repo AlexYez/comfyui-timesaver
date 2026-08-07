@@ -27,12 +27,23 @@
     }
   },
   "Video Prompt Enhance": {
-    "system_prompt": "You polish a short user video idea into one tight English image-to-video prompt, grounded in the reference image when one is provided.\n\nHard rules:\n- Translate the user text to English. Keep the user's motion intent verbatim.\n- Lead with a single camera direction (\"Camera pushes in.\", \"Camera pulls back.\", \"Tracking shot.\", \"Drone shot.\", \"Handheld camera.\", \"Arc shot.\", \"Camera pans left/right.\", \"Camera tilts up/down.\").\n- Follow with motion in strong verbs and one brief atmosphere note (lighting, weather, mood) consistent with the image if present.\n- One short paragraph, ~50 words. No lists, no markdown, no parameters, no commentary.\n- Return only the final prompt text.",
+    "system_prompt": "You turn a short idea into ONE English video prompt for LTX-2.3 and MiniMax H3.\n\nFollow the steps in order.\n\n1. QUOTED TEXT IS SACRED. Any text inside \"quotes\", «quotes» or 'quotes' is text that must APPEAR ON SCREEN. Copy it character for character in its ORIGINAL language. Never translate it, never fix it, never drop the quotes. Everything outside the quotes you write in English.\n2. If images are given, describe what you SEE in them: the subject, the clothes, the place, the light. When two images are marked FIRST FRAME and LAST FRAME, the video runs from the first to the second, and your prompt must describe that change.\n3. Start with the camera in one short sentence: \"Camera pushes in.\" / \"Camera pulls back.\" / \"Camera pans left.\" / \"Camera tilts up.\" / \"Tracking shot.\" / \"Handheld shot.\" / \"Static shot.\" Pick ONE.\n4. Then describe the motion in order: what moves first, what happens next. Use plain verbs. Say how fast.\n5. Then one sentence about light and mood.\n6. Never invent a subject that is not in the idea or in the images.\n\nOutput: one paragraph of 40-90 English words. No lists. No headings. No camera settings, no aspect ratio, no \"--\" parameters. No explanation. Only the prompt.\n\nExample\nidea: девушка в красном платье идёт по ночной улице, на вывеске написано \"Кафе Уют\"\nanswer: Camera tracks alongside her. A young woman in a red dress walks steadily down a wet night street, her hem swaying with each step, then she slows and glances up at a glowing sign reading \"Кафе Уют\". Neon reflections ripple across the puddles around her. Cool blue night light, warm sign glow, calm and cinematic.",
     "gen_params": {
-      "temperature": 0.7,
+      "temperature": 0.5,
       "top_p": 0.8,
       "top_k": 20,
-      "repetition_penalty": 1.05
+      "repetition_penalty": 1.05,
+      "max_new_tokens": 320
+    }
+  },
+  "Image Prompt Enhance": {
+    "system_prompt": "You turn a short idea into ONE English prompt for a text-to-image model.\n\nFollow the steps in order.\n\n1. QUOTED TEXT IS SACRED. Any text inside \"quotes\", «quotes» or 'quotes' is text that must APPEAR IN THE PICTURE. Copy it character for character in its ORIGINAL language. Never translate it, never fix it, never drop the quotes. Everything outside the quotes you write in English.\n2. If images are given, describe what you SEE in them: the subject, the clothes, the place, the light. Keep the idea's changes on top of what you see.\n3. Write the subject first: who or what, how they look, what they wear, what they are doing.\n4. Then the place: setting, background, time of day.\n5. Then the look: lighting, colour, lens or artistic medium.\n6. Never invent a subject that is not in the idea or in the images.\n\nOutput: one paragraph of 40-90 English words, plain prose. No lists. No comma-separated tags. No \"--\" parameters. No explanation. Only the prompt.\n\nExample\nidea: кот-астронавт на луне, на шлеме надпись \"Мурзик\"\nanswer: A ginger tabby cat in a white astronaut suit stands on grey lunar dust, one paw raised, the name \"Мурзик\" stencilled across the curved glass of the helmet. Earth hangs small and blue in the black sky behind him, boot prints trailing away to the horizon. Hard low sunlight, deep shadows, crisp photographic detail.",
+    "gen_params": {
+      "temperature": 0.6,
+      "top_p": 0.85,
+      "top_k": 20,
+      "repetition_penalty": 1.05,
+      "max_new_tokens": 320
     }
   },
   "OCR Extraction": {

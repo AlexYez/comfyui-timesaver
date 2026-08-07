@@ -4,7 +4,7 @@
 
 # 🚀 Timesaver Nodes for ComfyUI
 
-**A friendly toolkit of 61 production-ready nodes that take the boring busywork out of your ComfyUI graphs.**
+**A friendly toolkit of 62 production-ready nodes that take the boring busywork out of your ComfyUI graphs.**
 
 Resize, color-grade, key, denoise, transcribe, translate, prompt-build, manage models — without leaving the canvas.
 
@@ -32,10 +32,10 @@ Whether you build pipelines for image generation, video, audio, or just want to 
 | 📝 | **[Text & Prompts](#text)** | 4 | Prompt builder, batch loader, style picker, Russian stress marks |
 | 🎨 | **[Ideogram](#ideogram)** | 1 | Visual JSON-prompt designer for Ideogram 4 — text/object blocks, WYSIWYG node preview, per-area colours, layout/style/design presets, width/height output, RU/EN, import/export |
 | 📁 | **[Files & Models](#files)** | 8 | Model scanner, FP8 converter, file path loader, EDL→YouTube chapters |
-| 🛠️ | **[Utils](#utils)** | 4 | Custom sliders, math, smart type-aware switch |
+| 🛠️ | **[Utils](#utils)** | 5 | Workflow group bypass panel, custom sliders, math, smart type-aware switch |
 | 🎨 | **[Conditioning](#conditioning)** | 1 | Multi-reference image conditioning |
 
-> All 61 nodes use the **ComfyUI V3 API** (`comfy_api.v0_0_2.IO` — pinned namespace for stability).
+> All 62 nodes use the **ComfyUI V3 API** (`comfy_api.v0_0_2.IO` — pinned namespace for stability).
 >
 > **Plus extra samplers & schedulers** added straight into the native KSampler / KSamplerAdvanced / BasicScheduler dropdowns (no node to wire — they just appear after install): sampler **`res_2s`** (2nd-order exponential RK / "RES"), schedulers **`bong_tangent`** (two-stage arctangent sigma curve) and **`beta57`** (`beta` α=0.5/β=0.7). Algorithms reimplemented clean-room from [RES4LYF](https://github.com/ClownsharkBatwing/RES4LYF)'s public math (no code copied).
 
@@ -544,6 +544,16 @@ Multimodal Qwen 3 VL (image + video + text) running locally. Built-in model pick
 
 Prompt enhancement node with a built-in **voice button** — speak your idea, Whisper transcribes it (with cinematography-aware grammar fixes), then a small Qwen3 model expands it into a rich prompt. Optional image input for image-conditioned prompting. Two modes: fast turbo or high-quality. Internals split (v9.5) into `nodes/llm/super_prompt/` (`_helpers`, `_voice`, `_qwen` over the shared Qwen engine) so the prompt-enhancement path stays in sync with TS Qwen 3 VL V3.
 
+**Two reference images.** Drop an image straight onto the node — from the Artius browser, from the desktop, or from another node's preview. One image is a reference; drop a second and the two become the **first and last frame** of the shot, which the model is told explicitly. The second picker appears once the first is taken. The thumbnails carry a **1** and a **2** so you can see which frame is which; drag one onto the other to swap them. Remove the first of a pair and the second takes its place.
+
+**Frames can come from the graph too.** The optional `images` input takes a plain ComfyUI `IMAGE`. A single image is a plain reference; in a batch the **first image is the first frame** and the **last is the last frame**. One input rather than a socket per frame: the order inside the batch is what says which frame is which, so three or four frames need no new wiring (up to four are read). A wired input **wins** over images attached in the node, and wins as a whole — the batch already states the order, and mixing it with attachments could only produce a sequence nobody asked for. Each frame is shrunk to about 1 MP by area on the way in — no crop, and no upscale when it is already smaller.
+
+**The Enhance button sees the input too.** The value on a wire does not exist until something computes it, so the button computes it — but only the branch that feeds this input. The nodes that branch depends on are pulled out of the graph into a prompt of their own and run; nothing else in the workflow is in that prompt, so no sampler and no save fires along with it. Two loaders joined into a batch, a resize, a crop — all of it works, and none of it needs a run of the whole workflow first. Nothing is remembered between presses on purpose: swap the file behind a loader and the graph reads exactly the same, so a remembered result would quietly enhance the picture you replaced. ComfyUI does the caching one level down, by what the nodes actually read. If the branch produces no image, the node says so instead of quietly enhancing the text alone.
+
+**On-screen text is not translated.** Anything in quotes is what should appear in the picture — a sign, a title, a lyric. It is copied through unchanged, in its original language, while everything else is translated to English. An obliging translation used to turn a Russian shop sign into an English one nobody asked for.
+
+**The `Video Prompt Enhance` and `Image Prompt Enhance` presets** are written for a small model (Qwen 2B/4B): short numbered steps, an explicit output format, one example. The video preset is tuned for LTX-2.3 and MiniMax H3 — camera move first, then the motion in order, then light and mood.
+
 **Use when:** quick prompt brainstorming, voice-driven workflows, or bridging a sketchy idea into a production-ready prompt.
 
 ---
@@ -635,6 +645,12 @@ Multi-file downloader that takes a list of `URL <space> target_path` lines and d
 
 Models you already have are listed too, on purpose: the list travels with the workflow, so whoever you send it to still needs those lines.
 
+The folder it proposes is the one your models of that category are **already in**. ComfyUI reads two directories per category — `clip` and `text_encoders`, `unet` and `diffusion_models` — and both are real; if your encoders live in `clip`, that is where the download is aimed, not at the empty folder next to it. A line you wrote in the list yourself is never rewritten.
+
+**Cancelling the run stops everything.** ComfyUI's cancel button ends the file in flight *and* every file still queued after it. A partial file is kept as `.part`, so the next run resumes from where it stopped instead of starting over. Progress is one bar for the whole list, from the first model to the last.
+
+**The rest of the workflow waits.** This node brings in the models the graph has nothing to load without, so it holds the run until the last file has landed rather than handing the graph back while the bytes are still arriving.
+
 **Use when:** distributing a workflow that needs N specific models — open it, press the button, and the node is filled in.
 
 > **Network behaviour (for security review):** the node issues standard HTTPS `HEAD`/`GET` requests **only** to the URLs you type into `file_list`, identifying itself with an honest `comfyui-timesaver/<version>` User-Agent. It does **not** execute, import, or run anything it downloads — files are written to disk only. There are no hardcoded callback/telemetry endpoints. Optional `hf_token` / `modelscope_token` are sent as an `Authorization` header **only** to their matching host (HuggingFace / ModelScope respectively) and are never logged or forwarded elsewhere. Auto-unzip is validated against zip-slip path traversal before extraction.
@@ -701,9 +717,23 @@ Convert a DaVinci Resolve EDL (Edit Decision List) export into a YouTube-friendl
 ---
 
 <a id="utils"></a>
-### 🛠️ Utils (4 nodes)
+### 🛠️ Utils (5 nodes)
 
 Tiny helpers that make the graph less cluttered.
+
+#### TS Group Bypasser
+
+A control panel for the groups of the open workflow. The node's body holds nothing but group names and checkboxes: unchecking one puts **every node inside that group into bypass**. Double-click a row to show that group on the canvas. The node sizes itself to the number of groups — two groups give a two-row node, with no empty space underneath.
+
+The state is not kept in this node — it is read back from the graph, so a node muted by hand, or one that belongs to two overlapping groups, honestly reads as "partly on" instead of being passed off as something definite.
+
+**The settings live in the node's Properties Panel** (right-click the node): filter by title (a substring, or `/…/` for a regular expression), filter by colour (comma-separated; LiteGraph colour names, hex, and `none` for uncoloured groups all work), the order of the list (by position, title or colour), and a "max one" / "always one" rule for when switching one group on should switch the others off — handy for A/B branches. **Bulk actions** (enable, bypass or invert everything shown) are in the node's right-click menu.
+
+Bypassed groups survive a save without any help from this node: the state lives in the modes of the nodes themselves.
+
+**Use when:** a heavy workflow with several branches and only one of them wanted per run.
+
+---
 
 #### TS Int Slider
 <img src="doc/screenshots/ts_int_slider.png" alt="TS Int Slider" width="450" />
@@ -829,7 +859,7 @@ Timesaver freezes node ids and inputs across versions on purpose. If something b
 
 ```text
 comfyui-timesaver/
-├─ nodes/                  # 64 modules: 61 nodes + 3 sampler/scheduler injectors
+├─ nodes/                  # 65 modules: 62 nodes + 3 sampler/scheduler injectors
 ├─ js/                     # frontend extensions for DOM-widget nodes
 ├─ doc/screenshots/        # node screenshots (this README uses them)
 ├─ requirements.txt        # runtime dependencies

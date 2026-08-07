@@ -1010,6 +1010,13 @@
       }
     }
   },
+  "TS_GroupBypasser": {
+    "api": "v3",
+    "category": "TS/Utils",
+    "class_name": "TS_GroupBypasser",
+    "display_name": "TS Group Bypasser",
+    "python_file": "nodes/utils/ts_group_bypasser.py"
+  },
   "TS_IdeogramDesigner": {
     "api": "v3",
     "category": "TS/Ideogram",
@@ -2094,6 +2101,9 @@
     "python_file": "nodes/llm/super_prompt/ts_super_prompt.py",
     "widgets": {
       "attached_image": {
+        "default": ""
+      },
+      "attached_image_2": {
         "default": ""
       },
       "high_quality": {
