@@ -15,6 +15,7 @@ import folder_paths
 import torch
 from comfy_api.v0_0_2 import IO
 
+from .._ffmpeg import ffmpeg_executable
 from .._shared import TS_Logger
 
 logger = logging.getLogger("comfyui_timesaver.ts_animation_preview")
@@ -323,11 +324,8 @@ class TS_Animation_Preview(IO.ComfyNode):
 
     @staticmethod
     def _get_ffmpeg_exe():
-        try:
-            import imageio_ffmpeg
-            return imageio_ffmpeg.get_ffmpeg_exe()
-        except Exception:
-            return "ffmpeg"
+        """Kept as this node's own name; the answer comes from one place now."""
+        return ffmpeg_executable()
 
     @classmethod
     def _mux_audio_into_video(cls, video_path, audio_path, output_path, duration_seconds):
