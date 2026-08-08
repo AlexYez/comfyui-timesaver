@@ -7,7 +7,7 @@
 // Контракт отрисовщика: (control, ctx) -> {element, get, set}, и о каждой
 // правке он сообщает через ctx.onChange(param, value).
 
-import { createRatioCards, parseRatioText } from "../../_theme.js";
+import { createRatioPicker, parseRatioText } from "../../_theme.js";
 import { deckSection } from "../_shell.js";
 
 function parseAspect(text) {
@@ -38,35 +38,21 @@ export const render = (control, ctx) => {
 
     const section = deckSection(ctx.t.format);
     section.classList.add("ts-studio__size");
-    // The same cards TS Resolution Selector draws (`createRatioCards` in
-    // js/_theme.js): one control for every "what shape?" question in the pack,
-    // so the studio and the node stop looking like two different products.
-    const cards = createRatioCards({
+    // The same cards TS Resolution Selector draws, in the compact form
+    // (`createRatioPicker` in js/_theme.js): a trigger showing the chosen shape,
+    // the 3x3 grid only while it is open, and the "w:h" field to its right. Nine
+    // cards standing open cost more of this panel's one column of vertical room
+    // than they are worth — the node, which can be resized, keeps them open.
+    const picker = createRatioPicker({
         values: aspects,
         onSelect: (aspect) => { state.aspect = aspect; sync(); },
+        onCustom: (aspect) => { state.aspect = aspect; sync(); },
+        customPlaceholder: ctx.t.aspectCustom,
+        customTitle: ctx.t.aspectCustomTip,
     });
     const grid = document.createElement("div");
     grid.className = "ts-studio__aspects";
-    grid.appendChild(cards.element);
-    const buttons = cards.buttons;
-
-    // Anything the list does not cover, in w:h.
-    const custom = document.createElement("input");
-    custom.type = "text";
-    custom.className = "ts-ui-input ts-studio__aspectcustom";
-    custom.placeholder = ctx.t.aspectCustom;
-    custom.title = ctx.t.aspectCustomTip;
-    custom.addEventListener("change", () => {
-        const text = custom.value.trim().replace(/[\s,]+/g, ":").replace("x", ":");
-        const [w, h] = text.split(":").map(Number);
-        if (!(w > 0 && h > 0)) { custom.value = ""; return; }
-        const aspect = `${w}:${h}`;
-        cards.add(aspect);
-        state.aspect = aspect;
-        custom.value = "";
-        sync();
-    });
-    grid.appendChild(custom);
+    grid.appendChild(picker.element);
     section.appendChild(grid);
 
     const resTitle = deckSection(ctx.t.resolution);
@@ -90,7 +76,7 @@ export const render = (control, ctx) => {
     section.appendChild(resTitle);
 
     function sync() {
-        cards.select(state.aspect);
+        picker.select(state.aspect);
         const { width, height } = sizeFromAspect(state.aspect, state.mp, snap);
         mpText.textContent = `${state.mp.toFixed(2)} MP`;
         whText.textContent = `${width} × ${height}`;
@@ -114,13 +100,13 @@ export const render = (control, ctx) => {
             const off = Boolean(disabled);
             section.classList.toggle("is-disabled", off);
             slider.disabled = off;
-            cards.setDisabled(off);
+            picker.setDisabled(off);
             note.style.display = off ? "" : "none";
         },
         set: (value) => {
             // A carried-over aspect only applies if this model offers it;
             // otherwise the model's own default stands.
-            if (value?.aspect && buttons.has(value.aspect)) state.aspect = value.aspect;
+            if (value?.aspect && picker.has(value.aspect)) state.aspect = value.aspect;
             if (value?.mp) {
                 state.mp = Math.min(mpMax, Math.max(mpMin, Number(value.mp)));
                 slider.value = String(state.mp);

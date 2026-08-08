@@ -20,23 +20,20 @@ export function ensureControlStyles() {
     style.textContent = `
 .ts-studio__prompt{position:relative}
 .ts-studio__prompt textarea{width:100%;min-height:86px;resize:vertical}
-/* Proportions are drawn by the pack's shared cards (the .ts-ui-ratio family in
-   js/_theme.js) — the same control TS Resolution Selector shows. This wrapper
-   only stacks them above the "custom w:h" field.
+/* Proportions are chosen with the pack's shared control (the .ts-ui-ratiopick
+   family in js/_theme.js) — a trigger plus a popover, the same one TS Resolution
+   Selector shows open. This wrapper only puts it on its own line.
    NOTE: no backticks in this comment — the whole stylesheet is one template
    literal, and one backtick would end it. */
-.ts-studio__aspects{display:flex;flex-direction:column;gap:6px}
-.ts-studio__aspectcustom{width:64px;height:24px;align-self:flex-start;padding:0 6px;
-    font-size:var(--ts-fs-xs);text-align:center}
-/* A choice that turned out to be a list of proportions renders cards, so its
-   row must stop being a row. */
+.ts-studio__aspects{display:flex;align-items:center;gap:6px}
+/* A choice that turned out to be a list of proportions shows the same trigger,
+   so its row of words is not a row any more. */
 .ts-studio__choice--ratios{display:block}
 .ts-studio__sizerow{display:flex;align-items:center;gap:8px}
 .ts-studio__sizerow input[type=range]{flex:1}
 .ts-studio__sizeinfo{display:flex;justify-content:space-between;font-size:var(--ts-fs-sm);
     color:var(--ts-muted)}
 .ts-studio__size.is-disabled .ts-studio__aspects,
-.ts-studio__size.is-disabled .ts-studio__aspectcustom,
 .ts-studio__size.is-disabled .ts-studio__sizerow,
 .ts-studio__size.is-disabled .ts-studio__sizeinfo{opacity:.4}
 .ts-studio__sizenote{font-size:var(--ts-fs-xs);color:var(--ts-muted)}

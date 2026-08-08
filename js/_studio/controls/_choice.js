@@ -7,7 +7,7 @@
 // Контракт отрисовщика: (control, ctx) -> {element, get, set}, и о каждой
 // правке он сообщает через ctx.onChange(param, value).
 
-import { createRatioCards, isRatioList } from "../../_theme.js";
+import { createRatioPicker, isRatioList } from "../../_theme.js";
 import { deckSection } from "../_shell.js";
 import { localized } from "./_shared.js";
 
@@ -28,7 +28,7 @@ export const render = (control, ctx) => {
     // in the manifest: nothing has to be re-declared, and a list with one
     // non-ratio option (Refine / Replace) keeps the plain buttons.
     const asRatios = isRatioList(options.map((option) => option.value))
-        ? createRatioCards({
+        ? createRatioPicker({
             values: options.map((option) => String(option.value)),
             onSelect: (chosen) => { value = chosen; sync(); },
         })
@@ -55,7 +55,7 @@ export const render = (control, ctx) => {
         // Tooltips still belong to the options, so they are carried over onto
         // the cards rather than lost with the words.
         for (const option of options) {
-            const button = asRatios.buttons.get(String(option.value));
+            const button = asRatios.cards.buttons.get(String(option.value));
             const tip = localized(option.tooltip, ctx.locale, "");
             if (button && tip) button.title = tip;
             if (button) buttons.set(option.value, button);

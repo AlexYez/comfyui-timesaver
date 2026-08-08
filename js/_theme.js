@@ -319,17 +319,50 @@ function themeCss() {
   background:var(--ts-accent-soft)}
 .ts-ui-ratio:focus-visible{outline:2px solid var(--ts-accent-line);outline-offset:1px}
 .ts-ui-ratio:disabled{cursor:default}
-/* The wrap is a fixed box the frame is fitted INTO, so a 9:21 and a 21:9 take
-   the same room and every label sits on one line. */
+/* ⚠️ THE WRAP MUST BE SQUARE, and that is the whole trick.
+   The frame's two sides are given in per cent, and per cent resolves against
+   DIFFERENT bases: width against the wrap's width, height against its height.
+   The first version made the wrap full-card-width and 26 px tall, so 16:9 came
+   out as roughly 80x15 — a letterbox slot, not a 16:9 frame. Every shape was
+   squashed by the wrap's own proportion.
+   A square base makes "100% by 56%" mean exactly 16:9. Both sides of the square
+   come from one token, so a 9:21 and a 21:9 occupy the same room and every label
+   sits on one line. */
 .ts-ui-ratio__wrap{display:flex;align-items:center;justify-content:center;
-  width:100%;height:var(--ts-ratio-box,26px)}
-.ts-ui-ratio__frame{max-width:100%;max-height:100%;border-radius:3px;
+  width:var(--ts-ratio-box,34px);height:var(--ts-ratio-box,34px);margin:0 auto;
+  flex:0 0 auto}
+.ts-ui-ratio__frame{border-radius:3px;
   border:1px solid var(--ts-muted);background:var(--ts-elevated)}
 .ts-ui-ratio.is-selected .ts-ui-ratio__frame{border-color:var(--ts-accent)}
 .ts-ui-ratio__label{font-size:var(--ts-fs-xs);letter-spacing:.02em;color:var(--ts-muted);
   line-height:1;white-space:nowrap}
 .ts-ui-ratio.is-selected .ts-ui-ratio__label{color:var(--ts-accent)}
 .ts-ui-ratios.is-disabled{opacity:.4}
+
+/* Compact form of the same control: a trigger that shows what is chosen, and
+   the grid only while it is open. A side panel has one column of vertical room
+   and a dozen other controls in it — nine cards standing open all day cost more
+   of it than they are worth. */
+.ts-ui-ratiopick{position:relative;display:flex;align-items:center;gap:6px}
+.ts-ui-ratiopick__trigger{display:flex;align-items:center;gap:6px;padding:3px 7px 3px 5px;
+  border:1px solid var(--ts-border);border-radius:var(--ts-radius-sm);
+  background:var(--ts-surface);color:var(--ts-text);cursor:pointer;
+  font-size:var(--ts-fs-sm);line-height:1;flex:0 0 auto}
+.ts-ui-ratiopick__trigger:hover{border-color:var(--ts-border-strong)}
+.ts-ui-ratiopick__trigger.is-active{border-color:var(--ts-accent);background:var(--ts-accent-soft)}
+.ts-ui-ratiopick__trigger:focus-visible{outline:2px solid var(--ts-accent-line);outline-offset:1px}
+.ts-ui-ratiopick__trigger:disabled{cursor:default;opacity:.5}
+/* The preview is the same square-based frame as a card's, just smaller — the
+   selected shape is the label, so it must be the shape it names. */
+.ts-ui-ratiopick__trigger .ts-ui-ratio__wrap{--ts-ratio-box:18px;margin:0}
+.ts-ui-ratiopick__value{font-variant-numeric:tabular-nums}
+.ts-ui-ratiopick__caret{color:var(--ts-muted);font-size:9px}
+.ts-ui-ratiopick__custom{width:58px;flex:0 0 auto;height:24px;padding:0 6px;
+  font-size:var(--ts-fs-xs);text-align:center}
+.ts-ui-ratiopick__pop{position:absolute;z-index:40;top:calc(100% + 4px);left:0;
+  display:none;min-width:186px;padding:8px;background:var(--ts-elevated);
+  border:1px solid var(--ts-border);border-radius:var(--ts-radius);box-shadow:var(--ts-shadow)}
+.ts-ui-ratiopick__pop.is-open{display:block}
 
 /* ── Launcher: the one way to open a node's fullscreen editor ─────────
    Same label, same look, horizontally centred in every node that has one,
@@ -404,16 +437,48 @@ export function isRatioList(values) {
  * @param {object} options
  * @param {string[]} [options.values] Proportions as "w:h".
  * @param {(value: string) => void} [options.onSelect] Called on click, never on `select()`.
- * @param {number} [options.boxHeight=26] Height of the box each frame is fitted into.
+ * @param {number} [options.boxSize=34] Side of the SQUARE box each frame is fitted into.
  * @param {(value: string) => string} [options.label] Card caption; defaults to the value.
  * @returns {{element: HTMLElement, select: Function, selected: Function, add: Function,
  *            has: Function, values: Function, setDisabled: Function, buttons: Map}}
  */
-export function createRatioCards({ values = [], onSelect, boxHeight = 26, label } = {}) {
+/**
+ * The square box with one proportional frame inside it.
+ *
+ * Both sides of the frame are given in per cent OF THAT SQUARE, which is what
+ * makes the drawn shape exactly the written one. ⚠️ The square matters: per
+ * cent resolves width against the box's width and height against its height, so
+ * a non-square box multiplies every shape by its own proportion — the first
+ * version was full-card-width by 26 px tall, and 16:9 came out a letterbox slit.
+ *
+ * @param {string} value Proportion as "w:h".
+ * @returns {HTMLElement} The wrap element (empty when the value is not a ratio).
+ */
+export function createRatioFrame(value) {
+    const wrap = document.createElement("div");
+    wrap.className = "ts-ui-ratio__wrap";
+    const parsed = parseRatioText(value);
+    if (!parsed) return wrap;
+    const frame = document.createElement("div");
+    frame.className = "ts-ui-ratio__frame";
+    const long = 100;
+    const short = Math.max(12, Math.round((long * Math.min(parsed.w, parsed.h))
+        / Math.max(parsed.w, parsed.h)));
+    const [w, h] = parsed.ratio >= 1 ? [long, short] : [short, long];
+    frame.style.width = `${w}%`;
+    frame.style.height = `${h}%`;
+    wrap.appendChild(frame);
+    return wrap;
+}
+
+
+export function createRatioCards({ values = [], onSelect, boxSize = 34, label } = {}) {
     ensureThemeStyles();
     const element = document.createElement("div");
     element.className = "ts-ui-ratios";
-    element.style.setProperty("--ts-ratio-box", `${boxHeight}px`);
+    // Сторона КВАДРАТА, в который вписывается рамка (см. .ts-ui-ratio__wrap):
+    // проценты рамки считаются от него, поэтому база обязана быть квадратной.
+    element.style.setProperty("--ts-ratio-box", `${boxSize}px`);
     const buttons = new Map();
     let current = "";
 
@@ -425,20 +490,7 @@ export function createRatioCards({ values = [], onSelect, boxHeight = 26, label 
         button.className = "ts-ui-ratio";
         button.dataset.value = value;
 
-        const wrap = document.createElement("div");
-        wrap.className = "ts-ui-ratio__wrap";
-        const frame = document.createElement("div");
-        frame.className = "ts-ui-ratio__frame";
-        // Both sides are given, and the wrap clamps whichever one is too long:
-        // that keeps the drawn shape EXACTLY the written one. Setting one side
-        // and letting aspect-ratio derive the other is what squashes a 9:21.
-        const long = 100;
-        const short = Math.max(12, Math.round((long * Math.min(parsed.w, parsed.h))
-            / Math.max(parsed.w, parsed.h)));
-        const [w, h] = parsed.ratio >= 1 ? [long, short] : [short, long];
-        frame.style.width = `${w}%`;
-        frame.style.height = `${h}%`;
-        wrap.appendChild(frame);
+        const wrap = createRatioFrame(value);
 
         const caption = document.createElement("div");
         caption.className = "ts-ui-ratio__label";
@@ -476,6 +528,144 @@ export function createRatioCards({ values = [], onSelect, boxHeight = 26, label 
             const off = Boolean(disabled);
             element.classList.toggle("is-disabled", off);
             for (const button of buttons.values()) button.disabled = off;
+        },
+    };
+}
+
+
+/**
+ * The compact form: a trigger that shows the chosen shape, and the grid only
+ * while it is open.
+ *
+ * Same cards, same geometry — this only decides when they are on screen. A side
+ * panel has one column of vertical room and a dozen controls competing for it,
+ * so nine cards standing open all day cost more than they are worth; a node with
+ * a resizable body is the opposite case and keeps the open grid.
+ *
+ * @param {object} options
+ * @param {string[]} [options.values] Proportions as "w:h".
+ * @param {(value: string) => void} [options.onSelect] Called on a person's pick.
+ * @param {(value: string) => void} [options.onCustom] Enables the small "w:h"
+ *   field to the right of the trigger; called with the accepted proportion.
+ * @param {string} [options.customPlaceholder="w:h"]
+ * @param {string} [options.customTitle]
+ * @param {number} [options.boxSize=34] Side of the square inside each card.
+ * @returns {{element: HTMLElement, select: Function, selected: Function, add: Function,
+ *            has: Function, values: Function, setDisabled: Function, close: Function,
+ *            cards: object, trigger: HTMLElement}}
+ */
+export function createRatioPicker({
+    values = [],
+    onSelect,
+    onCustom,
+    customPlaceholder = "w:h",
+    customTitle,
+    boxSize = 34,
+} = {}) {
+    ensureThemeStyles();
+    const element = document.createElement("div");
+    element.className = "ts-ui-ratiopick";
+
+    const trigger = document.createElement("button");
+    trigger.type = "button";
+    trigger.className = "ts-ui-ratiopick__trigger";
+    let preview = createRatioFrame("1:1");
+    const valueText = document.createElement("span");
+    valueText.className = "ts-ui-ratiopick__value";
+    const caret = document.createElement("span");
+    caret.className = "ts-ui-ratiopick__caret";
+    caret.textContent = "▾";
+    trigger.append(preview, valueText, caret);
+
+    const pop = document.createElement("div");
+    pop.className = "ts-ui-ratiopick__pop";
+
+    const cards = createRatioCards({
+        values,
+        boxSize,
+        onSelect: (value) => {
+            paint(value);
+            close();
+            onSelect?.(value);
+        },
+    });
+    pop.appendChild(cards.element);
+    element.append(trigger, pop);
+
+    if (onCustom) {
+        const custom = document.createElement("input");
+        custom.type = "text";
+        custom.className = "ts-ui-input ts-ui-ratiopick__custom";
+        custom.placeholder = customPlaceholder;
+        if (customTitle) custom.title = customTitle;
+        custom.addEventListener("change", () => {
+            // "16 9", "16x9", "16,9" all mean the same thing to a person.
+            const text = custom.value.trim().replace(/[\s,x×]+/g, ":");
+            const parsed = parseRatioText(text);
+            custom.value = "";
+            if (!parsed) return;
+            const value = `${parsed.w}:${parsed.h}`;
+            cards.add(value);
+            paint(value);
+            onCustom(value);
+        });
+        element.appendChild(custom);
+    }
+
+    function paint(value) {
+        cards.select(value);
+        valueText.textContent = String(value ?? "");
+        const fresh = createRatioFrame(value);
+        trigger.replaceChild(fresh, preview);
+        preview = fresh;
+    }
+
+    // The listener lives only while the popover is open, and removes itself if
+    // the control was taken off the page in between (the studio rebuilds its
+    // deck on every model change, and a listener outliving its panel is a leak).
+    function onDocumentDown(event) {
+        if (!element.isConnected) return close();
+        if (!element.contains(event.target)) close();
+    }
+    function onKeyDown(event) {
+        if (event.key === "Escape") close();
+    }
+
+    function open() {
+        pop.classList.add("is-open");
+        trigger.classList.add("is-active");
+        document.addEventListener("pointerdown", onDocumentDown);
+        document.addEventListener("keydown", onKeyDown);
+    }
+
+    function close() {
+        pop.classList.remove("is-open");
+        trigger.classList.remove("is-active");
+        document.removeEventListener("pointerdown", onDocumentDown);
+        document.removeEventListener("keydown", onKeyDown);
+    }
+
+    trigger.addEventListener("click", () => {
+        if (pop.classList.contains("is-open")) close();
+        else open();
+    });
+
+    return {
+        element,
+        trigger,
+        cards,
+        close,
+        add: (value) => cards.add(value),
+        has: (value) => cards.has(value),
+        values: () => cards.values(),
+        selected: () => cards.selected(),
+        select: paint,
+        setDisabled: (disabled) => {
+            const off = Boolean(disabled);
+            trigger.disabled = off;
+            cards.setDisabled(off);
+            for (const field of element.querySelectorAll("input")) field.disabled = off;
+            if (off) close();
         },
     };
 }

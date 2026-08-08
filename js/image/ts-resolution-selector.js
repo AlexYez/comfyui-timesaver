@@ -67,10 +67,16 @@ function ensureStyles() {
     height: 100%;
 }
 .ts-reso-selector .ts-ui-ratio__wrap {
-    height: auto;
+    /* The node can be dragged, so the square grows with the card instead of
+       staying at the shared token's size: height comes from the stretched grid
+       row, aspect-ratio derives the width from it. Still a SQUARE — the frame's
+       per-cent sides depend on that (js/_theme.js). */
+    width: auto;
+    height: 100%;
+    max-width: 100%;
+    aspect-ratio: 1 / 1;
     flex: 1 1 auto;
     min-height: 0;
-    padding: 2px 0;
 }
 `;
     document.head.appendChild(style);
