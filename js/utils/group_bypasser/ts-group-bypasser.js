@@ -100,6 +100,7 @@ function setupNode(node) {
     let autoHeight = null;
     let manualHeight = false;
     let applyingSize = false;
+    let lastCollapsed = null;
 
     const settings = () => ({
         filter_title: readSetting(node, "filter_title"),
@@ -136,6 +137,7 @@ function setupNode(node) {
         });
         visible = sortGroups(shown, config.sort);
         fitToRows(visible.length);
+        syncCollapsed();
         panel.render({
             rows: visible.map((row) => ({
                 key: row.key,
@@ -150,6 +152,32 @@ function setupNode(node) {
 
     function refresh() {
         draw(readGroups());
+    }
+
+    // A collapsed node is a title bar and nothing else, so the list must go with
+    // it. The renderer zeroes the widget's box on its own, but only on its next
+    // pass — and the rows stay drawn at their old width until then, hanging past
+    // a node that is no longer there. Hiding the element outright leaves nothing
+    // to hang.
+    function syncCollapsed() {
+        const collapsed = Boolean(node.flags?.collapsed);
+        if (collapsed === lastCollapsed) return;
+        lastCollapsed = collapsed;
+        panel.element.style.display = collapsed ? "none" : "";
+    }
+
+    /**
+     * True while the person is dragging this node's own edge.
+     *
+     * Everything else that resizes the node — and the renderer does resize it,
+     * laying a freshly loaded workflow out before the group list is known — is
+     * not a choice anyone made.
+     */
+    function personIsResizing() {
+        const canvas = app.canvas;
+        if (!canvas) return false;
+        if (canvas.resizing_node === node) return true;
+        return Boolean(canvas.pointer?.isDown && canvas.pointer?.resizeDirection);
     }
 
     function fitToRows(count) {
@@ -185,14 +213,28 @@ function setupNode(node) {
     // fitting stops — until the list of groups changes again, or the workflow
     // is reopened, because the height is derived from the content and there is
     // nowhere to keep an override that would not show up as a fifth property.
+    //
+    // ⚠️ WHO resized matters, and the first version did not ask. Any height that
+    // differed from the fitted one was taken for a person's decision — including
+    // the one the renderer assigns while a workflow loads, before this node has
+    // been told what groups exist. So every page reload silently switched the
+    // fitting off, and a five-group node came back standing at the empty
+    // default. The pointer is what tells the two apart.
+    //
     // A couple of pixels of slack: the shared helper clamps sizes on its way
     // through, and that rounding is not a person reaching for the edge.
     const previousResize = node.onResize;
     node.onResize = function onResize() {
         const result = previousResize?.apply(this, arguments);
+        if (applyingSize || autoHeight === null) return result;
         const height = Math.round(node.size?.[1] || 0);
-        if (!applyingSize && autoHeight !== null && Math.abs(height - autoHeight) > 2) {
+        if (Math.abs(height - autoHeight) <= 2) return result;
+        if (personIsResizing()) {
             manualHeight = true;
+        } else if (!manualHeight) {
+            // Somebody else shrank the node. Put the content height back — after
+            // this call returns, so the renderer finishes its own pass first.
+            queueMicrotask(() => fitToRows(visible.length));
         }
         return result;
     };
@@ -223,6 +265,16 @@ function setupNode(node) {
 
     // Editing a property in the panel must show up in the list at once, not
     // whenever the next poll happens to notice.
+    // Collapsing does not redraw the list, so the state has to be caught where
+    // it changes. LiteGraph routes the title double-click, the corner dot and
+    // the menu item all through this one method.
+    const previousCollapse = node.collapse;
+    node.collapse = function tsCollapse() {
+        const result = previousCollapse?.apply(this, arguments);
+        syncCollapsed();
+        return result;
+    };
+
     const previousPropertyChanged = node.onPropertyChanged;
     node.onPropertyChanged = function onPropertyChanged(name) {
         const result = previousPropertyChanged?.apply(this, arguments);
