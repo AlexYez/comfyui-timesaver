@@ -59,14 +59,37 @@ def _symmetrize(mat):
     return (mat + mat.transpose(-1, -2)) * 0.5
 
 
+def _eigh(mat):
+    """Symmetric eigendecomposition, computed wherever it is implemented.
+
+    ⚠️ Apple's Metal backend has no `aten::_linalg_eigh` — measured on a macOS
+    runner, where this raised NotImplementedError while every other operator
+    this node uses ran fine. Since a node takes its device from
+    `model_management.get_torch_device()`, and that is MPS on a Mac, the colour
+    transforms built on this call would fail outright there.
+
+    The matrix is a 3x3 channel covariance, so the trip to the CPU is free next
+    to the work around it. The GPU is still asked first: where the operator
+    exists this changes nothing at all.
+    """
+    try:
+        return torch.linalg.eigh(mat)
+    except (NotImplementedError, RuntimeError):
+        # float32 explicitly: the CPU kernel has no half-precision path, and a
+        # 3x3 solve gains nothing from staying in half anyway.
+        values, vectors = torch.linalg.eigh(mat.to(device="cpu", dtype=torch.float32))
+        return (values.to(device=mat.device, dtype=mat.dtype),
+                vectors.to(device=mat.device, dtype=mat.dtype))
+
+
 def _sqrtm(mat, eps=1e-8):
-    e, v = torch.linalg.eigh(mat)
+    e, v = _eigh(mat)
     e = torch.clamp(e, min=eps)
     return (v * torch.sqrt(e)) @ v.T
 
 
 def _invsqrtm(mat, eps=1e-8):
-    e, v = torch.linalg.eigh(mat)
+    e, v = _eigh(mat)
     e = torch.clamp(e, min=eps)
     return (v * (1.0 / torch.sqrt(e))) @ v.T
 
@@ -238,6 +261,8 @@ def _fit_affine(src_colors, dst_colors):
     try:
         W = torch.linalg.lstsq(X, dst_colors).solution
     except Exception:
+        # Also the path Metal takes: `aten::linalg_lstsq` is not implemented
+        # there either, and the pseudo-inverse below is.
         XtX = X.T @ X
         XtY = X.T @ dst_colors
         W = torch.linalg.pinv(XtX) @ XtY
