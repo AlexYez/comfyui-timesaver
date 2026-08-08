@@ -491,7 +491,8 @@ export async function openStudio(node, persist) {
     // Backend workflow files are WEB_DIRECTORY statics: /extensions/* lives
     // OUTSIDE the /api prefix that api.fetchApi prepends, so plain fetch.
     const readBackends = () =>
-        loadBackends((url) => fetch(url), objectInfo, (url) => api.fetchApi(url));
+        loadBackends((url, options) => fetch(url, options), objectInfo,
+                     (url, options) => api.fetchApi(url, options));
     // Not const: installing a pack adds backend files, and the studio rereads
     // them in place rather than asking to be reopened.
     let backends = await readBackends();

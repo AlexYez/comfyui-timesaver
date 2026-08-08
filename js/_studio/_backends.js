@@ -21,7 +21,13 @@ const BUILTIN_BASE = "/extensions/comfyui-timesaver/image/studio/workflows";
  */
 
 async function fetchJson(fetcher, url) {
-    const response = await fetcher(url);
+    // ⚠️ ALWAYS revalidate. ComfyUI serves these files with an ETag but no
+    // Cache-Control, so the browser is free to reuse its copy without asking —
+    // and the studio then runs a graph the repository no longer contains. That
+    // is a silent wrong answer: the panel looks right, the numbers are last
+    // week's. `no-cache` means "ask, with the ETag" — the server replies 304 for
+    // an unchanged file, so the cost is one conditional request per backend.
+    const response = await fetcher(url, { cache: "no-cache" });
     if (!response.ok) throw new Error(`HTTP ${response.status} for ${url}`);
     return response.json();
 }
@@ -31,7 +37,9 @@ async function fetchJson(fetcher, url) {
  * backend appears with available=false and its reasons, so the UI can show it
  * grey instead of vanishing it (plan §4).
  *
- * @param {(url: string) => Promise<Response>} fetcher api.fetchApi-compatible.
+ * @param {(url: string, options?: object) => Promise<Response>} fetcher
+ *   api.fetchApi-compatible. MUST forward its options — the manifests are
+ *   requested with `cache: "no-cache"` (see fetchJson).
  * @param {object} objectInfo Full /object_info payload.
  */
 export async function loadBackends(fetcher, objectInfo, apiFetcher = null) {
