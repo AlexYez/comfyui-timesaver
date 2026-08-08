@@ -1,0 +1,139 @@
+name: macOS smoke
+
+# Runs ONLY when someone presses "Run workflow". The repository's CI workflow is
+# disabled on purpose (Actions minutes), and this must not quietly bring
+# per-push runs back: macOS runners are the expensive kind everywhere except
+# public repositories, and a job nobody asked for is the fastest way to a
+# surprise bill on the day this repo stops being public.
+on:
+  workflow_dispatch:
+    inputs:
+      python-version:
+        description: Python version to test with
+        default: "3.12"
+        required: false
+
+# What this can and cannot prove.
+#
+# CAN: that the pack loads on Apple Silicon through a real ComfyUI — every
+# module imports, no wheel is missing for arm64 macOS, no path assumption
+# breaks, the node count has not regressed, and the ffmpeg binary the pack
+# relies on is actually there and runnable.
+#
+# CANNOT: anything needing Metal (a hosted runner has no GPU), any model
+# download, and the pack's own test suite — `tests/` and `tools/` are
+# deliberately untracked (see .gitignore), so they never reach a runner. Those
+# stay a local job before every push.
+
+jobs:
+  smoke:
+    name: Load the pack on ${{ matrix.runner }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+
+    strategy:
+      fail-fast: false
+      matrix:
+        # Both current Apple Silicon images: a difference between them is worth
+        # seeing separately rather than as one red cross.
+        runner: [macos-14, macos-15]
+
+    steps:
+      - name: Check out the pack
+        uses: actions/checkout@v4
+        with:
+          path: pack
+
+      - name: Check out ComfyUI
+        run: git clone --depth 1 https://github.com/comfyanonymous/ComfyUI.git comfyui
+
+      - name: Set up Python ${{ inputs.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ inputs.python-version }}
+          cache: pip
+          cache-dependency-path: |
+            comfyui/requirements.txt
+            pack/requirements.txt
+
+      - name: Install dependencies
+        # No CPU wheel index here, unlike the Linux job: download.pytorch.org's
+        # /whl/cpu carries no macOS arm64 builds, and plain PyPI torch is
+        # already the right wheel for this platform.
+        run: |
+          python -m pip install --upgrade pip
+          pip install torch torchvision torchaudio
+          pip install -r comfyui/requirements.txt
+          pip install -r pack/requirements.txt
+
+      - name: Install the pack into custom_nodes
+        run: |
+          mkdir -p comfyui/custom_nodes
+          cp -R pack comfyui/custom_nodes/comfyui-timesaver
+
+      - name: Report the platform
+        run: |
+          python - <<'EOF'
+          import platform
+          import torch
+
+          print(f"python  {platform.python_version()} on {platform.machine()}")
+          print(f"torch   {torch.__version__}")
+          # Expected to be False on a hosted runner: the VM has no Metal device.
+          # Printed rather than asserted — the day it flips, that is news worth
+          # reading, not a failure.
+          print(f"mps available: {torch.backends.mps.is_available()}")
+          EOF
+
+      - name: Check the ffmpeg the pack actually uses
+        # Four modules shell out to ffmpeg (audio loader, Whisper engine,
+        # animation preview, SAM media loader). All of them prefer the binary
+        # imageio-ffmpeg ships and only then fall back to PATH — so what has to
+        # hold on macOS is that this binary exists and runs.
+        run: |
+          python - <<'EOF'
+          import subprocess
+
+          import imageio_ffmpeg
+
+          exe = imageio_ffmpeg.get_ffmpeg_exe()
+          print(f"bundled ffmpeg: {exe}")
+          out = subprocess.run([exe, "-version"], capture_output=True, text=True, timeout=60)
+          assert out.returncode == 0, out.stderr
+          print(out.stdout.splitlines()[0])
+          EOF
+
+      - name: Import every node module through the pack's own loader
+        working-directory: comfyui
+        run: |
+          python - <<'EOF'
+          import importlib
+          import sys
+
+          sys.path.insert(0, ".")
+          sys.path.insert(0, "custom_nodes")
+
+          # ComfyUI picks a device at import time. Forcing CPU keeps the run
+          # about the pack rather than about what a hosted Mac exposes.
+          from comfy.cli_args import args
+          args.cpu = True
+
+          pack = importlib.import_module("comfyui-timesaver")
+          results = pack._MODULE_LOAD_RESULTS
+          errors = [r for r in results if r["status"] == "ERROR"]
+          skipped = [r for r in results if r["status"] == "SKIPPED"]
+          nodes = len(pack.NODE_CLASS_MAPPINGS)
+
+          print(f"modules={len(results)} nodes={nodes} "
+                f"errors={len(errors)} skipped={len(skipped)}")
+          for r in skipped:
+              print(f"  SKIPPED {r['module']}: {r['details']}")
+          for r in errors:
+              print(f"  ERROR   {r['module']}: {r['details']}")
+
+          # A SKIP is allowed: bitsandbytes has no arm64 macOS wheel, and
+          # silero / demucs are optional by design — a pack that refuses to load
+          # without them would be the bug. An ERROR never is.
+          assert not errors, f"{len(errors)} module(s) failed to import"
+          assert nodes >= 50, f"node count regressed: {nodes} < 50"
+          EOF
