@@ -572,6 +572,16 @@ Prompt enhancement node with a built-in **voice button** — speak your idea, Wh
 
 **The `Video Prompt Enhance` and `Image Prompt Enhance` presets** are written for a small model (Qwen 2B/4B): short numbered steps, an explicit output format, one example. The video preset is tuned for LTX-2.3 and MiniMax H3 — camera move first, then the motion in order, then light and mood.
 
+**`Video Prompt Enhance H3` — spoken lines, and Russian that sounds Russian.** MiniMax H3 makes the sound in the same pass as the picture, and it has a schema for speech: the speaker gets a stable ID `(S1)`, who they are and how they sound is written outside the dialogue block, and inside the block there is only the language tag and the line itself — copied word for word, never translated:
+
+```text
+A young Russian woman (S1), a native Russian speaker with natural, neutral standard
+Russian pronunciation and authentic native Russian prosody, whispers softly and
+flirtatiously: <d>[Russian] Привет, красавчик!</d>
+```
+
+That wording matters more than it looks. `with a Russian accent` asks for an English voice tinted with Russian; `a native Russian speaker … authentic native Russian prosody` asks for a Russian voice. The preset also keeps speech and signage apart — a line someone says goes in the dialogue block, a text on a sign stays in quotes — and only ever uses H3's own language tags.
+
 **Use when:** quick prompt brainstorming, voice-driven workflows, or bridging a sketchy idea into a production-ready prompt.
 
 ---
