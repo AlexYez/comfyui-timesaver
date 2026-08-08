@@ -26,6 +26,7 @@ from ._image_utils import (  # noqa: F401
     _get_target_device,
     _resolve_dtype,
     _safe_empty_cache,
+    is_out_of_memory_error,
     _temporal_smooth_alphas,
     _update_progress,
     hex_to_rgba,
@@ -816,13 +817,15 @@ class BiRefNetModel:
                             progress_bar.update_absolute(processed, total=batch_size)
                         except Exception:
                             pass
-                except torch.cuda.OutOfMemoryError:
+                except (torch.cuda.OutOfMemoryError, RuntimeError) as exc:
+                    if not is_out_of_memory_error(exc):
+                        raise
                     _safe_empty_cache()
                     if current_chunk_size <= 1:
                         raise
                     chunk_size = max(1, current_chunk_size // 2)
                     logger.warning(
-                        "%s CUDA OOM at batch chunk %s, retrying with chunk size %s",
+                        "%s Out of memory at batch chunk %s, retrying with chunk size %s",
                         _LOG_PREFIX,
                         current_chunk_size,
                         chunk_size,

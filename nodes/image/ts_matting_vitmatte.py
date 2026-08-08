@@ -35,6 +35,7 @@ from ._image_utils import (
     _get_target_device,
     _resolve_dtype,
     _safe_empty_cache,
+    is_out_of_memory_error,
     _temporal_smooth_alphas,
     _update_progress,
     hex_to_rgba,
@@ -775,7 +776,9 @@ class TS_Matting_ViTMatte(IO.ComfyNode):
                         target_device=target_device,
                         target_dtype=target_dtype,
                     )
-                except torch.cuda.OutOfMemoryError:
+                except (torch.cuda.OutOfMemoryError, RuntimeError) as exc:
+                    if not is_out_of_memory_error(exc):
+                        raise
                     _safe_empty_cache()
                     new_max_res = (
                         max(256, current_max_res // 2)
@@ -785,7 +788,7 @@ class TS_Matting_ViTMatte(IO.ComfyNode):
                     if current_max_res > 0 and new_max_res >= current_max_res:
                         raise
                     logger.warning(
-                        "%s CUDA OOM on frame %d; retrying with max_resolution=%d",
+                        "%s Out of memory on frame %d; retrying with max_resolution=%d",
                         _LOG_PREFIX, frame_index, new_max_res,
                     )
                     current_max_res = new_max_res
