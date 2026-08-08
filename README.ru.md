@@ -4,7 +4,9 @@
 
 # 🚀 Timesaver Nodes для ComfyUI
 
-**Дружелюбный набор из 62 нод, чтобы убрать рутину из ваших ComfyUI-графов.**
+**Дружелюбный набор из 75 нод, чтобы убрать рутину из ваших ComfyUI-графов.**
+
+> 13 из них — ноды TS Image Studio: сама студия плюс маркеры и бэкенды, которыми она управляет. Отдельно ниже они не расписаны, справочник охватывает остальные 62.
 
 Ресайз, цветокоррекция, кеинг, инпейнтинг, транскрипция, переводы, конструкторы промптов, менеджмент моделей — всё прямо на канвасе.
 
@@ -35,7 +37,7 @@
 | 🛠️ | **[Утилиты](#utils)** | 5 | Пульт по группам workflow, кастомные слайдеры, математика, умный type-aware свитч |
 | 🎨 | **[Conditioning](#conditioning)** | 1 | Multi-reference кондиционинг изображений |
 
-> Все 62 ноды используют **ComfyUI V3 API** (`comfy_api.v0_0_2.IO` — pinned namespace для стабильности).
+> Все 75 нод используют **ComfyUI V3 API** (`comfy_api.v0_0_2.IO` — pinned namespace для стабильности).
 >
 > **Плюс доп. samplers и schedulers** прямо в родных дропдаунах KSampler / KSamplerAdvanced / BasicScheduler (нода не нужна — появляются после установки): sampler **`res_2s`** (экспоненциальный RK 2-го порядка / «RES»), schedulers **`bong_tangent`** (двухстадийная arctangent-кривая сигм) и **`beta57`** (`beta` α=0.5/β=0.7). Алгоритмы реализованы clean-room по публичной математике [RES4LYF](https://github.com/ClownsharkBatwing/RES4LYF) (код не копировался).
 
@@ -876,7 +878,9 @@ Timesaver специально замораживает id нод и входы 
 
 ```text
 comfyui-timesaver/
-├─ nodes/                  # 65 модулей: 62 ноды + 3 инжектора samplers/schedulers
+├─ nodes/                  # 79 модулей: 75 нод + 4 без нод
+│                          #   (инжекторы samplers и schedulers, общие роуты,
+│                          #    shim обратной совместимости)
 ├─ js/                     # frontend extensions для DOM-widget нод
 ├─ doc/screenshots/        # скриншоты нод (этот README их использует)
 ├─ requirements.txt        # runtime-зависимости

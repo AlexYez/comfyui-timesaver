@@ -4,7 +4,9 @@
 
 # 🚀 Timesaver Nodes for ComfyUI
 
-**A friendly toolkit of 62 production-ready nodes that take the boring busywork out of your ComfyUI graphs.**
+**A friendly toolkit of 75 production-ready nodes that take the boring busywork out of your ComfyUI graphs.**
+
+> 13 of them belong to TS Image Studio — its own node plus the markers and backends it drives — and are not written up separately below; the reference covers the other 62.
 
 Resize, color-grade, key, denoise, transcribe, translate, prompt-build, manage models — without leaving the canvas.
 
@@ -35,7 +37,7 @@ Whether you build pipelines for image generation, video, audio, or just want to 
 | 🛠️ | **[Utils](#utils)** | 5 | Workflow group bypass panel, custom sliders, math, smart type-aware switch |
 | 🎨 | **[Conditioning](#conditioning)** | 1 | Multi-reference image conditioning |
 
-> All 62 nodes use the **ComfyUI V3 API** (`comfy_api.v0_0_2.IO` — pinned namespace for stability).
+> All 75 nodes use the **ComfyUI V3 API** (`comfy_api.v0_0_2.IO` — pinned namespace for stability).
 >
 > **Plus extra samplers & schedulers** added straight into the native KSampler / KSamplerAdvanced / BasicScheduler dropdowns (no node to wire — they just appear after install): sampler **`res_2s`** (2nd-order exponential RK / "RES"), schedulers **`bong_tangent`** (two-stage arctangent sigma curve) and **`beta57`** (`beta` α=0.5/β=0.7). Algorithms reimplemented clean-room from [RES4LYF](https://github.com/ClownsharkBatwing/RES4LYF)'s public math (no code copied).
 
@@ -881,7 +883,9 @@ Timesaver freezes node ids and inputs across versions on purpose. If something b
 
 ```text
 comfyui-timesaver/
-├─ nodes/                  # 65 modules: 62 nodes + 3 sampler/scheduler injectors
+├─ nodes/                  # 79 modules: 75 nodes + 4 that register none
+│                          #   (sampler + scheduler injectors, shared routes,
+│                          #    one backward-compat re-export shim)
 ├─ js/                     # frontend extensions for DOM-widget nodes
 ├─ doc/screenshots/        # node screenshots (this README uses them)
 ├─ requirements.txt        # runtime dependencies
