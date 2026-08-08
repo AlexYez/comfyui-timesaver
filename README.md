@@ -818,6 +818,28 @@ You can override these with `extra_model_paths.yaml` — Timesaver respects Comf
 ## 🛟 Troubleshooting
 
 <details>
+<summary><b>"A required media input has no file selected" after a reload</b></summary>
+
+This one is ComfyUI's own bug, and the pack fixes it — the only place it touches
+core at all.
+
+Paste an image into a node with Ctrl+V, or drop one onto it, and ComfyUI stores
+the file in `input/pasted/` while the widget keeps the value `pasted/name.png`.
+Everything works until you reload. After a reload the list of available files
+comes from the server, and the stock `Load Image` lists only what sits directly
+in `input` — it never looks into subfolders. The editor cannot find the saved
+value in that list and calls the file missing, though it has been on disk the
+whole time.
+
+Timesaver widens the list for the stock `Load Image` and `Load Image (as Mask)`
+so they see images in every `input` subfolder. No node is replaced, no file is
+moved, and already-saved workflows start opening on their own. Dot-folders
+(packs' working caches) stay out of the list.
+
+To switch it off: set `TS_DISABLE_PASTED_MEDIA_FIX=1` before starting ComfyUI.
+</details>
+
+<details>
 <summary><b>"Module not found" on startup</b></summary>
 
 Check the startup log — Timesaver prints a load report. Missing optional dependencies appear under **Optional missing imports** with the file that needs them. Install with:

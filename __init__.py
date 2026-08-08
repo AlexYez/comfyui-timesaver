@@ -373,4 +373,17 @@ if not _STANDALONE_IMPORT:
     _IMPORT_AUDIT_RESULTS = _scan_external_imports()
     _print_startup_report()
 
+    # The pack's ONE patch to ComfyUI itself: core's Load Image advertises only
+    # the files at the root of `input`, so an image ComfyUI pasted into
+    # `input/pasted` is reported missing after every reload. Wrapped in its own
+    # guard — a pack that cannot patch core must still load its nodes.
+    try:
+        from .ts_pasted_media_fix import apply_patch as _apply_pasted_media_fix
+
+        _apply_pasted_media_fix()
+    except Exception as _patch_error:  # pragma: no cover - defensive
+        logging.getLogger(__name__).warning(
+            "[TS PastedMediaFix] Not installed: %s", _patch_error,
+        )
+
 __all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS"]
