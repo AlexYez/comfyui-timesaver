@@ -26,6 +26,7 @@ import {
 import {
     MIN_NODE_HEIGHT,
     WIDGET_CHROME_HEIGHT,
+    WIDGET_OVERHEAD,
     createGroupsPanel,
     heightForRows,
 } from "./_groups_view.js";
@@ -206,7 +207,9 @@ function setupNode(node) {
         defaultWidth: DEFAULT_NODE_WIDTH,
         defaultHeight: heightForRows(0),
         chromeHeight: WIDGET_CHROME_HEIGHT,
-        minWidgetHeight: MIN_NODE_HEIGHT - WIDGET_CHROME_HEIGHT,
+        // The panel's own floor: what is left of the smallest node after BOTH
+        // the chrome and the layout inset (_groups_view.js) have taken theirs.
+        minWidgetHeight: MIN_NODE_HEIGHT - WIDGET_OVERHEAD,
     });
 
     // Once the person drags the node's edge, that height is theirs and the

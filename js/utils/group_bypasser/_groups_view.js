@@ -29,11 +29,25 @@ export const MIN_CONTENT_HEIGHT = ROW_HEIGHT + LIST_PADDING;
 // row to read.
 export const MESSAGE_HEIGHT = ROW_HEIGHT * 3;
 
-// Space the node's body spends on anything that is not the panel. This node has
-// no inputs, no outputs and no other widgets, so it is only the padding the
-// renderer puts around the widget.
-export const WIDGET_CHROME_HEIGHT = 10;
-export const MIN_NODE_HEIGHT = WIDGET_CHROME_HEIGHT + MIN_CONTENT_HEIGHT;
+// Space the node's body spends on anything that is not the panel. Two numbers,
+// and telling them apart is the whole fix — a fourth group never fitted and the
+// list carried a scrollbar it should never need.
+//
+// ⚠️ WIDGET_CHROME_HEIGHT CANCELS ITSELF OUT. It is added here and subtracted
+// again by the shared helper, which offers the widget `node.size[1] - chrome`
+// as its height. So raising it moves the node's edge and grants the panel
+// exactly nothing — measured: 10, 30 and 50 all left the same 126 px of panel
+// under five groups. The first attempt at this bug did just that.
+export const WIDGET_CHROME_HEIGHT = 30;
+// ⚠️ THIS is the missing height. The element is laid out into the widget's
+// renderArea rather than into the height the layout computed for it, and the
+// difference is a fixed inset — 20 px, measured at 1, 2, 4 and 5 groups alike.
+// Nothing subtracts it later, so adding it here is what actually reaches the
+// list. Nobody may fold it into the constant above; that would cancel it too.
+export const WIDGET_LAYOUT_INSET = 20;
+// What the panel never gets, whatever the node's height.
+export const WIDGET_OVERHEAD = WIDGET_CHROME_HEIGHT + WIDGET_LAYOUT_INSET;
+export const MIN_NODE_HEIGHT = WIDGET_OVERHEAD + MIN_CONTENT_HEIGHT;
 // Past this the list scrolls instead. A panel taller than this stops being a
 // control and becomes a wall.
 const MAX_VISIBLE_ROWS = 14;
@@ -52,7 +66,7 @@ export function heightForRows(count) {
         ? rows * ROW_HEIGHT + (rows - 1) * ROW_GAP + LIST_PADDING
         // No groups at all: room for the line that says so.
         : MESSAGE_HEIGHT + LIST_PADDING;
-    return Math.max(MIN_NODE_HEIGHT, WIDGET_CHROME_HEIGHT + content);
+    return Math.max(MIN_NODE_HEIGHT, WIDGET_OVERHEAD + content);
 }
 
 export function ensureStyles() {
