@@ -295,6 +295,42 @@ function themeCss() {
 .is-drag-over>.ts-ui-drop{display:flex}
 .is-drag-over{outline:2px dashed var(--ts-accent-line);outline-offset:-3px}
 
+/* ── Ratio cards: the one way to choose proportions ───────────────────
+   Wherever the pack asks "what shape should the frame be" — the resolution
+   selector's node, the studio's frame size, the new frame in outpaint — it
+   asks with the same control: a grid of cards, each holding a rectangle of
+   that exact proportion above its label.
+
+   Three columns, rows flow. Nine values give the 3x3 the selector is built
+   around; seven give 3+3+1, and nothing has to be told how many there are.
+
+   The card is a fixed-height box and the rectangle inside is proportional,
+   rather than the button itself being the rectangle: a row of naked
+   rectangles of wildly different shapes cannot line up, and the labels end
+   up at different heights. The frame carries the proportion, the card
+   carries the alignment. */
+.ts-ui-ratios{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;width:100%}
+.ts-ui-ratio{display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:4px;min-width:0;padding:5px 3px;border:1px solid var(--ts-border-soft);
+  border-radius:var(--ts-radius);background:var(--ts-surface);color:inherit;cursor:pointer;
+  transition:border-color .15s ease,box-shadow .15s ease,background .15s ease}
+.ts-ui-ratio:hover:not(:disabled){border-color:var(--ts-border-strong);background:var(--ts-surface-hover)}
+.ts-ui-ratio.is-selected{border-color:var(--ts-accent);box-shadow:0 0 0 1px var(--ts-accent-line);
+  background:var(--ts-accent-soft)}
+.ts-ui-ratio:focus-visible{outline:2px solid var(--ts-accent-line);outline-offset:1px}
+.ts-ui-ratio:disabled{cursor:default}
+/* The wrap is a fixed box the frame is fitted INTO, so a 9:21 and a 21:9 take
+   the same room and every label sits on one line. */
+.ts-ui-ratio__wrap{display:flex;align-items:center;justify-content:center;
+  width:100%;height:var(--ts-ratio-box,26px)}
+.ts-ui-ratio__frame{max-width:100%;max-height:100%;border-radius:3px;
+  border:1px solid var(--ts-muted);background:var(--ts-elevated)}
+.ts-ui-ratio.is-selected .ts-ui-ratio__frame{border-color:var(--ts-accent)}
+.ts-ui-ratio__label{font-size:var(--ts-fs-xs);letter-spacing:.02em;color:var(--ts-muted);
+  line-height:1;white-space:nowrap}
+.ts-ui-ratio.is-selected .ts-ui-ratio__label{color:var(--ts-accent)}
+.ts-ui-ratios.is-disabled{opacity:.4}
+
 /* ── Launcher: the one way to open a node's fullscreen editor ─────────
    Same label, same look, horizontally centred in every node that has one,
    so the control is found in the same place across the pack. */
@@ -330,6 +366,118 @@ function themeCss() {
   .${TS_UI_CLASS} .ts-ui-spinner{animation:ts-ui-spin 1.8s linear infinite !important}
 }
 `;
+}
+
+// ---------------------------------------------------------------------------
+// Ratio cards — one control for every "what shape?" question in the pack
+// ---------------------------------------------------------------------------
+
+/**
+ * Width / height of a "w:h" string, or null when it is not one.
+ *
+ * Used both to draw a card and to DECIDE whether a list of options is a list
+ * of proportions at all — that is how the studio's generic choice control
+ * knows to draw cards for the outpaint frame and plain buttons for
+ * Refine / Replace, without a manifest having to say so.
+ *
+ * @param {string} text e.g. "16:9"
+ * @returns {{w: number, h: number, ratio: number}|null}
+ */
+export function parseRatioText(text) {
+    const parts = String(text ?? "").trim().split(":");
+    if (parts.length !== 2) return null;
+    const w = Number(parts[0]);
+    const h = Number(parts[1]);
+    if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) return null;
+    return { w, h, ratio: w / h };
+}
+
+/** True when EVERY value is a proportion — one non-ratio and it is a plain list. */
+export function isRatioList(values) {
+    const list = Array.from(values || []);
+    return list.length > 0 && list.every((value) => parseRatioText(value) !== null);
+}
+
+/**
+ * A grid of proportion cards.
+ *
+ * @param {object} options
+ * @param {string[]} [options.values] Proportions as "w:h".
+ * @param {(value: string) => void} [options.onSelect] Called on click, never on `select()`.
+ * @param {number} [options.boxHeight=26] Height of the box each frame is fitted into.
+ * @param {(value: string) => string} [options.label] Card caption; defaults to the value.
+ * @returns {{element: HTMLElement, select: Function, selected: Function, add: Function,
+ *            has: Function, values: Function, setDisabled: Function, buttons: Map}}
+ */
+export function createRatioCards({ values = [], onSelect, boxHeight = 26, label } = {}) {
+    ensureThemeStyles();
+    const element = document.createElement("div");
+    element.className = "ts-ui-ratios";
+    element.style.setProperty("--ts-ratio-box", `${boxHeight}px`);
+    const buttons = new Map();
+    let current = "";
+
+    function add(value) {
+        const parsed = parseRatioText(value);
+        if (!parsed || buttons.has(value)) return buttons.get(value) || null;
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "ts-ui-ratio";
+        button.dataset.value = value;
+
+        const wrap = document.createElement("div");
+        wrap.className = "ts-ui-ratio__wrap";
+        const frame = document.createElement("div");
+        frame.className = "ts-ui-ratio__frame";
+        // Both sides are given, and the wrap clamps whichever one is too long:
+        // that keeps the drawn shape EXACTLY the written one. Setting one side
+        // and letting aspect-ratio derive the other is what squashes a 9:21.
+        const long = 100;
+        const short = Math.max(12, Math.round((long * Math.min(parsed.w, parsed.h))
+            / Math.max(parsed.w, parsed.h)));
+        const [w, h] = parsed.ratio >= 1 ? [long, short] : [short, long];
+        frame.style.width = `${w}%`;
+        frame.style.height = `${h}%`;
+        wrap.appendChild(frame);
+
+        const caption = document.createElement("div");
+        caption.className = "ts-ui-ratio__label";
+        caption.textContent = label ? label(value) : value;
+
+        button.append(wrap, caption);
+        button.addEventListener("click", () => {
+            select(value);
+            onSelect?.(value);
+        });
+        element.appendChild(button);
+        buttons.set(value, button);
+        if (value === current) button.classList.add("is-selected");
+        return button;
+    }
+
+    function select(value) {
+        current = String(value ?? "");
+        for (const [key, button] of buttons) {
+            button.classList.toggle("is-selected", key === current);
+        }
+    }
+
+    for (const value of values) add(value);
+
+    return {
+        element,
+        buttons,
+        add,
+        select,
+        selected: () => current,
+        has: (value) => buttons.has(value),
+        values: () => Array.from(buttons.keys()),
+        setDisabled: (disabled) => {
+            const off = Boolean(disabled);
+            element.classList.toggle("is-disabled", off);
+            for (const button of buttons.values()) button.disabled = off;
+        },
+    };
 }
 
 // ---------------------------------------------------------------------------

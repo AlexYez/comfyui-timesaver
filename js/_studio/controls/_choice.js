@@ -7,6 +7,7 @@
 // Контракт отрисовщика: (control, ctx) -> {element, get, set}, и о каждой
 // правке он сообщает через ctx.onChange(param, value).
 
+import { createRatioCards, isRatioList } from "../../_theme.js";
 import { deckSection } from "../_shell.js";
 import { localized } from "./_shared.js";
 
@@ -21,11 +22,23 @@ export const render = (control, ctx) => {
     const options = Array.isArray(control.options) ? control.options : [];
     const buttons = new Map();
     let value = control.default ?? options[0]?.value;
+    // A choice whose every option is a proportion IS a frame picker — the new
+    // frame in outpaint is exactly that — so it gets the pack's ratio cards
+    // instead of a row of words. Decided from the DATA rather than from a flag
+    // in the manifest: nothing has to be re-declared, and a list with one
+    // non-ratio option (Refine / Replace) keeps the plain buttons.
+    const asRatios = isRatioList(options.map((option) => option.value))
+        ? createRatioCards({
+            values: options.map((option) => String(option.value)),
+            onSelect: (chosen) => { value = chosen; sync(); },
+        })
+        : null;
 
     function sync(emit = true) {
         for (const [candidate, button] of buttons) {
             button.classList.toggle("is-active", candidate === value);
         }
+        asRatios?.select(String(value));
         if (!emit) return;
         // An option may stand for a set of values rather than one: a quality
         // preset is several numbers that only make sense together (Ideogram's
@@ -36,6 +49,34 @@ export const render = (control, ctx) => {
             ctx.onChange(param, carried);
         }
         ctx.onChange(control.param, value);
+    }
+
+    if (asRatios) {
+        // Tooltips still belong to the options, so they are carried over onto
+        // the cards rather than lost with the words.
+        for (const option of options) {
+            const button = asRatios.buttons.get(String(option.value));
+            const tip = localized(option.tooltip, ctx.locale, "");
+            if (button && tip) button.title = tip;
+            if (button) buttons.set(option.value, button);
+        }
+        row.classList.add("ts-studio__choice--ratios");
+        row.appendChild(asRatios.element);
+        section.appendChild(row);
+        sync();
+        return {
+            element: section,
+            get: () => value,
+            set: (next) => {
+                if (!asRatios.has(String(next))) return;
+                value = next;
+                sync();
+            },
+            setDisabled: (disabled) => {
+                section.classList.toggle("is-disabled", Boolean(disabled));
+                asRatios.setDisabled(disabled);
+            },
+        };
     }
 
     for (const option of options) {

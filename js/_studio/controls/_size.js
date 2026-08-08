@@ -7,11 +7,11 @@
 // Контракт отрисовщика: (control, ctx) -> {element, get, set}, и о каждой
 // правке он сообщает через ctx.onChange(param, value).
 
+import { createRatioCards, parseRatioText } from "../../_theme.js";
 import { deckSection } from "../_shell.js";
 
 function parseAspect(text) {
-    const [w, h] = String(text).split(":").map(Number);
-    return w > 0 && h > 0 ? w / h : 1;
+    return parseRatioText(text)?.ratio ?? 1;
 }
 
 export function sizeFromAspect(aspectText, megapixels, snap) {
@@ -38,45 +38,17 @@ export const render = (control, ctx) => {
 
     const section = deckSection(ctx.t.format);
     section.classList.add("ts-studio__size");
+    // The same cards TS Resolution Selector draws (`createRatioCards` in
+    // js/_theme.js): one control for every "what shape?" question in the pack,
+    // so the studio and the node stop looking like two different products.
+    const cards = createRatioCards({
+        values: aspects,
+        onSelect: (aspect) => { state.aspect = aspect; sync(); },
+    });
     const grid = document.createElement("div");
     grid.className = "ts-studio__aspects";
-    const buttons = new Map();
-
-    /** The shape IS the button: a rectangle of that proportion, labelled inside. */
-    function aspectButton(aspect) {
-        const button = document.createElement("button");
-        button.type = "button";
-        button.className = "ts-studio__aspect";
-        button.textContent = aspect;
-        const ratio = parseAspect(aspect);
-        // The button IS the frame, so its proportion has to be exactly the
-        // one written on it. Both sides come from one constant area (a 16:9
-        // and a 9:16 read as the same picture turned), and the fitting is a
-        // UNIFORM scale — clamping one side alone is what used to squash 9:16
-        // into something closer to 3:4.
-        const AREA_SIDE = 34;       // side of the square with the same area
-        const MIN_WIDTH = 26;       // narrower than this and the label breaks
-        const MAX_SIDE = 56;        // taller than this and the row gets silly
-        const rawWidth = AREA_SIDE * Math.sqrt(ratio);
-        const rawHeight = AREA_SIDE / Math.sqrt(ratio);
-        const scale = Math.min(
-            MAX_SIDE / Math.max(rawWidth, rawHeight),
-            Math.max(1, MIN_WIDTH / rawWidth),
-        );
-        // Height follows the width that actually got used, so the drawn
-        // proportion is as close to the written one as whole pixels allow.
-        const width = Math.round(rawWidth * scale);
-        const height = Math.round(width / ratio);
-        button.style.width = `${width}px`;
-        button.style.height = `${height}px`;
-        // A narrow frame gets a narrower label rather than a wider frame.
-        if (width < 34) button.style.fontSize = "9px";
-        button.addEventListener("click", () => { state.aspect = aspect; sync(); });
-        buttons.set(aspect, button);
-        return button;
-    }
-
-    for (const aspect of aspects) grid.appendChild(aspectButton(aspect));
+    grid.appendChild(cards.element);
+    const buttons = cards.buttons;
 
     // Anything the list does not cover, in w:h.
     const custom = document.createElement("input");
@@ -89,7 +61,7 @@ export const render = (control, ctx) => {
         const [w, h] = text.split(":").map(Number);
         if (!(w > 0 && h > 0)) { custom.value = ""; return; }
         const aspect = `${w}:${h}`;
-        if (!buttons.has(aspect)) grid.insertBefore(aspectButton(aspect), custom);
+        cards.add(aspect);
         state.aspect = aspect;
         custom.value = "";
         sync();
@@ -118,9 +90,7 @@ export const render = (control, ctx) => {
     section.appendChild(resTitle);
 
     function sync() {
-        for (const [aspect, button] of buttons) {
-            button.classList.toggle("is-active", aspect === state.aspect);
-        }
+        cards.select(state.aspect);
         const { width, height } = sizeFromAspect(state.aspect, state.mp, snap);
         mpText.textContent = `${state.mp.toFixed(2)} MP`;
         whText.textContent = `${width} × ${height}`;
@@ -144,7 +114,7 @@ export const render = (control, ctx) => {
             const off = Boolean(disabled);
             section.classList.toggle("is-disabled", off);
             slider.disabled = off;
-            for (const button of buttons.values()) button.disabled = off;
+            cards.setDisabled(off);
             note.style.display = off ? "" : "none";
         },
         set: (value) => {

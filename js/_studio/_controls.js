@@ -20,25 +20,23 @@ export function ensureControlStyles() {
     style.textContent = `
 .ts-studio__prompt{position:relative}
 .ts-studio__prompt textarea{width:100%;min-height:86px;resize:vertical}
-.ts-studio__aspects{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
-/* The proportion is the control: each button IS the rectangle, with its ratio
-   written inside. No outer frame — an extra box around a box only muddled
-   which shape was being chosen. */
-.ts-studio__aspect{display:flex;align-items:center;justify-content:center;padding:0;
-    border:1px solid var(--ts-border-strong);border-radius:3px;background:none;
-    color:var(--ts-muted);cursor:pointer;font-size:var(--ts-fs-xs);line-height:1;
-    transition:border-color .12s ease,color .12s ease,background .12s ease}
-.ts-studio__aspect:hover{border-color:var(--ts-text);color:var(--ts-text)}
-.ts-studio__aspect.is-active{border-color:var(--ts-accent);color:var(--ts-accent);
-    background:var(--ts-accent-soft)}
-.ts-studio__aspectcustom{width:52px;height:26px;align-self:center;padding:0 6px;
+/* Proportions are drawn by the pack's shared cards (the .ts-ui-ratio family in
+   js/_theme.js) — the same control TS Resolution Selector shows. This wrapper
+   only stacks them above the "custom w:h" field.
+   NOTE: no backticks in this comment — the whole stylesheet is one template
+   literal, and one backtick would end it. */
+.ts-studio__aspects{display:flex;flex-direction:column;gap:6px}
+.ts-studio__aspectcustom{width:64px;height:24px;align-self:flex-start;padding:0 6px;
     font-size:var(--ts-fs-xs);text-align:center}
-.ts-studio__aspect:focus-visible{outline:2px solid var(--ts-accent-line);outline-offset:1px}
+/* A choice that turned out to be a list of proportions renders cards, so its
+   row must stop being a row. */
+.ts-studio__choice--ratios{display:block}
 .ts-studio__sizerow{display:flex;align-items:center;gap:8px}
 .ts-studio__sizerow input[type=range]{flex:1}
 .ts-studio__sizeinfo{display:flex;justify-content:space-between;font-size:var(--ts-fs-sm);
     color:var(--ts-muted)}
 .ts-studio__size.is-disabled .ts-studio__aspects,
+.ts-studio__size.is-disabled .ts-studio__aspectcustom,
 .ts-studio__size.is-disabled .ts-studio__sizerow,
 .ts-studio__size.is-disabled .ts-studio__sizeinfo{opacity:.4}
 .ts-studio__sizenote{font-size:var(--ts-fs-xs);color:var(--ts-muted)}

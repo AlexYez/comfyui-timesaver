@@ -1,6 +1,6 @@
 import { app } from "/scripts/app.js";
 
-import { TS_UI_CLASS, ensureThemeStyles } from "../_theme.js";
+import { TS_UI_CLASS, createRatioCards, ensureThemeStyles } from "../_theme.js";
 import { addResizableDomWidget, hideWidget as sharedHideWidget, getWidget as sharedGetWidget } from "../_dom_widget.js";
 
 const EXTENSION_ID = "ts.resolutionselector";
@@ -50,67 +50,27 @@ function ensureStyles() {
     font-family: var(--ts-font);
     pointer-events: auto;
 }
-.ts-reso-grid {
-    /* 3x3 of equal cells that fill the widget — no fixed pixel size, so the
-       grid scales with the node in both renderers and at any canvas zoom
-       (pure CSS, never JS geometry: see CLAUDE.md §12.5.3). */
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
+/* The cards themselves are the pack's shared control (the .ts-ui-ratio family
+   in js/_theme.js) — this node only says how they fill ITS widget: the node can be
+   resized, so the grid stretches to the full height instead of keeping the
+   card's own compact box. Everything else — the frame, the label, the selected
+   state — is the same object the studio draws.
+   NOTE: no backticks in this comment — the whole stylesheet is one template
+   literal, and one backtick would end it. */
+.ts-reso-selector .ts-ui-ratios {
     grid-template-rows: repeat(3, 1fr);
-    gap: 5px;
     flex: 1 1 auto;
     min-height: 0;
-    width: 100%;
-    /* A square cell would leave one axis short on a non-square node; instead
-       cells fill the grid and the icon inside keeps the aspect proportions. */
-    justify-items: stretch;
-    align-items: stretch;
     overflow: hidden;
 }
-.ts-reso-card {
-    border: 1px solid var(--ts-border-soft);
-    border-radius: var(--ts-radius);
-    background: var(--ts-surface);
-    padding: 4px 3px 5px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 4px;
-    cursor: pointer;
-    transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
-    color: inherit;
-    width: 100%;
+.ts-reso-selector .ts-ui-ratio {
     height: 100%;
 }
-.ts-reso-card:hover {
-    border-color: var(--ts-border-strong);
-    background: var(--ts-surface-hover);
-}
-.ts-reso-card.is-selected {
-    border-color: var(--ts-accent);
-    box-shadow: 0 0 0 1px var(--ts-accent-line);
-    background: var(--ts-accent-soft);
-}
-.ts-reso-icon-wrap {
-    width: 78%;
-    height: 58%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-.ts-reso-icon {
-    height: 70%;
-    aspect-ratio: var(--ts-reso-ratio, 1 / 1);
-    width: auto;
-    max-width: 100%;
-    border-radius: 4px;
-    border: 1px solid var(--ts-muted);
-    background: var(--ts-elevated);
-}
-.ts-reso-label {
-    font-size: var(--ts-fs-xs);
-    letter-spacing: 0.02em;
-    color: var(--ts-muted);
+.ts-reso-selector .ts-ui-ratio__wrap {
+    height: auto;
+    flex: 1 1 auto;
+    min-height: 0;
+    padding: 2px 0;
 }
 `;
     document.head.appendChild(style);
@@ -123,23 +83,6 @@ function stopPropagation(element, events) {
         });
     });
 }
-
-function parseRatio(value) {
-    if (!value) {
-        return [1, 1];
-    }
-    const parts = String(value).split(":");
-    if (parts.length !== 2) {
-        return [1, 1];
-    }
-    const w = Number(parts[0]);
-    const h = Number(parts[1]);
-    if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) {
-        return [1, 1];
-    }
-    return [w, h];
-}
-
 function isTargetNode(node) {
     return node?.comfyClass === NODE_NAME || node?.type === NODE_NAME;
 }
@@ -172,37 +115,18 @@ function setupResolutionSelector(node) {
     const container = document.createElement("div");
     container.className = `${TS_UI_CLASS} ts-reso-selector`;
 
-    const grid = document.createElement("div");
-    grid.className = "ts-reso-grid";
+    const cards = createRatioCards({
+        values: RATIO_PRESETS.map((item) => item.value),
+        onSelect: (value) => applySelection(value, true),
+    });
+    const grid = cards.element;
     stopPropagation(grid, ["wheel"]);
     container.appendChild(grid);
 
-    const buttons = new Map();
-    RATIO_PRESETS.forEach((item) => {
-        const button = document.createElement("button");
-        button.type = "button";
-        button.className = "ts-reso-card";
-        button.dataset.value = item.value;
-
-        const iconWrap = document.createElement("div");
-        iconWrap.className = "ts-reso-icon-wrap";
-        const icon = document.createElement("div");
-        icon.className = "ts-reso-icon";
-        const [rw, rh] = parseRatio(item.value);
-        icon.style.setProperty("--ts-reso-ratio", `${rw} / ${rh}`);
-        iconWrap.appendChild(icon);
-
-        const label = document.createElement("div");
-        label.className = "ts-reso-label";
-        label.textContent = item.label;
-
-        button.appendChild(iconWrap);
-        button.appendChild(label);
-        grid.appendChild(button);
-        buttons.set(item.value, button);
-
+    const buttons = cards.buttons;
+    for (const button of buttons.values()) {
         stopPropagation(button, ["pointerdown", "mousedown", "mouseup", "dblclick", "contextmenu"]);
-    });
+    }
 
     stopPropagation(container, [
         "pointerdown",
@@ -233,9 +157,7 @@ function setupResolutionSelector(node) {
             return;
         }
         state.selected = value;
-        buttons.forEach((button, key) => {
-            button.classList.toggle("is-selected", key === value);
-        });
+        cards.select(value);
         if (ratioWidget && trigger) {
             ratioWidget.value = value;
             ratioWidget.callback?.(value);
@@ -248,13 +170,6 @@ function setupResolutionSelector(node) {
         }
         node.setDirtyCanvas(true, true);
     };
-
-    buttons.forEach((button, value) => {
-        button.addEventListener("click", (event) => {
-            event.preventDefault();
-            applySelection(value, true);
-        });
-    });
 
     const syncSelection = () => {
         const stored = ratioWidget?.value || node.properties?.[INPUT_RATIO];
