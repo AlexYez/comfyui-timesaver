@@ -111,6 +111,30 @@ export const TS_ACCENT = "#9a8cc7";   // js/_theme.js
 | `ts-ui-drop`, `.is-drag-over` | drag-and-drop |
 | `ts-ui-file` | скрытый `<input type=file>` (off-screen, **не** `display:none`) |
 | `ts-ui-checker` | шахматка прозрачности |
+| `ts-ui-ratios`, `ts-ui-ratio`, `__wrap`, `__frame`, `__label`, `.is-selected` | выбор пропорций кадра — только через `createRatioCards()` |
+
+### Выбор пропорций — один контрол на весь пак
+
+Везде, где спрашивают «какой формы кадр», спрашивают одинаково: сетка карточек в три столбца, в каждой — прямоугольник ровно той пропорции и подпись под ним. Собирается фабрикой `createRatioCards({values, onSelect})` из `_theme.js`; своей разметки и своих стилей заводить нельзя — на этом пак уже разъезжался.
+
+```js
+import { createRatioCards, isRatioList } from "../_theme.js";
+
+const cards = createRatioCards({
+    values: ["1:1", "16:9", "9:16"],
+    onSelect: (value) => apply(value),   // клик; select() молчит
+});
+container.appendChild(cards.element);
+cards.select("16:9");                    // восстановление состояния
+cards.add("5:4");                        // своя пропорция, в ту же сетку
+cards.setDisabled(true);
+```
+
+⚠️ Пропорцию несёт **рамка внутри** карточки, а не сама кнопка: карточки одного размера, поэтому подписи стоят в ряд, а 9:21 не сплющивается. Обе стороны рамки задаются явно (в процентах от коробки), а коробка обрезает длинную — задать одну сторону и дать `aspect-ratio` вывести вторую значит получить неверную форму на вертикальных кадрах.
+
+⚠️ Список значений, состоящий **целиком** из пропорций, — это и есть выбор кадра: `isRatioList()` распознаёт это по данным, и студийный контрол `choice` сам рисует карточки вместо строки кнопок (так работает «Новый кадр» в OutPaint). Одна не-пропорция в списке — и это обычные кнопки.
+
+Где стоит: [`js/image/ts-resolution-selector.js`](../js/image/ts-resolution-selector.js) (нода, сетка растянута на высоту виджета), [`js/_studio/controls/_size.js`](../js/_studio/controls/_size.js) (размер кадра), [`js/_studio/controls/_choice.js`](../js/_studio/controls/_choice.js) (новый кадр). Гарды — `tests/test_ratio_cards.py`.
 
 Эталон применения — [`js/image/lama_cleanup/_lama_helpers.js`](../js/image/lama_cleanup/_lama_helpers.js).
 
