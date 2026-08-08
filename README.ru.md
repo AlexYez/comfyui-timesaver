@@ -98,7 +98,25 @@ python -m pip install -r requirements.txt
 | TS Music Stems | `demucs`, `geomloss`, `pykeops` |
 | TS Silero TTS / Stress | `silero`, `silero-stress` |
 | TS RTX Upscaler | `nvvfx` (только NVIDIA RTX) |
+| TS Qwen 3 VL int4/int8 | `bitsandbytes` (нет колеса под Apple Silicon) |
 | TS Video Upscale With Model | `spandrel` |
+
+### Платформы
+
+Windows, Linux и macOS на Apple Silicon. Чем мак отличается — замерено на
+macOS-раннерах GitHub, а не предположено:
+
+- **Для видео и звука ничего доустанавливать не нужно.** Все ноды, которым нужен
+  ffmpeg, берут бинарник, который привозит `imageio-ffmpeg`; системный ffmpeg —
+  запасной путь, а не требование.
+- **Metal используется там, где оператор есть в PyTorch.** Двух не хватает —
+  `linalg.eigh` и `linalg.lstsq`, — и они нужны TS Color Match: нода считает эти
+  маленькие разложения на CPU, а всё остальное оставляет на GPU.
+- **TS Whisper на маке всегда работает на CPU.** openai-whisper на Metal идёт
+  ненадёжно, поэтому устройство не предлагается вовсе — это лучше, чем предложить
+  и сломать.
+- **int4 / int8 для TS Qwen 3 VL недоступны**: у `bitsandbytes` нет колеса под
+  Apple Silicon. Нода это замечает и откатывается на fp16/fp32 с предупреждением.
 
 ---
 
@@ -815,6 +833,22 @@ Type-aware булев свитч между двумя `ANY`-входами. В�
 ## 🛟 Если что-то сломалось
 
 <details>
+<summary><b>«ffmpeg не найден» или ноды звука и видео не декодируют</b></summary>
+
+Ставить ffmpeg вручную не требуется: `imageio-ffmpeg` — обязательная зависимость,
+и она привозит статический бинарник под каждую платформу, где работает пак.
+Загрузчик аудио, TS Whisper, голосовой ввод Super Prompt и TS Animation Preview
+сначала спрашивают именно этот бинарник и только потом смотрят в PATH.
+
+Значит, само сообщение говорит о том, что зависимости нет или её бинарник
+вычистили. Лечится тем Python, из которого запускается ComfyUI:
+
+```bash
+python -m pip install --upgrade imageio-ffmpeg
+```
+</details>
+
+<details>
 <summary><b>«A required media input has no file selected» после перезагрузки</b></summary>
 
 Это ошибка самого ComfyUI, и пак её чинит — единственное место, где он вообще
@@ -878,6 +912,7 @@ Timesaver специально замораживает id нод и входы 
 
 ```text
 comfyui-timesaver/
+├─ ts_pasted_media_fix.py  # единственная заплатка пака на само ядро ComfyUI
 ├─ nodes/                  # 79 модулей: 75 нод + 4 без нод
 │                          #   (инжекторы samplers и schedulers, общие роуты,
 │                          #    shim обратной совместимости)

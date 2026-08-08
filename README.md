@@ -95,13 +95,29 @@ A few nodes need extra packages — they fail gracefully and tell you what's mis
 | Node | Needs | Install via extra |
 |---|---|---|
 | TS Cube ↔ Equirectangular | `py360convert` | (bundled in core) |
-| TS Qwen 3 VL int4/int8 | `bitsandbytes` | `pip install -e .[llm-quant]` |
+| TS Qwen 3 VL int4/int8 | `bitsandbytes` (no Apple Silicon wheel) | `pip install -e .[llm-quant]` |
 | TS Music Stems | `demucs`, `geomloss`, `pykeops` | `pip install -e .[audio-stems]` |
 | TS Silero TTS / Stress | `silero`, `silero-stress` | `pip install -e .[audio-silero]` |
 | TS RTX Upscaler | `nvvfx` (NVIDIA RTX only) | install manually |
 | TS Video Upscale With Model | `spandrel` | install manually |
 
 > Want everything in one go? `pip install -e .[all]`
+
+### Platforms
+
+Windows, Linux and macOS on Apple Silicon. What differs on a Mac, measured on
+GitHub's macOS runners rather than assumed:
+
+- **Nothing extra to install for video and audio.** Every node that shells out to
+  ffmpeg uses the binary `imageio-ffmpeg` ships, so a system ffmpeg is a fallback
+  and not a requirement.
+- **Metal is used where PyTorch implements the operator.** Two it does not —
+  `linalg.eigh` and `linalg.lstsq` — are the ones TS Color Match needs, so that
+  node quietly does those small solves on the CPU and keeps the rest on the GPU.
+- **TS Whisper always runs on the CPU on a Mac.** openai-whisper does not run
+  reliably on Metal, so the device is not offered rather than offered and broken.
+- **int4 / int8 for TS Qwen 3 VL are unavailable**: `bitsandbytes` has no Apple
+  Silicon wheel. The node notices and falls back to fp16/fp32 with a warning.
 
 ---
 
@@ -820,6 +836,22 @@ You can override these with `extra_model_paths.yaml` — Timesaver respects Comf
 ## 🛟 Troubleshooting
 
 <details>
+<summary><b>"ffmpeg not found" or audio and video nodes failing to decode</b></summary>
+
+You should not have to install ffmpeg at all: `imageio-ffmpeg` is a required
+dependency and ships a static binary for every platform the pack runs on. The
+audio loader, TS Whisper, the Super Prompt voice input and TS Animation Preview
+all ask for that binary first and only then look at your PATH.
+
+So this message means the dependency itself is missing or its binary was cleaned
+away. Fix it with the Python ComfyUI runs from:
+
+```bash
+python -m pip install --upgrade imageio-ffmpeg
+```
+</details>
+
+<details>
 <summary><b>"A required media input has no file selected" after a reload</b></summary>
 
 This one is ComfyUI's own bug, and the pack fixes it — the only place it touches
@@ -883,6 +915,7 @@ Timesaver freezes node ids and inputs across versions on purpose. If something b
 
 ```text
 comfyui-timesaver/
+├─ ts_pasted_media_fix.py  # the pack's one patch to ComfyUI itself
 ├─ nodes/                  # 79 modules: 75 nodes + 4 that register none
 │                          #   (sampler + scheduler injectors, shared routes,
 │                          #    one backward-compat re-export shim)
