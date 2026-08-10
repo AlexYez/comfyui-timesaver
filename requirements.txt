@@ -11,7 +11,7 @@ accelerate>=0.21.0
 srt>=3.5.0
 # Native OpenAI Whisper — unified engine for TS Whisper + TS Super Prompt voice.
 openai-whisper>=20231117
-opencv-python>=4.5.0
+opencv-python-headless>=4.5.0
 matplotlib>=3.4.0
 imageio>=2.20.0
 imageio-ffmpeg>=0.4.0

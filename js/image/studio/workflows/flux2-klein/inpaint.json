@@ -1,0 +1,227 @@
+{
+  "p_prompt": {
+    "class_type": "TS_StudioInputText",
+    "inputs": {
+      "value": "",
+      "param_name": "prompt",
+      "label": ""
+    }
+  },
+  "p_image": {
+    "class_type": "TS_StudioInputImage",
+    "inputs": {
+      "value": "",
+      "param_name": "source_image",
+      "label": ""
+    }
+  },
+  "p_mask": {
+    "class_type": "TS_StudioInputMask",
+    "inputs": {
+      "value": "",
+      "param_name": "mask",
+      "label": ""
+    }
+  },
+  "p_steps": {
+    "class_type": "TS_StudioInputNumber",
+    "inputs": {
+      "value": 4,
+      "param_name": "steps",
+      "label": ""
+    }
+  },
+  "p_cfg": {
+    "class_type": "TS_StudioInputNumber",
+    "inputs": {
+      "value": 1.0,
+      "param_name": "cfg",
+      "label": ""
+    }
+  },
+  "p_seed": {
+    "class_type": "TS_StudioInputSeed",
+    "inputs": {
+      "value": 0,
+      "param_name": "seed"
+    }
+  },
+  "model_loader": {
+    "class_type": "UNETLoader",
+    "inputs": {
+      "unet_name": "flux2\\flux-2-klein-9b-fp8.safetensors",
+      "weight_dtype": "default"
+    },
+    "_meta": {
+      "title": "studio:model"
+    }
+  },
+  "lora_stack": {
+    "class_type": "TS_StudioLoraStack",
+    "inputs": {
+      "model": [
+        "model_loader",
+        0
+      ]
+    }
+  },
+  "clip_loader": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "flux2\\qwen_3_8b_fp8mixed.safetensors",
+      "type": "flux2"
+    },
+    "_meta": {
+      "title": "studio:clip"
+    }
+  },
+  "vae_loader": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "flux2\\flux2-vae.safetensors"
+    },
+    "_meta": {
+      "title": "studio:vae"
+    }
+  },
+  "encode_pos": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": [
+        "p_prompt",
+        0
+      ],
+      "clip": [
+        "clip_loader",
+        0
+      ]
+    }
+  },
+  "neg_zero": {
+    "class_type": "ConditioningZeroOut",
+    "inputs": {
+      "conditioning": [
+        "encode_pos",
+        0
+      ]
+    }
+  },
+  "smart": {
+    "class_type": "TSSmartInpaint",
+    "inputs": {
+      "model": [
+        "lora_stack",
+        0
+      ],
+      "vae": [
+        "vae_loader",
+        0
+      ],
+      "positive": [
+        "encode_pos",
+        0
+      ],
+      "negative": [
+        "neg_zero",
+        0
+      ],
+      "image": [
+        "p_image",
+        0
+      ],
+      "mask": [
+        "p_mask",
+        0
+      ],
+      "replace": false,
+      "denoise": [
+        "p_denoise",
+        0
+      ],
+      "megapixels": [
+        "p_megapixels",
+        0
+      ],
+      "context_pct": [
+        "p_context",
+        0
+      ],
+      "feather_pct": 3.0,
+      "resize_method": "lanczos",
+      "seed": [
+        "p_seed",
+        0
+      ],
+      "steps": [
+        "p_steps",
+        1
+      ],
+      "cfg": [
+        "p_cfg",
+        0
+      ],
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "reference": [
+        "p_ref1",
+        0
+      ]
+    }
+  },
+  "studio_out": {
+    "class_type": "TS_StudioOutput",
+    "inputs": {
+      "image": [
+        "smart",
+        0
+      ],
+      "filename_prefix": "ts_studio/session",
+      "folder": "temp"
+    },
+    "_note_folder": "Перерисовка — черновик, пока человек не сказал иначе. Проб бывает десяток, и раньше каждая ложилась в библиотеку рядом с настоящими работами. Понравившееся переносит кнопка Save на панели инпэйнта (роут /api/ts_studio/keep)."
+  },
+  "studio_manifest": {
+    "class_type": "TS_StudioManifest",
+    "inputs": {
+      "manifest": "{\"schema_version\": \"1.0.0\", \"id\": \"flux2-klein/inpaint\", \"label\": {\"en\": \"Inpaint\", \"ru\": \"Inpaint\"}, \"family\": \"flux2-klein\", \"family_label\": \"Flux 2 Klein\", \"tier\": 2, \"mode\": \"inpaint\", \"order\": 30, \"controls\": [{\"param\": \"prompt\", \"kind\": \"prompt\", \"superprompt\": true}, {\"param\": \"__refs\", \"kind\": \"refs\", \"max\": 1, \"label\": {\"en\": \"Reference object\", \"ru\": \"Референс объекта\"}}, {\"param\": \"seed\", \"kind\": \"seed\"}, {\"param\": \"denoise\", \"kind\": \"strength\", \"default\": 0.3, \"stops\": [0.1, 0.2, 0.3, 0.45, 1.0], \"replace_at\": 0.6, \"replace_label\": {\"en\": \"Replace\", \"ru\": \"Замена\"}, \"label\": {\"en\": \"Repaint strength\", \"ru\": \"Сила перерисовки\"}, \"tooltip\": {\"en\": \"How much of the masked area is redrawn. Up to 45% the model reworks the pixels that are there — skin, texture, small fixes. Replace regenerates the area from scratch at full strength.\", \"ru\": \"Насколько сильно перерисовывается область под маской. До 45% модель дорабатывает то, что есть, — кожу, фактуру, мелкие правки. Замена рисует область заново, на полную силу.\"}}, {\"param\": \"megapixels\", \"kind\": \"slider\", \"min\": 0.5, \"max\": 2.0, \"step\": 0.1, \"label\": {\"en\": \"Processing resolution\", \"ru\": \"Разрешение обработки\"}, \"tooltip\": {\"en\": \"Megapixels the masked crop is redrawn at. A small selection is upscaled toward this budget (more detail, slower); an oversized one is scaled down to it.\", \"ru\": \"В скольких мегапикселях перерисовывается вырезанный по маске фрагмент. Маленькое выделение увеличивается до этого бюджета (больше деталей, дольше), слишком большое — уменьшается.\"}}, {\"param\": \"loras\", \"kind\": \"loras\", \"max\": 8, \"strength\": [-2.0, 2.0]}, {\"param\": \"steps\", \"kind\": \"number\", \"advanced\": true, \"min\": 1, \"max\": 60, \"label\": {\"en\": \"Steps\", \"ru\": \"Шаги\"}}, {\"param\": \"cfg\", \"kind\": \"number\", \"advanced\": true, \"min\": 0, \"max\": 15, \"step\": 0.1, \"label\": {\"en\": \"CFG\", \"ru\": \"CFG\"}}], \"refs\": {\"max\": 1}, \"requires\": [\"source_image\", \"mask\"], \"inpaint_params\": {\"image\": \"source_image\", \"mask\": \"mask\"}, \"negative_prompt\": false, \"models\": [{\"title\": \"studio:model\", \"input\": \"unet_name\", \"folder\": \"diffusion_models\", \"match\": \"flux.?2.?klein.*(9b|4b)|ArtiusFlux\"}, {\"title\": \"studio:clip\", \"input\": \"clip_name\", \"folder\": \"text_encoders\", \"match\": \"qwen_3_(8b|4b)\"}, {\"title\": \"studio:vae\", \"input\": \"vae_name\", \"folder\": \"vae\", \"match\": \"flux2-vae\"}], \"literals\": {\"replace\": {\"node\": \"smart\", \"input\": \"replace\"}}, \"enhance_preset\": \"Inpaint Edit Instruction\"}"
+    }
+  },
+  "p_denoise": {
+    "class_type": "TS_StudioInputNumber",
+    "inputs": {
+      "value": 0.3,
+      "param_name": "denoise",
+      "label": ""
+    }
+  },
+  "p_megapixels": {
+    "class_type": "TS_StudioInputNumber",
+    "inputs": {
+      "value": 1.5,
+      "param_name": "megapixels",
+      "label": ""
+    },
+    "_meta": {
+      "title": "studio:megapixels"
+    }
+  },
+  "p_ref1": {
+    "class_type": "TS_StudioInputImage",
+    "inputs": {
+      "value": "",
+      "param_name": "ref_1",
+      "label": ""
+    },
+    "_meta": {
+      "title": "studio:ref_1"
+    }
+  },
+  "p_context": {
+    "class_type": "TS_StudioInputNumber",
+    "inputs": {
+      "value": 8.0,
+      "param_name": "context_pct",
+      "label": ""
+    }
+  }
+}

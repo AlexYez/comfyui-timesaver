@@ -63,8 +63,8 @@ const STRINGS = {
         startRecord: "Start Record",
         stopRecord: "Stop Record",
         resetCrop: "Reset Crop",
-        zoomOutTitle: "Zoom out (Ctrl+Wheel down)",
-        zoomInTitle: "Zoom in (Ctrl+Wheel up)",
+        zoomOutTitle: "Zoom out (Ctrl/Cmd + wheel down)",
+        zoomInTitle: "Zoom in (Ctrl/Cmd + wheel up)",
         fit: "Fit",
         fitTitle: "Reset zoom and pan to full waveform",
         noFile: "No file selected",
@@ -101,8 +101,8 @@ const STRINGS = {
         startRecord: "Записать",
         stopRecord: "Остановить запись",
         resetCrop: "Сбросить обрезку",
-        zoomOutTitle: "Отдалить (Ctrl+колесо вниз)",
-        zoomInTitle: "Приблизить (Ctrl+колесо вверх)",
+        zoomOutTitle: "Отдалить (Ctrl/Cmd + колесо вниз)",
+        zoomInTitle: "Приблизить (Ctrl/Cmd + колесо вверх)",
         fit: "Вписать",
         fitTitle: "Сбросить масштаб и показать всю волну",
         noFile: "Файл не выбран",
@@ -1208,7 +1208,11 @@ export function setupAudioLoader(node) {
     function resetCrop() { state.cropStart = 0; state.cropEnd = -1; syncWidgets(); drawWaveform(); }
 
     function onCanvasWheel(event) {
-        if (!event.ctrlKey) return;
+        // Cmd counts as well as Ctrl. On a Mac ctrl+wheel is taken by the
+        // system's own screen zoom, so a Ctrl-only check left this control
+        // unreachable there — and every other surface in the pack already
+        // treats the two as one modifier.
+        if (!event.ctrlKey && !event.metaKey) return;
         if (state.duration <= 0) return;
         event.preventDefault();
         event.stopPropagation();

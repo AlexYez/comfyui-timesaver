@@ -4,11 +4,13 @@
 
 # 🚀 Timesaver Nodes for ComfyUI
 
-**A friendly toolkit of 61 production-ready nodes that take the boring busywork out of your ComfyUI graphs.**
+**A friendly toolkit of 75 production-ready nodes that take the boring busywork out of your ComfyUI graphs.**
+
+> 13 of them belong to TS Image Studio — its own node plus the markers and backends it drives — and are not written up separately below; the reference covers the other 62.
 
 Resize, color-grade, key, denoise, transcribe, translate, prompt-build, manage models — without leaving the canvas.
 
-[![Version](https://img.shields.io/badge/version-10.0-blue.svg)](pyproject.toml)
+[![Version](https://img.shields.io/badge/version-10.1.0-blue.svg)](pyproject.toml)
 [![ComfyUI](https://img.shields.io/badge/ComfyUI-V3%20API-orange.svg)](https://github.com/comfyanonymous/ComfyUI)
 [![Python](https://img.shields.io/badge/python-3.10+-green.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-see%20LICENSE.txt-lightgrey.svg)](LICENSE.txt)
@@ -32,10 +34,10 @@ Whether you build pipelines for image generation, video, audio, or just want to 
 | 📝 | **[Text & Prompts](#text)** | 4 | Prompt builder, batch loader, style picker, Russian stress marks |
 | 🎨 | **[Ideogram](#ideogram)** | 1 | Visual JSON-prompt designer for Ideogram 4 — text/object blocks, WYSIWYG node preview, per-area colours, layout/style/design presets, width/height output, RU/EN, import/export |
 | 📁 | **[Files & Models](#files)** | 8 | Model scanner, FP8 converter, file path loader, EDL→YouTube chapters |
-| 🛠️ | **[Utils](#utils)** | 4 | Custom sliders, math, smart type-aware switch |
+| 🛠️ | **[Utils](#utils)** | 5 | Workflow group bypass panel, custom sliders, math, smart type-aware switch |
 | 🎨 | **[Conditioning](#conditioning)** | 1 | Multi-reference image conditioning |
 
-> All 61 nodes use the **ComfyUI V3 API** (`comfy_api.v0_0_2.IO` — pinned namespace for stability).
+> All 75 nodes use the **ComfyUI V3 API** (`comfy_api.v0_0_2.IO` — a pinned namespace, not a stable one: the adapter itself declares `STABLE = False`. Pinning keeps the pack off the moving `latest` alias; it does not promise the API will not change).
 >
 > **Plus extra samplers & schedulers** added straight into the native KSampler / KSamplerAdvanced / BasicScheduler dropdowns (no node to wire — they just appear after install): sampler **`res_2s`** (2nd-order exponential RK / "RES"), schedulers **`bong_tangent`** (two-stage arctangent sigma curve) and **`beta57`** (`beta` α=0.5/β=0.7). Algorithms reimplemented clean-room from [RES4LYF](https://github.com/ClownsharkBatwing/RES4LYF)'s public math (no code copied).
 
@@ -93,13 +95,29 @@ A few nodes need extra packages — they fail gracefully and tell you what's mis
 | Node | Needs | Install via extra |
 |---|---|---|
 | TS Cube ↔ Equirectangular | `py360convert` | (bundled in core) |
-| TS Qwen 3 VL int4/int8 | `bitsandbytes` | `pip install -e .[llm-quant]` |
+| TS Qwen 3 VL int4/int8 | `bitsandbytes` (no Apple Silicon wheel) | `pip install -e .[llm-quant]` |
 | TS Music Stems | `demucs`, `geomloss`, `pykeops` | `pip install -e .[audio-stems]` |
 | TS Silero TTS / Stress | `silero`, `silero-stress` | `pip install -e .[audio-silero]` |
 | TS RTX Upscaler | `nvvfx` (NVIDIA RTX only) | install manually |
 | TS Video Upscale With Model | `spandrel` | install manually |
 
 > Want everything in one go? `pip install -e .[all]`
+
+### Platforms
+
+Windows, Linux and macOS on Apple Silicon. What differs on a Mac, measured on
+GitHub's macOS runners rather than assumed:
+
+- **Nothing extra to install for video and audio.** Every node that shells out to
+  ffmpeg uses the binary `imageio-ffmpeg` ships, so a system ffmpeg is a fallback
+  and not a requirement.
+- **Metal is used where PyTorch implements the operator.** Two it does not —
+  `linalg.eigh` and `linalg.lstsq` — are the ones TS Color Match needs, so that
+  node quietly does those small solves on the CPU and keeps the rest on the GPU.
+- **TS Whisper always runs on the CPU on a Mac.** openai-whisper does not run
+  reliably on Metal, so the device is not offered rather than offered and broken.
+- **int4 / int8 for TS Qwen 3 VL are unavailable**: `bitsandbytes` has no Apple
+  Silicon wheel. The node notices and falls back to fp16/fp32 with a warning.
 
 ---
 
@@ -544,6 +562,26 @@ Multimodal Qwen 3 VL (image + video + text) running locally. Built-in model pick
 
 Prompt enhancement node with a built-in **voice button** — speak your idea, Whisper transcribes it (with cinematography-aware grammar fixes), then a small Qwen3 model expands it into a rich prompt. Optional image input for image-conditioned prompting. Two modes: fast turbo or high-quality. Internals split (v9.5) into `nodes/llm/super_prompt/` (`_helpers`, `_voice`, `_qwen` over the shared Qwen engine) so the prompt-enhancement path stays in sync with TS Qwen 3 VL V3.
 
+**Two reference images.** Drop an image straight onto the node — from the Artius browser, from the desktop, or from another node's preview. One image is a reference; drop a second and the two become the **first and last frame** of the shot, which the model is told explicitly. The second picker appears once the first is taken. The thumbnails carry a **1** and a **2** so you can see which frame is which; drag one onto the other to swap them. Remove the first of a pair and the second takes its place.
+
+**Frames can come from the graph too.** The optional `images` input takes a plain ComfyUI `IMAGE`. A single image is a plain reference; in a batch the **first image is the first frame** and the **last is the last frame**. One input rather than a socket per frame: the order inside the batch is what says which frame is which, so three or four frames need no new wiring (up to four are read). A wired input **wins** over images attached in the node, and wins as a whole — the batch already states the order, and mixing it with attachments could only produce a sequence nobody asked for. Each frame is shrunk to about 1 MP by area on the way in — no crop, and no upscale when it is already smaller.
+
+**The Enhance button sees the input too.** The value on a wire does not exist until something computes it, so the button computes it — but only the branch that feeds this input. The nodes that branch depends on are pulled out of the graph into a prompt of their own and run; nothing else in the workflow is in that prompt, so no sampler and no save fires along with it. Two loaders joined into a batch, a resize, a crop — all of it works, and none of it needs a run of the whole workflow first. Nothing is remembered between presses on purpose: swap the file behind a loader and the graph reads exactly the same, so a remembered result would quietly enhance the picture you replaced. ComfyUI does the caching one level down, by what the nodes actually read. If the branch produces no image, the node says so instead of quietly enhancing the text alone.
+
+**On-screen text is not translated.** Anything in quotes is what should appear in the picture — a sign, a title, a lyric. It is copied through unchanged, in its original language, while everything else is translated to English. An obliging translation used to turn a Russian shop sign into an English one nobody asked for.
+
+**The `Video Prompt Enhance` and `Image Prompt Enhance` presets** are written for a small model (Qwen 2B/4B): short numbered steps, an explicit output format, one example. The video preset is tuned for LTX-2.3 and MiniMax H3 — camera move first, then the motion in order, then light and mood.
+
+**`Video Prompt Enhance H3` — spoken lines, and Russian that sounds Russian.** MiniMax H3 makes the sound in the same pass as the picture, and it has a schema for speech: the speaker gets a stable ID `(S1)`, who they are and how they sound is written outside the dialogue block, and inside the block there is only the language tag and the line itself — copied word for word, never translated:
+
+```text
+A young Russian woman (S1), a native Russian speaker with natural, neutral standard
+Russian pronunciation and authentic native Russian prosody, whispers softly and
+flirtatiously: <d>[Russian] Привет, красавчик!</d>
+```
+
+That wording matters more than it looks. `with a Russian accent` asks for an English voice tinted with Russian; `a native Russian speaker … authentic native Russian prosody` asks for a Russian voice. The preset also keeps speech and signage apart — a line someone says goes in the dialogue block, a text on a sign stays in quotes — and only ever uses H3's own language tags.
+
 **Use when:** quick prompt brainstorming, voice-driven workflows, or bridging a sketchy idea into a production-ready prompt.
 
 ---
@@ -635,6 +673,12 @@ Multi-file downloader that takes a list of `URL <space> target_path` lines and d
 
 Models you already have are listed too, on purpose: the list travels with the workflow, so whoever you send it to still needs those lines.
 
+The folder it proposes is the one your models of that category are **already in**. ComfyUI reads two directories per category — `clip` and `text_encoders`, `unet` and `diffusion_models` — and both are real; if your encoders live in `clip`, that is where the download is aimed, not at the empty folder next to it. A line you wrote in the list yourself is never rewritten.
+
+**Cancelling the run stops everything.** ComfyUI's cancel button ends the file in flight *and* every file still queued after it. A partial file is kept as `.part`, so the next run resumes from where it stopped instead of starting over. Progress is one bar for the whole list, from the first model to the last.
+
+**The rest of the workflow waits.** This node brings in the models the graph has nothing to load without, so it holds the run until the last file has landed rather than handing the graph back while the bytes are still arriving.
+
 **Use when:** distributing a workflow that needs N specific models — open it, press the button, and the node is filled in.
 
 > **Network behaviour (for security review):** the node issues standard HTTPS `HEAD`/`GET` requests **only** to the URLs you type into `file_list`, identifying itself with an honest `comfyui-timesaver/<version>` User-Agent. It does **not** execute, import, or run anything it downloads — files are written to disk only. There are no hardcoded callback/telemetry endpoints. Optional `hf_token` / `modelscope_token` are sent as an `Authorization` header **only** to their matching host (HuggingFace / ModelScope respectively) and are never logged or forwarded elsewhere. Auto-unzip is validated against zip-slip path traversal before extraction.
@@ -701,9 +745,23 @@ Convert a DaVinci Resolve EDL (Edit Decision List) export into a YouTube-friendl
 ---
 
 <a id="utils"></a>
-### 🛠️ Utils (4 nodes)
+### 🛠️ Utils (5 nodes)
 
 Tiny helpers that make the graph less cluttered.
+
+#### TS Group Bypasser
+
+A control panel for the groups of the open workflow. The node's body holds nothing but group names and checkboxes: unchecking one puts **every node inside that group into bypass**. Double-click a row to show that group on the canvas. The node sizes itself to the number of groups — two groups give a two-row node, with no empty space underneath.
+
+The state is not kept in this node — it is read back from the graph, so a node muted by hand, or one that belongs to two overlapping groups, honestly reads as "partly on" instead of being passed off as something definite.
+
+**The settings live in the node's Properties Panel** (right-click the node): filter by title (a substring, or `/…/` for a regular expression), filter by colour (comma-separated; LiteGraph colour names, hex, and `none` for uncoloured groups all work), the order of the list (by position, title or colour), and a "max one" / "always one" rule for when switching one group on should switch the others off — handy for A/B branches. **Bulk actions** (enable, bypass or invert everything shown) are in the node's right-click menu.
+
+Bypassed groups survive a save without any help from this node: the state lives in the modes of the nodes themselves.
+
+**Use when:** a heavy workflow with several branches and only one of them wanted per run.
+
+---
 
 #### TS Int Slider
 <img src="doc/screenshots/ts_int_slider.png" alt="TS Int Slider" width="450" />
@@ -788,6 +846,44 @@ You can override these with `extra_model_paths.yaml` — Timesaver respects Comf
 ## 🛟 Troubleshooting
 
 <details>
+<summary><b>"ffmpeg not found" or audio and video nodes failing to decode</b></summary>
+
+You should not have to install ffmpeg at all: `imageio-ffmpeg` is a required
+dependency and ships a static binary for every platform the pack runs on. The
+audio loader, TS Whisper, the Super Prompt voice input and TS Animation Preview
+all ask for that binary first and only then look at your PATH.
+
+So this message means the dependency itself is missing or its binary was cleaned
+away. Fix it with the Python ComfyUI runs from:
+
+```bash
+python -m pip install --upgrade imageio-ffmpeg
+```
+</details>
+
+<details>
+<summary><b>"A required media input has no file selected" after a reload</b></summary>
+
+This one is ComfyUI's own bug, and the pack fixes it — the only place it touches
+core at all.
+
+Paste an image into a node with Ctrl+V, or drop one onto it, and ComfyUI stores
+the file in `input/pasted/` while the widget keeps the value `pasted/name.png`.
+Everything works until you reload. After a reload the list of available files
+comes from the server, and the stock `Load Image` lists only what sits directly
+in `input` — it never looks into subfolders. The editor cannot find the saved
+value in that list and calls the file missing, though it has been on disk the
+whole time.
+
+Timesaver widens the list for the stock `Load Image` and `Load Image (as Mask)`
+so they see images in every `input` subfolder. No node is replaced, no file is
+moved, and already-saved workflows start opening on their own. Dot-folders
+(packs' working caches) stay out of the list.
+
+To switch it off: set `TS_DISABLE_PASTED_MEDIA_FIX=1` before starting ComfyUI.
+</details>
+
+<details>
 <summary><b>"Module not found" on startup</b></summary>
 
 Check the startup log — Timesaver prints a load report. Missing optional dependencies appear under **Optional missing imports** with the file that needs them. Install with:
@@ -829,7 +925,10 @@ Timesaver freezes node ids and inputs across versions on purpose. If something b
 
 ```text
 comfyui-timesaver/
-├─ nodes/                  # 64 modules: 61 nodes + 3 sampler/scheduler injectors
+├─ ts_pasted_media_fix.py  # the pack's one patch to ComfyUI itself
+├─ nodes/                  # 79 modules: 75 nodes + 4 that register none
+│                          #   (sampler + scheduler injectors, shared routes,
+│                          #    one backward-compat re-export shim)
 ├─ js/                     # frontend extensions for DOM-widget nodes
 ├─ doc/screenshots/        # node screenshots (this README uses them)
 ├─ requirements.txt        # runtime dependencies

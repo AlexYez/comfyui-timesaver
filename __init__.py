@@ -366,6 +366,26 @@ def _collect_critical_missing_roots() -> set[str]:
     return roots
 
 
+def _apply_core_patches() -> None:
+    """The pack's ONE patch to ComfyUI itself.
+
+    Core's Load Image advertises only the files at the root of `input`, so an
+    image ComfyUI pasted into `input/pasted` is reported missing after every
+    reload. Idempotent: calling it twice is harmless.
+
+    Wrapped in its own guard — a pack that cannot patch core must still load
+    its nodes.
+    """
+    try:
+        from .ts_pasted_media_fix import apply_patch
+
+        apply_patch()
+    except Exception as error:  # pragma: no cover - defensive
+        logging.getLogger(__name__).warning(
+            "[TS PastedMediaFix] Not installed: %s", error,
+        )
+
+
 if not _STANDALONE_IMPORT:
     for _entry in _MODULE_ENTRIES:
         _load_module(_entry["module_import"], _entry["module_label"])
@@ -373,4 +393,54 @@ if not _STANDALONE_IMPORT:
     _IMPORT_AUDIT_RESULTS = _scan_external_imports()
     _print_startup_report()
 
-__all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS"]
+    _apply_core_patches()
+
+
+# ── регистрация: V3, а при старом ComfyUI — прежний путь ─────────────────── #
+#
+# ⚠️ Ноды пака давно на V3-схемах, но регистрировался он по-старому. Загрузчик
+# ComfyUI сначала смотрит `NODE_CLASS_MAPPINGS` и, найдя его, УХОДИТ в V1-ветку,
+# не заглядывая в `comfy_entrypoint` (порядок ветвей — в `nodes.py` ядра).
+# Поэтому корневой словарь отдаётся наружу ТОЛЬКО там, где V3-расширений нет:
+# иначе он молча отменял бы всю миграцию.
+try:  # pragma: no cover - зависит от версии ComfyUI
+    from comfy_api.latest import ComfyExtension as _ComfyExtension
+except Exception:  # pragma: no cover - старая сборка или тесты без ComfyUI
+    _ComfyExtension = None
+
+
+if _ComfyExtension is not None:
+    # ⚠️ Список снимается ДО того, как словарь исчезнет из модуля: проверять
+    # `hasattr(module, "NODE_CLASS_MAPPINGS")` будет сам ComfyUI, и пока
+    # атрибут на месте, V3-ветка не начинается вовсе. Проверено импортом:
+    # без удаления миграция оставалась холостой.
+    _NODE_CLASSES = list(NODE_CLASS_MAPPINGS.values())
+
+    class TimesaverExtension(_ComfyExtension):
+        """Пак целиком: те же классы, те же `node_id`, другая дорога внутрь.
+
+        Идентификаторы нод не меняются — их несёт схема каждого класса, а
+        сохранённые workflow ссылаются именно на них.
+        """
+
+        async def get_node_list(self) -> list[type]:
+            return list(_NODE_CLASSES)
+
+        async def on_load(self) -> None:
+            # Заплатка на ядро — работа времени загрузки, а не времени импорта:
+            # здесь ComfyUI уже собран, и падение видно как ошибка расширения,
+            # а не как молчаливое исключение внутри `import`.
+            _apply_core_patches()
+
+    async def comfy_entrypoint() -> "_ComfyExtension":
+        return TimesaverExtension()
+
+    # Словари уходят из модуля целиком — иначе загрузчик выберет V1-ветку и
+    # вернётся до `comfy_entrypoint`, как было до миграции.
+    del NODE_CLASS_MAPPINGS
+    del NODE_DISPLAY_NAME_MAPPINGS
+
+    __all__ = ["comfy_entrypoint", "TimesaverExtension"]
+else:
+    # Сборка без V3-загрузчика: отдаём словари, как раньше.
+    __all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS"]

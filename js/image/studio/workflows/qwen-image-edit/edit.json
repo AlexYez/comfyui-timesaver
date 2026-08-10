@@ -1,0 +1,257 @@
+{
+ "p_prompt": {
+  "class_type": "TS_StudioInputText",
+  "inputs": {
+   "value": "",
+   "param_name": "prompt",
+   "label": ""
+  }
+ },
+ "p_steps": {
+  "class_type": "TS_StudioInputNumber",
+  "inputs": {
+   "value": 4,
+   "param_name": "steps",
+   "label": ""
+  }
+ },
+ "p_cfg": {
+  "class_type": "TS_StudioInputNumber",
+  "inputs": {
+   "value": 1.0,
+   "param_name": "cfg",
+   "label": ""
+  }
+ },
+ "p_seed": {
+  "class_type": "TS_StudioInputSeed",
+  "inputs": {
+   "value": 0,
+   "param_name": "seed"
+  }
+ },
+ "p_ref1": {
+  "class_type": "TS_StudioInputImage",
+  "inputs": {
+   "value": "",
+   "param_name": "ref_1",
+   "label": "Source"
+  }
+ },
+ "p_ref2": {
+  "class_type": "TS_StudioInputImage",
+  "inputs": {
+   "value": "",
+   "param_name": "ref_2",
+   "label": ""
+  }
+ },
+ "p_ref3": {
+  "class_type": "TS_StudioInputImage",
+  "inputs": {
+   "value": "",
+   "param_name": "ref_3",
+   "label": ""
+  }
+ },
+ "model_loader": {
+  "class_type": "UNETLoader",
+  "inputs": {
+   "unet_name": "qwen\\qwen_image_edit_2511_fp8mixed.safetensors",
+   "weight_dtype": "default"
+  },
+  "_meta": {
+   "title": "studio:model"
+  }
+ },
+ "lora_stack": {
+  "class_type": "TS_StudioLoraStack",
+  "inputs": {
+   "model": [
+    "model_loader",
+    0
+   ]
+  }
+ },
+ "model_sampling": {
+  "class_type": "ModelSamplingAuraFlow",
+  "inputs": {
+   "model": [
+    "lightning",
+    0
+   ],
+   "shift": 3.1
+  }
+ },
+ "cfg_norm": {
+  "class_type": "CFGNorm",
+  "inputs": {
+   "model": [
+    "model_sampling",
+    0
+   ],
+   "strength": 1.0
+  }
+ },
+ "clip_loader": {
+  "class_type": "CLIPLoader",
+  "inputs": {
+   "clip_name": "qwen\\qwen_2.5_vl_7b_fp8_scaled.safetensors",
+   "type": "qwen_image"
+  },
+  "_meta": {
+   "title": "studio:clip"
+  }
+ },
+ "vae_loader": {
+  "class_type": "VAELoader",
+  "inputs": {
+   "vae_name": "qwen\\qwen_image_vae.safetensors"
+  },
+  "_meta": {
+   "title": "studio:vae"
+  }
+ },
+ "encode_pos": {
+  "class_type": "TextEncodeQwenImageEditPlus",
+  "inputs": {
+   "clip": [
+    "clip_loader",
+    0
+   ],
+   "prompt": [
+    "p_prompt",
+    0
+   ],
+   "vae": [
+    "vae_loader",
+    0
+   ],
+   "image1": [
+    "ref_resize",
+    0
+   ],
+   "image2": [
+    "p_ref2",
+    0
+   ],
+   "image3": [
+    "p_ref3",
+    0
+   ]
+  }
+ },
+ "latent": {
+  "class_type": "VAEEncode",
+  "inputs": {
+   "pixels": [
+    "ref_resize",
+    0
+   ],
+   "vae": [
+    "vae_loader",
+    0
+   ]
+  }
+ },
+ "sample": {
+  "class_type": "KSampler",
+  "inputs": {
+   "model": [
+    "cfg_norm",
+    0
+   ],
+   "seed": [
+    "p_seed",
+    0
+   ],
+   "steps": [
+    "p_steps",
+    1
+   ],
+   "cfg": [
+    "p_cfg",
+    0
+   ],
+   "sampler_name": "euler",
+   "scheduler": "beta57",
+   "positive": [
+    "encode_pos",
+    0
+   ],
+   "negative": [
+    "neg_zero",
+    0
+   ],
+   "latent_image": [
+    "latent",
+    0
+   ],
+   "denoise": 1.0
+  }
+ },
+ "decode": {
+  "class_type": "VAEDecode",
+  "inputs": {
+   "samples": [
+    "sample",
+    0
+   ],
+   "vae": [
+    "vae_loader",
+    0
+   ]
+  }
+ },
+ "studio_out": {
+  "class_type": "TS_StudioOutput",
+  "inputs": {
+   "image": [
+    "decode",
+    0
+   ],
+   "filename_prefix": "ts_studio/session"
+  }
+ },
+ "studio_manifest": {
+  "class_type": "TS_StudioManifest",
+  "inputs": {
+   "manifest": "{\n  \"schema_version\": \"1.0.0\",\n  \"id\": \"qwen-image-edit/edit\",\n  \"label\": {\n    \"en\": \"Edit\",\n    \"ru\": \"Редактирование\"\n  },\n  \"family\": \"qwen-image-edit\",\n  \"family_label\": \"Qwen Image Edit\",\n  \"tier\": 2,\n  \"mode\": \"edit\",\n  \"order\": 20,\n  \"controls\": [\n    {\n      \"param\": \"prompt\",\n      \"kind\": \"prompt\",\n      \"superprompt\": true\n    },\n    {\n      \"param\": \"seed\",\n      \"kind\": \"seed\"\n    },\n    {\n      \"param\": \"loras\",\n      \"kind\": \"loras\",\n      \"max\": 8,\n      \"strength\": [\n        -2.0,\n        2.0\n      ]\n    },\n    {\n      \"param\": \"steps\",\n      \"kind\": \"number\",\n      \"advanced\": true,\n      \"min\": 1,\n      \"max\": 60,\n      \"label\": {\n        \"en\": \"Steps\",\n        \"ru\": \"Шаги\"\n      },\n      \"default\": 4\n    },\n    {\n      \"param\": \"cfg\",\n      \"kind\": \"number\",\n      \"advanced\": true,\n      \"min\": 1.0,\n      \"max\": 15,\n      \"step\": 0.1,\n      \"label\": {\n        \"en\": \"CFG\",\n        \"ru\": \"CFG\"\n      },\n      \"default\": 1.0\n    }\n  ],\n  \"refs\": {\n    \"max\": 3\n  },\n  \"requires\": [\n    \"ref_1\"\n  ],\n  \"negative_prompt\": false,\n  \"models\": [\n    {\n      \"title\": \"studio:model\",\n      \"input\": \"unet_name\",\n      \"folder\": \"diffusion_models\",\n      \"match\": \"qwen_image_edit.*(fp8|bf16)|Artius_Qwen_Edit\"\n    },\n    {\n      \"title\": \"studio:clip\",\n      \"input\": \"clip_name\",\n      \"folder\": \"text_encoders\",\n      \"match\": \"qwen_2\\\\.5_vl_7b\"\n    },\n    {\n      \"title\": \"studio:vae\",\n      \"input\": \"vae_name\",\n      \"folder\": \"vae\",\n      \"match\": \"qwen_image_vae\"\n    },\n    {\n      \"title\": \"studio:lora_lightning\",\n      \"match\": \"Qwen-Image-Edit-2511-Lightning-4steps.*bf16\",\n      \"folder\": \"loras\"\n    }\n  ]\n}"
+  }
+ },
+ "lightning": {
+  "class_type": "LoraLoaderModelOnly",
+  "_meta": {
+   "title": "studio:lora_lightning"
+  },
+  "inputs": {
+   "model": [
+    "lora_stack",
+    0
+   ],
+   "lora_name": "qwen\\Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors",
+   "strength_model": 1.0
+  }
+ },
+ "ref_resize": {
+  "class_type": "ResizeImageMaskNode",
+  "inputs": {
+   "input": [
+    "p_ref1",
+    0
+   ],
+   "resize_type": "scale to multiple",
+   "resize_type.multiple": 112,
+   "scale_method": "area"
+  }
+ },
+ "neg_zero": {
+  "class_type": "ConditioningZeroOut",
+  "inputs": {
+   "conditioning": [
+    "encode_pos",
+    0
+   ]
+  }
+ }
+}

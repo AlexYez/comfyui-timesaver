@@ -1,0 +1,29 @@
+{
+ "schema_version": "1.0.0",
+ "workflows": [
+  "flux2-klein/edit.json",
+  "flux2-klein/img2img.json",
+  "flux2-klein/inpaint.json",
+  "flux2-klein/outpaint.json",
+  "flux2-klein/t2i.json",
+  "flux2-klein/upscale.json",
+  "ideogram/img2img.json",
+  "ideogram/inpaint.json",
+  "ideogram/t2i.json",
+  "ideogram/upscale.json",
+  "krea2/img2img.json",
+  "krea2/inpaint.json",
+  "krea2/t2i.json",
+  "krea2/upscale.json",
+  "qwen-image-edit/edit.json",
+  "qwen-image/img2img.json",
+  "qwen-image/inpaint.json",
+  "qwen-image/t2i.json",
+  "qwen-image/upscale.json",
+  "seedvr2/upscale.json",
+  "z-image/img2img.json",
+  "z-image/inpaint.json",
+  "z-image/t2i.json",
+  "z-image/upscale.json"
+ ]
+}

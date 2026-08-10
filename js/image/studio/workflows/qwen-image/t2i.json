@@ -1,0 +1,224 @@
+{
+ "p_prompt": {
+  "class_type": "TS_StudioInputText",
+  "inputs": {
+   "value": "",
+   "param_name": "prompt",
+   "label": ""
+  }
+ },
+ "p_width": {
+  "class_type": "TS_StudioInputNumber",
+  "inputs": {
+   "value": 1024,
+   "param_name": "width",
+   "label": ""
+  }
+ },
+ "p_height": {
+  "class_type": "TS_StudioInputNumber",
+  "inputs": {
+   "value": 1024,
+   "param_name": "height",
+   "label": ""
+  }
+ },
+ "p_steps": {
+  "class_type": "TS_StudioInputNumber",
+  "inputs": {
+   "value": 4,
+   "param_name": "steps",
+   "label": ""
+  }
+ },
+ "p_cfg": {
+  "class_type": "TS_StudioInputNumber",
+  "inputs": {
+   "value": 1.0,
+   "param_name": "cfg",
+   "label": ""
+  }
+ },
+ "p_seed": {
+  "class_type": "TS_StudioInputSeed",
+  "inputs": {
+   "value": 0,
+   "param_name": "seed"
+  }
+ },
+ "model_loader": {
+  "class_type": "UNETLoader",
+  "inputs": {
+   "unet_name": "qwen\\qwen_image_2512_bf16.safetensors",
+   "weight_dtype": "default"
+  },
+  "_meta": {
+   "title": "studio:model"
+  }
+ },
+ "lora_stack": {
+  "class_type": "TS_StudioLoraStack",
+  "inputs": {
+   "model": [
+    "model_loader",
+    0
+   ]
+  }
+ },
+ "clip_loader": {
+  "class_type": "CLIPLoader",
+  "inputs": {
+   "clip_name": "qwen\\qwen_2.5_vl_7b_fp8_scaled.safetensors",
+   "type": "qwen_image"
+  },
+  "_meta": {
+   "title": "studio:clip"
+  }
+ },
+ "vae_loader": {
+  "class_type": "VAELoader",
+  "inputs": {
+   "vae_name": "qwen\\qwen_image_vae.safetensors"
+  },
+  "_meta": {
+   "title": "studio:vae"
+  }
+ },
+ "encode_pos": {
+  "class_type": "CLIPTextEncode",
+  "inputs": {
+   "text": [
+    "p_prompt",
+    0
+   ],
+   "clip": [
+    "clip_loader",
+    0
+   ]
+  }
+ },
+ "p_negative": {
+  "class_type": "TS_StudioInputText",
+  "inputs": {
+   "value": "",
+   "param_name": "negative_prompt",
+   "label": ""
+  }
+ },
+ "encode_neg": {
+  "class_type": "CLIPTextEncode",
+  "inputs": {
+   "text": [
+    "p_negative",
+    0
+   ],
+   "clip": [
+    "clip_loader",
+    0
+   ]
+  }
+ },
+ "model_sampling": {
+  "class_type": "ModelSamplingAuraFlow",
+  "inputs": {
+   "model": [
+    "lightning",
+    0
+   ],
+   "shift": 3.1
+  }
+ },
+ "latent": {
+  "class_type": "EmptySD3LatentImage",
+  "inputs": {
+   "width": [
+    "p_width",
+    1
+   ],
+   "height": [
+    "p_height",
+    1
+   ],
+   "batch_size": 1
+  }
+ },
+ "sample": {
+  "class_type": "KSampler",
+  "inputs": {
+   "model": [
+    "model_sampling",
+    0
+   ],
+   "seed": [
+    "p_seed",
+    0
+   ],
+   "steps": [
+    "p_steps",
+    1
+   ],
+   "cfg": [
+    "p_cfg",
+    0
+   ],
+   "sampler_name": "euler",
+   "scheduler": "simple",
+   "positive": [
+    "encode_pos",
+    0
+   ],
+   "negative": [
+    "encode_neg",
+    0
+   ],
+   "latent_image": [
+    "latent",
+    0
+   ],
+   "denoise": 1.0
+  }
+ },
+ "decode": {
+  "class_type": "VAEDecode",
+  "inputs": {
+   "samples": [
+    "sample",
+    0
+   ],
+   "vae": [
+    "vae_loader",
+    0
+   ]
+  }
+ },
+ "studio_out": {
+  "class_type": "TS_StudioOutput",
+  "inputs": {
+   "image": [
+    "decode",
+    0
+   ],
+   "filename_prefix": "ts_studio/session"
+  }
+ },
+ "studio_manifest": {
+  "class_type": "TS_StudioManifest",
+  "inputs": {
+   "manifest": "{\n  \"schema_version\": \"1.0.0\",\n  \"id\": \"qwen-image/t2i\",\n  \"label\": {\n    \"en\": \"Generate\",\n    \"ru\": \"Генерация\"\n  },\n  \"family\": \"qwen-image\",\n  \"family_label\": \"Qwen Image\",\n  \"tier\": 2,\n  \"mode\": \"t2i\",\n  \"order\": 10,\n  \"controls\": [\n    {\n      \"param\": \"prompt\",\n      \"kind\": \"prompt\",\n      \"superprompt\": true\n    },\n    {\n      \"param\": \"size\",\n      \"kind\": \"size\",\n      \"aspects\": [\n        \"21:9\",\n        \"16:9\",\n        \"3:2\",\n        \"4:3\",\n        \"1:1\",\n        \"3:4\",\n        \"2:3\",\n        \"9:16\",\n        \"9:21\"\n      ],\n      \"width_param\": \"width\",\n      \"height_param\": \"height\",\n      \"base_mp\": 1.6,\n      \"mp\": [\n        0.25,\n        4.0\n      ],\n      \"snap\": 16,\n      \"default_aspect\": \"1:1\"\n    },\n    {\n      \"param\": \"seed\",\n      \"kind\": \"seed\"\n    },\n    {\n      \"param\": \"loras\",\n      \"kind\": \"loras\",\n      \"max\": 8,\n      \"strength\": [\n        -2.0,\n        2.0\n      ]\n    },\n    {\n      \"param\": \"negative_prompt\",\n      \"kind\": \"prompt\",\n      \"advanced\": true,\n      \"label\": {\n        \"en\": \"Negative prompt\",\n        \"ru\": \"Негативный промпт\"\n      }\n    },\n    {\n      \"param\": \"steps\",\n      \"kind\": \"number\",\n      \"advanced\": true,\n      \"min\": 1,\n      \"max\": 60,\n      \"step\": 1,\n      \"label\": {\n        \"en\": \"Steps\",\n        \"ru\": \"Шаги\"\n      },\n      \"default\": 4\n    },\n    {\n      \"param\": \"cfg\",\n      \"kind\": \"number\",\n      \"advanced\": true,\n      \"min\": 1.0,\n      \"max\": 15,\n      \"step\": 0.1,\n      \"label\": {\n        \"en\": \"CFG\",\n        \"ru\": \"CFG\"\n      },\n      \"default\": 1.0\n    }\n  ],\n  \"refs\": {\n    \"max\": 0\n  },\n  \"negative_prompt\": true,\n  \"models\": [\n    {\n      \"title\": \"studio:model\",\n      \"input\": \"unet_name\",\n      \"folder\": \"diffusion_models\",\n      \"match\": \"qwen_image_(2512|\\\\d+)_|Artius_Qwen_v\"\n    },\n    {\n      \"title\": \"studio:clip\",\n      \"input\": \"clip_name\",\n      \"folder\": \"text_encoders\",\n      \"match\": \"qwen_2\\\\.5_vl_7b\"\n    },\n    {\n      \"title\": \"studio:vae\",\n      \"input\": \"vae_name\",\n      \"folder\": \"vae\",\n      \"match\": \"qwen_image_vae\"\n    },\n    {\n      \"title\": \"studio:lora_lightning\",\n      \"match\": \"Qwen-Image-2512-Lightning-4steps.*bf16\",\n      \"folder\": \"loras\"\n    }\n  ]\n}"
+  }
+ },
+ "lightning": {
+  "class_type": "LoraLoaderModelOnly",
+  "_meta": {
+   "title": "studio:lora_lightning"
+  },
+  "inputs": {
+   "model": [
+    "lora_stack",
+    0
+   ],
+   "lora_name": "qwen\\Qwen-Image-2512-Lightning-4steps-V1.0-bf16.safetensors",
+   "strength_model": 1.0
+  }
+ }
+}

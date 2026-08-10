@@ -83,7 +83,12 @@ class TSRestoreFromCrop(IO.ComfyNode):
 
     @classmethod
     def execute(cls, original_images, cropped_images, crop_data, blur, blur_type, force_gpu) -> IO.NodeOutput:
-        target_device = comfy.model_management.get_torch_device() if force_gpu and torch.cuda.is_available() else torch.device("cpu")
+        # get_torch_device() already answers "cpu" where there is no accelerator,
+        # and it knows about Metal. The torch.cuda.is_available() guard that used
+        # to stand here pinned every Mac to the CPU no matter what this switch
+        # said — the widget promised a thing it could not do.
+        target_device = (comfy.model_management.get_torch_device() if force_gpu
+                         else torch.device("cpu"))
         logger.info("%s Using device %s", LOG_PREFIX, target_device)
         original_images, cropped_images = original_images.to(target_device), cropped_images.to(target_device)
         restored_images = []

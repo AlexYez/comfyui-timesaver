@@ -17,7 +17,7 @@ from comfy.utils import ProgressBar
 from comfy_api.v0_0_2 import IO
 from PIL import Image, ImageFilter
 
-from .._hf_download import snapshot_download_resilient
+from .._hf_download import pinned_revision, snapshot_download_resilient
 
 # Shared with ts_matting_vitmatte. Imported (not defined) here, and re-exported
 # so any existing `from .ts_bgrm_birefnet import pil2tensor, ...` keeps working.
@@ -26,6 +26,7 @@ from ._image_utils import (  # noqa: F401
     _get_target_device,
     _resolve_dtype,
     _safe_empty_cache,
+    is_out_of_memory_error,
     _temporal_smooth_alphas,
     _update_progress,
     hex_to_rgba,
@@ -72,6 +73,12 @@ _register_birefnet_folder()
 #
 # Each variant lives in its OWN sub-directory ``models/BiRefNet/<variant>/``
 # so per-model bundled ``birefnet.py`` files never clobber each other.
+# Что вообще разрешено принести из репозитория модели. Раньше здесь
+# стояло `"*.py"`, то есть исполнялся бы любой файл, который автор
+# добавит в репозиторий. Осталось три известных имени.
+ARCHITECTURE_FILES = ("birefnet.py", "birefnet_lite.py", "BiRefNet_config.py")
+
+
 MODEL_CONFIG = {
     "BiRefNet-general": {
         "repo_id": "ZhengPeng7/BiRefNet",
@@ -525,8 +532,9 @@ class BiRefNetModel:
                 "config.json",
             ]
         else:
+            # ⚠️ Без `"*.py"`: исполняется только то, что мы знаем по имени.
             primary_patterns = [
-                "*.json", "*.py", "*.safetensors", "*.bin", "*.txt",
+                "*.json", "*.safetensors", "*.bin", "*.txt", *ARCHITECTURE_FILES,
             ]
 
         primary_exc: Exception | None = None
@@ -544,7 +552,7 @@ class BiRefNetModel:
                     snapshot_download_resilient(
                         repo_id=primary_repo,
                         local_dir=cache_dir,
-                        revision="main",
+                        revision=pinned_revision(primary_repo),
                         allow_patterns=primary_patterns,
                         log=logger,
                         log_prefix=_LOG_PREFIX,
@@ -577,7 +585,7 @@ class BiRefNetModel:
                 snapshot_download_resilient(
                     repo_id=fallback_repo,
                     local_dir=cache_dir,
-                    revision="main",
+                    revision=pinned_revision(fallback_repo),
                     allow_patterns=[
                         fallback_filename,
                         "birefnet.py",
@@ -816,13 +824,15 @@ class BiRefNetModel:
                             progress_bar.update_absolute(processed, total=batch_size)
                         except Exception:
                             pass
-                except torch.cuda.OutOfMemoryError:
+                except (torch.cuda.OutOfMemoryError, RuntimeError) as exc:
+                    if not is_out_of_memory_error(exc):
+                        raise
                     _safe_empty_cache()
                     if current_chunk_size <= 1:
                         raise
                     chunk_size = max(1, current_chunk_size // 2)
                     logger.warning(
-                        "%s CUDA OOM at batch chunk %s, retrying with chunk size %s",
+                        "%s Out of memory at batch chunk %s, retrying with chunk size %s",
                         _LOG_PREFIX,
                         current_chunk_size,
                         chunk_size,

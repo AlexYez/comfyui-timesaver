@@ -15,6 +15,12 @@ import { api } from "/scripts/api.js";
 
 import { TS_UI_CLASS, ensureThemeStyles, pickLocaleStrings } from "../_theme.js";
 import { addResizableDomWidget, hideWidget } from "../_dom_widget.js";
+// The pack already has one drag-and-drop service, and it is the one that
+// knows how an Artius card, an OS file and a ComfyUI preview each arrive —
+// including the fallback for a drag that starts inside a shadow root and
+// reaches us with its MIME types stripped. A second copy of that knowledge
+// would go stale the day Artius changes anything.
+import { makeDropZone } from "../_studio/_dnd.js";
 
 const EXTENSION_ID = "ts.superPrompt";
 const NODE_NAME = "TS_SuperPrompt";
@@ -30,6 +36,10 @@ const TEXT_WIDGET = "text";
 const HIGH_QUALITY_WIDGET = "high_quality";
 const SYSTEM_PRESET_WIDGET = "system_preset";
 const ATTACHED_IMAGE_WIDGET = "attached_image";
+const ATTACHED_IMAGE_2_WIDGET = "attached_image_2";
+// Two slots, and the order is the meaning: one image is a reference, two
+// are the first and the last frame of the shot being described.
+const IMAGE_SLOTS = [ATTACHED_IMAGE_WIDGET, ATTACHED_IMAGE_2_WIDGET];
 
 const DEFAULT_MODEL = "base";
 const HIGH_QUALITY_MODEL = "turbo";
@@ -57,7 +67,15 @@ const STYLE_TEXT = `
     color:var(--ts-text);font-family:var(--ts-font);font-size:var(--ts-fs-sm);line-height:1.3;box-sizing:border-box;}
 .ts-sp.is-drag-over{outline:2px dashed var(--ts-accent-line);outline-offset:-3px;border-radius:6px}
 .ts-sp__bar{display:flex;align-items:center;gap:6px;height:26px;flex:0 0 auto}
-.ts-sp__group{display:inline-flex;align-items:center;gap:2px;flex:0 0 auto}
+/* Микрофон и HQ — одно управление распознаванием речи. Общая рамка вместо
+   зазора: порознь «HQ» читалось как отдельная функция неизвестно от чего.
+   Правка чисто внешняя — ни имён, ни значений виджетов она не трогает, и на
+   сохранённые workflow не влияет. */
+.ts-sp__group{display:inline-flex;align-items:center;gap:0;flex:0 0 auto;
+    border:1px solid var(--ts-border);border-radius:7px;overflow:hidden}
+.ts-sp__group:hover{border-color:var(--ts-border-strong)}
+.ts-sp__group > *{border-radius:0 !important;border:none !important;margin:0}
+.ts-sp__group > * + *{border-left:1px solid var(--ts-border) !important}
 .ts-sp__textarea{flex:1 1 auto;min-height:0;width:100%;resize:none;box-sizing:border-box;
     padding:6px 8px;border-radius:6px;border:1px solid var(--ts-border-soft);
     background:var(--ts-sunken);color:var(--ts-text);font-family:inherit;font-size:var(--ts-fs);line-height:1.4;
@@ -100,13 +118,26 @@ const STYLE_TEXT = `
     background-repeat:no-repeat;display:none}
 .ts-sp__attach.has-image .ts-sp__attach-thumb{display:block}
 .ts-sp__attach.has-image .ts-sp__attach-icon{display:none}
-/* Deliberate exception: this badge floats ON TOP of the attached thumbnail, so
-   it needs a fixed dark chip + white glyph to stay legible over any image. */
-.ts-sp__attach-clear{position:absolute;top:-3px;right:-3px;width:14px;height:14px;border-radius:50%;
-    border:1px solid rgba(255,255,255,.15);background:#0a0d12;color:#fff;font-size:var(--ts-fs-xs);line-height:1;
+/* Deliberate exception: these two badges float ON TOP of the attached
+   thumbnail, so they need a fixed dark chip + white glyph to stay legible over
+   any image.
+   The clear badge sits INSIDE the button. It used to be 14px at -3px, which on
+   a 26px button meant a badge more than half the width of the thing it closed,
+   with its outer half sliced off by the overflow:hidden above. */
+.ts-sp__attach-clear{position:absolute;top:1px;right:1px;width:11px;height:11px;border-radius:50%;
+    border:1px solid rgba(255,255,255,.18);background:#0a0d12;color:#fff;font-size:9px;line-height:1;
     cursor:pointer;display:none;align-items:center;justify-content:center;padding:0;
     box-shadow:0 1px 2px rgba(0,0,0,.5)}
 .ts-sp__attach.has-image .ts-sp__attach-clear{display:flex}
+/* Which frame this is. Shown only when BOTH slots are filled: a lone reference
+   image is not the first frame of anything. */
+.ts-sp__attach-badge{position:absolute;left:1px;bottom:1px;min-width:11px;height:11px;padding:0 2px;
+    border-radius:3px;border:1px solid rgba(255,255,255,.18);background:#0a0d12;color:#fff;
+    font-size:9px;line-height:9px;font-weight:700;letter-spacing:.02em;
+    display:none;align-items:center;justify-content:center;pointer-events:none}
+.ts-sp__attach.has-frame .ts-sp__attach-badge{display:flex}
+.ts-sp__attach.is-dragging{opacity:.45}
+.ts-sp__attach.is-drop-target{border-color:var(--ts-accent);box-shadow:0 0 0 2px var(--ts-accent-soft)}
 .ts-sp__attach-clear:hover{background:var(--ts-danger);border-color:var(--ts-danger)}
 .ts-sp__select{flex:1 1 auto;min-width:0;height:26px;padding:0 6px;border-radius:6px;
     border:1px solid var(--ts-border);background:var(--ts-sunken);color:var(--ts-text);
@@ -144,7 +175,17 @@ const SVG_ICON_IMAGE = `<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" he
 // as received and are NOT in this table.
 const STRINGS = {
     en: {
-        attachTitle: "Attach image (drop / paste / click)",
+        attachTitle: "Attach image (drop from Artius / paste / click)",
+        attachSecondTitle: "Attach a second image — the two become the first and last frame",
+        firstFrame: "first frame",
+        lastFrame: "last frame",
+        attachedFrameTitle: (role, name) => `${role}: ${name} (click × to remove)`,
+        bothSlotsFull: "Both image slots are taken — remove one first",
+        dragToSwap: "Drag onto the other image to swap the frames",
+        readingInput: "Running the connected branch…",
+        usingInputFrames: (count) => `Using ${count} frame${count === 1 ? "" : "s"} from the input`,
+        inputNotReadable: "The connected branch produced no image — check what is wired into it, or disconnect it and attach an image here",
+        framesSwapped: "Frames swapped",
         attachClearTitle: "Remove image",
         attachedTitle: (name) => `Attached: ${name} (click × to remove)`,
         hqTitle: "High Quality voice: Whisper turbo (large-v3 turbo). Off: fast base model.",
@@ -199,7 +240,17 @@ const STRINGS = {
         finishRecordingHq: "Finish recording before switching HQ",
     },
     ru: {
-        attachTitle: "Прикрепить изображение (drop / paste / клик)",
+        attachTitle: "Прикрепить изображение (перетащить из Artius / вставить / клик)",
+        attachSecondTitle: "Прикрепить вторую — вместе они станут первым и последним кадром",
+        firstFrame: "первый кадр",
+        lastFrame: "последний кадр",
+        attachedFrameTitle: (role, name) => `${role}: ${name} (нажмите ×, чтобы убрать)`,
+        bothSlotsFull: "Оба места заняты — сначала уберите одно",
+        dragToSwap: "Перетащите на вторую картинку, чтобы поменять кадры местами",
+        readingInput: "Прогоняю подключённую ветку…",
+        usingInputFrames: (count) => `Беру ${count} кадр(а) со входа`,
+        inputNotReadable: "Подключённая ветка не дала картинки — проверьте, что в неё воткнуто, или отключите вход и приложите картинку здесь",
+        framesSwapped: "Кадры поменялись местами",
         attachClearTitle: "Убрать изображение",
         attachedTitle: (name) => `Прикреплено: ${name} (нажмите ×, чтобы убрать)`,
         hqTitle: "Качество распознавания: вкл — Whisper turbo (large-v3), выкл — быстрая базовая модель.",
@@ -387,7 +438,8 @@ function setupSuperPrompt(node) {
     // Hide every native widget — the DOM widget renders all controls. The shared
     // hideWidget also drops each converted-input row from the Nodes 2.0 grid and
     // guards the value against the hidden-type serialization skip.
-    for (const widgetName of [TEXT_WIDGET, HIGH_QUALITY_WIDGET, SYSTEM_PRESET_WIDGET, ATTACHED_IMAGE_WIDGET]) {
+    for (const widgetName of [TEXT_WIDGET, HIGH_QUALITY_WIDGET, SYSTEM_PRESET_WIDGET,
+        ATTACHED_IMAGE_WIDGET, ATTACHED_IMAGE_2_WIDGET]) {
         hideWidget(node, widgetName);
     }
 
@@ -402,22 +454,32 @@ function setupSuperPrompt(node) {
     const bar = doc.createElement("div");
     bar.className = "ts-sp__bar";
 
-    // Attach button (paperclip / thumb).
-    const attachBtn = doc.createElement("button");
-    attachBtn.type = "button";
-    attachBtn.className = "ts-sp__attach";
-    attachBtn.title = L.attachTitle;
-    const attachIcon = doc.createElement("span");
-    attachIcon.className = "ts-sp__attach-icon";
-    attachIcon.innerHTML = SVG_ICON_IMAGE;
-    const attachThumb = doc.createElement("span");
-    attachThumb.className = "ts-sp__attach-thumb";
-    const attachClear = doc.createElement("button");
-    attachClear.type = "button";
-    attachClear.className = "ts-sp__attach-clear";
-    attachClear.textContent = "×";
-    attachClear.title = L.attachClearTitle;
-    attachBtn.append(attachIcon, attachThumb, attachClear);
+    // One attach button per slot. The second only appears once the first is
+    // taken: an empty second square next to an empty first one is a question
+    // nobody asked, and most prompts want no image at all.
+    function buildAttachButton(slot) {
+        const button = doc.createElement("button");
+        button.type = "button";
+        button.className = "ts-sp__attach";
+        button.dataset.slot = String(slot);
+        const icon = doc.createElement("span");
+        icon.className = "ts-sp__attach-icon";
+        icon.innerHTML = SVG_ICON_IMAGE;
+        const thumb = doc.createElement("span");
+        thumb.className = "ts-sp__attach-thumb";
+        const clear = doc.createElement("button");
+        clear.type = "button";
+        clear.className = "ts-sp__attach-clear";
+        clear.textContent = "×";
+        clear.title = L.attachClearTitle;
+        const badge = doc.createElement("span");
+        badge.className = "ts-sp__attach-badge";
+        button.append(icon, thumb, badge, clear);
+        return { button, thumb, clear, badge, slot };
+    }
+
+    const attachSlots = [buildAttachButton(0), buildAttachButton(1)];
+    const attachBtn = attachSlots[0].button;
 
     // ---- Voice group: HQ toggle + record button (both speak to Whisper). ----
     const voiceGroup = doc.createElement("div");
@@ -463,7 +525,8 @@ function setupSuperPrompt(node) {
     // Mic is the primary input action so it leads; HQ sits with it as the
     // voice-quality flag. The image button visually groups with AI because
     // both feed the prompt-enhance pipeline. Preset stretches to fill.
-    bar.append(voiceGroup, attachBtn, aiBtn, presetSelect);
+    bar.append(voiceGroup, attachSlots[0].button, attachSlots[1].button,
+        aiBtn, presetSelect);
 
     // -------- Textarea (main surface) --------
     const textarea = doc.createElement("textarea");
@@ -512,7 +575,8 @@ function setupSuperPrompt(node) {
         modelReady: false,
         missingDependencies: [],
         activeAiOperationId: "",
-        attachedImage: String(getWidgetValue(node, ATTACHED_IMAGE_WIDGET, "") || ""),
+        attachedImages: IMAGE_SLOTS.map(
+            (widget) => String(getWidgetValue(node, widget, "") || "")),
     };
 
     // Pull the latest values from the (hidden) native widgets into the DOM
@@ -530,7 +594,8 @@ function setupSuperPrompt(node) {
         if (preset && Array.from(presetSelect.options).some((o) => o.value === preset)) {
             presetSelect.value = preset;
         }
-        state.attachedImage = String(getWidgetValue(node, ATTACHED_IMAGE_WIDGET, "") || "");
+        state.attachedImages = IMAGE_SLOTS.map(
+            (widget) => String(getWidgetValue(node, widget, "") || ""));
         renderAttached();
     }
 
@@ -649,29 +714,69 @@ function setupSuperPrompt(node) {
         aiBtn.title = L.aiIdleTitle;
     }
 
-    function renderAttached() {
-        const annotated = state.attachedImage;
-        if (annotated) {
-            attachBtn.classList.add("has-image");
-            const url = resolveAnnotatedThumbUrl(annotated);
-            attachThumb.style.backgroundImage = url ? `url("${url}")` : "";
-            const match = annotated.match(/^(.+?)\s*\[/);
-            const path = match ? match[1] : annotated;
-            const segments = path.split("/");
-            attachBtn.title = L.attachedTitle(segments[segments.length - 1]);
-        } else {
-            attachBtn.classList.remove("has-image");
-            attachThumb.style.backgroundImage = "";
-            attachBtn.title = L.attachTitle;
-        }
+    function shortName(annotated) {
+        const match = annotated.match(/^(.+?)\s*\[/);
+        const path = match ? match[1] : annotated;
+        const segments = path.split("/");
+        return segments[segments.length - 1];
     }
 
-    function setAttachedImage(annotated) {
+    function renderAttached() {
+        const [first, second] = state.attachedImages;
+        // Two images mean a shot with a start and an end, so the buttons say
+        // which is which. One image is just a reference and gets the plain
+        // wording — calling it "first frame" would promise a video nobody asked
+        // for.
+        const paired = Boolean(first && second);
+        attachSlots.forEach(({ button, thumb, badge, slot }) => {
+            const annotated = state.attachedImages[slot] || "";
+            // The second square appears when the first is taken, and stays
+            // while it holds something of its own.
+            const visible = slot === 0 || Boolean(first) || Boolean(annotated);
+            button.style.display = visible ? "" : "none";
+            button.classList.toggle("has-image", Boolean(annotated));
+            // The digit says which frame this is. Only with two images: on a
+            // lone reference it would label the first frame of a shot that
+            // does not exist.
+            button.classList.toggle("has-frame", paired);
+            badge.textContent = slot === 0 ? "1" : "2";
+            // Only a filled slot can be picked up, and only a pair is worth
+            // reordering.
+            button.draggable = paired;
+            const url = annotated ? resolveAnnotatedThumbUrl(annotated) : "";
+            thumb.style.backgroundImage = url ? `url("${url}")` : "";
+            if (annotated) {
+                button.title = paired
+                    ? `${L.attachedFrameTitle(slot === 0 ? L.firstFrame : L.lastFrame,
+                        shortName(annotated))}\n${L.dragToSwap}`
+                    : L.attachedTitle(shortName(annotated));
+            } else {
+                button.title = slot === 0 ? L.attachTitle : L.attachSecondTitle;
+            }
+        });
+    }
+
+    function setAttachedImage(annotated, slot = 0) {
         const value = String(annotated || "");
-        state.attachedImage = value;
-        setWidgetValue(node, ATTACHED_IMAGE_WIDGET, value);
+        state.attachedImages[slot] = value;
+        setWidgetValue(node, IMAGE_SLOTS[slot], value);
+        // Clearing the first of two leaves a hole where an ordered pair used
+        // to be, and "last frame with no first frame" is not a thing. The
+        // second image slides down into the empty slot.
+        if (!value && slot === 0 && state.attachedImages[1]) {
+            state.attachedImages[0] = state.attachedImages[1];
+            state.attachedImages[1] = "";
+            setWidgetValue(node, IMAGE_SLOTS[0], state.attachedImages[0]);
+            setWidgetValue(node, IMAGE_SLOTS[1], "");
+        }
         renderAttached();
         setDirty(node);
+    }
+
+    /** The slot a newly attached image should land in, or -1 when both are full. */
+    function nextFreeSlot() {
+        const index = state.attachedImages.findIndex((value) => !value);
+        return index;
     }
 
     // -----------------------------------------------------------------
@@ -1051,21 +1156,46 @@ function setupSuperPrompt(node) {
     // -----------------------------------------------------------------
     // AI enhance
     // -----------------------------------------------------------------
-    function buildAiPayload() {
+    function buildAiPayload(frames) {
+        const list = (frames && frames.length)
+            ? frames
+            : state.attachedImages.filter(Boolean);
         return {
             text: String(textarea.value || ""),
             system_preset: String(presetSelect.value || "Prompts enhance"),
-            attached_image: String(state.attachedImage || ""),
+            attached_images: list,
+            // Kept for a server that has not been restarted since the update.
+            attached_image: String(list[0] || ""),
+            attached_image_2: String(list[1] || ""),
             operation_id: state.activeAiOperationId,
         };
     }
 
     async function enhancePrompt() {
-        if (state.isVoiceBusy || state.isAiBusy || state.isRecording) return;
+        if (state.isVoiceBusy || state.isAiBusy || state.isRecording || socketBusy) return;
         syncTextFromUi();
         syncPresetFromUi();
-        const payload = buildAiPayload();
-        if (!payload.text.trim() && !payload.attached_image) {
+
+        // A wired input wins, exactly as it does on a real run.
+        let frames = [];
+        const wired = socketIsWired();
+        if (wired) {
+            setStatus(L.readingInput);
+            frames = await framesFromSocket();
+            if (frames.length) {
+                setStatus(L.usingInputFrames(frames.length), "info", STATUS_RESET_DELAY_MS);
+            } else {
+                // Say it and stop. Enhancing from the text alone while the
+                // person is looking at a connected picture would hand back a
+                // prompt about nothing they can see — and it would look like
+                // the button worked.
+                setStatus(L.inputNotReadable, "error", STATUS_RESET_DELAY_MS);
+                return;
+            }
+        }
+
+        const payload = buildAiPayload(frames);
+        if (!payload.text.trim() && !payload.attached_images.length) {
             setStatus(L.noPromptOrImage, "info", STATUS_RESET_DELAY_MS);
             return;
         }
@@ -1105,10 +1235,15 @@ function setupSuperPrompt(node) {
     // -----------------------------------------------------------------
     // Attach (file picker / drag-drop / paste)
     // -----------------------------------------------------------------
-    async function uploadImageFile(file) {
+    async function uploadImageFile(file, slot = null) {
         if (!file) return "";
         if (!file.type.startsWith("image/") && !fileExtensionOk(file.name)) {
             setStatus(L.notImageFile, "error", STATUS_RESET_DELAY_MS);
+            return "";
+        }
+        const target = slot === null ? nextFreeSlot() : slot;
+        if (target < 0) {
+            setStatus(L.bothSlotsFull, "info", STATUS_RESET_DELAY_MS);
             return "";
         }
         setStatus(L.uploadingImage);
@@ -1123,7 +1258,7 @@ function setupSuperPrompt(node) {
             }
             const annotated = buildAnnotatedPath(payload);
             if (!annotated) throw new Error("Upload returned no filename");
-            setAttachedImage(annotated);
+            setAttachedImage(annotated, target);
             setStatus(L.imageAttached, "info", STATUS_RESET_DELAY_MS);
             setProgress({ percent: 100, active: false });
             return annotated;
@@ -1139,54 +1274,275 @@ function setupSuperPrompt(node) {
         return path.includes(container);
     }
 
+    /**
+     * Put the two images the other way round.
+     *
+     * Which is the first frame and which is the last is the whole meaning of
+     * the pair, and getting it backwards is easy — so fixing it must not mean
+     * removing both and attaching them again in the other order.
+     */
+    function swapSlots() {
+        const [first, second] = state.attachedImages;
+        if (!first || !second) return;
+        state.attachedImages = [second, first];
+        setWidgetValue(node, IMAGE_SLOTS[0], second);
+        setWidgetValue(node, IMAGE_SLOTS[1], first);
+        renderAttached();
+        setDirty(node);
+        setStatus(L.framesSwapped, "info", STATUS_RESET_DELAY_MS);
+    }
+
+    // Dragging one thumbnail onto the other swaps them. The payload is a MIME
+    // of our own, which is also what keeps the container's upload drop zone
+    // out of it: that zone only reacts to sources it knows, and this is not
+    // one of them.
+    const SLOT_DRAG_MIME = "application/x-ts-super-prompt-slot";
+    for (const { button, slot } of attachSlots) {
+        button.addEventListener("dragstart", (event) => {
+            if (!button.draggable) return;
+            event.stopPropagation();
+            event.dataTransfer?.setData(SLOT_DRAG_MIME, String(slot));
+            if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
+            button.classList.add("is-dragging");
+        });
+        button.addEventListener("dragend", () => {
+            button.classList.remove("is-dragging");
+            for (const other of attachSlots) other.button.classList.remove("is-drop-target");
+        });
+        const carriesSlot = (event) =>
+            [...(event.dataTransfer?.types || [])].includes(SLOT_DRAG_MIME);
+        button.addEventListener("dragover", (event) => {
+            if (!carriesSlot(event)) return;
+            event.preventDefault();
+            event.stopPropagation();
+            if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
+            button.classList.add("is-drop-target");
+        });
+        button.addEventListener("dragleave", () => button.classList.remove("is-drop-target"));
+        button.addEventListener("drop", (event) => {
+            if (!carriesSlot(event)) return;
+            event.preventDefault();
+            event.stopPropagation();
+            button.classList.remove("is-drop-target");
+            const from = Number(event.dataTransfer?.getData(SLOT_DRAG_MIME));
+            if (Number.isFinite(from) && from !== slot) swapSlots();
+        });
+    }
+
+    // -----------------------------------------------------------------
+    // Картинки со входа: считаем только подключённую ветку
+    // -----------------------------------------------------------------
+    //
+    // A wired `images` input holds no value until something computes it, and
+    // the whole point of this button is a prompt without running the workflow.
+    //
+    // The first attempt read what was knowable for free — previews the upstream
+    // node kept from the last run, or the filename sitting in a loader widget.
+    // That was wrong. `node.imgs` exists only on preview and save nodes, so
+    // anything assembled on the way — two loaders joined into a batch, a
+    // resize, a crop — offered nothing at all, which is precisely what people
+    // wire up. The button answered "no image" while an image was plainly
+    // connected.
+    //
+    // So ask the server for the picture, but ask it for ONLY the branch that
+    // feeds this input. `graphToPrompt` hands over the graph in API form with
+    // the virtual nodes — reroutes, bypasses — already resolved; walking back
+    // from our own input keeps just the nodes that branch needs, and a
+    // PreviewImage pinned to its end is what gives the run something to
+    // produce. Nothing else is in the prompt, so nothing else runs: no
+    // sampler, no save, no side effects on the rest of the workflow.
+    //
+    // NOT cached here. The first version kept the frames against the pruned
+    // prompt as a signature, on the theory that an unchanged prompt means
+    // unchanged pictures. It does not: swap the file behind a loader and the
+    // graph reads the same, while the picture is a different one — and the
+    // button then enhanced the OLD image without a word. ComfyUI already
+    // caches this properly one level down, by what the nodes actually read
+    // (core LoadImage hashes the file's contents), so a fresh queue costs
+    // nothing when nothing changed and is correct when something did. A cache
+    // that is right most of the time is worse than no cache at all when being
+    // wrong is silent.
+    const IMAGES_INPUT = "images";
+    const MAX_SOCKET_FRAMES = 4;
+    const SOCKET_SINK_CLASS = "PreviewImage";
+    const SOCKET_POLL_MS = 400;
+    const SOCKET_TIMEOUT_MS = 300_000;
+
+    let socketBusy = false;
+
+    /** True when something is wired into `images`, whatever it may hold. */
+    function socketIsWired() {
+        const input = (node.inputs || []).find((slot) => slot?.name === IMAGES_INPUT);
+        return Boolean(input && input.link !== null && input.link !== undefined);
+    }
+
+    /**
+     * The smallest prompt that produces what is wired into `images`.
+     *
+     * Null when nothing is connected or the branch cannot be traced.
+     */
+    async function socketRunPlan() {
+        let graph;
+        try {
+            graph = await app.graphToPrompt();
+        } catch (error) {
+            console.warn("[TS SuperPrompt] could not serialise the graph", error);
+            return null;
+        }
+        const output = graph?.output || {};
+        const source = output[String(node.id)]?.inputs?.[IMAGES_INPUT];
+        if (!Array.isArray(source) || source.length < 2) return null;
+
+        // Everything that branch needs, and nothing else.
+        const needed = new Set();
+        const pending = [String(source[0])];
+        while (pending.length) {
+            const id = pending.shift();
+            if (!id || needed.has(id) || !output[id]) continue;
+            needed.add(id);
+            for (const value of Object.values(output[id].inputs || {})) {
+                if (Array.isArray(value) && value.length === 2) pending.push(String(value[0]));
+            }
+        }
+        if (!needed.size) return null;
+
+        const prompt = {};
+        for (const id of needed) prompt[id] = output[id];
+        // Without an output node there is nothing for ComfyUI to execute for.
+        const sinkId = `ts_sp_${node.id}`;
+        prompt[sinkId] = {
+            class_type: SOCKET_SINK_CLASS,
+            inputs: { images: [String(source[0]), source[1]] },
+            _meta: { title: "TS Super Prompt input" },
+        };
+        return { prompt, sinkId };
+    }
+
+    async function historyEntry(promptId) {
+        try {
+            const response = await api.fetchApi(`/history/${encodeURIComponent(promptId)}`);
+            if (!response.ok) return null;
+            const data = await response.json();
+            return data?.[promptId] || null;
+        } catch (error) {
+            return null;
+        }
+    }
+
+    /**
+     * Queue the branch and answer with the frames it produced.
+     *
+     * The finished run is read from history rather than from the websocket:
+     * history holds the outputs whether the branch really executed or came
+     * straight back from ComfyUI's own cache, and a cached branch emits no
+     * `executed` event at all.
+     */
+    async function runInputBranch(plan) {
+        let promptId = "";
+        try {
+            const response = await api.fetchApi("/prompt", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    client_id: api.clientId || api.initialClientId || undefined,
+                    prompt: plan.prompt,
+                }),
+            });
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(payload?.error?.message || `HTTP ${response.status}`);
+            promptId = String(payload?.prompt_id || "");
+            if (!promptId) throw new Error("the server returned no prompt id");
+        } catch (error) {
+            console.warn("[TS SuperPrompt] could not queue the connected branch", error);
+            return [];
+        }
+        // Polling, not events: the run may sit behind whatever else is queued,
+        // and history is the one place that tells the truth in every case.
+        const deadline = Date.now() + SOCKET_TIMEOUT_MS;
+        while (Date.now() < deadline) {
+            const entry = await historyEntry(promptId);
+            if (entry) {
+                if (String(entry.status?.status_str || "") === "error") {
+                    console.warn("[TS SuperPrompt] the connected branch failed to run");
+                    return [];
+                }
+                return (entry.outputs?.[plan.sinkId]?.images || [])
+                    .slice(0, MAX_SOCKET_FRAMES)
+                    .map((image) => buildAnnotatedPath({
+                        name: image?.filename,
+                        subfolder: image?.subfolder,
+                        type: image?.type || "temp",
+                    }))
+                    .filter(Boolean);
+            }
+            await new Promise((done) => setTimeout(done, SOCKET_POLL_MS));
+        }
+        console.warn("[TS SuperPrompt] the connected branch did not finish in time");
+        return [];
+    }
+
+    /** Frames for the wired input, as annotated paths the backend can load. */
+    async function framesFromSocket() {
+        const plan = await socketRunPlan();
+        if (!plan) return [];
+        socketBusy = true;
+        try {
+            return await runInputBranch(plan);
+        } finally {
+            socketBusy = false;
+        }
+    }
+
+
+    let pickingForSlot = 0;
     fileInput.addEventListener("change", async () => {
         const file = fileInput.files?.[0];
         fileInput.value = "";
-        if (file) await uploadImageFile(file);
+        if (file) await uploadImageFile(file, pickingForSlot);
     });
-    attachBtn.addEventListener("click", (event) => {
-        if (event.target === attachClear) return;
-        fileInput.click();
-    });
-    attachClear.addEventListener("click", (event) => {
-        event.stopPropagation();
-        setAttachedImage("");
-        setStatus(L.imageRemoved, "info", STATUS_RESET_DELAY_MS);
-    });
+    for (const { button, clear, slot } of attachSlots) {
+        button.addEventListener("click", (event) => {
+            if (event.target === clear) return;
+            pickingForSlot = slot;
+            fileInput.click();
+        });
+        clear.addEventListener("click", (event) => {
+            event.stopPropagation();
+            setAttachedImage("", slot);
+            setStatus(L.imageRemoved, "info", STATUS_RESET_DELAY_MS);
+        });
+    }
 
-    function dragHasImage(event) {
-        const dt = event.dataTransfer;
-        if (!dt) return false;
-        return Array.from(dt.types || []).includes("Files");
-    }
-    function onDragEnter(event) {
-        if (!dragHasImage(event)) return;
-        event.preventDefault();
-        event.stopPropagation();
-        container.classList.add("is-drag-over");
-    }
-    function onDragOver(event) {
-        if (!dragHasImage(event)) return;
-        event.preventDefault();
-        event.stopPropagation();
-        if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
-        container.classList.add("is-drag-over");
-    }
-    function onDragLeave() {
-        container.classList.remove("is-drag-over");
-    }
-    async function onDrop(event) {
-        if (!dragHasImage(event)) return;
-        event.preventDefault();
-        event.stopPropagation();
-        container.classList.remove("is-drag-over");
-        const file = event.dataTransfer?.files?.[0];
-        if (file) await uploadImageFile(file);
-    }
-    container.addEventListener("dragenter", onDragEnter);
-    container.addEventListener("dragover", onDragOver);
-    container.addEventListener("dragleave", onDragLeave);
-    container.addEventListener("drop", onDrop);
+    // Anything the shared service can turn into an image is accepted: a card
+    // dragged out of the Artius browser, a file from the desktop, a ComfyUI
+    // preview. It only checks that this used to be limited to OS files, which
+    // is why dragging from Artius did nothing at all.
+    const teardownDropZone = makeDropZone(container, {
+        max: IMAGE_SLOTS.length,
+        onDrop: async (items) => {
+            for (const item of items) {
+                const slot = nextFreeSlot();
+                if (slot < 0) {
+                    setStatus(L.bothSlotsFull, "info", STATUS_RESET_DELAY_MS);
+                    return;
+                }
+                let blob;
+                try {
+                    blob = await item.getBlob();
+                } catch (error) {
+                    setStatus(L.uploadError(error.message), "error", STATUS_RESET_DELAY_MS);
+                    return;
+                }
+                // A Blob is not a File, and the upload wants a name; the drop
+                // item carries the one the source knew it by.
+                const file = new File([blob], item.name || "dropped.png",
+                    { type: blob.type || "image/png" });
+                // Sequential on purpose: two images racing to call
+                // nextFreeSlot() would both read the same free slot.
+                await uploadImageFile(file, slot);
+            }
+        },
+    });
 
     async function onDocumentPaste(event) {
         if (disposed) return;

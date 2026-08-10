@@ -45,11 +45,7 @@ import numpy as np
 import torch
 from aiohttp import web
 
-try:
-    import imageio_ffmpeg
-except ImportError:
-    imageio_ffmpeg = None
-
+from ..._ffmpeg import ffmpeg_executable
 from ..._shared import make_route_registrars, resolve_prompt_server
 
 LOGGER = logging.getLogger("comfyui_timesaver.ts_audio_loader")
@@ -115,12 +111,8 @@ def _normalize_path(path: str) -> str:
 
 
 def _get_ffmpeg_executable() -> str:
-    if imageio_ffmpeg is not None:
-        try:
-            return imageio_ffmpeg.get_ffmpeg_exe()
-        except Exception as exc:
-            LOGGER.debug("%s imageio_ffmpeg.get_ffmpeg_exe() failed, falling back to PATH: %s", LOG_PREFIX, exc)
-    return "ffmpeg"
+    """Kept as this module's own name; the answer comes from one place now."""
+    return ffmpeg_executable()
 
 
 def _allowed_view_roots() -> tuple[Path, ...]:

@@ -285,6 +285,25 @@ def _target_instruction(prompt_target: str, has_image: bool) -> str:
     )
 
 
+def _frame_label(index: int, total: int) -> str:
+    """What to write next to one reference image.
+
+    A lone image gets nothing: calling it the first frame would promise a shot
+    that does not exist. Two keep the FIRST/LAST wording the presets are
+    written around. Longer sequences are numbered, with the ends still named —
+    which frame the motion starts and finishes on is the part that matters.
+    """
+    if total < 2:
+        return ""
+    if total == 2:
+        return "FIRST FRAME:" if index == 0 else "LAST FRAME:"
+    if index == 0:
+        return f"FRAME 1 of {total} (FIRST FRAME):"
+    if index == total - 1:
+        return f"FRAME {total} of {total} (LAST FRAME):"
+    return f"FRAME {index + 1} of {total}:"
+
+
 def _build_messages(
     system_prompt: str,
     text: str,
@@ -295,10 +314,38 @@ def _build_messages(
     engine = _get_qwen_engine()
     user_content: list[dict[str, Any]] = []
 
+    # Resolved before the text is written, because how many images there
+    # are changes what the model has to be told about them.
+    pil_images = engine.normalize_to_pil_list(image) if image is not None else []
+
+    if len(pil_images) == 2:
+        # Two frames is what the presets speak about, so keep their wording.
+        image_note = (
+            "Two images are attached. The FIRST is the first frame of the shot "
+            "and the SECOND is the last frame. Describe the change from the "
+            "first to the second.\n"
+        )
+    elif len(pil_images) > 2:
+        image_note = (
+            f"{len(pil_images)} images are attached, in order from the first "
+            "frame of the shot to the last. Describe the change across them.\n"
+        )
+    elif pil_images:
+        image_note = "One reference image is attached. Describe what is in it.\n"
+    else:
+        image_note = ""
+
     user_text = (
-        f"{_target_instruction(prompt_target, image is not None)}\n\n"
+        f"{_target_instruction(prompt_target, bool(pil_images))}\n\n"
+        f"{image_note}"
         "Hard rules:\n"
         "- Translate the source idea to English when needed.\n"
+        # Text in quotes is text the generator will draw on screen — a sign,
+        # a title, a lyric. An obliging translation turns a Russian shop sign
+        # into an English one the person never asked for.
+        "- EXCEPTION: text inside quotes is on-screen text. Copy it exactly, "
+        "character for character, in its original language, quotes included. "
+        "Never translate what is quoted.\n"
         "- Keep the user's core meaning, named subjects, and constraints.\n"
         "- Return only the final prompt, with no preface, no analysis, and no markdown.\n"
         "- Do not use thinking mode. Do not output chain-of-thought or hidden reasoning.\n\n"
@@ -310,17 +357,22 @@ def _build_messages(
         "Runtime mode: non-thinking. Produce the answer directly and never include a <think> block."
     )
 
-    if image is not None:
-        # ``image`` is either a torch.Tensor (workflow IMAGE input) or a
-        # ``PIL.Image`` (resolved from the /enhance attached_image path).
-        # ``normalize_to_pil_list`` handles both shapes uniformly.
-        for pil_image in engine.normalize_to_pil_list(image):
-            user_content.append(
-                {
-                    "type": "image",
-                    "image": engine.resize_and_crop_image(pil_image, int(max_image_size)),
-                }
-            )
+    # ``image`` is a torch.Tensor (workflow IMAGE input), a PIL.Image, or a list
+    # of either — ``normalize_to_pil_list`` flattens all of them, which is what
+    # lets the node's two attachment slots arrive here as one ordered list.
+    for index, pil_image in enumerate(pil_images):
+        label = _frame_label(index, len(pil_images))
+        if label:
+            # The label goes NEXT TO its image. Said once further down the
+            # message, "the first frame" would leave the model to work out
+            # which of several pictures that is.
+            user_content.append({"type": "text", "text": label})
+        user_content.append(
+            {
+                "type": "image",
+                "image": engine.resize_and_crop_image(pil_image, int(max_image_size)),
+            }
+        )
 
     user_content.append({"type": "text", "text": user_text})
 

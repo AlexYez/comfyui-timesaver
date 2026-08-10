@@ -60,6 +60,33 @@ def _safe_empty_cache():
         torch.cuda.empty_cache()
 
 
+def is_out_of_memory_error(err: BaseException) -> bool:
+    """True for an allocator failure on ANY backend.
+
+    Catching `torch.cuda.OutOfMemoryError` alone was enough while CUDA was the
+    only accelerator in sight. It is not: Metal reports the same condition as a
+    plain RuntimeError saying "MPS backend out of memory", so on a Mac the
+    tile-and-retry fallbacks these nodes are built around never engaged — the
+    run simply failed. The message check is deliberately narrow, because a bare
+    `except RuntimeError` would swallow real bugs and retry them forever.
+
+    The CUDAMallocAsync spellings come from ts_video_depth.py, which met them
+    first: on Windows a retry after an OOM can surface as an internal
+    assertion rather than the typed error.
+    """
+    if isinstance(err, torch.cuda.OutOfMemoryError):
+        return True
+    if not isinstance(err, RuntimeError):
+        return False
+    msg = str(err).lower()
+    return (
+        "out of memory" in msg
+        or "free_upper_bound" in msg
+        or "cudamallocasync" in msg
+        or ("alloc" in msg and ("cuda" in msg or "mps" in msg))
+    )
+
+
 def _update_progress(progress_bar, value, total=100):
     if progress_bar is not None:
         progress_bar.update_absolute(int(value), total=total)

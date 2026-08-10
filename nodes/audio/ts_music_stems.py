@@ -116,6 +116,17 @@ class TS_MusicStems(IO.ComfyNode):
             target_device = mm.get_torch_device()
         else:
             target_device = torch.device(device)
+            if target_device.type == "cuda" and not torch.cuda.is_available():
+                # "cuda" stays in the list because saved workflows carry it as a
+                # widget value, and dropping the option would break them. What
+                # changes is the answer on a machine that has no CUDA — an Apple
+                # Silicon Mac, most of all: it gets whatever accelerator it does
+                # have instead of "Torch not compiled with CUDA enabled".
+                target_device = mm.get_torch_device()
+                logger.warning(
+                    "%s CUDA was selected but is unavailable; using %s instead.",
+                    LOG_PREFIX, target_device,
+                )
 
         logger.info("%s Initializing model: %s", LOG_PREFIX, model_name)
 

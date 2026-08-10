@@ -1,0 +1,283 @@
+{
+ "p_image": {
+  "class_type": "TS_StudioInputImage",
+  "inputs": {
+   "value": "",
+   "param_name": "source_image",
+   "label": ""
+  },
+  "_meta": {
+   "title": "studio:source_image"
+  }
+ },
+ "p_prompt": {
+  "class_type": "TS_StudioInputText",
+  "inputs": {
+   "value": "",
+   "param_name": "prompt",
+   "label": ""
+  },
+  "_meta": {
+   "title": "studio:prompt"
+  }
+ },
+ "p_seed": {
+  "class_type": "TS_StudioInputSeed",
+  "inputs": {
+   "value": 0,
+   "param_name": "seed"
+  },
+  "_meta": {
+   "title": "studio:seed"
+  }
+ },
+ "p_scale": {
+  "class_type": "TS_StudioInputNumber",
+  "inputs": {
+   "value": 2.0,
+   "param_name": "scale",
+   "label": ""
+  },
+  "_meta": {
+   "title": "studio:scale"
+  }
+ },
+ "p_denoise": {
+  "class_type": "TS_StudioInputNumber",
+  "inputs": {
+   "value": 0.35,
+   "param_name": "denoise",
+   "label": ""
+  },
+  "_meta": {
+   "title": "studio:denoise"
+  }
+ },
+ "p_steps": {
+  "class_type": "TS_StudioInputNumber",
+  "inputs": {
+   "value": 4,
+   "param_name": "steps",
+   "label": ""
+  },
+  "_meta": {
+   "title": "studio:steps"
+  }
+ },
+ "model_loader": {
+  "class_type": "UNETLoader",
+  "inputs": {
+   "unet_name": "qwen\\qwen_image_2512_bf16.safetensors",
+   "weight_dtype": "default"
+  },
+  "_meta": {
+   "title": "studio:model"
+  }
+ },
+ "lora_stack": {
+  "class_type": "TS_StudioLoraStack",
+  "inputs": {
+   "model": [
+    "model_loader",
+    0
+   ]
+  },
+  "_meta": {
+   "title": "studio:loras"
+  }
+ },
+ "clip_loader": {
+  "class_type": "CLIPLoader",
+  "inputs": {
+   "clip_name": "qwen\\qwen_2.5_vl_7b_fp8_scaled.safetensors",
+   "type": "qwen_image"
+  },
+  "_meta": {
+   "title": "studio:clip"
+  }
+ },
+ "vae_loader": {
+  "class_type": "VAELoader",
+  "inputs": {
+   "vae_name": "qwen\\qwen_image_vae.safetensors"
+  },
+  "_meta": {
+   "title": "studio:vae"
+  }
+ },
+ "speed_lora": {
+  "class_type": "LoraLoaderModelOnly",
+  "inputs": {
+   "model": [
+    "lora_stack",
+    0
+   ],
+   "lora_name": "qwen\\Qwen-Image-2512-Lightning-4steps-V1.0-bf16.safetensors",
+   "strength_model": 1.0
+  }
+ },
+ "encode_pos": {
+  "class_type": "CLIPTextEncode",
+  "inputs": {
+   "text": [
+    "p_prompt",
+    0
+   ],
+   "clip": [
+    "clip_loader",
+    0
+   ]
+  }
+ },
+ "neg_zero": {
+  "class_type": "ConditioningZeroOut",
+  "inputs": {
+   "conditioning": [
+    "encode_pos",
+    0
+   ]
+  }
+ },
+ "enlarge": {
+  "class_type": "ImageScaleBy",
+  "inputs": {
+   "image": [
+    "p_image",
+    0
+   ],
+   "upscale_method": "lanczos",
+   "scale_by": [
+    "p_scale",
+    0
+   ]
+  }
+ },
+ "split": {
+  "class_type": "TS_ImageTileSplitter",
+  "inputs": {
+   "image": [
+    "enlarge",
+    0
+   ],
+   "tile_width": 1024,
+   "tile_height": 1024,
+   "overlap": 64,
+   "feather": 0.1
+  }
+ },
+ "tiles": {
+  "class_type": "TS_ImageBatchToImageList",
+  "inputs": {
+   "image": [
+    "split",
+    0
+   ]
+  }
+ },
+ "encode_latent": {
+  "class_type": "VAEEncode",
+  "inputs": {
+   "pixels": [
+    "tiles",
+    0
+   ],
+   "vae": [
+    "vae_loader",
+    0
+   ]
+  }
+ },
+ "sample": {
+  "class_type": "KSampler",
+  "inputs": {
+   "model": [
+    "speed_lora",
+    0
+   ],
+   "seed": [
+    "p_seed",
+    0
+   ],
+   "steps": [
+    "p_steps",
+    1
+   ],
+   "cfg": 1.0,
+   "sampler_name": "euler",
+   "scheduler": "beta57",
+   "positive": [
+    "encode_pos",
+    0
+   ],
+   "negative": [
+    "neg_zero",
+    0
+   ],
+   "latent_image": [
+    "encode_latent",
+    0
+   ],
+   "denoise": [
+    "p_denoise",
+    0
+   ]
+  }
+ },
+ "decode": {
+  "class_type": "VAEDecode",
+  "inputs": {
+   "samples": [
+    "sample",
+    0
+   ],
+   "vae": [
+    "vae_loader",
+    0
+   ]
+  }
+ },
+ "rebatch": {
+  "class_type": "TS_ImageListToImageBatch",
+  "inputs": {
+   "images": [
+    "decode",
+    0
+   ]
+  }
+ },
+ "merge": {
+  "class_type": "TS_ImageTileMerger",
+  "inputs": {
+   "images": [
+    "rebatch",
+    0
+   ],
+   "tile_data": [
+    "split",
+    1
+   ]
+  }
+ },
+ "studio_out": {
+  "class_type": "TS_StudioOutput",
+  "inputs": {
+   "image": [
+    "merge",
+    0
+   ],
+   "filename_prefix": "ts_studio/session"
+  },
+  "_meta": {
+   "title": "studio:output"
+  }
+ },
+ "studio_manifest": {
+  "class_type": "TS_StudioManifest",
+  "inputs": {
+   "manifest": "{\n  \"schema_version\": \"1.0.0\",\n  \"id\": \"qwen-image/upscale\",\n  \"label\": {\n    \"en\": \"Upscale\",\n    \"ru\": \"Апскейл\"\n  },\n  \"family\": \"qwen-image\",\n  \"family_label\": \"Qwen Image\",\n  \"tier\": 2,\n  \"mode\": \"upscale\",\n  \"order\": 44,\n  \"controls\": [\n    {\n      \"param\": \"prompt\",\n      \"kind\": \"prompt\",\n      \"superprompt\": true\n    },\n    {\n      \"param\": \"scale\",\n      \"kind\": \"choice\",\n      \"default\": 2.0,\n      \"label\": {\n        \"en\": \"Enlargement\",\n        \"ru\": \"Увеличение\"\n      },\n      \"options\": [\n        {\n          \"value\": 2.0,\n          \"label\": \"2x\",\n          \"tooltip\": {\n            \"en\": \"Twice the width and height.\",\n            \"ru\": \"Вдвое по ширине и высоте.\"\n          }\n        },\n        {\n          \"value\": 4.0,\n          \"label\": \"4x\",\n          \"tooltip\": {\n            \"en\": \"Four times the width and height - slow, and best with a lower denoise.\",\n            \"ru\": \"Вчетверо по ширине и высоте — долго, и лучше с меньшим денойзом.\"\n          }\n        }\n      ]\n    },\n    {\n      \"param\": \"tile_size\",\n      \"kind\": \"choice\",\n      \"default\": 1024,\n      \"label\": {\n        \"en\": \"Tile size\",\n        \"ru\": \"Размер куска\"\n      },\n      \"tooltip\": {\n        \"en\": \"The picture is upscaled piece by piece. A bigger tile keeps more context and needs more VRAM; a smaller one is lighter but sees less around itself.\",\n        \"ru\": \"Картинка увеличивается кусками. Кусок побольше видит больше контекста и требует больше видеопамяти; поменьше — легче, но и контекста меньше.\"\n      },\n      \"options\": [\n        {\n          \"value\": 768,\n          \"label\": \"768\"\n        },\n        {\n          \"value\": 1024,\n          \"label\": \"1024\"\n        },\n        {\n          \"value\": 1280,\n          \"label\": \"1280\"\n        },\n        {\n          \"value\": 1536,\n          \"label\": \"1536\"\n        },\n        {\n          \"value\": 2048,\n          \"label\": \"2048\"\n        }\n      ]\n    },\n    {\n      \"param\": \"denoise\",\n      \"kind\": \"slider\",\n      \"min\": 0.05,\n      \"max\": 0.6,\n      \"step\": 0.05,\n      \"default\": 0.35,\n      \"label\": {\n        \"en\": \"Detail denoise\",\n        \"ru\": \"Денойз деталей\"\n      },\n      \"tooltip\": {\n        \"en\": \"How much the pass invents. 0.2-0.3 stays faithful to the source; 0.45 adds noticeable new detail - good at 1x and 2x, heavy-handed when enlarging fourfold.\",\n        \"ru\": \"Насколько проход домысливает. 0.2–0.3 — верность исходнику; 0.45 заметно добавляет деталей: хорошо для 1x и 2x, многовато при увеличении вчетверо.\"\n      }\n    },\n    {\n      \"param\": \"loras\",\n      \"kind\": \"loras\",\n      \"max\": 8,\n      \"strength\": [\n        -2.0,\n        2.0\n      ]\n    },\n    {\n      \"param\": \"steps\",\n      \"kind\": \"number\",\n      \"advanced\": true,\n      \"min\": 1,\n      \"max\": 30,\n      \"default\": 4,\n      \"label\": {\n        \"en\": \"Steps\",\n        \"ru\": \"Шаги\"\n      }\n    }\n  ],\n  \"refs\": {\n    \"max\": 0\n  },\n  \"requires\": [\n    \"source_image\"\n  ],\n  \"upscale_params\": {\n    \"image\": \"source_image\"\n  },\n  \"negative_prompt\": false,\n  \"models\": [\n    {\n      \"title\": \"studio:model\",\n      \"input\": \"unet_name\",\n      \"folder\": \"diffusion_models\",\n      \"match\": \"qwen_image_2512_bf16\"\n    },\n    {\n      \"title\": \"studio:clip\",\n      \"input\": \"clip_name\",\n      \"folder\": \"text_encoders\",\n      \"match\": \"qwen_2\\\\.5_vl_7b_fp8_scaled\"\n    },\n    {\n      \"title\": \"studio:vae\",\n      \"input\": \"vae_name\",\n      \"folder\": \"vae\",\n      \"match\": \"qwen_image_vae\"\n    }\n  ],\n  \"_note_seed\": \"Сида в деке нет намеренно: апскейл повторяют не ради того же зерна, а ради другого. Маркер `p_seed` в графе остался, и на каждый прогон приходит новое число — то же самое, что «Randomize» на постоянку.\",\n  \"literals\": {\n    \"tile_size\": [\n      {\n        \"node\": \"split\",\n        \"input\": \"tile_width\"\n      },\n      {\n        \"node\": \"split\",\n        \"input\": \"tile_height\"\n      }\n    ]\n  }\n}"
+  },
+  "_meta": {
+   "title": "studio:manifest"
+  }
+ }
+}

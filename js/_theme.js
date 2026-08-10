@@ -64,8 +64,13 @@ function themeCss() {
   --ts-surface-active:#37373a;
   --ts-elevated:#232325;
   --ts-sunken:#141415;
-  /* A dimming scrim stays dark in both themes — that is what "dimmed" means. */
+  /* A dimming scrim stays dark in both themes — that is what "dimmed" means.
+     The same is true of chrome that sits ON user media (a clear button over a
+     thumbnail, a label plate over a frame): it must read against any picture,
+     so these two are deliberately fixed rather than themed. */
   --ts-scrim:rgba(12,12,13,.72);
+  --ts-scrim-strong:rgba(12,12,13,.86);
+  --ts-on-media:#f2f2f4;
   --ts-modal-bg:var(--comfy-menu-bg,#171718);
 
   --ts-text:var(--input-text,#ddd);
@@ -88,6 +93,12 @@ function themeCss() {
   --ts-radius-sm:5px;
   --ts-radius:7px;
   --ts-radius-lg:10px;
+
+  /* Room the fullscreen close button occupies in the top-right corner: its
+     34px box plus the 12px inset on each side. Any bar or header that runs to
+     the top edge reserves this much on its right so the two never overlap. */
+  --ts-fs-safe-right:58px;
+  --ts-fs-topbar:42px;
 
   --ts-font:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
   --ts-fs-xs:10px;
@@ -225,14 +236,42 @@ function themeCss() {
    own size to sit on instead of the far corner of the screen. */
 .ts-ui-fs-frame{position:relative;display:flex;min-height:0;max-width:100%;max-height:100%;
   animation:ts-ui-dialog-in .16s ease-out}
-.ts-ui-modal--center .ts-ui-fs-close{position:absolute;top:10px;right:10px;box-shadow:none}
+.ts-ui-modal--center .ts-ui-fs-close{box-shadow:none}
 @keyframes ts-ui-dialog-in{from{opacity:0;transform:translateY(8px) scale(.985)}
   to{opacity:1;transform:none}}
 /* Unified fullscreen close button — every editor opened via openFullscreenOverlay
-   gets the SAME control in the SAME spot (top-right). Nodes must keep their top
-   toolbar's right edge clear of this corner (see their right inset). */
-.ts-ui-fs-close{position:fixed;top:12px;right:12px;z-index:11050;width:34px;height:34px;
-  box-shadow:0 2px 10px rgba(0,0,0,.35)}
+   gets the SAME control in the SAME spot (top-right), on a bar of its own. */
+.ts-ui-fs-topbar{position:absolute;top:0;left:0;right:0;height:var(--ts-fs-topbar,42px);
+  z-index:11050;display:flex;align-items:center;justify-content:flex-end;gap:10px;
+  padding:0 10px;background:var(--ts-surface);border-bottom:1px solid var(--ts-border)}
+.ts-ui-fs-title{margin-right:auto;font-size:var(--ts-fs-sm);color:var(--ts-muted);
+  letter-spacing:.02em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* Содержимое начинается ПОД полосой — потому налезать на кнопку больше нечему.
+   Отступом, а не margin: содержимое редакторов растянуто на всю коробку по
+   высоте, и внешний отступ у такого элемента ничего не сдвинет. */
+.ts-ui-modal.ts-ui-fs-hastopbar{padding-top:var(--ts-fs-topbar,42px);box-sizing:border-box}
+/* У ДИАЛОГА полосы нет — только кнопка на его собственном углу.
+   Полоса придумана для редакторов, растянутых во весь экран: там она —
+   единственная поверхность наверху, и содержимому есть подо что уйти. У
+   диалога поверхность своя, панель, и полоса вставала НАД ней отдельной серой
+   плашкой в пустоте: висит сверху, ни к чему не прилегает, читается как
+   сломанная графика. Диалог держит заголовок сам (и место под кнопку справа —
+   см. .ts-fdl__head), поэтому имя окна ему передавать не нужно.
+   NOTE: обратная кавычка внутри этого комментария оборвала бы шаблонную
+   строку — весь stylesheet живёт внутри неё. */
+.ts-ui-fs-frame.ts-ui-fs-hastopbar{padding-top:0}
+.ts-ui-modal--center .ts-ui-fs-topbar{height:auto;top:8px;left:auto;right:8px;
+  padding:0;background:none;border-bottom:0}
+.ts-ui-fs-close{width:30px;height:30px;flex:0 0 auto}
+/* Под полосой резервировать угол больше не нужно: кнопка закрытия туда не
+   попадает. Резерв остаётся объявленным для редакторов без полосы, а здесь
+   схлопывается до обычного поля — иначе у каждой шапки справа так и висела бы
+   мёртвая полоса в 58 px. */
+.ts-ui-modal.ts-ui-fs-hastopbar,.ts-ui-fs-frame.ts-ui-fs-hastopbar{--ts-fs-safe-right:12px}
+/* Возврат с внутреннего экрана редактора. Стоит СЛЕВА, у названия экрана:
+   справа вверху живёт закрытие всей студии, и две одинаковые кнопки рядом
+   заставляли бы гадать, какая из них что закроет. */
+.ts-ui-back{width:28px;height:28px;flex:0 0 auto}
 /* Hidden focus anchor: parks keyboard focus so ComfyUI's graph hotkeys
    (Ctrl+Z → ChangeTracker) stay out of an open editor. See CLAUDE.md §12.5. */
 .ts-ui-keyanchor{position:fixed;left:-9999px;top:-9999px;width:1px;height:1px;opacity:0;
@@ -255,6 +294,75 @@ function themeCss() {
   color:var(--ts-text);font-size:var(--ts-fs-lg);font-weight:600;pointer-events:none;z-index:24}
 .is-drag-over>.ts-ui-drop{display:flex}
 .is-drag-over{outline:2px dashed var(--ts-accent-line);outline-offset:-3px}
+
+/* ── Ratio cards: the one way to choose proportions ───────────────────
+   Wherever the pack asks "what shape should the frame be" — the resolution
+   selector's node, the studio's frame size, the new frame in outpaint — it
+   asks with the same control: a grid of cards, each holding a rectangle of
+   that exact proportion above its label.
+
+   Three columns, rows flow. Nine values give the 3x3 the selector is built
+   around; seven give 3+3+1, and nothing has to be told how many there are.
+
+   The card is a fixed-height box and the rectangle inside is proportional,
+   rather than the button itself being the rectangle: a row of naked
+   rectangles of wildly different shapes cannot line up, and the labels end
+   up at different heights. The frame carries the proportion, the card
+   carries the alignment. */
+.ts-ui-ratios{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;width:100%}
+.ts-ui-ratio{display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:4px;min-width:0;padding:5px 3px;border:1px solid var(--ts-border-soft);
+  border-radius:var(--ts-radius);background:var(--ts-surface);color:inherit;cursor:pointer;
+  transition:border-color .15s ease,box-shadow .15s ease,background .15s ease}
+.ts-ui-ratio:hover:not(:disabled){border-color:var(--ts-border-strong);background:var(--ts-surface-hover)}
+.ts-ui-ratio.is-selected{border-color:var(--ts-accent);box-shadow:0 0 0 1px var(--ts-accent-line);
+  background:var(--ts-accent-soft)}
+.ts-ui-ratio:focus-visible{outline:2px solid var(--ts-accent-line);outline-offset:1px}
+.ts-ui-ratio:disabled{cursor:default}
+/* ⚠️ THE WRAP MUST BE SQUARE, and that is the whole trick.
+   The frame's two sides are given in per cent, and per cent resolves against
+   DIFFERENT bases: width against the wrap's width, height against its height.
+   The first version made the wrap full-card-width and 26 px tall, so 16:9 came
+   out as roughly 80x15 — a letterbox slot, not a 16:9 frame. Every shape was
+   squashed by the wrap's own proportion.
+   A square base makes "100% by 56%" mean exactly 16:9. Both sides of the square
+   come from one token, so a 9:21 and a 21:9 occupy the same room and every label
+   sits on one line. */
+.ts-ui-ratio__wrap{display:flex;align-items:center;justify-content:center;
+  width:var(--ts-ratio-box,34px);height:var(--ts-ratio-box,34px);margin:0 auto;
+  flex:0 0 auto}
+.ts-ui-ratio__frame{border-radius:3px;
+  border:1px solid var(--ts-muted);background:var(--ts-elevated)}
+.ts-ui-ratio.is-selected .ts-ui-ratio__frame{border-color:var(--ts-accent)}
+.ts-ui-ratio__label{font-size:var(--ts-fs-xs);letter-spacing:.02em;color:var(--ts-muted);
+  line-height:1;white-space:nowrap}
+.ts-ui-ratio.is-selected .ts-ui-ratio__label{color:var(--ts-accent)}
+.ts-ui-ratios.is-disabled{opacity:.4}
+
+/* Compact form of the same control: a trigger that shows what is chosen, and
+   the grid only while it is open. A side panel has one column of vertical room
+   and a dozen other controls in it — nine cards standing open all day cost more
+   of it than they are worth. */
+.ts-ui-ratiopick{position:relative;display:flex;align-items:center;gap:6px}
+.ts-ui-ratiopick__trigger{display:flex;align-items:center;gap:6px;padding:3px 7px 3px 5px;
+  border:1px solid var(--ts-border);border-radius:var(--ts-radius-sm);
+  background:var(--ts-surface);color:var(--ts-text);cursor:pointer;
+  font-size:var(--ts-fs-sm);line-height:1;flex:0 0 auto}
+.ts-ui-ratiopick__trigger:hover{border-color:var(--ts-border-strong)}
+.ts-ui-ratiopick__trigger.is-active{border-color:var(--ts-accent);background:var(--ts-accent-soft)}
+.ts-ui-ratiopick__trigger:focus-visible{outline:2px solid var(--ts-accent-line);outline-offset:1px}
+.ts-ui-ratiopick__trigger:disabled{cursor:default;opacity:.5}
+/* The preview is the same square-based frame as a card's, just smaller — the
+   selected shape is the label, so it must be the shape it names. */
+.ts-ui-ratiopick__trigger .ts-ui-ratio__wrap{--ts-ratio-box:18px;margin:0}
+.ts-ui-ratiopick__value{font-variant-numeric:tabular-nums}
+.ts-ui-ratiopick__caret{color:var(--ts-muted);font-size:9px}
+.ts-ui-ratiopick__custom{width:58px;flex:0 0 auto;height:24px;padding:0 6px;
+  font-size:var(--ts-fs-xs);text-align:center}
+.ts-ui-ratiopick__pop{position:absolute;z-index:40;top:calc(100% + 4px);left:0;
+  display:none;min-width:186px;padding:8px;background:var(--ts-elevated);
+  border:1px solid var(--ts-border);border-radius:var(--ts-radius);box-shadow:var(--ts-shadow)}
+.ts-ui-ratiopick__pop.is-open{display:block}
 
 /* ── Launcher: the one way to open a node's fullscreen editor ─────────
    Same label, same look, horizontally centred in every node that has one,
@@ -291,6 +399,275 @@ function themeCss() {
   .${TS_UI_CLASS} .ts-ui-spinner{animation:ts-ui-spin 1.8s linear infinite !important}
 }
 `;
+}
+
+// ---------------------------------------------------------------------------
+// Ratio cards — one control for every "what shape?" question in the pack
+// ---------------------------------------------------------------------------
+
+/**
+ * Width / height of a "w:h" string, or null when it is not one.
+ *
+ * Used both to draw a card and to DECIDE whether a list of options is a list
+ * of proportions at all — that is how the studio's generic choice control
+ * knows to draw cards for the outpaint frame and plain buttons for
+ * Refine / Replace, without a manifest having to say so.
+ *
+ * @param {string} text e.g. "16:9"
+ * @returns {{w: number, h: number, ratio: number}|null}
+ */
+export function parseRatioText(text) {
+    const parts = String(text ?? "").trim().split(":");
+    if (parts.length !== 2) return null;
+    const w = Number(parts[0]);
+    const h = Number(parts[1]);
+    if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) return null;
+    return { w, h, ratio: w / h };
+}
+
+/** True when EVERY value is a proportion — one non-ratio and it is a plain list. */
+export function isRatioList(values) {
+    const list = Array.from(values || []);
+    return list.length > 0 && list.every((value) => parseRatioText(value) !== null);
+}
+
+/**
+ * A grid of proportion cards.
+ *
+ * @param {object} options
+ * @param {string[]} [options.values] Proportions as "w:h".
+ * @param {(value: string) => void} [options.onSelect] Called on click, never on `select()`.
+ * @param {number} [options.boxSize=34] Side of the SQUARE box each frame is fitted into.
+ * @param {(value: string) => string} [options.label] Card caption; defaults to the value.
+ * @returns {{element: HTMLElement, select: Function, selected: Function, add: Function,
+ *            has: Function, values: Function, setDisabled: Function, buttons: Map}}
+ */
+/**
+ * The square box with one proportional frame inside it.
+ *
+ * Both sides of the frame are given in per cent OF THAT SQUARE, which is what
+ * makes the drawn shape exactly the written one. ⚠️ The square matters: per
+ * cent resolves width against the box's width and height against its height, so
+ * a non-square box multiplies every shape by its own proportion — the first
+ * version was full-card-width by 26 px tall, and 16:9 came out a letterbox slit.
+ *
+ * @param {string} value Proportion as "w:h".
+ * @returns {HTMLElement} The wrap element (empty when the value is not a ratio).
+ */
+export function createRatioFrame(value) {
+    const wrap = document.createElement("div");
+    wrap.className = "ts-ui-ratio__wrap";
+    const parsed = parseRatioText(value);
+    if (!parsed) return wrap;
+    const frame = document.createElement("div");
+    frame.className = "ts-ui-ratio__frame";
+    const long = 100;
+    const short = Math.max(12, Math.round((long * Math.min(parsed.w, parsed.h))
+        / Math.max(parsed.w, parsed.h)));
+    const [w, h] = parsed.ratio >= 1 ? [long, short] : [short, long];
+    frame.style.width = `${w}%`;
+    frame.style.height = `${h}%`;
+    wrap.appendChild(frame);
+    return wrap;
+}
+
+
+export function createRatioCards({ values = [], onSelect, boxSize = 34, label } = {}) {
+    ensureThemeStyles();
+    const element = document.createElement("div");
+    element.className = "ts-ui-ratios";
+    // Сторона КВАДРАТА, в который вписывается рамка (см. .ts-ui-ratio__wrap):
+    // проценты рамки считаются от него, поэтому база обязана быть квадратной.
+    element.style.setProperty("--ts-ratio-box", `${boxSize}px`);
+    const buttons = new Map();
+    let current = "";
+
+    function add(value) {
+        const parsed = parseRatioText(value);
+        if (!parsed || buttons.has(value)) return buttons.get(value) || null;
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "ts-ui-ratio";
+        button.dataset.value = value;
+
+        const wrap = createRatioFrame(value);
+
+        const caption = document.createElement("div");
+        caption.className = "ts-ui-ratio__label";
+        caption.textContent = label ? label(value) : value;
+
+        button.append(wrap, caption);
+        button.addEventListener("click", () => {
+            select(value);
+            onSelect?.(value);
+        });
+        element.appendChild(button);
+        buttons.set(value, button);
+        if (value === current) button.classList.add("is-selected");
+        return button;
+    }
+
+    function select(value) {
+        current = String(value ?? "");
+        for (const [key, button] of buttons) {
+            button.classList.toggle("is-selected", key === current);
+        }
+    }
+
+    for (const value of values) add(value);
+
+    return {
+        element,
+        buttons,
+        add,
+        select,
+        selected: () => current,
+        has: (value) => buttons.has(value),
+        values: () => Array.from(buttons.keys()),
+        setDisabled: (disabled) => {
+            const off = Boolean(disabled);
+            element.classList.toggle("is-disabled", off);
+            for (const button of buttons.values()) button.disabled = off;
+        },
+    };
+}
+
+
+/**
+ * The compact form: a trigger that shows the chosen shape, and the grid only
+ * while it is open.
+ *
+ * Same cards, same geometry — this only decides when they are on screen. A side
+ * panel has one column of vertical room and a dozen controls competing for it,
+ * so nine cards standing open all day cost more than they are worth; a node with
+ * a resizable body is the opposite case and keeps the open grid.
+ *
+ * @param {object} options
+ * @param {string[]} [options.values] Proportions as "w:h".
+ * @param {(value: string) => void} [options.onSelect] Called on a person's pick.
+ * @param {(value: string) => void} [options.onCustom] Enables the small "w:h"
+ *   field to the right of the trigger; called with the accepted proportion.
+ * @param {string} [options.customPlaceholder="w:h"]
+ * @param {string} [options.customTitle]
+ * @param {number} [options.boxSize=34] Side of the square inside each card.
+ * @returns {{element: HTMLElement, select: Function, selected: Function, add: Function,
+ *            has: Function, values: Function, setDisabled: Function, close: Function,
+ *            cards: object, trigger: HTMLElement}}
+ */
+export function createRatioPicker({
+    values = [],
+    onSelect,
+    onCustom,
+    customPlaceholder = "w:h",
+    customTitle,
+    boxSize = 34,
+} = {}) {
+    ensureThemeStyles();
+    const element = document.createElement("div");
+    element.className = "ts-ui-ratiopick";
+
+    const trigger = document.createElement("button");
+    trigger.type = "button";
+    trigger.className = "ts-ui-ratiopick__trigger";
+    let preview = createRatioFrame("1:1");
+    const valueText = document.createElement("span");
+    valueText.className = "ts-ui-ratiopick__value";
+    const caret = document.createElement("span");
+    caret.className = "ts-ui-ratiopick__caret";
+    caret.textContent = "▾";
+    trigger.append(preview, valueText, caret);
+
+    const pop = document.createElement("div");
+    pop.className = "ts-ui-ratiopick__pop";
+
+    const cards = createRatioCards({
+        values,
+        boxSize,
+        onSelect: (value) => {
+            paint(value);
+            close();
+            onSelect?.(value);
+        },
+    });
+    pop.appendChild(cards.element);
+    element.append(trigger, pop);
+
+    if (onCustom) {
+        const custom = document.createElement("input");
+        custom.type = "text";
+        custom.className = "ts-ui-input ts-ui-ratiopick__custom";
+        custom.placeholder = customPlaceholder;
+        if (customTitle) custom.title = customTitle;
+        custom.addEventListener("change", () => {
+            // "16 9", "16x9", "16,9" all mean the same thing to a person.
+            const text = custom.value.trim().replace(/[\s,x×]+/g, ":");
+            const parsed = parseRatioText(text);
+            custom.value = "";
+            if (!parsed) return;
+            const value = `${parsed.w}:${parsed.h}`;
+            cards.add(value);
+            paint(value);
+            onCustom(value);
+        });
+        element.appendChild(custom);
+    }
+
+    function paint(value) {
+        cards.select(value);
+        valueText.textContent = String(value ?? "");
+        const fresh = createRatioFrame(value);
+        trigger.replaceChild(fresh, preview);
+        preview = fresh;
+    }
+
+    // The listener lives only while the popover is open, and removes itself if
+    // the control was taken off the page in between (the studio rebuilds its
+    // deck on every model change, and a listener outliving its panel is a leak).
+    function onDocumentDown(event) {
+        if (!element.isConnected) return close();
+        if (!element.contains(event.target)) close();
+    }
+    function onKeyDown(event) {
+        if (event.key === "Escape") close();
+    }
+
+    function open() {
+        pop.classList.add("is-open");
+        trigger.classList.add("is-active");
+        document.addEventListener("pointerdown", onDocumentDown);
+        document.addEventListener("keydown", onKeyDown);
+    }
+
+    function close() {
+        pop.classList.remove("is-open");
+        trigger.classList.remove("is-active");
+        document.removeEventListener("pointerdown", onDocumentDown);
+        document.removeEventListener("keydown", onKeyDown);
+    }
+
+    trigger.addEventListener("click", () => {
+        if (pop.classList.contains("is-open")) close();
+        else open();
+    });
+
+    return {
+        element,
+        trigger,
+        cards,
+        close,
+        add: (value) => cards.add(value),
+        has: (value) => cards.has(value),
+        values: () => cards.values(),
+        selected: () => cards.selected(),
+        select: paint,
+        setDisabled: (disabled) => {
+            const off = Boolean(disabled);
+            trigger.disabled = off;
+            cards.setDisabled(off);
+            for (const field of element.querySelectorAll("input")) field.disabled = off;
+            if (off) close();
+        },
+    };
 }
 
 // ---------------------------------------------------------------------------
@@ -373,6 +750,107 @@ function launchIconSvg() {
  *   The label is shared; what the editor is for legitimately differs per node.
  * @returns {HTMLButtonElement}
  */
+/**
+ * Кнопка «назад» для экрана, живущего внутри редактора (наборы, настройки,
+ * справка). Одна стрелка и один размер на весь пак.
+ *
+ * @param {string} label подпись для подсказки и озвучки
+ * @param {() => void} [onBack]
+ * @returns {HTMLButtonElement}
+ */
+export function createPanelBackButton(label, onBack) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "ts-ui-btn ts-ui-btn--icon ts-ui-back";
+    button.title = label;
+    button.setAttribute("aria-label", label);
+    button.innerHTML = '<svg viewBox="0 0 16 16" width="14" height="14" fill="none"'
+        + ' stroke="currentColor" stroke-width="1.7" stroke-linecap="round"'
+        + ' stroke-linejoin="round"><path d="M9.5 3.5 5 8l4.5 4.5"/></svg>';
+    if (typeof onBack === "function") button.addEventListener("click", onBack);
+    return button;
+}
+
+/**
+ * Скрытое поле выбора файла — то самое, которое открывает видимая кнопка.
+ *
+ * ⚠️ `tabIndex = -1` здесь не украшение. Поле лежит за краем экрана, но в
+ * обходе по Tab остаётся, и человек, идущий по студии с клавиатуры, упирался
+ * в невидимое поле вместо кнопок. Открывают его программно, поэтому в обходе
+ * ему делать нечего.
+ *
+ * ⚠️ Прятать через `display:none` или схлопывать в ноль нельзя: часть
+ * браузеров отказывается открывать диалог у неотрисованного поля (§12.5.11).
+ * Отсюда и вынос за край вместо скрытия.
+ *
+ * @param {object} [options]
+ * @param {string} [options.accept] Что принимаем, как в атрибуте `accept`.
+ * @param {boolean} [options.multiple] Можно выбрать несколько файлов.
+ * @returns {HTMLInputElement}
+ */
+/**
+ * Спросить и сказать — руками ComfyUI, а не браузера.
+ *
+ * ⚠️ `window.prompt/confirm/alert` в ComfyUI неуместны по трём причинам, и
+ * каждой достаточно: они блокируют поток, роняют фокус на `<body>` (после чего
+ * горячие клавиши графа снова боевые), и выглядят системным окном посреди
+ * тёмного интерфейса. У фронтенда ComfyUI есть свои диалоги; на сборке, где
+ * их нет, честно откатываемся на браузерные — молча ничего не спрашивать хуже.
+ *
+ * Все три функции асинхронные: диалог ComfyUI отвечает обещанием.
+ */
+async function comfyDialog() {
+    try {
+        const { app } = await import("/scripts/app.js");
+        return app?.extensionManager?.dialog || null;
+    } catch {
+        return null;
+    }
+}
+
+/** Спросить строку. Пусто или отмена — пустая строка. */
+export async function askText(message, defaultValue = "") {
+    const dialog = await comfyDialog();
+    if (dialog?.prompt) {
+        const answer = await dialog.prompt({ title: message, defaultValue });
+        return typeof answer === "string" ? answer : "";
+    }
+    return window.prompt(message, defaultValue) || "";
+}
+
+/** Спросить «да или нет». */
+export async function askConfirm(message) {
+    const dialog = await comfyDialog();
+    if (dialog?.confirm) {
+        return Boolean(await dialog.confirm({ title: message, type: "default" }));
+    }
+    return window.confirm(message);
+}
+
+/** Сказать без вопроса. Всплывающее уведомление, если фронтенд его умеет. */
+export async function notify(message, severity = "info") {
+    try {
+        const { app } = await import("/scripts/app.js");
+        const toast = app?.extensionManager?.toast;
+        if (toast?.add) {
+            toast.add({ severity, summary: message, life: 4000 });
+            return;
+        }
+    } catch { /* фронтенд без уведомлений — ниже запасной путь */ }
+    window.alert(message);
+}
+
+export function createHiddenFileInput({ accept = "image/*", multiple = false } = {}) {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = accept;
+    input.multiple = Boolean(multiple);
+    input.className = "ts-ui-file";
+    input.tabIndex = -1;
+    input.setAttribute("aria-hidden", "true");
+    return input;
+}
+
 export function createOpenInterfaceButton(onOpen, options = {}) {
     const button = document.createElement("button");
     button.type = "button";

@@ -1,0 +1,346 @@
+{
+ "p_prompt": {
+  "class_type": "TS_StudioInputText",
+  "inputs": {
+   "value": "",
+   "param_name": "prompt",
+   "label": ""
+  }
+ },
+ "p_image": {
+  "class_type": "TS_StudioInputImage",
+  "inputs": {
+   "value": "",
+   "param_name": "source_image",
+   "label": ""
+  }
+ },
+ "p_seed": {
+  "class_type": "TS_StudioInputSeed",
+  "inputs": {
+   "value": 0,
+   "param_name": "seed"
+  }
+ },
+ "p_steps": {
+  "class_type": "TS_StudioInputNumber",
+  "inputs": {
+   "value": 8,
+   "param_name": "steps",
+   "label": ""
+  }
+ },
+ "p_cfg": {
+  "class_type": "TS_StudioInputNumber",
+  "inputs": {
+   "value": 7.0,
+   "param_name": "cfg",
+   "label": ""
+  }
+ },
+ "p_mu": {
+  "class_type": "TS_StudioInputNumber",
+  "inputs": {
+   "value": 0.5,
+   "param_name": "mu",
+   "label": ""
+  },
+  "_meta": {
+   "title": "studio:mu"
+  }
+ },
+ "p_std": {
+  "class_type": "TS_StudioInputNumber",
+  "inputs": {
+   "value": 1.75,
+   "param_name": "std",
+   "label": ""
+  },
+  "_meta": {
+   "title": "studio:std"
+  }
+ },
+ "model_loader": {
+  "class_type": "UNETLoader",
+  "inputs": {
+   "unet_name": "ideogram\\ideogram4_fp8_scaled.safetensors",
+   "weight_dtype": "default"
+  },
+  "_meta": {
+   "title": "studio:model"
+  }
+ },
+ "lora_stack": {
+  "class_type": "TS_StudioLoraStack",
+  "inputs": {
+   "model": [
+    "model_loader",
+    0
+   ]
+  }
+ },
+ "uncond_loader": {
+  "class_type": "UNETLoader",
+  "inputs": {
+   "unet_name": "ideogram\\ideogram4_unconditional_fp8_scaled.safetensors",
+   "weight_dtype": "default"
+  },
+  "_meta": {
+   "title": "studio:model_uncond"
+  }
+ },
+ "cfg_override": {
+  "class_type": "CFGOverride",
+  "inputs": {
+   "model": [
+    "lora_stack",
+    0
+   ],
+   "cfg": 3.0,
+   "start_percent": 0.7,
+   "end_percent": 1.0
+  }
+ },
+ "clip_loader": {
+  "class_type": "CLIPLoader",
+  "inputs": {
+   "clip_name": "ideogram\\qwen3vl_8b_fp8_scaled.safetensors",
+   "type": "ideogram4"
+  },
+  "_meta": {
+   "title": "studio:clip"
+  }
+ },
+ "vae_loader": {
+  "class_type": "VAELoader",
+  "inputs": {
+   "vae_name": "flux2\\flux2-vae-v2.safetensors"
+  },
+  "_meta": {
+   "title": "studio:vae"
+  }
+ },
+ "encode_pos": {
+  "class_type": "CLIPTextEncode",
+  "inputs": {
+   "text": [
+    "p_prompt",
+    0
+   ],
+   "clip": [
+    "clip_loader",
+    0
+   ]
+  }
+ },
+ "neg_zero": {
+  "class_type": "ConditioningZeroOut",
+  "inputs": {
+   "conditioning": [
+    "encode_pos",
+    0
+   ]
+  }
+ },
+ "guider": {
+  "class_type": "DualModelGuider",
+  "inputs": {
+   "model": [
+    "cfg_override",
+    0
+   ],
+   "positive": [
+    "encode_pos",
+    0
+   ],
+   "cfg": [
+    "p_cfg",
+    0
+   ],
+   "model_negative": [
+    "uncond_loader",
+    0
+   ],
+   "negative": [
+    "neg_zero",
+    0
+   ]
+  }
+ },
+ "sampler_sel": {
+  "class_type": "KSamplerSelect",
+  "inputs": {
+   "sampler_name": "euler"
+  }
+ },
+ "noise": {
+  "class_type": "RandomNoise",
+  "inputs": {
+   "noise_seed": [
+    "p_seed",
+    0
+   ]
+  }
+ },
+ "p_denoise": {
+  "class_type": "TS_StudioInputNumber",
+  "inputs": {
+   "value": 0.45,
+   "param_name": "denoise",
+   "label": ""
+  },
+  "_meta": {
+   "title": "studio:denoise"
+  }
+ },
+ "tile_size": {
+  "class_type": "GetImageSize",
+  "inputs": {
+   "image": [
+    "resize",
+    0
+   ]
+  }
+ },
+ "sigmas": {
+  "class_type": "Ideogram4Scheduler",
+  "inputs": {
+   "steps": [
+    "p_steps",
+    1
+   ],
+   "width": [
+    "tile_size",
+    0
+   ],
+   "height": [
+    "tile_size",
+    1
+   ],
+   "mu": [
+    "p_mu",
+    0
+   ],
+   "std": [
+    "p_std",
+    0
+   ]
+  }
+ },
+ "sigmas_denoise": {
+  "class_type": "SplitSigmasDenoise",
+  "inputs": {
+   "sigmas": [
+    "sigmas",
+    0
+   ],
+   "denoise": [
+    "p_denoise",
+    0
+   ]
+  }
+ },
+ "encode_latent": {
+  "class_type": "VAEEncode",
+  "inputs": {
+   "pixels": [
+    "resize",
+    0
+   ],
+   "vae": [
+    "vae_loader",
+    0
+   ]
+  }
+ },
+ "sample": {
+  "class_type": "SamplerCustomAdvanced",
+  "inputs": {
+   "noise": [
+    "noise",
+    0
+   ],
+   "guider": [
+    "guider",
+    0
+   ],
+   "sampler": [
+    "sampler_sel",
+    0
+   ],
+   "sigmas": [
+    "sigmas_denoise",
+    1
+   ],
+   "latent_image": [
+    "encode_latent",
+    0
+   ]
+  }
+ },
+ "decode": {
+  "class_type": "VAEDecode",
+  "inputs": {
+   "samples": [
+    "sample",
+    0
+   ],
+   "vae": [
+    "vae_loader",
+    0
+   ]
+  }
+ },
+ "studio_out": {
+  "class_type": "TS_StudioOutput",
+  "inputs": {
+   "image": [
+    "decode",
+    0
+   ],
+   "filename_prefix": "ts_studio/session"
+  },
+  "_meta": {
+   "title": "studio:output"
+  }
+ },
+ "studio_manifest": {
+  "class_type": "TS_StudioManifest",
+  "inputs": {
+   "manifest": "{\n  \"schema_version\": \"1.0.0\",\n  \"id\": \"ideogram/img2img\",\n  \"label\": {\n    \"en\": \"Image to Image\",\n    \"ru\": \"Image to Image\"\n  },\n  \"family\": \"ideogram\",\n  \"family_label\": \"Ideogram 4\",\n  \"tier\": 3,\n  \"mode\": \"img2img\",\n  \"order\": 15,\n  \"controls\": [\n    {\n      \"param\": \"prompt\",\n      \"kind\": \"prompt\",\n      \"superprompt\": true\n    },\n    {\n      \"param\": \"preset\",\n      \"kind\": \"choice\",\n      \"default\": \"Turbo\",\n      \"label\": {\n        \"en\": \"Preset\",\n        \"ru\": \"Пресет\"\n      },\n      \"options\": [\n        {\n          \"value\": \"Quality\",\n          \"label\": {\n            \"en\": \"Quality\",\n            \"ru\": \"Качество\"\n          },\n          \"tooltip\": {\n            \"en\": \"24 steps — the most careful pass over the enlargement.\",\n            \"ru\": \"24 шага — самый тщательный проход по увеличению.\"\n          },\n          \"values\": {\n            \"steps\": 24,\n            \"mu\": 0.0,\n            \"std\": 1.5\n          }\n        },\n        {\n          \"value\": \"Default\",\n          \"label\": {\n            \"en\": \"Normal\",\n            \"ru\": \"Обычный\"\n          },\n          \"tooltip\": {\n            \"en\": \"12 steps — balanced.\",\n            \"ru\": \"12 шагов — сбалансированно.\"\n          },\n          \"values\": {\n            \"steps\": 12,\n            \"mu\": 0.0,\n            \"std\": 1.75\n          }\n        },\n        {\n          \"value\": \"Turbo\",\n          \"label\": {\n            \"en\": \"Turbo\",\n            \"ru\": \"Турбо\"\n          },\n          \"tooltip\": {\n            \"en\": \"8 steps — the fast pass, and the default here.\",\n            \"ru\": \"8 шагов — быстрый проход, по умолчанию для апскейла.\"\n          },\n          \"values\": {\n            \"steps\": 8,\n            \"mu\": 0.5,\n            \"std\": 1.75\n          }\n        }\n      ]\n    },\n    {\n      \"param\": \"megapixels\",\n      \"kind\": \"slider\",\n      \"min\": 0.5,\n      \"max\": 4.0,\n      \"step\": 0.1,\n      \"label\": {\n        \"en\": \"Resolution\",\n        \"ru\": \"Разрешение\"\n      },\n      \"tooltip\": {\n        \"en\": \"Megapixels the picture is resampled to before the model sees it. The aspect ratio is kept; sides are snapped to what this model needs.\",\n        \"ru\": \"До скольких мегапикселей картинка пересчитывается перед моделью. Пропорция сохраняется, стороны округляются под требования модели.\"\n      }\n    },\n    {\n      \"param\": \"denoise\",\n      \"kind\": \"slider\",\n      \"min\": 0.05,\n      \"max\": 0.6,\n      \"step\": 0.05,\n      \"default\": 0.45,\n      \"label\": {\n        \"en\": \"Detail denoise\",\n        \"ru\": \"Денойз деталей\"\n      },\n      \"tooltip\": {\n        \"en\": \"How much the pass invents. 0.2-0.3 stays faithful to the source; 0.45 adds noticeable new detail - good at 1x and 2x, heavy-handed when enlarging fourfold.\",\n        \"ru\": \"Насколько проход домысливает. 0.2–0.3 — верность исходнику; 0.45 заметно добавляет деталей: хорошо для 1x и 2x, многовато при увеличении вчетверо.\"\n      }\n    },\n    {\n      \"param\": \"loras\",\n      \"kind\": \"loras\",\n      \"max\": 8,\n      \"strength\": [\n        -2.0,\n        2.0\n      ]\n    },\n    {\n      \"param\": \"steps\",\n      \"kind\": \"number\",\n      \"advanced\": true,\n      \"min\": 1,\n      \"max\": 48,\n      \"default\": 8,\n      \"label\": {\n        \"en\": \"Steps\",\n        \"ru\": \"Шаги\"\n      }\n    }\n  ],\n  \"refs\": {\n    \"max\": 0\n  },\n  \"requires\": [\n    \"source_image\"\n  ],\n  \"upscale_params\": {\n    \"image\": \"source_image\"\n  },\n  \"negative_prompt\": false,\n  \"models\": [\n    {\n      \"title\": \"studio:model\",\n      \"input\": \"unet_name\",\n      \"folder\": \"diffusion_models\",\n      \"match\": \"ideogram4_(fp8|int8)(?!.*uncond)\"\n    },\n    {\n      \"title\": \"studio:model_uncond\",\n      \"input\": \"unet_name\",\n      \"folder\": \"diffusion_models\",\n      \"match\": \"ideogram4_unconditional\"\n    },\n    {\n      \"title\": \"studio:clip\",\n      \"input\": \"clip_name\",\n      \"folder\": \"text_encoders\",\n      \"match\": \"qwen3vl_8b\"\n    },\n    {\n      \"title\": \"studio:vae\",\n      \"input\": \"vae_name\",\n      \"folder\": \"vae\",\n      \"match\": \"flux2.*flux2-vae-v2\"\n    }\n  ],\n  \"_note_seed\": \"Сида в деке нет намеренно: апскейл повторяют не ради того же зерна, а ради другого. Маркер `p_seed` в графе остался, и на каждый прогон приходит новое число — то же самое, что «Randomize» на постоянку.\",\n  \"tuning\": {\n    \"snap_px\": 64\n  }\n}"
+  }
+ },
+ "p_mp": {
+  "class_type": "TS_StudioInputNumber",
+  "inputs": {
+   "value": 1.5,
+   "param_name": "megapixels",
+   "label": ""
+  }
+ },
+ "resize": {
+  "class_type": "TS_ImageResize",
+  "inputs": {
+   "pixels": [
+    "p_image",
+    0
+   ],
+   "target_width": 0,
+   "target_height": 0,
+   "smaller_side": 0,
+   "larger_side": 0,
+   "scale_factor": 0.0,
+   "keep_proportion": true,
+   "upscale_method": "lanczos",
+   "divisible_by": 64,
+   "megapixels": [
+    "p_mp",
+    0
+   ],
+   "dont_enlarge": false
+  },
+  "_meta": {
+   "title": "studio:resize"
+  }
+ }
+}

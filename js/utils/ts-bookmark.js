@@ -1,3 +1,4 @@
+import { isTypingTarget } from "../_keys.js";
 import { app } from "/scripts/app.js";
 
 const EXTENSION_ID = "ts.bookmark";
@@ -93,10 +94,10 @@ app.registerExtension({
             }
 
             onKeypress(event) {
-                const target = event.target;
-                if (target && ["input", "textarea"].includes(target.localName)) {
-                    return;
-                }
+                // Общий помощник знает и про <select>, и про contenteditable —
+                // свой список тегов их пропускал, и буква-закладка срабатывала
+                // прямо во время набора.
+                if (isTypingTarget(event.target)) return;
                 if (this.widgets[0] && event.key.toLocaleLowerCase() === this.widgets[0].value.toLocaleLowerCase()) {
                     this.canvasToBookmark();
                 }

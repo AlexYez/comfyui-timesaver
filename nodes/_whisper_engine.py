@@ -27,6 +27,9 @@ from typing import Any, Callable, Optional
 
 import folder_paths
 
+from ._ffmpeg import MISSING_MESSAGE as MISSING_FFMPEG_MESSAGE
+from ._ffmpeg import ffmpeg_executable
+
 LOGGER = logging.getLogger("comfyui_timesaver.whisper_engine")
 LOG_PREFIX = "[TS Whisper Engine]"
 
@@ -286,12 +289,8 @@ def load_model(
 # Audio decoding
 # --------------------------------------------------------------------------- #
 def get_ffmpeg_executable() -> str:
-    try:
-        import imageio_ffmpeg
-
-        return imageio_ffmpeg.get_ffmpeg_exe()
-    except Exception:
-        return "ffmpeg"
+    """Kept as the engine's own name; the answer comes from one place now."""
+    return ffmpeg_executable()
 
 
 def decode_audio_file(filepath: str):
@@ -312,7 +311,10 @@ def decode_audio_file(filepath: str):
         result = subprocess.run(command, capture_output=True, check=True, timeout=300)
         return np.frombuffer(result.stdout, dtype=np.float32).copy()
     except FileNotFoundError:
-        pass
+        # NOT a case for the whisper fallback below: whisper.load_audio shells
+        # out to ffmpeg itself, so it would fail the same way and report it
+        # worse. Say what is actually wrong and how to fix it.
+        raise RuntimeError(MISSING_FFMPEG_MESSAGE) from None
     except subprocess.TimeoutExpired:
         LOGGER.warning("%s ffmpeg timed out decoding audio; falling back to whisper.load_audio.", LOG_PREFIX)
     except subprocess.CalledProcessError as exc:

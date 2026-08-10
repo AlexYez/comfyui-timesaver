@@ -156,6 +156,105 @@ def _resolve_annotated_image_path(annotated: str) -> str:
     return ""
 
 
+# What a wired IMAGE is shrunk to before it reaches Qwen. A 4K frame carries
+# nothing extra for a model deciding what a shot is about, and every pixel of it
+# is memory and time. Measured by AREA rather than by the longest side: a 16:9
+# frame capped by its width keeps far fewer pixels than a square one, and the
+# thing that costs is the area.
+#
+# The model-facing cap further down (_qwen._build_messages, 1024 px on the long
+# side) is unchanged — this is about not carrying a 4K tensor to it.
+MAX_INPUT_MEGAPIXELS = 1.0
+
+# How many frames of a batch are read. Two is what the prompts speak about
+# today — a first and a last — and the input is a batch precisely so that three
+# or four can follow without growing a socket each. The ceiling is here because
+# the other likely thing to be wired in is a whole video: a 2B model handed
+# ninety frames would spend its entire context on pictures and have none left
+# for the idea.
+MAX_REFERENCE_FRAMES = 4
+
+
+def _fit_megapixels(image, max_megapixels: float = MAX_INPUT_MEGAPIXELS):
+    """Shrink an image to at most `max_megapixels`, never enlarge, never crop.
+
+    A reference image is read for what is IN it, so cropping to a tidy multiple
+    would throw away the edges of the very thing being described. A picture
+    already under the budget is handed over untouched: upscaling invents detail
+    the model would then describe.
+    """
+    try:
+        width, height = image.size
+    except AttributeError:
+        return image
+    budget = max(0.1, float(max_megapixels)) * 1_000_000
+    pixels = width * height
+    if pixels <= budget or pixels <= 0:
+        return image
+    scale = (budget / pixels) ** 0.5
+    target = (max(1, int(width * scale)), max(1, int(height * scale)))
+    try:
+        from PIL import Image as _Image
+
+        return image.resize(target, _Image.LANCZOS)
+    except Exception as exc:  # PIL missing or a resampling filter it dislikes
+        LOGGER.warning("%s Could not resize a reference image: %s", LOG_PREFIX, exc)
+        return image
+
+
+def _socket_images(tensor, limit: int = MAX_REFERENCE_FRAMES) -> list:
+    """The PIL frames behind a wired IMAGE input, in order, at working size.
+
+    ORDER IS THE MEANING. A batch of one is a plain reference; the first image
+    of a longer batch is the first frame of the shot and the last image is the
+    last. That is the whole reason this is one input taking a batch rather than
+    a socket per frame — three or four frames need no new wiring, only a longer
+    batch.
+    """
+    if tensor is None:
+        return []
+    try:
+        from ._qwen import _get_qwen_engine
+
+        frames = _get_qwen_engine().normalize_to_pil_list(tensor)
+    except Exception as exc:
+        LOGGER.warning("%s Could not read a connected IMAGE input: %s", LOG_PREFIX, exc)
+        return []
+    if len(frames) > limit:
+        LOGGER.info(
+            "%s %d frames connected; using the first %d.", LOG_PREFIX, len(frames), limit,
+        )
+    return [_fit_megapixels(frame) for frame in frames[:limit]]
+
+
+def _load_attached_images(*annotated: str) -> list:
+    """The attached references, in the order the person attached them.
+
+    One image is a reference. Two are the FIRST and the LAST frame of the shot
+    the person is describing — which is why order matters and why a missing
+    first slot does not promote the second one into its place: the labels the
+    model is given come from these positions (see _qwen._build_messages).
+
+    A path that will not load is skipped with a warning rather than failing the
+    request: enhancing with fewer images is still useful, and refusing to
+    enhance at all because one thumbnail went missing is not.
+    """
+    images = []
+    for path in annotated:
+        text = str(path or "")
+        if not text:
+            continue
+        loaded = _load_attached_image_pil(text)
+        if loaded is None:
+            LOGGER.warning(
+                "%s Attached image %r could not be loaded; enhancing without it.",
+                LOG_PREFIX, text,
+            )
+            continue
+        images.append(loaded)
+    return images
+
+
 def _load_attached_image_pil(annotated: str):
     """Resolve + load the attached image as a PIL.Image, or None on failure."""
     resolved = _resolve_annotated_image_path(annotated)
@@ -348,14 +447,20 @@ async def enhance_endpoint(request: web.Request) -> web.StreamResponse:
     # The frontend uploads through /upload/image first and only sends the
     # resulting annotated path here. An empty / unresolvable path simply
     # means "text-only enhance" — not an error.
-    attached_image = str(data.get("attached_image") or "")
-    image_pil = _load_attached_image_pil(attached_image) if attached_image else None
-    if attached_image and image_pil is None:
-        LOGGER.warning(
-            "%s Attached image %r could not be loaded; falling back to text-only enhance.",
-            LOG_PREFIX,
-            attached_image,
-        )
+    # A LIST, because the node's `images` input is a batch and the frames the
+    # button resolves from it can be more than two. The two old fields are
+    # still read: a page that has not been reloaded since the update keeps
+    # sending them, and they are what the attach buttons fill.
+    raw_paths = data.get("attached_images")
+    if isinstance(raw_paths, list):
+        wanted = [str(item or "") for item in raw_paths]
+    else:
+        wanted = [
+            str(data.get("attached_image") or ""),
+            str(data.get("attached_image_2") or ""),
+        ]
+    images = _load_attached_images(*wanted[:MAX_REFERENCE_FRAMES])
+    image_pil = images or None
 
     # Racy fast-fail for obviously-busy Qwen. Internal _generate_with_qwen still
     # acquires MODEL_LOCK with proper blocking, so this only spares the caller
@@ -454,6 +559,37 @@ class TS_SuperPrompt(IO.ComfyNode):
                     ),
                     socketless=True,
                 ),
+                # LAST in the list, and it has to stay last. `widgets_values` is
+                # positional: a new widget inserted anywhere else would shift
+                # every value in every workflow already saved with this node.
+                IO.String.Input(
+                    "attached_image_2",
+                    default="",
+                    tooltip=(
+                        "Internal field: annotated path of the second attached image. "
+                        "With two images the first is the FIRST frame and this one the "
+                        "LAST frame of the shot."
+                    ),
+                    socketless=True,
+                ),
+                # Wired references, for when the frames come from the graph
+                # rather than from the node's own attach buttons. ONE input
+                # taking a batch, not a socket per frame: the order inside the
+                # batch is what says which frame is which, so three or four
+                # frames will need no new wiring. Optional, and last — an input
+                # added anywhere earlier would renumber the sockets of every
+                # workflow already saved with this node.
+                IO.Image.Input(
+                    "images",
+                    optional=True,
+                    tooltip=(
+                        "Optional reference images from the graph. A single image is a "
+                        "plain reference; in a batch the FIRST image is the first frame "
+                        "of the shot and the LAST is the last frame. Takes precedence "
+                        "over images attached in the node. Each frame is shrunk to about "
+                        "1 MP on the way in."
+                    ),
+                ),
             ],
             outputs=[IO.String.Output(display_name="text", tooltip="Prompt text (enhanced when enhancement runs).")],
             search_aliases=[
@@ -473,6 +609,8 @@ class TS_SuperPrompt(IO.ComfyNode):
         high_quality: bool = False,
         system_preset: str = DEFAULT_PRESET,
         attached_image: str = "",
+        attached_image_2: str = "",
+        images: Any = None,
         **_: Any,
     ) -> bool | str:
         if not isinstance(text, str):
@@ -483,6 +621,8 @@ class TS_SuperPrompt(IO.ComfyNode):
             return "system_preset must be a string."
         if not isinstance(attached_image, str):
             return "attached_image must be a string (annotated filepath)."
+        if not isinstance(attached_image_2, str):
+            return "attached_image_2 must be a string (annotated filepath)."
         # Unknown ``system_preset`` values are intentionally accepted here:
         # ``_resolve_preset`` in _qwen.py silently falls back to the canonical
         # ``DEFAULT_PRESET`` ("Prompts enhance") so workflows saved before a
@@ -496,18 +636,26 @@ class TS_SuperPrompt(IO.ComfyNode):
         high_quality: bool = False,
         system_preset: str = DEFAULT_PRESET,
         attached_image: str = "",
+        attached_image_2: str = "",
+        images: Any = None,
         **_: Any,
     ) -> IO.NodeOutput:
         _ = high_quality
         if not SUPER_PROMPT_ENHANCE_ON_EXECUTE:
             return IO.NodeOutput(text or "")
 
-        image_pil = _load_attached_image_pil(attached_image) if attached_image else None
+        # A wired batch wins outright, and as a whole: it already states the
+        # order of the frames, so mixing it with the node's attachments could
+        # only produce a sequence nobody asked for. Connecting images is an
+        # explicit act in the graph, while an attachment is a leftover from the
+        # last time someone pressed the button in the node.
+        frames = _socket_images(images) or _load_attached_images(
+            attached_image, attached_image_2)
         enhanced = _generate_with_qwen(
             text=text or "",
             system_preset=system_preset,
             operation_id=None,
-            image=image_pil,
+            image=frames or None,
         )
         return IO.NodeOutput(enhanced)
 

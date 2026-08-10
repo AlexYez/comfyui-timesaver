@@ -88,6 +88,26 @@ _MODEL_SIZES_B: dict[str, float] = {
 }
 
 
+# Разрешение исполнять код МОДЕЛЬНОГО репозитория. Живёт в окружении, а не в
+# workflow: `custom_model_id` пишет автор графа, и одного этого поля хватало,
+# чтобы Transformers скачал чужой `*.py` и выполнил его в процессе ComfyUI.
+#
+# Штатные Qwen (Qwen2-VL, Qwen2.5-VL, Qwen3-VL) поддерживаются Transformers
+# напрямую — проверено на установленной сборке: классы
+# `Qwen3VLForConditionalGeneration` и `AutoModelForImageTextToText` есть в
+# самом пакете. Значит для них исполнение чужого кода не нужно вовсе.
+_REMOTE_CODE_ENV = "TS_QWEN_ALLOW_REMOTE_CODE"
+
+
+def _remote_code_allowed() -> bool:
+    """Разрешил ли хозяин машины исполнять код из репозитория модели."""
+    import os
+
+    return str(os.environ.get(_REMOTE_CODE_ENV, "")).strip().lower() in {
+        "1", "true", "yes", "on",
+    }
+
+
 class QwenEngine:
     """Process-wide Qwen runtime: model cache + helpers."""
 
@@ -880,7 +900,12 @@ class QwenEngine:
         transformers_module, bnb_config_cls = self._resolve_transformers_runtime()
         device = self.get_device()
 
-        load_kwargs: dict[str, Any] = {"trust_remote_code": True, "low_cpu_mem_usage": True}
+        # ⚠️ Не `True` безусловно. `trust_remote_code` означает «скачай и
+        # выполни код из репозитория модели», а имя репозитория приходит из
+        # workflow. Штатным Qwen это не нужно; редкой модели — только с
+        # разрешения хозяина машины (см. `_REMOTE_CODE_ENV`).
+        load_kwargs: dict[str, Any] = {"trust_remote_code": _remote_code_allowed(),
+                                       "low_cpu_mem_usage": True}
         if attention_mode:
             load_kwargs["attn_implementation"] = attention_mode
         if offline_mode:
@@ -1022,7 +1047,7 @@ class QwenEngine:
             return _run_load(kwargs_for_load)
 
     def _load_processor_or_tokenizer(self, transformers_module, local_dir, offline_mode):
-        common_kwargs: dict[str, Any] = {"trust_remote_code": True}
+        common_kwargs: dict[str, Any] = {"trust_remote_code": _remote_code_allowed()}
         if offline_mode:
             common_kwargs["local_files_only"] = True
 
@@ -1168,9 +1193,13 @@ class QwenEngine:
         # actually downloading.
         from huggingface_hub import snapshot_download
 
+        # Реестр закреплений — один на весь пак (`nodes/_hf_download.py`):
+        # обновление коммита должно быть осознанным действием в одном месте.
+        from .._hf_download import pinned_revision
+
         kwargs: dict[str, Any] = {
             "repo_id": model_id,
-            "revision": "main",
+            "revision": pinned_revision(model_id),
             "local_dir": local_dir,
             "local_dir_use_symlinks": False,
             "resume_download": True,

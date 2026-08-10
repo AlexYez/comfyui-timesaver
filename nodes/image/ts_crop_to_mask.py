@@ -49,7 +49,12 @@ class TSCropToMask(IO.ComfyNode):
 
     @classmethod
     def execute(cls, images, mask, padding, divide_by, max_resolution, fixed_mask_frame_index, interpolation_window_size, force_gpu, fixed_crop_size=False, fixed_width=1024, fixed_height=1024) -> IO.NodeOutput:
-        target_device = comfy.model_management.get_torch_device() if force_gpu and torch.cuda.is_available() else torch.device("cpu")
+        # get_torch_device() already answers "cpu" where there is no accelerator,
+        # and it knows about Metal. The torch.cuda.is_available() guard that used
+        # to stand here pinned every Mac to the CPU no matter what this switch
+        # said — the widget promised a thing it could not do.
+        target_device = (comfy.model_management.get_torch_device() if force_gpu
+                         else torch.device("cpu"))
         logger.info("%s Using device %s", LOG_PREFIX, target_device)
 
         images = images.to(target_device)

@@ -11,7 +11,7 @@ import torch.nn.functional as F
 from comfy.utils import ProgressBar, load_torch_file
 from comfy_api.v0_0_2 import IO
 
-from .._hf_download import snapshot_download_resilient
+from .._hf_download import pinned_revision, snapshot_download_resilient
 
 logger = logging.getLogger("comfyui_timesaver.ts_video_depth")
 LOG_PREFIX = "[TS Video Depth]"
@@ -360,7 +360,7 @@ def _load_model_to_offload_cpu(model_filename: str, on_download_start=None):
         snapshot_download_resilient(
             repo_id=repo_map[model_key],
             local_dir=download_path,
-            revision="main",
+            revision=pinned_revision(repo_map[model_key]),
             allow_patterns=[f"*{model_filename}*"],
             log=logger,
             log_prefix=LOG_PREFIX,

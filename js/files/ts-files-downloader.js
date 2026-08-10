@@ -277,6 +277,13 @@ const FOLDER_ALIASES = {
     t2i_adapter: "controlnet",
 };
 
+// Every name of a category that has two. A folder spelled either way in the
+// list is a decision already made, and nothing below may overrule it.
+const ALIASED_CATEGORIES = new Set([
+    ...Object.keys(FOLDER_ALIASES),
+    ...Object.values(FOLDER_ALIASES),
+]);
+
 /** Canonical form of a target folder: separators, case, aliases, `models/`. */
 function canonTarget(value) {
     const parts = String(value || "")
@@ -294,6 +301,56 @@ function sameTarget(a, b) {
     return canonTarget(a) === canonTarget(b);
 }
 
+// How THIS machine spells its model folders.
+//
+// ComfyUI reads two directories per category and keeps both names alive: a
+// text encoder is looked for in `models/text_encoders` and in `models/clip`
+// alike. Which one is "right" is not a question for a table — the right one is
+// the one the person's models are actually in. Auto-detect used to fill in the
+// canonical name, so an owner with thirty encoders in `models/clip` was offered
+// a download into an empty `models/text_encoders`: the file would be found (the
+// engine looks in both), but it would not sit with the rest, and next time it
+// would have to be hunted for by eye.
+//
+// The answer is cached for the session: it describes a directory tree, and that
+// does not change between two presses of a button.
+let machineFolders = null;
+
+async function loadMachineFolders() {
+    if (machineFolders) return machineFolders;
+    try {
+        const response = await api.fetchApi("/ts_downloader/model_folders");
+        const payload = response.ok ? await response.json() : null;
+        machineFolders = payload?.folders || {};
+    } catch (err) {
+        console.warn("[TS FilesDownloader] model folders unavailable", err);
+        machineFolders = {};
+    }
+    return machineFolders;
+}
+
+/**
+ * The spelling of a category this machine goes by.
+ *
+ * The directory that HOLDS models wins. Empty on both sides, the canonical name
+ * stays: there is nothing to go on.
+ *
+ * @param {object} folders the `/ts_downloader/model_folders` response
+ * @returns {Map<string, string>} category -> spelling on this machine
+ */
+export function machineSpellings(folders) {
+    const out = new Map();
+    for (const [category, entries] of Object.entries(folders || {})) {
+        const usable = (entries || []).filter((e) => e && e.exists);
+        if (usable.length < 2) continue;          // nothing to choose between
+        const best = usable.reduce((a, b) => ((b.models || 0) > (a.models || 0) ? b : a));
+        if ((best.models || 0) > 0 && best.name && best.name !== category) {
+            out.set(category, best.name);
+        }
+    }
+    return out;
+}
+
 /**
  * Which spelling of an aliased category this list already uses.
  *
@@ -301,28 +358,43 @@ function sameTarget(a, b) {
  * years, and each is a real directory. Whichever one a user has settled on is
  * the right place to keep putting their files, so follow the list instead of
  * imposing the newer name on it.
+ *
+ * BOTH spellings count as an answer. Only the alias table's keys used to be
+ * recognised — that is, only the older name — so a list written in the
+ * canonical spelling read as no preference at all, and the machine's own
+ * layout (see machineSpellings) would talk over a choice already on screen.
  */
 function preferredAliases(existingText) {
     const preferred = new Map();
     for (const row of parseFileList(existingText)) {
-        const [first] = String(row.target || "")
+        const parts = String(row.target || "")
             .replace(/\\/g, "/")
             .split("/")
             .map((part) => part.trim())
             .filter(Boolean);
+        // The node writes its own lines as `models/<category>/...`, so the
+        // category is the SECOND segment there. Reading only the first one made
+        // this whole function dead against the very lines it generates: every
+        // such line looked like a folder called "models".
+        if (parts[0]?.toLowerCase() === "models") parts.shift();
+        const [first] = parts;
         if (!first) continue;
         const spelled = first.toLowerCase();
-        const canonical = FOLDER_ALIASES[spelled];
-        if (canonical && !preferred.has(canonical)) preferred.set(canonical, first);
+        if (!ALIASED_CATEGORIES.has(spelled)) continue;
+        const canonical = FOLDER_ALIASES[spelled] || spelled;
+        if (!preferred.has(canonical)) preferred.set(canonical, first);
     }
     return preferred;
 }
 
-function applyPreferredAlias(directory, preferred) {
-    if (!directory || !preferred.size) return directory;
+function applyPreferredAlias(directory, preferred, machine) {
+    if (!directory) return directory;
     const parts = String(directory).split("/");
     const canonical = FOLDER_ALIASES[parts[0]?.toLowerCase()] || parts[0]?.toLowerCase();
-    const spelling = preferred.get(canonical);
+    // The list the person already keeps outranks everything: it is their
+    // decision. Then how the models are laid out on disk. The canonical name
+    // comes last — it is right only when there is nothing to argue with.
+    const spelling = preferred.get(canonical) || machine?.get?.(canonical);
     if (!spelling) return directory;
     parts[0] = spelling;
     return parts.join("/");
@@ -579,7 +651,7 @@ function parseFileList(text) {
  * A model that is already downloaded is NOT filtered out: the point of the list
  * is to travel with the workflow, so the next person gets the file too.
  */
-export function classify(entries, existingText) {
+export function classify(entries, existingText, machine = null) {
     // The list itself is a source of URLs: anything already in it was curated
     // by hand, and for a model no template describes it is the ONLY link there
     // is. Ignoring it reported hand-added models as "no download link".
@@ -598,7 +670,7 @@ export function classify(entries, existingText) {
         const row = listed.get(key);
         const entry = {
             ...raw,
-            directory: applyPreferredAlias(raw.directory, preferred),
+            directory: applyPreferredAlias(raw.directory, preferred, machine),
             // Fall back to the link the user already wrote down for this file.
             url: raw.url || (row ? row.url : ""),
         };
@@ -1013,14 +1085,17 @@ function attachButton(node) {
     if (node.__tsFdlButton) return;
     const t = pickLocaleStrings(STRINGS);
 
-    const button = node.addWidget("button", t.button, null, () => {
+    const button = node.addWidget("button", t.button, null, async () => {
         const widget = getWidget(node, FILE_LIST_WIDGET);
         if (!widget) {
             console.warn(`[TS FilesDownloader] ${FILE_LIST_WIDGET} widget not found`);
             return;
         }
         const entries = scanWorkflow(app.graph);
-        const buckets = classify(entries, widget.value);
+        // The machine's layout is asked for before the report is built: it
+        // decides which spelling of the folder the download is offered in.
+        const machine = machineSpellings(await loadMachineFolders());
+        const buckets = classify(entries, widget.value, machine);
         if (!buckets.add.length && !buckets.present.length && !buckets.noLink.length) {
             toast("info", t.empty);
         }

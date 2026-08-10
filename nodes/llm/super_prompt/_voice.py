@@ -28,6 +28,7 @@ import folder_paths
 # This module keeps the dictation-specific layer (VAD/normalize, hallucination
 # cleanup, transcribe_audio) and the Super Prompt UI events.
 from ... import _whisper_engine as _engine
+from ..._ffmpeg import ffmpeg_executable
 from ._helpers import (
     ACTIVE_MODEL,
     AUDIO_EDGE_FADE_MS,
@@ -122,12 +123,9 @@ def _resolve_voice_model(high_quality: Any = False, requested_model: str | None 
 
 
 def _get_ffmpeg_executable() -> str:
-    try:
-        import imageio_ffmpeg
-
-        return imageio_ffmpeg.get_ffmpeg_exe()
-    except Exception:
-        return "ffmpeg"
+    """Kept as this module's own name (ts_super_prompt re-exports it); the
+    answer comes from one place now."""
+    return ffmpeg_executable()
 
 
 @dataclass(frozen=True)
