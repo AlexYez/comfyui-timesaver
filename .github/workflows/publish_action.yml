@@ -17,7 +17,15 @@ jobs:
       - name: Publish Custom Node
         # ⚠️ Полный коммит, а не ветка: `@main` означает «выполнить то, что
         # окажется в чужом репозитории в момент публикации», причём с
-        # доступом к токену реестра. Это коммит тега 1.0.1.
-        uses: Comfy-Org/publish-node-action@7578cdb0c1410f2515e6f9b1443c6859cab94f05
+        # доступом к токену реестра.
+        #
+        # ⚠️⚠️ Коммит верхушки main, а НЕ тега 1.0.1. Тег закрепляет только
+        # само действие, а `comfy-cli` оно ставит свежий при каждом запуске —
+        # и пара разъехалась: старое действие зовёт `comfy --yes env`, чего
+        # нынешний cli уже не понимает («No such option: --yes»), публикация
+        # падает на шаге телеметрии, а сама выкладка пропускается. Проверено
+        # прогоном 31404722915. У верхушки main вызов другой:
+        # `comfy --skip-prompt --no-enable-telemetry env`.
+        uses: Comfy-Org/publish-node-action@d2366e7abb6ab16f3bb03e3520ae25c8cf749bc9
         with:
           personal_access_token: ${{ secrets.REGISTRY_ACCESS_TOKEN }} ## Add your own personal access token to your Github Repository secrets and reference it here.
