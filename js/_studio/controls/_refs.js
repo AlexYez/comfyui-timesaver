@@ -10,6 +10,7 @@
 import { deckSection } from "../_shell.js";
 import { makeDropZone, annotatedImageUrl } from "../_dnd.js";
 import { localized } from "./_shared.js";
+import { createHiddenFileInput } from "../../_theme.js";
 
 // Each slot maps to an optional image marker (ref_1..ref_N). Filling a slot
 // uploads the blob immediately; the run only carries annotated names. Empty
@@ -28,10 +29,7 @@ export const render = (control, ctx) => {
     const slots = [];
     const teardowns = [];
 
-    const fileInput = document.createElement("input");
-    fileInput.type = "file";
-    fileInput.accept = "image/*";
-    fileInput.className = "ts-ui-file";
+    const fileInput = createHiddenFileInput({ accept: "image/*" });
     document.body.appendChild(fileInput);
     teardowns.push(() => fileInput.remove());
     let pickTarget = -1;
@@ -45,7 +43,13 @@ export const render = (control, ctx) => {
         try {
             const annotated = await ctx.uploadImage(blob, name || `ref_${index + 1}.png`);
             slots[index].value = annotated;
-            slots[index].img.src = URL.createObjectURL(blob);
+            // Свой адрес держим сами: чужой blob-адрес может быть отозван
+            // владельцем (так и было с кадром, вынутым из ролика), и в слоте
+            // оставалась битая картинка.
+            releaseUrl(index);
+            const url = URL.createObjectURL(blob);
+            slots[index].url = url;
+            slots[index].img.src = url;
             slots[index].button.classList.add("is-filled");
             emit();
         } catch (err) {
@@ -53,8 +57,16 @@ export const render = (control, ctx) => {
         }
     }
 
+    /** Отпустить адрес прошлого превью — иначе они копятся за сессию. */
+    function releaseUrl(index) {
+        const url = slots[index]?.url;
+        if (url) URL.revokeObjectURL(url);
+        if (slots[index]) slots[index].url = "";
+    }
+
     function clear(index) {
         slots[index].value = "";
+        releaseUrl(index);
         slots[index].img.removeAttribute("src");
         slots[index].button.classList.remove("is-filled");
         emit();
@@ -94,7 +106,7 @@ export const render = (control, ctx) => {
             onDrop: async ([item]) => fill(index, await item.getBlob(), item.name),
         }));
         row.appendChild(button);
-        slots.push({ button, img, value: "" });
+        slots.push({ button, img, value: "", url: "" });
     }
     emit();
 
@@ -109,9 +121,11 @@ export const render = (control, ctx) => {
                 const annotated = String(list[index] || "");
                 slot.value = annotated;
                 if (annotated) {
+                    releaseUrl(index);
                     slot.img.src = annotatedImageUrl(annotated);
                     slot.button.classList.add("is-filled");
                 } else {
+                    releaseUrl(index);
                     slot.img.removeAttribute("src");
                     slot.button.classList.remove("is-filled");
                 }

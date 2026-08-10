@@ -33,13 +33,24 @@ registerAssetProvider({
     detect: () => typeof window.tsArtiusBrowser?.mountPanel === "function",
     mount(host, ctx) {
         const handle = window.tsArtiusBrowser.mountPanel(host, {
-            filter: { types: ["image"] },
+            // ⚠️ Ролики тоже показываем. Студия работает по кадру, но выбрать
+            // этот кадр человек должен из ролика — и первым делом он его
+            // ищет. Пока фильтр стоял на «только изображения», карточки видео
+            // в панели не было вовсе, и перетаскивать было нечего: со стороны
+            // это выглядело как «видео вообще не тянется».
+            filter: { types: ["image", "video"] },
             multi: false,
-            onPick: (asset) => ctx.onPick?.({
-                type: "image",
-                name: asset.filename,
-                url: asset.file_url,
-            }),
+            // Клик по карточке кладёт картинку на сцену. Для ролика это не
+            // работает — сначала нужен кадр, а спросить о нём умеет только
+            // перетаскивание; поэтому кликом берём лишь изображения.
+            onPick: (asset) => {
+                if (String(asset.type) !== "image") return;
+                ctx.onPick?.({
+                    type: "image",
+                    name: asset.filename,
+                    url: asset.file_url,
+                });
+            },
         });
         const releaseLightbox = adoptArtiusLightbox();
         // Carry cards by pointer as well. The browser's own HTML5 drag is left
@@ -53,11 +64,15 @@ registerAssetProvider({
                 const panel = path.find((node) => node?.tagName?.toLowerCase()
                     === "ts-artius-browser-panel");
                 const asset = panel?.tsFindItemById?.(Number(card.dataset.cardId));
-                return asset?.file_url && String(asset.type) === "image" ? asset : null;
+                if (!asset?.file_url) return null;
+                const kind = String(asset.type);
+                return kind === "image" || kind === "video" ? asset : null;
             },
             preview: (asset) => asset.preview_url || asset.file_url,
             item: (asset) => ({
-                type: "image",
+                // Тип едет как есть: по нему студия решает, спросить ли про
+                // кадр. Соврать «картинка» значило бы отдать в холст ролик.
+                type: String(asset.type) === "video" ? "video" : "image",
                 name: asset.filename || "artius.png",
                 getBlob: async () => {
                     const response = await fetch(asset.file_url);

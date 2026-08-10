@@ -78,6 +78,48 @@ export const render = (control, ctx) => {
         if (emit) ctx.onChange(control.param, stops[index]);
     }
     slider.addEventListener("input", () => { index = Number(slider.value); sync(); });
+
+    // ⚠️ Своё перетаскивание поверх штатного.
+    //
+    // Штатный <input type=range> тянется сам, и в headless-проверке он тянулся
+    // во всех семействах. Но у владельца перетаскивание не работало: клик по
+    // ступени срабатывал, а тянуть было нельзя — значит жест где-то
+    // перехватывался (оверлей, соседний слушатель, устройство ввода). Спорить с
+    // этим бессмысленно: берём указатель себе явно и ведём ползунок сами.
+    //
+    // Захват указателя переживает уход курсора с дорожки: тянуть можно и мимо
+    // элемента, как и положено ползунку.
+    function indexAt(clientX) {
+        const box = slider.getBoundingClientRect();
+        if (!(box.width > 0)) return index;
+        const part = Math.max(0, Math.min(1, (clientX - box.left) / box.width));
+        return Math.round(part * (stops.length - 1));
+    }
+
+    let dragging = false;
+    slider.addEventListener("pointerdown", (event) => {
+        if (slider.disabled || event.button !== 0) return;
+        dragging = true;
+        try { slider.setPointerCapture(event.pointerId); } catch { /* не критично */ }
+        const next = indexAt(event.clientX);
+        if (next !== index) { index = next; sync(); }
+    });
+    slider.addEventListener("pointermove", (event) => {
+        if (!dragging) return;
+        // Кнопка — источник правды: потерянный pointerup не должен оставить
+        // ползунок приклеенным к курсору.
+        if ((event.buttons & 1) === 0) { dragging = false; return; }
+        const next = indexAt(event.clientX);
+        if (next !== index) { index = next; sync(); }
+    });
+    const endDrag = (event) => {
+        if (!dragging) return;
+        dragging = false;
+        try { slider.releasePointerCapture(event.pointerId); } catch { /* уже отпущен */ }
+    };
+    slider.addEventListener("pointerup", endDrag);
+    slider.addEventListener("pointercancel", endDrag);
+
     sync();
 
     return {

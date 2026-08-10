@@ -61,7 +61,8 @@ import {
     weightToCss,
 } from "./_ideogram_shared.js";
 
-import { TS_UI_CLASS, ensureThemeStyles } from "../_theme.js";
+import { TS_UI_CLASS, ensureThemeStyles, askText, askConfirm, notify }
+    from "../_theme.js";
 
 const STYLE_ID = "ts-ideogram-editor-styles";
 
@@ -1490,9 +1491,9 @@ export function openIdeogramEditor(node, { design, presets, onSave, graphRef }) 
         const impBtn = tip(el("button", "ts-ideoe-btn ghost small", tr("import_btn")), "tip_design_import");
         impBtn.addEventListener("click", () => importDesignFiles());
         const delBtn = tip(el("button", "ts-ideoe-btn danger small", "🗑"), "tip_design_delete");
-        delBtn.addEventListener("click", () => {
-            const ok = sel.value && window.confirm(tr("design_delete_confirm"));
-            parkFocus();  // confirm() dropped focus onto <body>
+        delBtn.addEventListener("click", async () => {
+            const ok = sel.value && await askConfirm(tr("design_delete_confirm"));
+            parkFocus();  // диалог мог увести фокус на <body>
             if (ok) deleteDesign(sel.value);
         });
         const foot = el("div", "ts-ideoe-btnrow");
@@ -2018,8 +2019,8 @@ export function openIdeogramEditor(node, { design, presets, onSave, graphRef }) 
     }
 
     async function saveCurrentDesign() {
-        const name = window.prompt(tr("design_name_prompt"));
-        parkFocus();  // native dialogs drop focus onto <body>
+        const name = await askText(tr("design_name_prompt"));
+        parkFocus();  // диалог мог увести фокус на <body>
         if (!name || !name.trim()) return;
         const res = await saveDesignPreset(name.trim(), JSON.parse(JSON.stringify(work)));
         if (res && res.ok) await refreshDesigns();
@@ -2046,7 +2047,8 @@ export function openIdeogramEditor(node, { design, presets, onSave, graphRef }) 
             }
         }
         await refreshDesigns();
-        window.alert(added ? tr("import_done", { n: added }) : tr("import_empty"));
+        await notify(added ? tr("import_done", { n: added }) : tr("import_empty"),
+                     added ? "success" : "warn");
         parkFocus();
     }
 
@@ -2072,14 +2074,15 @@ export function openIdeogramEditor(node, { design, presets, onSave, graphRef }) 
         mpVal.textContent = mp.toFixed(1);
         updateDimsReadout();
     });
-    clearBtn.addEventListener("click", () => {
+    // async: подтверждение спрашивает диалог ComfyUI, а он отвечает обещанием.
+    clearBtn.addEventListener("click", async () => {
         const st = work.style || {};
         const hasContent = work.blocks.length || work.ref
             || (st.color_palette || []).length || (work.background_palette || []).length || (st.lighting_palette || []).length
             || work.background || work.high_level_description
             || st.aesthetics || st.lighting || st.photo || st.art_style || st.preset_id;
-        const confirmed = !hasContent || window.confirm(tr("clear_confirm"));
-        parkFocus();  // confirm() dropped focus onto <body>
+        const confirmed = !hasContent || await askConfirm(tr("clear_confirm"));
+        parkFocus();  // диалог мог увести фокус на <body>
         if (!confirmed) return;
         // Wipe everything that is "content" — blocks, style, ALL colour palettes
         // (image + background + lighting), background, brief and the reference

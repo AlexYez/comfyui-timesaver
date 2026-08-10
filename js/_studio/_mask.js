@@ -332,7 +332,16 @@ export function createMaskCanvas(options = {}) {
         if (!cursor.classList.contains("is-preview")) cursor.style.display = "none";
     });
 
-    async function loadImage(url) {
+    /**
+     * Показать картинку на холсте.
+     *
+     * @param {string} url адрес
+     * @param {object} [options]
+     * @param {boolean} [options.keepView] Не возвращать вписанный вид. Нужно
+     *   при листании версий одного кадра: человек приблизил кусок ровно
+     *   затем, чтобы сравнить его до и после, и сброс масштаба это отменяет.
+     */
+    async function loadImage(url, { keepView = false } = {}) {
         const image = new Image();
         image.crossOrigin = "anonymous";
         await new Promise((resolve, reject) => {
@@ -352,8 +361,10 @@ export function createMaskCanvas(options = {}) {
         state.undo.length = 0;
         state.redo.length = 0;
         canvas.classList.add("has-image");
-        // Новая картинка приходит вписанной целиком, каким бы ни был вид до неё.
-        state.fitted = true;
+        // Новая картинка приходит вписанной целиком, каким бы ни был вид до
+        // неё. Версии одного кадра — не «новая картинка»: там вид сохраняется,
+        // а `resize()` сам решит, вписывать ли (по флагу `fitted`).
+        if (!keepView) state.fitted = true;
         resize();
     }
 
@@ -416,6 +427,30 @@ export function createMaskCanvas(options = {}) {
         getBrush: () => state.brush,
         setEraser: (on) => { state.eraser = Boolean(on); },
         clearMask: () => { state.undo.push(snapshot()); state.redo.length = 0; restore(null); },
+        /**
+         * Картинка холста как data-URL.
+         *
+         * Именно картинка, без маски: её отправляют в соседнюю вкладку, а маска
+         * принадлежит этой задаче и туда не едет. Данные берутся у самого
+         * изображения, поэтому годится и то, что пришло после перерисовки.
+         */
+        imageDataUrl: () => {
+            if (!state.image) return "";
+            const canvas = document.createElement("canvas");
+            canvas.width = state.imageW;
+            canvas.height = state.imageH;
+            canvas.getContext("2d").drawImage(state.image, 0, 0);
+            return canvas.toDataURL("image/png");
+        },
+        /** Забыть картинку и маску — холст становится пустым. */
+        clearImage: () => {
+            state.image = null;
+            state.imageW = 0;
+            state.imageH = 0;
+            state.undo.length = 0;
+            state.redo.length = 0;
+            restore(null);
+        },
         undo: () => {
             const prev = state.undo.pop();
             if (prev !== undefined) { state.redo.push(snapshot()); restore(prev); }

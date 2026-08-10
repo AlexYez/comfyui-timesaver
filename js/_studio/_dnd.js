@@ -66,17 +66,24 @@ export function registerDropSource(normalizer) {
 // ── built-in sources ────────────────────────────────────────────────────── //
 registerDropSource({
     id: "os-files",
-    sniff: (dt) => [...(dt?.types || [])].includes("Files"),
-    extract: async (dt) => [...(dt.files || [])]
-        .filter((file) => file.type.startsWith("image/"))
-        .map((file) => ({ type: "image", name: file.name, getBlob: async () => file })),
+    sniff: (shot) => (shot?.types || []).includes("Files"),
+    // Ролик тоже принимаем: студия спросит, какой кадр из него взять.
+    extract: async (shot) => (shot.files || [])
+        .filter((file) => file.type.startsWith("image/")
+                          || file.type.startsWith("video/"))
+        .map((file) => ({
+            type: file.type.startsWith("video/") ? "video" : "image",
+            mime: file.type,
+            name: file.name,
+            getBlob: async () => file,
+        })),
 });
 
 registerDropSource({
     id: "studio-gallery",
-    sniff: (dt) => [...(dt?.types || [])].includes(STUDIO_ASSET_MIME),
-    extract: async (dt) => {
-        const payload = JSON.parse(dt.getData(STUDIO_ASSET_MIME) || "{}");
+    sniff: (shot) => (shot?.types || []).includes(STUDIO_ASSET_MIME),
+    extract: async (shot) => {
+        const payload = JSON.parse(shot.data?.[STUDIO_ASSET_MIME] || "{}");
         const list = Array.isArray(payload) ? payload : [payload];
         return list.filter((a) => a?.url).map((asset) => ({
             type: "image",
@@ -99,16 +106,17 @@ registerDropSource({
     // types stripped. Artius also parks the payload on window for exactly
     // this case (its canvas bridge relies on the same fallback), so a drag
     // in flight from it is accepted either way.
-    sniff: (dt) => [...(dt?.types || [])].includes(ARTIUS_MIME)
-        || Boolean(window.__tsArtiusDraggedAsset),
-    extract: async (dt) => {
-        const raw = dt.getData(ARTIUS_MIME) || window.__tsArtiusDraggedAsset || "";
+    sniff: (shot) => (shot?.types || []).includes(ARTIUS_MIME)
+        || Boolean(shot?.artius),
+    extract: async (shot) => {
+        const raw = shot.data?.[ARTIUS_MIME] || shot.artius || "";
         const payload = typeof raw === "string" ? JSON.parse(raw || "null") : raw;
         const list = Array.isArray(payload) ? payload : payload ? [payload] : [];
         return list
-            .filter((asset) => asset?.file_url && String(asset.type) === "image")
+            .filter((asset) => asset?.file_url
+                && ["image", "video"].includes(String(asset.type)))
             .map((asset) => ({
-                type: "image",
+                type: String(asset.type) === "video" ? "video" : "image",
                 name: asset.filename || "artius.png",
                 getBlob: async () => {
                     const response = await fetch(asset.file_url);
@@ -122,9 +130,9 @@ registerDropSource({
 // ComfyUI node previews drag as plain image URLs.
 registerDropSource({
     id: "uri-list",
-    sniff: (dt) => [...(dt?.types || [])].includes("text/uri-list"),
-    extract: async (dt) => {
-        const uri = (dt.getData("text/uri-list") || "").split("\n")[0]?.trim();
+    sniff: (shot) => (shot?.types || []).includes("text/uri-list"),
+    extract: async (shot) => {
+        const uri = (shot.data?.["text/uri-list"] || "").split("\n")[0]?.trim();
         if (!uri || !/^https?:|^\//.test(uri)) return [];
         return [{
             type: "image",
@@ -140,15 +148,65 @@ registerDropSource({
     },
 });
 
-export function sniffDrop(dataTransfer) {
-    return NORMALIZERS.some((n) => n.sniff(dataTransfer));
+/**
+ * Снимок брошенного — СИНХРОННО, до первой уступки управления.
+ *
+ * ⚠️ Из-за отсутствия этого снимка перетаскивание из Artius «иногда» не
+ * работало, и «иногда» здесь было закономерностью:
+ *
+ * 1. `DataTransfer` живёт только пока событие обрабатывается. Стоит обработчику
+ *    сделать `await` — и `getData()` начинает возвращать пустую строку. А
+ *    разбор источников шёл по очереди, каждый через `await`: успеет ли Artius
+ *    прочитать свои данные, зависело от того, уступил ли управление кто-то
+ *    ДРУГОЙ до него.
+ * 2. Запасную метку на `window` (её Artius кладёт для случая, когда MIME не
+ *    виден) сам Artius стирает по `dragend`, а тот приходит сразу после
+ *    `drop` — то есть посреди нашего разбора.
+ *
+ * Снимок снимает обе причины: дальше источники читают обычный объект, и
+ * порядок разбора уже ничего не решает.
+ *
+ * @param {DataTransfer} dataTransfer
+ * @returns {{types: string[], data: Record<string, string>, files: File[],
+ *            artius: string}}
+ */
+export function captureDrop(dataTransfer) {
+    const types = [...(dataTransfer?.types || [])];
+    const data = {};
+    for (const type of types) {
+        // Файлы не читаются как строка, и спрашивать их так — только шуметь.
+        if (type === "Files") continue;
+        try {
+            data[type] = dataTransfer.getData(type) || "";
+        } catch {
+            data[type] = "";
+        }
+    }
+    return {
+        types,
+        data,
+        files: [...(dataTransfer?.files || [])],
+        artius: String(window.__tsArtiusDraggedAsset || ""),
+    };
 }
 
-export async function normalizeDrop(dataTransfer) {
+export function sniffDrop(dataTransfer) {
+    const snapshot = dataTransfer && dataTransfer.types !== undefined
+        ? captureDrop(dataTransfer) : dataTransfer;
+    return NORMALIZERS.some((n) => n.sniff(snapshot));
+}
+
+/**
+ * @param {object} snapshot Результат `captureDrop`. Живой `DataTransfer` тоже
+ *   принимается — но только там, где точно нет ни одного await до разбора.
+ */
+export async function normalizeDrop(snapshot) {
+    const shot = snapshot && snapshot.types !== undefined && !snapshot.data
+        ? captureDrop(snapshot) : snapshot;
     for (const normalizer of NORMALIZERS) {
-        if (!normalizer.sniff(dataTransfer)) continue;
+        if (!normalizer.sniff(shot)) continue;
         try {
-            const items = await normalizer.extract(dataTransfer);
+            const items = await normalizer.extract(shot);
             if (items.length) return items;
         } catch (err) {
             console.warn(`[TS Studio] drop source ${normalizer.id} failed`, err);
@@ -166,6 +224,17 @@ export async function normalizeDrop(dataTransfer) {
  * @param {number} [options.max] Cap on delivered items.
  * @returns {() => void} teardown
  */
+/**
+ * Откуда началось перетаскивание прямо сейчас.
+ *
+ * ⚠️ Нужно ради одного случая, который владелец поймал руками: картинку на
+ * холсте чуть тянут и отпускают ТАМ ЖЕ. Браузер честно считает это
+ * перетаскиванием, зона честно принимает свою же картинку, студия заново её
+ * загружает и подставляет как исходник — посреди прогона это выглядит как
+ * сброс кадра. Перетаскивание в самого себя не должно делать ничего.
+ */
+let dragOrigin = null;
+
 export function makeDropZone(element, options) {
     // Also findable without the drag protocol: the pointer-drag fallback below
     // looks for this attribute under the cursor when a card is released.
@@ -179,19 +248,43 @@ export function makeDropZone(element, options) {
         element.classList.add("is-drag-over");
     };
     const leave = () => element.classList.remove("is-drag-over");
+    // Запоминаем зону, из которой потянули: `dragstart` приходит раньше любого
+    // `dragover`, поэтому к моменту броска ответ уже известен.
+    const onDragStart = () => { dragOrigin = element; };
+    const onDragEnd = () => { dragOrigin = null; };
+    element.addEventListener("dragstart", onDragStart, true);
+    window.addEventListener("dragend", onDragEnd, true);
+
     const drop = async (event) => {
-        if (!sniffDrop(event.dataTransfer)) return;
+        // Бросок в ту же зону, из которой тянули, — это не перенос, а
+        // случайное движение рукой. Гасим событие и ничего не делаем.
+        if (dragOrigin === element) {
+            event.preventDefault();
+            event.stopPropagation();
+            element.classList.remove("is-drag-over");
+            return;
+        }
+        // ⚠️ Снимок — ПЕРВЫМ делом и синхронно: после первого await и
+        // `event.dataTransfer`, и метка Artius на window уже недоступны.
+        const shot = captureDrop(event.dataTransfer);
+        if (!sniffDrop(shot)) return;
         event.preventDefault();
         event.stopPropagation();
         element.classList.remove("is-drag-over");
-        const items = await normalizeDrop(event.dataTransfer);
-        if (items.length) options.onDrop(options.max ? items.slice(0, options.max) : items);
+        const items = await normalizeDrop(shot);
+        // Событие едет вместе с грузом: у меню выбора кадра должно быть место,
+        // где его показать, а это точка, куда бросили.
+        if (items.length) {
+            options.onDrop(options.max ? items.slice(0, options.max) : items, event);
+        }
     };
     element.addEventListener("dragover", over);
     element.addEventListener("dragenter", over);
     element.addEventListener("dragleave", leave);
     element.addEventListener("drop", drop);
     return () => {
+        element.removeEventListener("dragstart", onDragStart, true);
+        window.removeEventListener("dragend", onDragEnd, true);
         delete element.dataset.tsDropzone;
         delete element._tsAcceptItems;
         element.removeEventListener("dragover", over);

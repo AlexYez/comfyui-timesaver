@@ -23,7 +23,10 @@ export function ensureOutFrameStyles() {
     const style = document.createElement("style");
     style.id = STYLE_ID;
     style.textContent = `
-.ts-outframe{position:absolute;display:none;pointer-events:none;z-index:4}
+/* Рамка растянута по коробке отведённого места — сцена уже отвела его под
+   БУДУЩИЙ кадр. Поэтому здесь нет ни одного пикселя из замеров экрана: зум и
+   панорама двигают коробку вместе с рамкой, и разъехаться нечему. */
+.ts-outframe{position:absolute;inset:0;display:none;pointer-events:none;z-index:4}
 .ts-outframe.is-active{display:block}
 /* Рамка будущего кадра: тонкая линия акцента, чтобы границу было видно на
    любой картинке, и подпись с итоговым размером. */
@@ -40,6 +43,37 @@ export function ensureOutFrameStyles() {
     padding:2px 8px;border-radius:999px;font-size:var(--ts-fs-xs);font-weight:600;
     letter-spacing:.02em;white-space:nowrap;
     background:var(--ts-scrim-strong);color:var(--ts-on-media)}
+/* Стрелка в каждой новой области — куда именно поедет край кадра. Полоска
+   говорит «здесь пусто», стрелка добавляет «и вот в эту сторону оно вырастет»:
+   при выборе пропорции это единственное, что читается мгновенно. */
+.ts-outframe__arrow{position:absolute;left:50%;top:50%;width:34px;height:34px;
+    margin:-17px 0 0 -17px;display:flex;align-items:center;justify-content:center;
+    border-radius:999px;background:var(--ts-scrim-strong);color:var(--ts-on-media);
+    font-size:15px;line-height:1;font-weight:700;
+    animation:ts-outframe-nudge 1.8s ease-in-out infinite}
+/* Каждая сторона толкает свою стрелку в свою сторону: направление и есть
+   сообщение, поэтому у полос оно разное. */
+.ts-outframe__band[data-side="top"] .ts-outframe__arrow{--ts-nudge-x:0px;--ts-nudge-y:-7px}
+.ts-outframe__band[data-side="bottom"] .ts-outframe__arrow{--ts-nudge-x:0px;--ts-nudge-y:7px}
+.ts-outframe__band[data-side="left"] .ts-outframe__arrow{--ts-nudge-x:-7px;--ts-nudge-y:0px}
+.ts-outframe__band[data-side="right"] .ts-outframe__arrow{--ts-nudge-x:7px;--ts-nudge-y:0px}
+@keyframes ts-outframe-nudge{
+    0%,100%{transform:translate(0,0);opacity:.85}
+    50%{transform:translate(var(--ts-nudge-x,0),var(--ts-nudge-y,0));opacity:1}}
+/* Узкая полоса не вместит кружок — там честнее ничего не рисовать, чем
+   выпускать стрелку за пределы области. */
+.ts-outframe__band.is-narrow .ts-outframe__arrow{display:none}
+/* ⚠️ Бегущего света по новым областям здесь больше НЕТ. Он появился, когда
+   рамка была единственным признаком работы; теперь работу показывает кольцо
+   поверх кадра, а полосы, едущие слева направо, стали лишним слоем поверх
+   картинки. Убрано по просьбе владельца — не возвращать без повода. */
+/* Пришло превью — штриховка и стрелки не нужны: под ними уже видно, что
+   именно дорисовалось. Контур кадра остаётся. */
+.ts-outframe.is-previewing .ts-outframe__band{background:none;
+    background-image:none;animation:none}
+.ts-outframe.is-previewing .ts-outframe__arrow{opacity:0}
+.ts-outframe.is-working .ts-outframe__box{border-color:var(--ts-accent);
+    box-shadow:0 0 0 1px var(--ts-accent-line)}
 `;
     document.head.appendChild(style);
 }
@@ -66,11 +100,26 @@ export function parseFrameAspect(text) {
  * @param {number} aspect ширина/высота нового кадра
  * @returns {{frame:{width:number,height:number},
  *            inner:{left:number,top:number,width:number,height:number},
- *            bands:Array<{left:number,top:number,width:number,height:number}>}}
+ *            bands:Array<{left:number,top:number,width:number,height:number,
+ *                         side:"top"|"bottom"|"left"|"right"}>}}
  */
+/**
+ * Ниже этой доли кадра прирост не показываем.
+ *
+ * Два процента на глаз — это несколько пикселей на любом разумном экране:
+ * рисовать там полосу значит показывать шов, которого человек не заказывал.
+ */
+const MIN_GROWTH = 0.02;
+
 export function outpaintFrame(image, aspect) {
-    const width = Math.max(1, image?.width || 0);
-    const height = Math.max(1, image?.height || 0);
+    // ⚠️ Защита от нуля — это ПРОВЕРКА, а не `Math.max(1, ...)`. Так здесь и
+    // было, пока размер приходил в пикселях. Потом расчёт перешёл на доли, и
+    // вертикальный кадр (ширина 0.5625 при высоте 1) молча превращался в
+    // квадрат: полосы считались уже, чем надо, и между ними и картинкой
+    // оставались серые прямоугольники. На горизонтальных кадрах ширина всегда
+    // больше единицы, поэтому годами не всплывало.
+    const width = image?.width > 0 ? image.width : 1;
+    const height = image?.height > 0 ? image.height : 1;
     const ratio = aspect > 0 ? aspect : 1;
     const own = width / height;
 
@@ -79,23 +128,39 @@ export function outpaintFrame(image, aspect) {
         ? { width, height: width / ratio }
         : { width: height * ratio, height };
 
+    // ⚠️ Почти совпавшая пропорция — это НЕ повод рисовать полоску.
+    // Результат прошлого прогона нода округляет до кратности 32, поэтому
+    // «21:9» на деле 2.320 вместо 2.333: по краям остаётся несколько пикселей,
+    // и на экране они читались серой ниткой между кадром и новой областью
+    // (замечено владельцем при повторном расширении). Если прирост меньше
+    // порога — считаем, что по этой оси расширять нечего, и кадр занимает её
+    // целиком.
+    const growX = (frame.width - width) / frame.width;
+    const growY = (frame.height - height) / frame.height;
     const inner = {
-        left: (frame.width - width) / 2,
-        top: (frame.height - height) / 2,
-        width,
-        height,
+        left: growX < MIN_GROWTH ? 0 : (frame.width - width) / 2,
+        top: growY < MIN_GROWTH ? 0 : (frame.height - height) / 2,
+        width: growX < MIN_GROWTH ? frame.width : width,
+        height: growY < MIN_GROWTH ? frame.height : height,
     };
 
     const bands = [];
-    const push = (left, top, w, h) => {
-        if (w > 0.5 && h > 0.5) bands.push({ left, top, width: w, height: h });
+    // Сторона едет вместе с полосой: по ней рисуется стрелка, и вычислять её
+    // заново в отрисовке значило бы считать одну геометрию дважды.
+    // ⚠️ Порог — ДОЛЯ кадра, а не пиксели. Когда расчёт перешёл на доли,
+    // прежнее «больше половины пикселя» стало «больше половины кадра», и все
+    // полосы молча отбрасывались: рамка не появлялась вовсе.
+    const minW = frame.width * 0.002;
+    const minH = frame.height * 0.002;
+    const push = (left, top, w, h, side) => {
+        if (w > minW && h > minH) bands.push({ left, top, width: w, height: h, side });
     };
-    push(0, 0, frame.width, inner.top);                                   // сверху
+    push(0, 0, frame.width, inner.top, "top");
     push(0, inner.top + inner.height, frame.width,
-         frame.height - inner.top - inner.height);                        // снизу
-    push(0, inner.top, inner.left, inner.height);                         // слева
+         frame.height - inner.top - inner.height, "bottom");
+    push(0, inner.top, inner.left, inner.height, "left");
     push(inner.left + inner.width, inner.top,
-         frame.width - inner.left - inner.width, inner.height);           // справа
+         frame.width - inner.left - inner.width, inner.height, "right");
     return { frame, inner, bands };
 }
 
@@ -118,6 +183,10 @@ export function frameResolution(aspect, megapixels) {
 /**
  * @returns {{element, show, hide, isActive}}
  */
+/** Куда показывает стрелка в каждой из новых областей. */
+const ARROW_BY_SIDE = { top: "\u2191", bottom: "\u2193",
+                        left: "\u2190", right: "\u2192" };
+
 export function createOutpaintFrame() {
     ensureOutFrameStyles();
     const element = document.createElement("div");
@@ -133,34 +202,53 @@ export function createOutpaintFrame() {
         /**
          * Показать рамку вокруг картинки на сцене.
          *
+         * Единицы здесь — доли самой рамки, а не пиксели экрана: сцена уже
+         * отвела место под будущий кадр, рамка растянута по нему, а полосы
+         * ставятся в процентах. Так показ не зависит ни от зума, ни от размера
+         * окна, и пересчитывать его не нужно вовсе.
+         *
          * @param {object} options
-         * @param {DOMRect} options.imageRect прямоугольник картинки
-         * @param {DOMRect} options.hostRect коробка, в которой лежит рамка
+         * @param {number} options.imageRatio ширина/высота картинки на сцене
          * @param {string} options.aspect выбранная пропорция, «21:9»
          * @param {number} options.megapixels бюджет размера
          * @param {string} [options.label] подпись; по умолчанию — размер
          */
-        show({ imageRect, hostRect, aspect, megapixels, label }) {
-            if (!imageRect || !hostRect || !(imageRect.height > 0)) return false;
+        show({ imageRatio, aspect, megapixels, label }) {
+            if (!(imageRatio > 0)) return false;
             const ratio = parseFrameAspect(aspect);
-            const plan = outpaintFrame(imageRect, ratio);
-            // Рамка может вылезти за сцену — она и должна: человеку важно
-            // видеть, что кадр станет шире, даже если целиком он не помещается.
-            element.style.left = `${imageRect.left - hostRect.left - plan.inner.left}px`;
-            element.style.top = `${imageRect.top - hostRect.top - plan.inner.top}px`;
-            element.style.width = `${plan.frame.width}px`;
-            element.style.height = `${plan.frame.height}px`;
+            const plan = outpaintFrame({ width: imageRatio, height: 1 }, ratio);
+            const pctX = (value) => `${(value / plan.frame.width) * 100}%`;
+            const pctY = (value) => `${(value / plan.frame.height) * 100}%`;
 
             for (const old of [...element.querySelectorAll(".ts-outframe__band")]) {
                 old.remove();
             }
+            // Дорисовывать нечего — показывать рамку не о чем. Так же и после
+            // прогона: результат уже нужной формы, полос вокруг него нет.
+            if (!plan.bands.length) {
+                element.classList.remove("is-active");
+                const target0 = frameResolution(ratio, megapixels);
+                size.textContent = label || `${target0.width} × ${target0.height}`;
+                return false;
+            }
             for (const band of plan.bands) {
                 const strip = document.createElement("div");
                 strip.className = "ts-outframe__band";
-                strip.style.left = `${band.left}px`;
-                strip.style.top = `${band.top}px`;
-                strip.style.width = `${band.width}px`;
-                strip.style.height = `${band.height}px`;
+                strip.dataset.side = band.side || "";
+                strip.style.left = pctX(band.left);
+                strip.style.top = pctY(band.top);
+                strip.style.width = pctX(band.width);
+                strip.style.height = pctY(band.height);
+                // Кружку со стрелкой нужно место. Мерить его в пикселях экрана
+                // здесь нечем, да и незачем: узкая полоса узка в любых
+                // единицах — считаем по доле от рамки.
+                strip.classList.toggle("is-narrow",
+                    Math.min(band.width / plan.frame.width,
+                             band.height / plan.frame.height) < 0.08);
+                const arrow = document.createElement("div");
+                arrow.className = "ts-outframe__arrow";
+                arrow.textContent = ARROW_BY_SIDE[band.side] || "";
+                strip.appendChild(arrow);
                 element.insertBefore(strip, box);
             }
             const target = frameResolution(ratio, megapixels);
@@ -168,8 +256,29 @@ export function createOutpaintFrame() {
             element.classList.add("is-active");
             return plan.bands.length > 0;
         },
+        /**
+         * Идёт ли сейчас прогон.
+         *
+         * Рамка — единственное место, где расширение может показать работу до
+         * первого превью: закрывать исходник полноэкранной анимацией нельзя,
+         * человек смотрит именно на него и на то, куда он вырастет.
+         */
+        setWorking(on) {
+            element.classList.toggle("is-working", Boolean(on));
+        },
+        /**
+         * Пришло первое превью.
+         *
+         * Штриховка говорила «здесь пусто»; когда сквозь исходник проступает
+         * дорисовка, это уже неправда — остаётся только контур будущего кадра.
+         */
+        setPreviewing(on) {
+            element.classList.toggle("is-previewing", Boolean(on));
+        },
         hide() {
             element.classList.remove("is-active");
+            element.classList.remove("is-working");
+            element.classList.remove("is-previewing");
             for (const band of [...element.querySelectorAll(".ts-outframe__band")]) {
                 band.remove();
             }

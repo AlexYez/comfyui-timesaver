@@ -83,7 +83,7 @@ The deck is deliberately short for this model: format, resolution and the whole 
 - **Library** — recent server images (or Artius Browser when installed). Its fullscreen viewer opens above the studio and closes with its own Escape.
 - **Queue** — ComfyUI's own queue, so studio jobs and graph runs appear side by side. Drag to reorder, × drops a job, **Clear** removes every pending one, **Stop** interrupts what is running.
 
-The panel collapses by its edge grip or the Tab key.
+The panel collapses by its edge grip or Ctrl+B.
 
 ## Recreating a session from an image
 
@@ -128,5 +128,6 @@ Build a workflow in ComfyUI, add the markers from the `TS/Studio` category (para
 ## Shortcuts
 
 - Ctrl+Enter — Run; Esc — close the studio
-- Tab — collapse/expand the asset panel
+- Ctrl+B — collapse/expand the asset panel
+- Tab — move to the next control
 - In Inpaint: [ and ] — brush size; Ctrl+Z / Ctrl+Y — undo and redo

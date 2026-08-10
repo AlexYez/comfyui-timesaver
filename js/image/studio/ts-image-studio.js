@@ -192,9 +192,15 @@ function setupStudioNode(node) {
     const host = document.createElement("div");
     host.className = `${TS_UI_CLASS} ts-istudio-launch`;
     host.style.cssText = "display:flex;align-items:center;justify-content:center;padding:6px";
+    // Сборка студии идёт секундами, и без отклика кнопка выглядит мёртвой —
+    // человек жмёт ещё раз. Вторую студию это больше не создаёт (сторож в
+    // `openStudio`), но молчать всё равно нельзя: гасим кнопку на время.
     const button = createOpenInterfaceButton(() => {
+        if (button.disabled) return;
+        button.disabled = true;
         openStudio(node, persistFor(node))
-            .catch((err) => console.error("[TS Studio] failed to open", err));
+            .catch((err) => console.error("[TS Studio] failed to open", err))
+            .finally(() => { button.disabled = false; });
     });
     host.appendChild(button);
     node.addDOMWidget("ts_studio_launch", "div", host, {

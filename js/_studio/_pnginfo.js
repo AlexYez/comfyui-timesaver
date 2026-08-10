@@ -185,3 +185,93 @@ export async function studioStateFromPng(blob) {
         }),
     };
 }
+
+/**
+ * Промпт, записанный в картинке. Первое найденное — оно и есть.
+ *
+ * Порядок опроса — от самого точного к самому общему:
+ *
+ *   1. `ts_studio` — снимок самой студии: ровно то, что человек написал.
+ *   2. `prompt` — граф ComfyUI: берётся текст той ноды, которая кормит
+ *      положительное обусловливание. Отрицательный промпт сюда попасть не
+ *      должен, поэтому узлы со словом `negative` в связях отбрасываются.
+ *   3. `parameters` — формат A1111: первая строка до «Negative prompt:».
+ *
+ * ⚠️ Пусто — это законный ответ. Картинка могла быть снята телефоном, и
+ * выдумывать за неё промпт нельзя: в пачке это обернулось бы десятком кадров
+ * не о том.
+ *
+ * @param {Record<string, string>} text чанки из `readPngText`
+ * @returns {string} промпт или пустая строка
+ */
+export function promptFromPngText(text = {}) {
+    const studio = text[STUDIO_STATE_CHUNK];
+    if (studio) {
+        try {
+            const state = JSON.parse(studio);
+            const found = state?.values?.prompt ?? state?.prompt;
+            if (typeof found === "string" && found.trim()) return found.trim();
+        } catch { /* чанк битый — идём дальше */ }
+    }
+
+    if (text.prompt) {
+        try {
+            const graph = JSON.parse(text.prompt);
+            const found = positivePromptFromGraph(graph);
+            if (found) return found;
+        } catch { /* не JSON — идём дальше */ }
+    }
+
+    if (typeof text.parameters === "string" && text.parameters.trim()) {
+        const [positive] = text.parameters.split(/\r?\n?Negative prompt:/);
+        if (positive.trim()) return positive.trim();
+    }
+    return "";
+}
+
+/**
+ * Положительный промпт из графа ComfyUI.
+ *
+ * Как отличить его от отрицательного без запуска графа: смотрим, во ЧТО узел
+ * включён. Сэмплеры называют свои входы `positive` и `negative`, и этого
+ * достаточно. Если сэмплера в графе нет (чужая сборка), берём первый текст —
+ * ошибиться тут дешевле, чем не найти ничего.
+ *
+ * @param {object} graph граф в формате API
+ * @returns {string}
+ */
+export function positivePromptFromGraph(graph) {
+    const nodes = Object.entries(graph || {});
+    const positive = new Set();
+    const negative = new Set();
+    for (const [, node] of nodes) {
+        for (const [name, link] of Object.entries(node?.inputs || {})) {
+            if (!Array.isArray(link) || typeof link[0] !== "string") continue;
+            if (/negative/i.test(name)) negative.add(link[0]);
+            else if (/positive|conditioning/i.test(name)) positive.add(link[0]);
+        }
+    }
+    const textOf = (id) => {
+        const value = graph?.[id]?.inputs?.text;
+        return typeof value === "string" ? value.trim() : "";
+    };
+    for (const id of positive) {
+        if (negative.has(id)) continue;
+        const text = textOf(id);
+        if (text) return text;
+    }
+    // Сэмплера не нашлось: берём первый текстовый энкодер, не помеченный
+    // отрицательным.
+    for (const [id, node] of nodes) {
+        if (!/CLIPTextEncode|TextEncode/i.test(String(node?.class_type || ""))) continue;
+        if (negative.has(id)) continue;
+        const text = textOf(id);
+        if (text) return text;
+    }
+    return "";
+}
+
+/** Удобство: картинка → промпт. */
+export async function promptFromPng(blob) {
+    return promptFromPngText(await readPngText(blob));
+}

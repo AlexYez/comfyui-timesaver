@@ -159,6 +159,9 @@ export function createRunProgress(options = {}) {
             state.previewsSeen = (state.previewsSeen || 0) + 1;
             return {
                 show: state.previewsSeen > skip,
+                // Номер кадра с начала прогона: разделу может понадобиться свой
+                // порог пропуска — в расширении шум занимает один шаг, а не два.
+                index: state.previewsSeen,
                 tileIndex: state.tileIndex,
             };
         },

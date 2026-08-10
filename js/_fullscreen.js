@@ -19,6 +19,7 @@
 // openFullscreenOverlay(element, {...}); the returned handle closes it. Do NOT
 // reinvent the overlay per node.
 
+import { hotkeysAllowed, isTypingTarget } from "./_keys.js";
 import { TS_UI_CLASS } from "./_theme.js";
 
 // Overlays that a fullscreen editor may legitimately stack ON TOP of itself —
@@ -203,6 +204,20 @@ export function openFullscreenOverlay(content, options = {}) {
     const onDragStart = () => { dragging = true; };
     const onDragStop = () => { dragging = false; };
 
+    // Пришёл ли фокус С КЛАВИАТУРЫ. Ставится на Tab и снимается на любом
+    // нажатии мышью — та самая проверка, по которой браузеры решают, рисовать
+    // ли кольцо фокуса.
+    let keyboardNav = false;
+
+    /** Элемент, которым пользуются с клавиатуры: по нему ходят табом. */
+    function isInteractive(target) {
+        const tag = target?.tagName;
+        if (tag === "BUTTON" || (tag === "A" && target.hasAttribute("href"))) return true;
+        const index = target?.getAttribute?.("tabindex");
+        if (index !== null && index !== undefined && index !== "-1") return true;
+        return target?.getAttribute?.("role") === "button";
+    }
+
     function onFocusIn(event) {
         if (dragging) return;
         const target = event.target;
@@ -211,11 +226,76 @@ export function openFullscreenOverlay(content, options = {}) {
         // Real fields (text inputs, sliders, selects) legitimately keep focus;
         // everything else re-parks so the graph's hotkeys stay disarmed.
         if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || target?.isContentEditable) return;
+        // ⚠️ А вот кнопки раньше фокус не удерживали НИКОГДА, и обойти студию
+        // табом было невозможно: ни рельса разделов, ни Run, ни сохранение с
+        // клавиатуры не достигались вовсе. Парковка нужна против горячих
+        // клавиш графа, а они приходят от мыши, не от Tab, — поэтому при
+        // клавиатурном обходе интерактивный элемент фокус оставляет себе.
+        if (keyboardNav && isInteractive(target)) return;
         parkFocus();
+    }
+
+    /**
+     * Что внутри оверлея можно взять фокусом — в порядке обхода.
+     *
+     * Считается на каждый Tab, а не запоминается: дека студии перестраивается
+     * при каждой смене раздела и модели, и список, снятый заранее, устареет
+     * раньше, чем им воспользуются.
+     */
+    function focusablesInside() {
+        const query = "button, [href], input, select, textarea, "
+            + "[tabindex]:not([tabindex=\"-1\"])";
+        return [...modal.querySelectorAll(query)].filter((element) => (
+            element !== keyAnchor
+            && !element.disabled
+            && element.tabIndex !== -1
+            // Невидимое в обходе не участвует: `offsetParent` пуст и у
+            // `display:none`, и у всего, что лежит внутри свёрнутой панели.
+            && (element.offsetParent !== null || element === doc.activeElement)
+        ));
+    }
+
+    /**
+     * Не выпустить фокус из модального окна.
+     *
+     * ⚠️ Без этого Tab уводил фокус на холст графа ЗА оверлеем: студия
+     * занимает весь экран, а обход шёл по документу дальше, и человек
+     * оказывался в невидимом ему интерфейсе. Модальное окно обязано замыкать
+     * обход на себе.
+     *
+     * @returns {boolean} перехвачено ли нажатие
+     */
+    function keepTabInside(event) {
+        const items = focusablesInside();
+        if (!items.length) return false;
+        const active = doc.activeElement;
+        const at = items.indexOf(active);
+        const edge = event.shiftKey ? 0 : items.length - 1;
+        // Снаружи (в том числе на служебном якоре) — заходим с края.
+        if (at < 0 || at === edge) {
+            event.preventDefault();
+            items[event.shiftKey ? items.length - 1 : 0].focus();
+            return true;
+        }
+        return false;
     }
 
     function onKeyDown(event) {
         if (!open) return;
+        if (event.key === "Tab") {
+            keyboardNav = true;
+            if (keepTabInside(event)) {
+                event.stopPropagation();
+                return;
+            }
+        }
+        // Клавиши обхода не должны доходить до графа: пока фокус на кнопке
+        // студии, LiteGraph видит те же нажатия. Действие самой кнопки от
+        // этого не страдает — его выполняет браузер, а не слушатели.
+        if (keyboardNav && isInteractive(event.target)
+            && (event.key === "Tab" || event.key === "Enter" || event.key === " ")) {
+            event.stopPropagation();
+        }
         // Something is stacked above us (an embedded lightbox): it gets the
         // keystroke, including its own Escape-to-close.
         if (overlayAboveIsOpen(doc)) return;
@@ -225,10 +305,24 @@ export function openFullscreenOverlay(content, options = {}) {
             close();
             return;
         }
-        try { onKey?.(event); } catch (err) { console.warn("[TS Fullscreen] key handler failed", err); }
+        // ⚠️ Пока человек печатает, простые клавиши принадлежат полю. Без этой
+        // строки буква «e» в промпте студии переключала ластик, `[` и `]` меняли
+        // кисть, а Tab складывал панель (js/_keys.js). Комбинации с Ctrl/Cmd
+        // проходят: Ctrl+Enter «запустить» нужен и во время набора.
+        if (!hotkeysAllowed(event)) return;
+        const typing = isTypingTarget(event.target);
+        try {
+            // Второй аргумент — чтобы обработчик мог отсеять и то, что с
+            // модификатором принадлежит полю (Ctrl+Z — отмена текста).
+            onKey?.(event, { typing });
+        } catch (err) {
+            console.warn("[TS Fullscreen] key handler failed", err);
+        }
     }
 
     function onPointerDown(event) {
+        // Взялись за мышь — клавиатурный обход кончился, парковка снова главная.
+        keyboardNav = false;
         if (closeOnBackdrop && event.target === modal) close();
     }
 

@@ -1,0 +1,244 @@
+{
+ "p_image": {
+  "class_type": "TS_StudioInputImage",
+  "inputs": {
+   "value": "",
+   "param_name": "source_image",
+   "label": ""
+  },
+  "_meta": {
+   "title": "studio:source_image"
+  }
+ },
+ "p_prompt": {
+  "class_type": "TS_StudioInputText",
+  "inputs": {
+   "value": "Increase image resolution while preserving the original composition, camera angle, pose, framing, lighting, colors and materials.",
+   "param_name": "prompt",
+   "label": ""
+  },
+  "_meta": {
+   "title": "studio:prompt"
+  }
+ },
+ "p_seed": {
+  "class_type": "TS_StudioInputSeed",
+  "inputs": {
+   "value": 0,
+   "param_name": "seed"
+  },
+  "_meta": {
+   "title": "studio:seed"
+  }
+ },
+ "p_denoise": {
+  "class_type": "TS_StudioInputNumber",
+  "inputs": {
+   "value": 0.35,
+   "param_name": "denoise",
+   "label": ""
+  },
+  "_meta": {
+   "title": "studio:denoise"
+  }
+ },
+ "p_steps": {
+  "class_type": "TS_StudioInputNumber",
+  "inputs": {
+   "value": 3,
+   "param_name": "steps",
+   "label": ""
+  },
+  "_meta": {
+   "title": "studio:steps"
+  }
+ },
+ "model_loader": {
+  "class_type": "UNETLoader",
+  "inputs": {
+   "unet_name": "flux2\\flux-2-klein-9b-fp8.safetensors",
+   "weight_dtype": "default"
+  },
+  "_meta": {
+   "title": "studio:model"
+  }
+ },
+ "lora_stack": {
+  "class_type": "TS_StudioLoraStack",
+  "inputs": {
+   "model": [
+    "model_loader",
+    0
+   ]
+  },
+  "_meta": {
+   "title": "studio:loras"
+  }
+ },
+ "clip_loader": {
+  "class_type": "CLIPLoader",
+  "inputs": {
+   "clip_name": "flux2\\qwen_3_8b_fp8mixed.safetensors",
+   "type": "flux2"
+  },
+  "_meta": {
+   "title": "studio:clip"
+  }
+ },
+ "vae_loader": {
+  "class_type": "VAELoader",
+  "inputs": {
+   "vae_name": "flux2\\flux2-vae.safetensors"
+  },
+  "_meta": {
+   "title": "studio:vae"
+  }
+ },
+ "detail_lora": {
+  "class_type": "LoraLoaderModelOnly",
+  "inputs": {
+   "model": [
+    "lora_stack",
+    0
+   ],
+   "lora_name": "flux2\\Samsung_fluxklein9b.safetensors",
+   "strength_model": 0.7
+  }
+ },
+ "encode_pos": {
+  "class_type": "CLIPTextEncode",
+  "inputs": {
+   "text": [
+    "p_prompt",
+    0
+   ],
+   "clip": [
+    "clip_loader",
+    0
+   ]
+  }
+ },
+ "neg_zero": {
+  "class_type": "ConditioningZeroOut",
+  "inputs": {
+   "conditioning": [
+    "encode_pos",
+    0
+   ]
+  }
+ },
+ "encode_latent": {
+  "class_type": "VAEEncode",
+  "inputs": {
+   "pixels": [
+    "resize",
+    0
+   ],
+   "vae": [
+    "vae_loader",
+    0
+   ]
+  }
+ },
+ "sample": {
+  "class_type": "KSampler",
+  "inputs": {
+   "model": [
+    "detail_lora",
+    0
+   ],
+   "seed": [
+    "p_seed",
+    0
+   ],
+   "steps": [
+    "p_steps",
+    1
+   ],
+   "cfg": 1.0,
+   "sampler_name": "euler",
+   "scheduler": "simple",
+   "positive": [
+    "encode_pos",
+    0
+   ],
+   "negative": [
+    "neg_zero",
+    0
+   ],
+   "latent_image": [
+    "encode_latent",
+    0
+   ],
+   "denoise": [
+    "p_denoise",
+    0
+   ]
+  }
+ },
+ "decode": {
+  "class_type": "VAEDecode",
+  "inputs": {
+   "samples": [
+    "sample",
+    0
+   ],
+   "vae": [
+    "vae_loader",
+    0
+   ]
+  }
+ },
+ "studio_out": {
+  "class_type": "TS_StudioOutput",
+  "inputs": {
+   "image": [
+    "decode",
+    0
+   ],
+   "filename_prefix": "ts_studio/session"
+  },
+  "_meta": {
+   "title": "studio:output"
+  }
+ },
+ "studio_manifest": {
+  "class_type": "TS_StudioManifest",
+  "inputs": {
+   "manifest": "{\n  \"schema_version\": \"1.0.0\",\n  \"id\": \"flux2-klein/img2img\",\n  \"label\": {\n    \"en\": \"Image to Image\",\n    \"ru\": \"Image to Image\"\n  },\n  \"family\": \"flux2-klein\",\n  \"family_label\": \"Flux 2 Klein\",\n  \"tier\": 2,\n  \"mode\": \"img2img\",\n  \"order\": 15,\n  \"controls\": [\n    {\n      \"param\": \"prompt\",\n      \"kind\": \"prompt\",\n      \"superprompt\": true\n    },\n    {\n      \"param\": \"megapixels\",\n      \"kind\": \"slider\",\n      \"min\": 0.5,\n      \"max\": 4.0,\n      \"step\": 0.1,\n      \"label\": {\n        \"en\": \"Resolution\",\n        \"ru\": \"Разрешение\"\n      },\n      \"tooltip\": {\n        \"en\": \"Megapixels the picture is resampled to before the model sees it. The aspect ratio is kept; sides are snapped to what this model needs.\",\n        \"ru\": \"До скольких мегапикселей картинка пересчитывается перед моделью. Пропорция сохраняется, стороны округляются под требования модели.\"\n      }\n    },\n    {\n      \"param\": \"denoise\",\n      \"kind\": \"slider\",\n      \"min\": 0.05,\n      \"max\": 0.6,\n      \"step\": 0.05,\n      \"default\": 0.35,\n      \"label\": {\n        \"en\": \"Detail denoise\",\n        \"ru\": \"Денойз деталей\"\n      },\n      \"tooltip\": {\n        \"en\": \"How much the pass invents. 0.2-0.3 stays faithful to the source; 0.45 adds noticeable new detail - good at 1x and 2x, heavy-handed when enlarging fourfold.\",\n        \"ru\": \"Насколько проход домысливает. 0.2–0.3 — верность исходнику; 0.45 заметно добавляет деталей: хорошо для 1x и 2x, многовато при увеличении вчетверо.\"\n      }\n    },\n    {\n      \"param\": \"loras\",\n      \"kind\": \"loras\",\n      \"max\": 8,\n      \"strength\": [\n        -2.0,\n        2.0\n      ]\n    },\n    {\n      \"param\": \"steps\",\n      \"kind\": \"number\",\n      \"advanced\": true,\n      \"min\": 1,\n      \"max\": 30,\n      \"default\": 3,\n      \"label\": {\n        \"en\": \"Steps\",\n        \"ru\": \"Шаги\"\n      }\n    }\n  ],\n  \"refs\": {\n    \"max\": 0\n  },\n  \"requires\": [\n    \"source_image\"\n  ],\n  \"upscale_params\": {\n    \"image\": \"source_image\"\n  },\n  \"negative_prompt\": false,\n  \"models\": [\n    {\n      \"title\": \"studio:model\",\n      \"input\": \"unet_name\",\n      \"folder\": \"diffusion_models\",\n      \"match\": \"flux-2-klein-9b-fp8\"\n    },\n    {\n      \"title\": \"studio:clip\",\n      \"input\": \"clip_name\",\n      \"folder\": \"text_encoders\",\n      \"match\": \"qwen_3_8b_fp8mixed\"\n    },\n    {\n      \"title\": \"studio:vae\",\n      \"input\": \"vae_name\",\n      \"folder\": \"vae\",\n      \"match\": \"flux2-vae\"\n    }\n  ],\n  \"_note_seed\": \"Сида в деке нет намеренно: апскейл повторяют не ради того же зерна, а ради другого. Маркер `p_seed` в графе остался, и на каждый прогон приходит новое число — то же самое, что «Randomize» на постоянку.\",\n  \"tuning\": {\n    \"snap_px\": 64\n  }\n}"
+  }
+ },
+ "p_mp": {
+  "class_type": "TS_StudioInputNumber",
+  "inputs": {
+   "value": 1.5,
+   "param_name": "megapixels",
+   "label": ""
+  }
+ },
+ "resize": {
+  "class_type": "TS_ImageResize",
+  "inputs": {
+   "pixels": [
+    "p_image",
+    0
+   ],
+   "target_width": 0,
+   "target_height": 0,
+   "smaller_side": 0,
+   "larger_side": 0,
+   "scale_factor": 0.0,
+   "keep_proportion": true,
+   "upscale_method": "lanczos",
+   "divisible_by": 64,
+   "megapixels": [
+    "p_mp",
+    0
+   ],
+   "dont_enlarge": false
+  },
+  "_meta": {
+   "title": "studio:resize"
+  }
+ }
+}

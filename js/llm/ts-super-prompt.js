@@ -67,7 +67,15 @@ const STYLE_TEXT = `
     color:var(--ts-text);font-family:var(--ts-font);font-size:var(--ts-fs-sm);line-height:1.3;box-sizing:border-box;}
 .ts-sp.is-drag-over{outline:2px dashed var(--ts-accent-line);outline-offset:-3px;border-radius:6px}
 .ts-sp__bar{display:flex;align-items:center;gap:6px;height:26px;flex:0 0 auto}
-.ts-sp__group{display:inline-flex;align-items:center;gap:2px;flex:0 0 auto}
+/* Микрофон и HQ — одно управление распознаванием речи. Общая рамка вместо
+   зазора: порознь «HQ» читалось как отдельная функция неизвестно от чего.
+   Правка чисто внешняя — ни имён, ни значений виджетов она не трогает, и на
+   сохранённые workflow не влияет. */
+.ts-sp__group{display:inline-flex;align-items:center;gap:0;flex:0 0 auto;
+    border:1px solid var(--ts-border);border-radius:7px;overflow:hidden}
+.ts-sp__group:hover{border-color:var(--ts-border-strong)}
+.ts-sp__group > *{border-radius:0 !important;border:none !important;margin:0}
+.ts-sp__group > * + *{border-left:1px solid var(--ts-border) !important}
 .ts-sp__textarea{flex:1 1 auto;min-height:0;width:100%;resize:none;box-sizing:border-box;
     padding:6px 8px;border-radius:6px;border:1px solid var(--ts-border-soft);
     background:var(--ts-sunken);color:var(--ts-text);font-family:inherit;font-size:var(--ts-fs);line-height:1.4;

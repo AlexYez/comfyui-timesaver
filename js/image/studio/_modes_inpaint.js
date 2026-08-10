@@ -8,6 +8,7 @@
 //             mask + prompt go through the standard studio run path.
 // The mask survives switching engines — paint once, try both.
 
+import { isTypingTarget } from "../../_keys.js";
 import { TS_UI_CLASS, ensureThemeStyles } from "../../_theme.js";
 import { cropBox } from "../../_studio/_crop_geometry.js";
 import { createMaskCanvas } from "../../_studio/_mask.js";
@@ -139,6 +140,9 @@ export function createInpaintMode(ctx) {
     // снимаются в teardown вместе со всем остальным.
     let eraserBeforeAlt = null;
     const onAltDown = (event) => {
+        // В поле ввода Alt — часть набора (Alt+буква на некоторых раскладках),
+        // и менять из-за него инструмент нельзя.
+        if (isTypingTarget(event.target)) return;
         if (event.key !== "Alt" || eraserBeforeAlt !== null) return;
         eraserBeforeAlt = eraser.classList.contains("is-active");
         if (!eraserBeforeAlt) setEraser(true);
@@ -300,10 +304,35 @@ export function createInpaintMode(ctx) {
     };
 
     // ── unified history (plan §6): strokes live inside mask; pixel states here ─ //
+    //
+    // ⚠️ У линейки есть потолок, и выброшенные версии ОТПУСКАЮТ свой кадр.
+    // Каждая версия держит blob результата целиком (полноразмерный кадр —
+    // мегабайты), и без потолка длинная сессия перерисовок удерживала их все
+    // до закрытия вкладки. Само по себе удержание правильное: на них и стоит
+    // откат. Неправильно было не иметь края. Число то же, что у общей линейки
+    // версий в `js/_studio/_history.js`, — чтобы разделы вели себя одинаково.
+    const MAX_VERSIONS = 40;
+
+    /** Отпустить кадр версии, которая больше не нужна. */
+    function releaseVersion(entry) {
+        const url = entry?.url;
+        // Отзываем только СВОИ адреса: `/view?...` принадлежит серверу, и
+        // отзывать там нечего.
+        if (typeof url === "string" && url.startsWith("blob:")) {
+            URL.revokeObjectURL(url);
+        }
+    }
+
     const history = {
         push(entry) {
-            state.versions.splice(state.cursor + 1);
+            // Отрезанное «будущее» больше никем не показывается — отпускаем.
+            for (const dropped of state.versions.splice(state.cursor + 1)) {
+                releaseVersion(dropped);
+            }
             state.versions.push(entry);
+            while (state.versions.length > MAX_VERSIONS) {
+                releaseVersion(state.versions.shift());
+            }
             state.cursor = state.versions.length - 1;
             syncButtons();
         },
@@ -336,7 +365,8 @@ export function createInpaintMode(ctx) {
     }
 
     async function applyVersion(version, maskFrom = null) {
-        await mask.loadImage(version.url);
+        // Листание версий вид не трогает — см. `loadImage`.
+        await mask.loadImage(version.url, { keepView: true });
         state.sourceAnnotated = version.annotated || "";
         state.cleanupWorking = version.working || "";
         if (maskFrom?.mask) await mask.setMaskFromUrl(maskFrom.mask);
@@ -388,6 +418,9 @@ export function createInpaintMode(ctx) {
         await mask.loadImage(url);
         state.sourceAnnotated = annotated;
         state.cleanupWorking = "";
+        // Прежняя линейка кончилась вместе с прежней картинкой: её кадры уже
+        // никто не покажет.
+        for (const dropped of state.versions) releaseVersion(dropped);
         state.versions = [{ kind: "source", url, annotated, working: "" }];
         state.cursor = 0;
         empty.style.display = "none";
@@ -513,6 +546,20 @@ export function createInpaintMode(ctx) {
         acceptRepaintResult,
         noteDraft,
         hasImage: () => mask.hasImage(),
+        /** Что лежит на холсте — для отправки в соседнюю вкладку. */
+        imageUrl: () => mask.imageDataUrl(),
+        /**
+         * Очистить вкладку: холст, маска и путь исходника.
+         *
+         * Черновики и лента не трогаются — человек просил очистить канвас, а не
+         * забыть сделанное.
+         */
+        clear: () => {
+            mask.clearImage();
+            state.sourceAnnotated = "";
+            syncButtons();
+            ctx.onSourceChange?.();
+        },
         hasMask: () => mask.hasMask(),
         maskDataUrl: () => (mask.hasMask() ? mask.maskDataUrl() : ""),
         setMaskFromUrl: (url) => mask.setMaskFromUrl(url),
@@ -535,10 +582,23 @@ export function createInpaintMode(ctx) {
         },
         showPreview,
         hidePreview,
+        /**
+         * Сказать что-то в строку состояния инпэйнта.
+         *
+         * Нужна снаружи: сцена в этом разделе скрыта вместе со своей подписью,
+         * и сообщение приложения (в первую очередь «прогон не удался») иначе
+         * уходит в никуда.
+         */
+        setStatus,
         toggleEraser: () => setEraser(!eraser.classList.contains("is-active")),
         teardown: () => {
             document.removeEventListener("keydown", onAltDown);
             document.removeEventListener("keyup", onAltUp);
+            // Кадры версий держатся на объектных адресах: пока их не отозвать,
+            // браузер хранит blob'ы даже после закрытия студии.
+            for (const dropped of state.versions) releaseVersion(dropped);
+            state.versions = [];
+            state.cursor = -1;
             hidePreview();
             dropTeardown();
             dropTeardown2();

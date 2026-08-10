@@ -7,7 +7,7 @@
 // Контракт отрисовщика: (control, ctx) -> {element, get, set}, и о каждой
 // правке он сообщает через ctx.onChange(param, value).
 
-import { createRatioPicker, isRatioList } from "../../_theme.js";
+import { createRatioCards, createRatioPicker, isRatioList } from "../../_theme.js";
 import { deckSection } from "../_shell.js";
 import { localized } from "./_shared.js";
 
@@ -27,11 +27,21 @@ export const render = (control, ctx) => {
     // instead of a row of words. Decided from the DATA rather than from a flag
     // in the manifest: nothing has to be re-declared, and a list with one
     // non-ratio option (Refine / Replace) keeps the plain buttons.
-    const asRatios = isRatioList(options.map((option) => option.value))
-        ? createRatioPicker({
-            values: options.map((option) => String(option.value)),
-            onSelect: (chosen) => { value = chosen; sync(); },
-        })
+    // Компактный вид по умолчанию: в панели один столбец места. Но манифест
+     // может попросить показать сетку сразу (`"open": true`) — так сделано в
+     // расширении кадра, где пропорция и есть единственный выбор режима, и
+     // прятать её под кнопку значит прятать сам смысл вкладки.
+    const ratioValues = options.map((option) => String(option.value));
+    const asRatios = isRatioList(ratioValues)
+        ? (control.open
+            ? createRatioCards({
+                values: ratioValues,
+                onSelect: (chosen) => { value = chosen; sync(); },
+            })
+            : createRatioPicker({
+                values: ratioValues,
+                onSelect: (chosen) => { value = chosen; sync(); },
+            }))
         : null;
 
     function sync(emit = true) {
@@ -55,7 +65,8 @@ export const render = (control, ctx) => {
         // Tooltips still belong to the options, so they are carried over onto
         // the cards rather than lost with the words.
         for (const option of options) {
-            const button = asRatios.cards.buttons.get(String(option.value));
+            const buttons = asRatios.cards ? asRatios.cards.buttons : asRatios.buttons;
+            const button = buttons.get(String(option.value));
             const tip = localized(option.tooltip, ctx.locale, "");
             if (button && tip) button.title = tip;
             if (button) buttons.set(option.value, button);

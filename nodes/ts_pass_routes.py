@@ -10,6 +10,7 @@ out to the network unless someone asked for it.
 """
 from __future__ import annotations
 
+import json
 import logging
 import shutil
 from pathlib import Path
@@ -235,6 +236,44 @@ async def studio_pack_state(_request):
 # Registers routes only; the pack's loader skips files with no node mappings.
 NODE_CLASS_MAPPINGS: dict = {}
 NODE_DISPLAY_NAME_MAPPINGS: dict = {}
+
+@register_post("/api/ts_studio/batch/prompts")
+async def studio_batch_prompts(request):
+    """Отложить готовые промпты пачки во временный файл.
+
+    Улучшение промптов идёт первой фазой и на двадцати заданиях занимает
+    минуты работы модели. Если после этого закрыть вкладку, всё придётся
+    считать заново — поэтому список ложится на диск ДО того, как начнётся
+    рисование.
+
+    Тело: {"session", "prompts": [...]}. Файл — `temp/ts_studio/`, имя от
+    сессии; временную папку браузер ассетов не индексирует, и в библиотеке
+    он не появится.
+    """
+    try:
+        body = await request.json()
+    except Exception:                       # noqa: BLE001
+        return _json({"error": "expected a JSON body"}, status=400)
+
+    import folder_paths                     # доступен только внутри ComfyUI
+
+    prompts = [str(item) for item in (body.get("prompts") or [])]
+    if not prompts:
+        return _json({"error": "no prompts"}, status=400)
+    # Имя сессии приходит с фронтенда: всё, кроме букв и цифр, отбрасывается —
+    # в имени файла ему делать нечего.
+    session = "".join(ch for ch in str(body.get("session") or "")
+                      if ch.isalnum() or ch in "-_")[:64] or "session"
+
+    target_dir = Path(folder_paths.get_temp_directory()) / "ts_studio"
+    target_dir.mkdir(parents=True, exist_ok=True)
+    target = target_dir / f"batch_{session}.json"
+    target.write_text(json.dumps({"prompts": prompts}, ensure_ascii=False, indent=1),
+                      encoding="utf-8")
+    logger.info("%s batch prompts stashed: %d -> %s", LOG_PREFIX, len(prompts),
+                target.name)
+    return _json({"path": str(target), "count": len(prompts)})
+
 
 @register_post("/api/ts_studio/keep")
 async def studio_keep(request):

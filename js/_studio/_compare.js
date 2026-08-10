@@ -26,10 +26,18 @@ export function ensureCompareStyles() {
 .ts-cmp{position:absolute;inset:0;display:none;align-items:center;justify-content:center;
     overflow:hidden;touch-action:none;user-select:none}
 .ts-cmp.is-active{display:flex}
-.ts-cmp__box{position:relative;max-width:100%;max-height:100%;line-height:0}
-.ts-cmp__img{display:block;max-width:100%;max-height:100%;width:auto;height:auto}
-/* Верхний слой лежит ровно поверх нижнего и обрезается шторкой. */
-.ts-cmp__img--after{position:absolute;inset:0;width:100%;height:100%}
+/* ⚠️ Размер коробки считает JS (fitBox), а не вёрстка. Раньше он вытекал из
+   размеров нижней картинки, а верхняя растягивалась на него насильно
+   (width/height:100%). Пока обе стороны были горизонтальными, это сходило с
+   рук; на кадре 9:16 коробка выходила почти квадратной, и результат в ней
+   оказывался сплющенным. Проценты от высоты, которая сама зависит от
+   содержимого, браузеру решать нечем — отсюда и вся история. */
+.ts-cmp__box{position:relative;line-height:0}
+/* Обе стороны лежат в одной коробке и вписываются в неё: пропорция у коробки
+   уже правильная, а contain страхует случай, когда «до» и «после» сняты в
+   разной пропорции — тогда будет поле, но не растяжение. */
+.ts-cmp__img{position:absolute;inset:0;display:block;width:100%;height:100%;
+    object-fit:contain}
 .ts-cmp__handle{position:absolute;top:0;bottom:0;width:2px;margin-left:-1px;cursor:ew-resize;
     /* Поверх пользовательской картинки: обязана читаться на любом кадре,
        поэтому не токен темы. */
@@ -104,6 +112,38 @@ export function createCompare(strings = {}) {
 
     let split = 0.5;
 
+    /**
+     * Вписать коробку в область по пропорции результата.
+     *
+     * Считается по `clientWidth/clientHeight` области: они не зависят от
+     * масштаба сцены, в отличие от `getBoundingClientRect` (§12.5.3).
+     * Пропорцию задаёт «после» — судят по результату; «до» вписывается в ту
+     * же рамку.
+     */
+    function fitBox() {
+        const width = element.clientWidth;
+        const height = element.clientHeight;
+        const natural = (after.naturalWidth > 0 && after.naturalHeight > 0)
+            ? after.naturalWidth / after.naturalHeight
+            : ((before.naturalWidth > 0 && before.naturalHeight > 0)
+                ? before.naturalWidth / before.naturalHeight : 0);
+        if (!(width > 0 && height > 0 && natural > 0)) return;
+        let boxW = width;
+        let boxH = width / natural;
+        if (boxH > height) { boxH = height; boxW = height * natural; }
+        // Целые пиксели: дробная ширина оставляет по краю полупрозрачный шов.
+        box.style.width = `${Math.round(boxW)}px`;
+        box.style.height = `${Math.round(boxH)}px`;
+    }
+
+    // Размер известен только после загрузки, а область меняется вместе с окном
+    // и панелями — поэтому оба повода пересчитать.
+    before.addEventListener("load", fitBox);
+    after.addEventListener("load", fitBox);
+    const resizeWatch = typeof ResizeObserver === "function"
+        ? new ResizeObserver(() => fitBox()) : null;
+    resizeWatch?.observe(element);
+
     function paint() {
         const pct = (split * 100).toFixed(2);
         // Правая часть — результат: обрезаем его слева по шторке.
@@ -161,6 +201,9 @@ export function createCompare(strings = {}) {
             split = 0.5;
             paint();
             element.classList.add("is-active");
+            // Показались — значит область наконец имеет размер: до этого
+            // `clientWidth` у скрытого блока равен нулю, и считать было нечего.
+            fitBox();
             return true;
         },
         hide() {
@@ -169,6 +212,9 @@ export function createCompare(strings = {}) {
             after.removeAttribute("src");
         },
         isActive: () => element.classList.contains("is-active"),
-        teardown: () => window.removeEventListener("blur", stop),
+        teardown: () => {
+            window.removeEventListener("blur", stop);
+            resizeWatch?.disconnect();
+        },
     };
 }

@@ -9,8 +9,9 @@
 // Tool visibility degrades gracefully: a missing route greys its button out
 // with an explanatory title instead of breaking the field.
 
-import { TS_UI_CLASS, ensureThemeStyles } from "../_theme.js";
+import { TS_UI_CLASS, ensureThemeStyles, createHiddenFileInput } from "../_theme.js";
 import { uploadImage, makeDropZone } from "./_dnd.js";
+import { presetLabel } from "./_prompt_presets.js";
 
 const STYLE_ID = "ts-studio-prompt-tools-styles";
 
@@ -29,6 +30,15 @@ export function ensurePromptToolStyles() {
 .ts-ptools__btn:disabled{opacity:.4;cursor:default}
 .ts-ptools__btn:focus-visible{outline:2px solid var(--ts-accent-line);outline-offset:1px}
 .ts-ptools__btn--accent{background:var(--ts-accent-soft);color:var(--ts-accent);border-color:transparent}
+/* Микрофон и HQ — одно управление распознаванием речи, и выглядеть должны
+   одним: общая рамка, кнопки без своих границ, тонкая черта между ними. Порознь
+   человек читал «HQ» как отдельную функцию неизвестно от чего. */
+.ts-ptools__voice{display:inline-flex;align-items:center;
+    border:1px solid var(--ts-border);border-radius:var(--ts-radius-sm);overflow:hidden}
+.ts-ptools__voice .ts-ptools__btn{border:none;border-radius:0}
+.ts-ptools__voice .ts-ptools__btn + .ts-ptools__btn{
+    border-left:1px solid var(--ts-border)}
+.ts-ptools__voice:hover{border-color:var(--ts-border-strong)}
 .ts-ptools__select{max-width:110px}
 .ts-ptools__rec{color:var(--ts-danger);font-size:var(--ts-fs-xs);display:none;align-items:center;gap:4px}
 .ts-ptools__rec.is-active{display:inline-flex}
@@ -80,6 +90,17 @@ export function ensurePromptToolStyles() {
 .ts-ptools__stylename{display:block;padding:2px 4px 0;white-space:nowrap;overflow:hidden;
     text-overflow:ellipsis;flex:0 0 auto}
 .ts-ptools__styleempty{grid-column:1/-1;padding:10px;text-align:center;color:var(--ts-muted)}
+/* Готовые промпты: список, а не сетка карточек. Показывать тут превью нечего —
+   пресет это текст, и читают его глазами по названию. */
+.ts-ptools__presets{display:flex;flex-direction:column;gap:2px;overflow-y:auto;
+    min-height:0;flex:1}
+.ts-ptools__presetgroup{padding:6px 4px 2px;font-size:var(--ts-fs-xs);
+    color:var(--ts-muted);letter-spacing:.04em;text-transform:uppercase}
+.ts-ptools__preset{display:block;width:100%;text-align:left;padding:5px 7px;
+    border:1px solid transparent;border-radius:var(--ts-radius-sm);background:none;
+    color:var(--ts-text);font-size:var(--ts-fs-sm);cursor:pointer}
+.ts-ptools__preset:hover{background:var(--ts-sunken);border-color:var(--ts-border)}
+.ts-ptools__preset:focus-visible{outline:2px solid var(--ts-accent-line);outline-offset:1px}
 `;
     document.head.appendChild(style);
 }
@@ -95,6 +116,7 @@ const SVG = {
     image: `<svg ${TOOL_ICON_ATTRS}><rect x="3" y="5" width="18" height="14" rx="2.2"/><circle cx="8.6" cy="9.8" r="1.5"/><path d="M4 17l4.8-4.8 3.4 3.4 3-3L21 16.6"/></svg>`,
     palette: `<svg ${TOOL_ICON_ATTRS}><path d="M12 3a9 9 0 1 0 0 18h1a2 2 0 0 0 0-4h-1a2 2 0 0 1 0-4h5a4 4 0 0 0 4-4c0-3.5-4-6-9-6z"/><circle cx="7.6" cy="11.2" r="1"/><circle cx="9.6" cy="7.4" r="1"/><circle cx="13.8" cy="6.6" r="1"/></svg>`,
     wand: `<svg ${TOOL_ICON_ATTRS}><path d="M4.5 19.5L13.5 10.5"/><path d="M17 3l.9 2.1 2.1.9-2.1.9-.9 2.1-.9-2.1-2.1-.9 2.1-.9z"/><path d="M20 13l.6 1.4 1.4.6-1.4.6-.6 1.4-.6-1.4-1.4-.6 1.4-.6z"/></svg>`,
+    list: `<svg ${TOOL_ICON_ATTRS}><path d="M8 6h12"/><path d="M8 12h12"/><path d="M8 18h12"/><path d="M4 6h.01"/><path d="M4 12h.01"/><path d="M4 18h.01"/></svg>`,
 };
 
 function insertAtCursor(textarea, text) {
@@ -118,11 +140,19 @@ function insertAtCursor(textarea, text) {
  * @param {object} options.t Locale strings (studio dictionary).
  * @param {string} options.locale "en" | "ru".
  * @param {object[]} [options.initialStyles] Styles to start selected.
+ * @param {boolean} [options.attach=true] Показывать кнопку «приложить
+ *   картинку». В разделах, работающих НАД картинкой, она лишняя: улучшение
+ *   промпта берёт ту, что уже на холсте.
+ * @param {() => string} [options.currentImage] Адрес картинки на холсте —
+ *   именно её читает ИИ, когда своей приложенной нет.
  * @returns {{getStylePrompts: () => string[], teardown: () => void}}
  */
 export function mountPromptTools(options) {
     ensurePromptToolStyles();
     const { textarea, slot, api, objectInfo, t, locale } = options;
+    // options.enhancePreset — имя системного пресета улучшалки для ЭТОГО
+    // раздела; приходит из манифеста бэкенда. См. подбор ниже.
+    const showAttach = options.attach !== false;
     const wrap = textarea.closest(".ts-studio__prompt") || slot.parentElement;
     wrap.style.position = "relative";
 
@@ -223,10 +253,7 @@ export function mountPromptTools(options) {
 
     // ── attach image (drop / paste / pick) ──────────────────────────────── //
     const attachButton = toolButton(SVG.image, t.pt.attach);
-    const fileInput = document.createElement("input");
-    fileInput.type = "file";
-    fileInput.accept = "image/*";
-    fileInput.className = "ts-ui-file";
+    const fileInput = createHiddenFileInput({ accept: "image/*" });
     document.body.appendChild(fileInput);
     teardowns.push(() => fileInput.remove());
 
@@ -240,7 +267,7 @@ export function mountPromptTools(options) {
     attachX.textContent = "×";
     attachX.title = t.pt.detach;
     attachPreview.append(attachImg, attachX);
-    wrap.appendChild(attachPreview);
+    if (showAttach) wrap.appendChild(attachPreview);
 
     async function attachBlob(blob, name) {
         try {
@@ -300,30 +327,73 @@ export function mountPromptTools(options) {
     });
 
     // ── enhance preset + AI button ──────────────────────────────────────── //
-    const presetSelect = document.createElement("select");
-    presetSelect.className = "ts-ui-select ts-ptools__select";
-    presetSelect.title = t.pt.preset;
+    // ⚠️ Это НЕ элемент интерфейса: в панель он не добавляется. Остался как
+    // носитель выбранного имени — тот же объект читает отправка запроса.
+    // Держим его отдельно от вёрстки, чтобы читатель кода не искал на экране
+    // список, которого там нет.
+    const presetHolder = { value: "" };
     const presetSpec = objectInfo?.TS_SuperPrompt?.input?.required?.system_preset
         ?? objectInfo?.TS_SuperPrompt?.input?.optional?.system_preset;
     // V1 nodes serialise a combo as [options, meta]; V3 as ["COMBO",
     // {options}]. Read both shapes.
     const presets = Array.isArray(presetSpec?.[0]) ? presetSpec[0]
         : Array.isArray(presetSpec?.[1]?.options) ? presetSpec[1].options : [];
-    const defaultPreset = presetSpec?.[1]?.default;
-    for (const preset of presets) {
-        const option = document.createElement("option");
-        option.value = preset;
-        option.textContent = preset;
-        option.selected = preset === defaultPreset;
-        presetSelect.appendChild(option);
+    // КАКАЯ улучшалка работает — решает раздел, а не человек. В конкретной
+    // вкладке осмыслен ровно один пресет из четырнадцати, и выпадающий список
+    // здесь не свобода, а способ ошибиться: перерисовке нужен один диалект,
+    // генерации другой, Ideogram — свой.
+    //
+    // Порядок поиска устроен так, чтобы поменять пресет можно было ОДНОЙ
+    // строкой манифеста, не трогая код:
+    //
+    //   1. `enhance_preset` бэкенда — самое точное;
+    //   2. `designer.preset` — у семейств со своим редактором подписи;
+    //   3. `Image Prompt Enhance` — общее умолчание студии;
+    //   4. умолчание самой ноды — если названия в сборке переименовали.
+    //
+    // Сверка по имени нечувствительна к регистру и лишним пробелам: манифесты
+    // пишут руками, и «inpaint edit instruction» обязан находиться.
+    const normalise = (name) => String(name || "").trim().toLowerCase();
+    const findPreset = (name) => (name
+        ? presets.find((known) => normalise(known) === normalise(name))
+        : undefined);
+    const defaultPreset = findPreset(options.enhancePreset)
+        || findPreset("Image Prompt Enhance")
+        || presetSpec?.[1]?.default;
+    if (options.enhancePreset && !findPreset(options.enhancePreset)) {
+        console.warn("[TS Studio] no such enhance preset:", options.enhancePreset);
     }
+    presetHolder.value = defaultPreset || "";
 
-    const aiButton = toolButton(SVG.wand, t.pt.enhance);
+    const aiButton = toolButton(SVG.wand, defaultPreset
+        ? `${t.pt.enhance} — ${defaultPreset}` : t.pt.enhance);
     aiButton.classList.add("ts-ptools__btn--accent");
     let enhanceSeed = 0;
+    /**
+     * Какую картинку читает ИИ.
+     *
+     * Приложенная вручную — старше: её принесли ради этого. Своей нет — берём
+     * ту, что на холсте: в разделах над картинкой человек именно её и имеет в
+     * виду, нажимая «улучшить промпт».
+     */
+    async function imageForEnhance() {
+        if (state.attached) return state.attached;
+        const url = options.currentImage?.();
+        if (!url) return "";
+        try {
+            const response = await fetch(url);
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            return await uploadImage(api, await response.blob(), "canvas.png");
+        } catch (err) {
+            console.warn("[TS Studio] canvas image for enhance failed", err);
+            return "";
+        }
+    }
+
     aiButton.addEventListener("click", async () => {
         aiButton.disabled = true;
-        setStatus(state.attached ? t.pt.enhancingImage : t.pt.enhancing);
+        const attached = await imageForEnhance();
+        setStatus(attached ? t.pt.enhancingImage : t.pt.enhancing);
         try {
             enhanceSeed += 1;
             const response = await api.fetchApi("/ts_super_prompt/enhance", {
@@ -331,8 +401,8 @@ export function mountPromptTools(options) {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     text: textarea.value,
-                    system_preset: presetSelect.value || undefined,
-                    attached_image: state.attached || undefined,
+                    system_preset: presetHolder.value || undefined,
+                    attached_image: attached || undefined,
                     seed: enhanceSeed,
                 }),
             });
@@ -351,7 +421,6 @@ export function mountPromptTools(options) {
     if (!presets.length) {
         aiButton.disabled = true;
         aiButton.title = t.pt.noSuperPrompt;
-        presetSelect.disabled = true;
     }
 
     // ── styles ──────────────────────────────────────────────────────────── //
@@ -478,6 +547,7 @@ export function mountPromptTools(options) {
 
     styleButton.addEventListener("click", () => {
         const open = !popover.classList.contains("is-open");
+        closePopovers();
         popover.classList.toggle("is-open", open);
         styleButton.classList.toggle("is-active", open);
         if (open) {
@@ -487,18 +557,109 @@ export function mountPromptTools(options) {
         }
     });
     styleSearch.addEventListener("input", () => renderStyleGrid(styleSearch.value));
-    const onDocDown = (event) => {
-        if (!popover.contains(event.target) && event.target !== styleButton
-            && !styleButton.contains(event.target)) {
-            popover.classList.remove("is-open");
-            styleButton.classList.remove("is-active");
+
+    // ── готовые промпты ─────────────────────────────────────────────────── //
+    // Библиотека приходит снаружи: панель не знает, какие тексты уместны в этом
+    // режиме, и нет библиотеки — нет кнопки.
+    const presetGroups = options.presets || [];
+    const presetLibButton = toolButton(SVG.list, t.pt.library);
+    const presetPop = document.createElement("div");
+    presetPop.className = "ts-ptools__popover";
+    const presetSearch = document.createElement("input");
+    presetSearch.type = "text";
+    presetSearch.className = "ts-ui-input";
+    presetSearch.placeholder = t.pt.librarySearch;
+    const presetList = document.createElement("div");
+    presetList.className = "ts-ptools__presets";
+    presetPop.append(presetSearch, presetList);
+
+    function renderPresetList(query) {
+        const needle = query.trim().toLowerCase();
+        presetList.textContent = "";
+        let shown = 0;
+        for (const group of presetGroups) {
+            const matching = (group.items || []).filter((item) => !needle
+                || `${presetLabel(item, locale)} ${presetLabel(item, "en")} ${item.prompt}`
+                    .toLowerCase().includes(needle));
+            if (!matching.length) continue;
+            const title = document.createElement("div");
+            title.className = "ts-ptools__presetgroup";
+            title.textContent = presetLabel(group, locale);
+            presetList.appendChild(title);
+            for (const item of matching) {
+                shown += 1;
+                const row = document.createElement("button");
+                row.type = "button";
+                row.className = "ts-ptools__preset";
+                row.textContent = presetLabel(item, locale);
+                // Целиком текст в подсказке: выбирают по названию, но иногда
+                // хотят увидеть, что именно уедет в промпт.
+                row.title = item.prompt;
+                row.addEventListener("click", () => {
+                    // Дописываем к тому, что человек уже написал, а не заменяем:
+                    // пресет — это добавка про фактуру, а не весь промпт. Стереть
+                    // лишнее проще, чем восстанавливать затёртое.
+                    insertAtCursor(textarea, item.prompt);
+                    closePopovers();
+                    textarea.focus();
+                });
+                presetList.appendChild(row);
+            }
         }
+        if (!shown) {
+            const note = document.createElement("div");
+            note.className = "ts-ptools__styleempty";
+            note.textContent = t.pt.libraryEmpty;
+            presetList.appendChild(note);
+        }
+    }
+
+    presetLibButton.addEventListener("click", () => {
+        const open = !presetPop.classList.contains("is-open");
+        closePopovers();
+        presetPop.classList.toggle("is-open", open);
+        presetLibButton.classList.toggle("is-active", open);
+        if (open) {
+            renderPresetList(presetSearch.value);
+            presetSearch.focus();
+        }
+    });
+    presetSearch.addEventListener("input", () => renderPresetList(presetSearch.value));
+
+    // Оба окна закрываются одинаково — и друг другом тоже: два раскрытых списка
+    // поверх поля перекрывали бы промпт целиком.
+    const popovers = [[popover, styleButton], [presetPop, presetLibButton]];
+    function closePopovers() {
+        for (const [pop, button] of popovers) {
+            pop.classList.remove("is-open");
+            button.classList.remove("is-active");
+        }
+    }
+    const onDocDown = (event) => {
+        for (const [pop, button] of popovers) {
+            if (pop.contains(event.target) || button.contains(event.target)) return;
+        }
+        closePopovers();
     };
     document.addEventListener("pointerdown", onDocDown);
     teardowns.push(() => document.removeEventListener("pointerdown", onDocDown));
 
     // ── assemble ────────────────────────────────────────────────────────── //
-    bar.append(micButton, recBadge, hqChip, attachButton, presetSelect, styleButton, aiButton);
+    const voice = document.createElement("div");
+    voice.className = "ts-ptools__voice";
+    voice.append(micButton, hqChip);
+    bar.append(voice, recBadge);
+    if (showAttach) bar.appendChild(attachButton);
+    // ⚠️ Выбор пресета улучшалки с панели убран. В студии он всегда один и тот
+    // же — «Image Prompt Enhance»: остальные написаны под видео и под разбор
+    // кадра, и в списке они только сбивали. Сам пресет никуда не делся, он
+    // просто больше не спрашивается.
+    bar.append(styleButton);
+    if (presetGroups.length) {
+        wrap.appendChild(presetPop);
+        bar.appendChild(presetLibButton);
+    }
+    bar.appendChild(aiButton);
     slot.append(status, chips);
 
     function toolButton(svg, title) {

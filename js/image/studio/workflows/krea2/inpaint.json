@@ -1,298 +1,299 @@
 {
- "p_prompt": {
-  "class_type": "TS_StudioInputText",
-  "inputs": {
-   "value": "",
-   "param_name": "prompt",
-   "label": ""
-  }
- },
- "p_image": {
-  "class_type": "TS_StudioInputImage",
-  "inputs": {
-   "value": "",
-   "param_name": "source_image",
-   "label": ""
-  }
- },
- "p_mask": {
-  "class_type": "TS_StudioInputMask",
-  "inputs": {
-   "value": "",
-   "param_name": "mask",
-   "label": ""
-  }
- },
- "p_denoise": {
-  "class_type": "TS_StudioInputNumber",
-  "inputs": {
-   "value": 0.35,
-   "param_name": "denoise",
-   "label": ""
-  }
- },
- "p_think": {
-  "class_type": "TS_StudioInputNumber",
-  "inputs": {
-   "value": 10,
-   "param_name": "think_steps",
-   "label": ""
-  }
- },
- "p_steps": {
-  "class_type": "TS_StudioInputNumber",
-  "inputs": {
-   "value": 8,
-   "param_name": "steps",
-   "label": ""
-  }
- },
- "p_cfg": {
-  "class_type": "TS_StudioInputNumber",
-  "inputs": {
-   "value": 1.0,
-   "param_name": "cfg",
-   "label": ""
-  }
- },
- "p_seed": {
-  "class_type": "TS_StudioInputSeed",
-  "inputs": {
-   "value": 0,
-   "param_name": "seed"
-  }
- },
- "model_loader": {
-  "class_type": "UNETLoader",
-  "inputs": {
-   "unet_name": "krea2\\krea2_turbo_int8_convrot.safetensors",
-   "weight_dtype": "default"
+  "p_prompt": {
+    "class_type": "TS_StudioInputText",
+    "inputs": {
+      "value": "",
+      "param_name": "prompt",
+      "label": ""
+    }
   },
-  "_meta": {
-   "title": "studio:model"
-  }
- },
- "lora_stack": {
-  "class_type": "TS_StudioLoraStack",
-  "inputs": {
-   "model": [
-    "model_loader",
-    0
-   ]
-  }
- },
- "clip_loader": {
-  "class_type": "CLIPLoader",
-  "inputs": {
-   "clip_name": "krea2\\Qwen3-VL-4B-Instruct-abliterated_int8.safetensors",
-   "type": "krea2"
+  "p_image": {
+    "class_type": "TS_StudioInputImage",
+    "inputs": {
+      "value": "",
+      "param_name": "source_image",
+      "label": ""
+    }
   },
-  "_meta": {
-   "title": "studio:clip"
-  }
- },
- "vae_loader": {
-  "class_type": "VAELoader",
-  "inputs": {
-   "vae_name": "qwen\\qwen_image_vae.safetensors"
+  "p_mask": {
+    "class_type": "TS_StudioInputMask",
+    "inputs": {
+      "value": "",
+      "param_name": "mask",
+      "label": ""
+    }
   },
-  "_meta": {
-   "title": "studio:vae"
-  }
- },
- "encode_pos": {
-  "class_type": "CLIPTextEncode",
-  "inputs": {
-   "text": [
-    "p_prompt",
-    0
-   ],
-   "clip": [
-    "clip_loader",
-    0
-   ]
-  }
- },
- "neg_zero": {
-  "class_type": "ConditioningZeroOut",
-  "inputs": {
-   "conditioning": [
-    "encode_pos",
-    0
-   ]
-  }
- },
- "encode_latent": {
-  "class_type": "VAEEncode",
-  "inputs": {
-   "pixels": [
-    "inpaint_crop",
-    0
-   ],
-   "vae": [
-    "vae_loader",
-    0
-   ]
-  }
- },
- "latent_mask": {
-  "class_type": "SetLatentNoiseMask",
-  "inputs": {
-   "samples": [
-    "encode_latent",
-    0
-   ],
-   "mask": [
-    "inpaint_crop",
-    2
-   ]
-  }
- },
- "sample": {
-  "class_type": "LanPaint_KSampler",
-  "inputs": {
-   "model": [
-    "differential",
-    0
-   ],
-   "seed": [
-    "p_seed",
-    0
-   ],
-   "steps": [
-    "p_steps",
-    1
-   ],
-   "cfg": [
-    "p_cfg",
-    0
-   ],
-   "sampler_name": "euler",
-   "scheduler": "simple",
-   "positive": [
-    "encode_pos",
-    0
-   ],
-   "negative": [
-    "neg_zero",
-    0
-   ],
-   "latent_image": [
-    "latent_mask",
-    0
-   ],
-   "denoise": [
-    "p_denoise",
-    0
-   ],
-   "LanPaint_NumSteps": [
-    "p_think",
-    1
-   ],
-   "LanPaint_PromptMode": "Image First",
-   "LanPaint_Info": "TS Image Studio",
-   "Inpainting_mode": "🖼️ Image Inpainting"
-  }
- },
- "decode": {
-  "class_type": "VAEDecode",
-  "inputs": {
-   "samples": [
-    "sample",
-    0
-   ],
-   "vae": [
-    "vae_loader",
-    0
-   ]
-  }
- },
- "studio_out": {
-  "class_type": "TS_StudioOutput",
-  "inputs": {
-   "image": [
-    "inpaint_restore",
-    0
-   ],
-   "filename_prefix": "ts_studio/session",
-   "folder": "temp"
+  "p_denoise": {
+    "class_type": "TS_StudioInputNumber",
+    "inputs": {
+      "value": 0.35,
+      "param_name": "denoise",
+      "label": ""
+    }
   },
-  "_note_folder": "Перерисовка — черновик, пока человек не сказал иначе. Проб бывает десяток, и раньше каждая ложилась в библиотеку рядом с настоящими работами. Понравившееся переносит кнопка Save на панели инпэйнта (роут /api/ts_studio/keep)."
- },
- "studio_manifest": {
-  "class_type": "TS_StudioManifest",
-  "inputs": {
-   "manifest": "{\n  \"schema_version\": \"1.0.0\",\n  \"id\": \"krea2/inpaint\",\n  \"label\": {\n    \"en\": \"Inpaint\",\n    \"ru\": \"Inpaint\"\n  },\n  \"family\": \"krea2\",\n  \"family_label\": \"Krea 2 Turbo\",\n  \"tier\": 3,\n  \"mode\": \"inpaint\",\n  \"order\": 30,\n  \"controls\": [\n    {\n      \"param\": \"prompt\",\n      \"kind\": \"prompt\",\n      \"superprompt\": true\n    },\n    {\n      \"param\": \"seed\",\n      \"kind\": \"seed\"\n    },\n    {\n      \"param\": \"denoise\",\n      \"kind\": \"strength\",\n      \"default\": 0.3,\n      \"stops\": [\n        0.1,\n        0.2,\n        0.3,\n        0.45,\n        1.0\n      ],\n      \"replace_at\": 0.6,\n      \"replace_label\": {\n        \"en\": \"Replace\",\n        \"ru\": \"Замена\"\n      },\n      \"label\": {\n        \"en\": \"Repaint strength\",\n        \"ru\": \"Сила перерисовки\"\n      },\n      \"tooltip\": {\n        \"en\": \"How much of the masked area is redrawn. Up to 45% the model reworks the pixels that are there — skin, texture, small fixes. Replace regenerates the area from scratch at full strength.\",\n        \"ru\": \"Насколько сильно перерисовывается область под маской. До 45% модель дорабатывает то, что есть, — кожу, фактуру, мелкие правки. Замена рисует область заново, на полную силу.\"\n      }\n    },\n    {\n      \"param\": \"megapixels\",\n      \"kind\": \"slider\",\n      \"min\": 0.5,\n      \"max\": 2.0,\n      \"step\": 0.1,\n      \"default\": 0.8,\n      \"label\": {\n        \"en\": \"Processing resolution\",\n        \"ru\": \"Разрешение обработки\"\n      },\n      \"tooltip\": {\n        \"en\": \"Megapixels the masked crop is redrawn at. A small selection is upscaled toward this budget (more detail, slower); an oversized one is scaled down to it.\",\n        \"ru\": \"В скольких мегапикселях перерисовывается вырезанный по маске фрагмент. Маленькое выделение увеличивается до этого бюджета (больше деталей, дольше), слишком большое — уменьшается.\"\n      }\n    },\n    {\n      \"param\": \"loras\",\n      \"kind\": \"loras\",\n      \"max\": 8,\n      \"strength\": [\n        -2.0,\n        2.0\n      ]\n    },\n    {\n      \"param\": \"think_steps\",\n      \"kind\": \"number\",\n      \"advanced\": true,\n      \"min\": 1,\n      \"max\": 12,\n      \"label\": {\n        \"en\": \"Think steps (quality)\",\n        \"ru\": \"Шаги размышления (качество)\"\n      },\n      \"default\": 2,\n      \"tooltip\": {\n        \"en\": \"How many times the sampler re-checks the repaint against its surroundings on every step. Each turn is another pass through the model, so this is the main quality-versus-time knob: 2 is enough for an ordinary repaint, 5+ for a hard one.\",\n        \"ru\": \"Сколько раз на каждом шаге сэмплер сверяет перерисовку с окружением. Каждый заход — это ещё один проход через модель, поэтому здесь и решается «качество против времени»: 2 хватает обычной правке, 5 и больше — сложной.\"\n      }\n    },\n    {\n      \"param\": \"steps\",\n      \"kind\": \"number\",\n      \"advanced\": true,\n      \"min\": 1,\n      \"max\": 60,\n      \"label\": {\n        \"en\": \"Steps\",\n        \"ru\": \"Шаги\"\n      }\n    },\n    {\n      \"param\": \"cfg\",\n      \"kind\": \"number\",\n      \"advanced\": true,\n      \"min\": 0,\n      \"max\": 15,\n      \"step\": 0.1,\n      \"label\": {\n        \"en\": \"CFG\",\n        \"ru\": \"CFG\"\n      }\n    }\n  ],\n  \"refs\": {\n    \"max\": 0\n  },\n  \"requires\": [\n    \"source_image\",\n    \"mask\"\n  ],\n  \"negative_prompt\": false,\n  \"models\": [\n    {\n      \"title\": \"studio:model\",\n      \"input\": \"unet_name\",\n      \"folder\": \"diffusion_models\",\n      \"match\": \"krea2.*turbo|Artius_Krea2\"\n    },\n    {\n      \"title\": \"studio:clip\",\n      \"input\": \"clip_name\",\n      \"folder\": \"text_encoders\",\n      \"match\": \"qwen3vl_4b|Qwen3-VL-4B\"\n    },\n    {\n      \"title\": \"studio:vae\",\n      \"input\": \"vae_name\",\n      \"folder\": \"vae\",\n      \"match\": \"qwen_image_vae\"\n    }\n  ],\n  \"dependencies\": [\n    {\n      \"pack\": \"LanPaint\",\n      \"nodes\": [\n        \"LanPaint_KSampler\",\n        \"LanPaint_MaskBlend\"\n      ]\n    }\n  ]\n}"
-  }
- },
- "p_megapixels": {
-  "class_type": "TS_StudioInputNumber",
-  "inputs": {
-   "value": 0.8,
-   "param_name": "megapixels",
-   "label": ""
-  }
- },
- "p_context": {
-  "class_type": "TS_StudioInputNumber",
-  "inputs": {
-   "value": 25.0,
-   "param_name": "context_pct",
-   "label": ""
-  }
- },
- "inpaint_crop": {
-  "class_type": "TS_StudioInpaintCrop",
-  "inputs": {
-   "image": [
-    "p_image",
-    0
-   ],
-   "mask": [
-    "p_mask",
-    0
-   ],
-   "megapixels": [
-    "p_megapixels",
-    0
-   ],
-   "context_pct": [
-    "p_context",
-    0
-   ],
-   "feather_pct": 5.0,
-   "denoise": [
-    "p_denoise",
-    0
-   ],
-   "snap_px": 64
+  "p_think": {
+    "class_type": "TS_StudioInputNumber",
+    "inputs": {
+      "value": 4,
+      "param_name": "think_steps",
+      "label": ""
+    }
   },
-  "_note_snap": "Кратность сторон обрабатываемого выреза. Замерено: `ae` и `qwen_image_vae` делят на 8, оба `flux2-vae` — на 16, а поверх VAE трансформер режет латент на патчи. 64 кратно всем этим делителям сразу и потому надёжно; у Qwen 56 — его арифметика завязана на собственный энкодер и к степеням двойки не сводится."
- },
- "inpaint_restore": {
-  "class_type": "TS_StudioInpaintRestore",
-  "inputs": {
-   "image": [
-    "p_image",
-    0
-   ],
-   "patch": [
-    "decode",
-    0
-   ],
-   "plan": [
-    "inpaint_crop",
-    3
-   ]
+  "p_steps": {
+    "class_type": "TS_StudioInputNumber",
+    "inputs": {
+      "value": 8,
+      "param_name": "steps",
+      "label": ""
+    }
+  },
+  "p_cfg": {
+    "class_type": "TS_StudioInputNumber",
+    "inputs": {
+      "value": 1.0,
+      "param_name": "cfg",
+      "label": ""
+    }
+  },
+  "p_seed": {
+    "class_type": "TS_StudioInputSeed",
+    "inputs": {
+      "value": 0,
+      "param_name": "seed"
+    }
+  },
+  "model_loader": {
+    "class_type": "UNETLoader",
+    "inputs": {
+      "unet_name": "krea2\\krea2_turbo_int8_convrot.safetensors",
+      "weight_dtype": "default"
+    },
+    "_meta": {
+      "title": "studio:model"
+    }
+  },
+  "lora_stack": {
+    "class_type": "TS_StudioLoraStack",
+    "inputs": {
+      "model": [
+        "model_loader",
+        0
+      ]
+    }
+  },
+  "clip_loader": {
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "krea2\\Qwen3-VL-4B-Instruct-abliterated_int8.safetensors",
+      "type": "krea2"
+    },
+    "_meta": {
+      "title": "studio:clip"
+    }
+  },
+  "vae_loader": {
+    "class_type": "VAELoader",
+    "inputs": {
+      "vae_name": "qwen\\qwen_image_vae.safetensors"
+    },
+    "_meta": {
+      "title": "studio:vae"
+    }
+  },
+  "encode_pos": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": [
+        "p_prompt",
+        0
+      ],
+      "clip": [
+        "clip_loader",
+        0
+      ]
+    }
+  },
+  "neg_zero": {
+    "class_type": "ConditioningZeroOut",
+    "inputs": {
+      "conditioning": [
+        "encode_pos",
+        0
+      ]
+    }
+  },
+  "encode_latent": {
+    "class_type": "VAEEncode",
+    "inputs": {
+      "pixels": [
+        "inpaint_crop",
+        0
+      ],
+      "vae": [
+        "vae_loader",
+        0
+      ]
+    }
+  },
+  "latent_mask": {
+    "class_type": "SetLatentNoiseMask",
+    "inputs": {
+      "samples": [
+        "encode_latent",
+        0
+      ],
+      "mask": [
+        "inpaint_crop",
+        2
+      ]
+    }
+  },
+  "sample": {
+    "class_type": "TS_LangevinInpaint",
+    "inputs": {
+      "model": [
+        "differential",
+        0
+      ],
+      "seed": [
+        "p_seed",
+        0
+      ],
+      "steps": [
+        "p_steps",
+        1
+      ],
+      "cfg": [
+        "p_cfg",
+        0
+      ],
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "positive": [
+        "encode_pos",
+        0
+      ],
+      "negative": [
+        "neg_zero",
+        0
+      ],
+      "latent_image": [
+        "latent_mask",
+        0
+      ],
+      "denoise": [
+        "p_denoise",
+        0
+      ],
+      "think_steps": [
+        "p_think",
+        1
+      ],
+      "guidance": 16.0,
+      "step_size": 0.2,
+      "beta": 1.0,
+      "friction": 15.0
+    }
+  },
+  "decode": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": [
+        "sample",
+        0
+      ],
+      "vae": [
+        "vae_loader",
+        0
+      ]
+    }
+  },
+  "studio_out": {
+    "class_type": "TS_StudioOutput",
+    "inputs": {
+      "image": [
+        "inpaint_restore",
+        0
+      ],
+      "filename_prefix": "ts_studio/session",
+      "folder": "temp"
+    },
+    "_note_folder": "Перерисовка — черновик, пока человек не сказал иначе. Проб бывает десяток, и раньше каждая ложилась в библиотеку рядом с настоящими работами. Понравившееся переносит кнопка Save на панели инпэйнта (роут /api/ts_studio/keep)."
+  },
+  "studio_manifest": {
+    "class_type": "TS_StudioManifest",
+    "inputs": {
+      "manifest": "{\"schema_version\": \"1.0.0\", \"id\": \"krea2/inpaint\", \"label\": {\"en\": \"Inpaint\", \"ru\": \"Inpaint\"}, \"family\": \"krea2\", \"family_label\": \"Krea 2 Turbo\", \"tier\": 3, \"mode\": \"inpaint\", \"order\": 30, \"controls\": [{\"param\": \"prompt\", \"kind\": \"prompt\", \"superprompt\": true}, {\"param\": \"seed\", \"kind\": \"seed\"}, {\"param\": \"denoise\", \"kind\": \"strength\", \"default\": 0.3, \"stops\": [0.1, 0.2, 0.3, 0.45, 1.0], \"replace_at\": 0.6, \"replace_label\": {\"en\": \"Replace\", \"ru\": \"Замена\"}, \"label\": {\"en\": \"Repaint strength\", \"ru\": \"Сила перерисовки\"}, \"tooltip\": {\"en\": \"How much of the masked area is redrawn. Up to 45% the model reworks the pixels that are there — skin, texture, small fixes. Replace regenerates the area from scratch at full strength.\", \"ru\": \"Насколько сильно перерисовывается область под маской. До 45% модель дорабатывает то, что есть, — кожу, фактуру, мелкие правки. Замена рисует область заново, на полную силу.\"}}, {\"param\": \"megapixels\", \"kind\": \"slider\", \"min\": 0.5, \"max\": 2.0, \"step\": 0.1, \"default\": 0.8, \"label\": {\"en\": \"Processing resolution\", \"ru\": \"Разрешение обработки\"}, \"tooltip\": {\"en\": \"Megapixels the masked crop is redrawn at. A small selection is upscaled toward this budget (more detail, slower); an oversized one is scaled down to it.\", \"ru\": \"В скольких мегапикселях перерисовывается вырезанный по маске фрагмент. Маленькое выделение увеличивается до этого бюджета (больше деталей, дольше), слишком большое — уменьшается.\"}}, {\"param\": \"loras\", \"kind\": \"loras\", \"max\": 8, \"strength\": [-2.0, 2.0]}, {\"param\": \"think_steps\", \"kind\": \"number\", \"advanced\": true, \"min\": 1, \"max\": 12, \"label\": {\"en\": \"Think steps (quality)\", \"ru\": \"Шаги размышления (качество)\"}, \"default\": 2, \"tooltip\": {\"en\": \"How many times the sampler re-checks the repaint against its surroundings on every step. Each turn is another pass through the model, so this is the main quality-versus-time knob: 2 is enough for an ordinary repaint, 5+ for a hard one.\", \"ru\": \"Сколько раз на каждом шаге сэмплер сверяет перерисовку с окружением. Каждый заход — это ещё один проход через модель, поэтому здесь и решается «качество против времени»: 2 хватает обычной правке, 5 и больше — сложной.\"}}, {\"param\": \"steps\", \"kind\": \"number\", \"advanced\": true, \"min\": 1, \"max\": 60, \"label\": {\"en\": \"Steps\", \"ru\": \"Шаги\"}}, {\"param\": \"cfg\", \"kind\": \"number\", \"advanced\": true, \"min\": 0, \"max\": 15, \"step\": 0.1, \"label\": {\"en\": \"CFG\", \"ru\": \"CFG\"}}], \"refs\": {\"max\": 0}, \"requires\": [\"source_image\", \"mask\"], \"negative_prompt\": false, \"models\": [{\"title\": \"studio:model\", \"input\": \"unet_name\", \"folder\": \"diffusion_models\", \"match\": \"krea2.*turbo|Artius_Krea2\"}, {\"title\": \"studio:clip\", \"input\": \"clip_name\", \"folder\": \"text_encoders\", \"match\": \"qwen3vl_4b|Qwen3-VL-4B\"}, {\"title\": \"studio:vae\", \"input\": \"vae_name\", \"folder\": \"vae\", \"match\": \"qwen_image_vae\"}], \"enhance_preset\": \"Inpaint Region Describe\"}"
+    }
+  },
+  "p_megapixels": {
+    "class_type": "TS_StudioInputNumber",
+    "inputs": {
+      "value": 0.8,
+      "param_name": "megapixels",
+      "label": ""
+    }
+  },
+  "p_context": {
+    "class_type": "TS_StudioInputNumber",
+    "inputs": {
+      "value": 25.0,
+      "param_name": "context_pct",
+      "label": ""
+    }
+  },
+  "inpaint_crop": {
+    "class_type": "TS_StudioInpaintCrop",
+    "inputs": {
+      "image": [
+        "p_image",
+        0
+      ],
+      "mask": [
+        "p_mask",
+        0
+      ],
+      "megapixels": [
+        "p_megapixels",
+        0
+      ],
+      "context_pct": [
+        "p_context",
+        0
+      ],
+      "feather_pct": 5.0,
+      "denoise": [
+        "p_denoise",
+        0
+      ],
+      "snap_px": 64
+    },
+    "_note_snap": "Кратность сторон обрабатываемого выреза. Замерено: `ae` и `qwen_image_vae` делят на 8, оба `flux2-vae` — на 16, а поверх VAE трансформер режет латент на патчи. 64 кратно всем этим делителям сразу и потому надёжно; у Qwen 56 — его арифметика завязана на собственный энкодер и к степеням двойки не сводится."
+  },
+  "inpaint_restore": {
+    "class_type": "TS_StudioInpaintRestore",
+    "inputs": {
+      "image": [
+        "p_image",
+        0
+      ],
+      "patch": [
+        "decode",
+        0
+      ],
+      "plan": [
+        "inpaint_crop",
+        3
+      ]
+    }
+  },
+  "differential": {
+    "class_type": "DifferentialDiffusion",
+    "inputs": {
+      "model": [
+        "lora_stack",
+        0
+      ]
+    }
   }
- },
- "differential": {
-  "class_type": "DifferentialDiffusion",
-  "inputs": {
-   "model": [
-    "lora_stack",
-    0
-   ]
-  }
- }
 }

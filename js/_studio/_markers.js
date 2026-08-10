@@ -51,6 +51,9 @@ export function inspectBackend(graph) {
     }
     // manifest.literals: {param: {node|title, input}} — values written straight
     // into a named node input (booleans, combos), no marker node required.
+    // Целей может быть НЕСКОЛЬКО: размер куска — это одно решение человека и
+    // сразу две стороны у резчика, и разводить их по двум контролам значило бы
+    // разрешить им разойтись.
     const literals = new Map(Object.entries(manifest.literals || {}));
     return { params, models, output, manifest, loraStack, literals };
 }
@@ -65,6 +68,8 @@ export function inspectBackend(graph) {
  * @param {Record<string, string>} [run.modelFiles] "studio:model" -> combo value.
  * @param {{name: string, strength: number}[]} [run.loras] Chain order = array order.
  * @param {string} [run.filenamePrefix] Session save prefix for the output marker.
+ * @param {"temp"|"output"} [run.outputFolder] Куда класть результат. Черновик
+ *   идёт в `temp`: пока человек не нажал Save, пробе в библиотеке не место.
  * @param {string[]} [run.dropParams] Optional image params left unset: their
  *   marker AND everything that only feeds through it is removed, so optional
  *   reference branches disappear instead of failing on an empty filename.
@@ -82,9 +87,11 @@ export function patchBackend(graph, spec, run) {
     for (const [name, value] of Object.entries(run.values || {})) {
         const literal = spec.literals?.get(name);
         if (literal) {
-            const targetId = literal.node
-                || spec.models.find((m) => m.title === literal.title)?.nodeId;
-            if (targetId && out[targetId]) out[targetId].inputs[literal.input] = value;
+            for (const target of (Array.isArray(literal) ? literal : [literal])) {
+                const targetId = target.node
+                    || spec.models.find((m) => m.title === target.title)?.nodeId;
+                if (targetId && out[targetId]) out[targetId].inputs[target.input] = value;
+            }
             continue;
         }
         const param = spec.params.get(name);
@@ -106,6 +113,9 @@ export function patchBackend(graph, spec, run) {
 
     if (run.filenamePrefix) {
         out[spec.output].inputs.filename_prefix = run.filenamePrefix;
+    }
+    if (run.outputFolder) {
+        out[spec.output].inputs.folder = run.outputFolder;
     }
     if (run.studioState) {
         out[spec.output].inputs.studio_state = JSON.stringify(run.studioState);

@@ -771,6 +771,86 @@ export function createPanelBackButton(label, onBack) {
     return button;
 }
 
+/**
+ * Скрытое поле выбора файла — то самое, которое открывает видимая кнопка.
+ *
+ * ⚠️ `tabIndex = -1` здесь не украшение. Поле лежит за краем экрана, но в
+ * обходе по Tab остаётся, и человек, идущий по студии с клавиатуры, упирался
+ * в невидимое поле вместо кнопок. Открывают его программно, поэтому в обходе
+ * ему делать нечего.
+ *
+ * ⚠️ Прятать через `display:none` или схлопывать в ноль нельзя: часть
+ * браузеров отказывается открывать диалог у неотрисованного поля (§12.5.11).
+ * Отсюда и вынос за край вместо скрытия.
+ *
+ * @param {object} [options]
+ * @param {string} [options.accept] Что принимаем, как в атрибуте `accept`.
+ * @param {boolean} [options.multiple] Можно выбрать несколько файлов.
+ * @returns {HTMLInputElement}
+ */
+/**
+ * Спросить и сказать — руками ComfyUI, а не браузера.
+ *
+ * ⚠️ `window.prompt/confirm/alert` в ComfyUI неуместны по трём причинам, и
+ * каждой достаточно: они блокируют поток, роняют фокус на `<body>` (после чего
+ * горячие клавиши графа снова боевые), и выглядят системным окном посреди
+ * тёмного интерфейса. У фронтенда ComfyUI есть свои диалоги; на сборке, где
+ * их нет, честно откатываемся на браузерные — молча ничего не спрашивать хуже.
+ *
+ * Все три функции асинхронные: диалог ComfyUI отвечает обещанием.
+ */
+async function comfyDialog() {
+    try {
+        const { app } = await import("/scripts/app.js");
+        return app?.extensionManager?.dialog || null;
+    } catch {
+        return null;
+    }
+}
+
+/** Спросить строку. Пусто или отмена — пустая строка. */
+export async function askText(message, defaultValue = "") {
+    const dialog = await comfyDialog();
+    if (dialog?.prompt) {
+        const answer = await dialog.prompt({ title: message, defaultValue });
+        return typeof answer === "string" ? answer : "";
+    }
+    return window.prompt(message, defaultValue) || "";
+}
+
+/** Спросить «да или нет». */
+export async function askConfirm(message) {
+    const dialog = await comfyDialog();
+    if (dialog?.confirm) {
+        return Boolean(await dialog.confirm({ title: message, type: "default" }));
+    }
+    return window.confirm(message);
+}
+
+/** Сказать без вопроса. Всплывающее уведомление, если фронтенд его умеет. */
+export async function notify(message, severity = "info") {
+    try {
+        const { app } = await import("/scripts/app.js");
+        const toast = app?.extensionManager?.toast;
+        if (toast?.add) {
+            toast.add({ severity, summary: message, life: 4000 });
+            return;
+        }
+    } catch { /* фронтенд без уведомлений — ниже запасной путь */ }
+    window.alert(message);
+}
+
+export function createHiddenFileInput({ accept = "image/*", multiple = false } = {}) {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = accept;
+    input.multiple = Boolean(multiple);
+    input.className = "ts-ui-file";
+    input.tabIndex = -1;
+    input.setAttribute("aria-hidden", "true");
+    return input;
+}
+
 export function createOpenInterfaceButton(onOpen, options = {}) {
     const button = document.createElement("button");
     button.type = "button";

@@ -106,8 +106,12 @@ export function ensureControlStyles() {
 .ts-studio__ref:hover{color:var(--ts-text);box-shadow:inset 0 0 0 1px var(--ts-border-strong)}
 .ts-studio__ref.is-drag-over{color:var(--ts-accent)}
 .ts-studio__ref.is-drag-over::after{box-shadow:inset 0 0 0 2px var(--ts-accent)}
-.ts-studio__ref img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;
-    border-radius:inherit}
+/* ⚠️ Картинка живёт только в занятом слоте. Пустой <img> без адреса браузер
+   рисует значком битого файла — именно он и оставался после удаления
+   референса. */
+.ts-studio__ref img{display:none;position:absolute;inset:0;width:100%;height:100%;
+    object-fit:cover;border-radius:inherit}
+.ts-studio__ref.is-filled img{display:block}
 /* Sits fully inside the rounded corner instead of straddling it, and only
    appears once there is something to clear. */
 .ts-studio__refx{position:absolute;top:4px;right:4px;z-index:2;width:17px;height:17px;

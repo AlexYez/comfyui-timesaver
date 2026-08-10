@@ -37,6 +37,19 @@ export function resultRelPath(image) {
     return folder ? `${folder}/${image.filename}` : image.filename;
 }
 
+/**
+ * Как студия называет картинку в поле исходника: «images/x/a.png [temp]».
+ *
+ * Папку приходится писать рядом с путём, потому что у ComfyUI три корня и по
+ * одному имени файл не найти. Формат разбирает загрузчик исходника.
+ *
+ * @param {{filename: string, subfolder?: string, type?: string}} image
+ * @returns {string}
+ */
+export function resultAnnotated(image) {
+    return `${resultRelPath(image)} [${image.type || "output"}]`;
+}
+
 export function resultViewUrl(image) {
     const params = new URLSearchParams({
         filename: image.filename,
