@@ -17,7 +17,7 @@ from comfy.utils import ProgressBar
 from comfy_api.v0_0_2 import IO
 from PIL import Image, ImageFilter
 
-from .._hf_download import snapshot_download_resilient
+from .._hf_download import pinned_revision, snapshot_download_resilient
 
 # Shared with ts_matting_vitmatte. Imported (not defined) here, and re-exported
 # so any existing `from .ts_bgrm_birefnet import pil2tensor, ...` keeps working.
@@ -73,6 +73,12 @@ _register_birefnet_folder()
 #
 # Each variant lives in its OWN sub-directory ``models/BiRefNet/<variant>/``
 # so per-model bundled ``birefnet.py`` files never clobber each other.
+# Что вообще разрешено принести из репозитория модели. Раньше здесь
+# стояло `"*.py"`, то есть исполнялся бы любой файл, который автор
+# добавит в репозиторий. Осталось три известных имени.
+ARCHITECTURE_FILES = ("birefnet.py", "birefnet_lite.py", "BiRefNet_config.py")
+
+
 MODEL_CONFIG = {
     "BiRefNet-general": {
         "repo_id": "ZhengPeng7/BiRefNet",
@@ -526,8 +532,9 @@ class BiRefNetModel:
                 "config.json",
             ]
         else:
+            # ⚠️ Без `"*.py"`: исполняется только то, что мы знаем по имени.
             primary_patterns = [
-                "*.json", "*.py", "*.safetensors", "*.bin", "*.txt",
+                "*.json", "*.safetensors", "*.bin", "*.txt", *ARCHITECTURE_FILES,
             ]
 
         primary_exc: Exception | None = None
@@ -545,7 +552,7 @@ class BiRefNetModel:
                     snapshot_download_resilient(
                         repo_id=primary_repo,
                         local_dir=cache_dir,
-                        revision="main",
+                        revision=pinned_revision(primary_repo),
                         allow_patterns=primary_patterns,
                         log=logger,
                         log_prefix=_LOG_PREFIX,
@@ -578,7 +585,7 @@ class BiRefNetModel:
                 snapshot_download_resilient(
                     repo_id=fallback_repo,
                     local_dir=cache_dir,
-                    revision="main",
+                    revision=pinned_revision(fallback_repo),
                     allow_patterns=[
                         fallback_filename,
                         "birefnet.py",

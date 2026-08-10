@@ -295,6 +295,18 @@ def _download_lock_for(path: str) -> threading.Lock:
         return lock
 
 
+# Разрешение писать ВНЕ папки ComfyUI. Живёт в окружении, а не в workflow:
+# путь в графе пишет кто угодно, а переменную ставит хозяин машины.
+_EXTERNAL_TARGETS_ENV = "TS_DOWNLOADER_ALLOW_EXTERNAL"
+
+
+def _external_targets_allowed() -> bool:
+    """Разрешил ли хозяин машины запись за пределы ComfyUI."""
+    return str(os.environ.get(_EXTERNAL_TARGETS_ENV, "")).strip().lower() in {
+        "1", "true", "yes", "on",
+    }
+
+
 class TS_DownloadFilesNode(IO.ComfyNode):
     """
     A ComfyUI node to download files.
@@ -714,9 +726,24 @@ class TS_DownloadFilesNode(IO.ComfyNode):
             # here, so a destination outside ComfyUI is worth saying out loud.
             base_path = getattr(folder_paths, "base_path", None) if folder_paths else None
             if base_path and not cls._is_within(base_path, resolved):
+                # ⚠️ Раньше здесь стояло предупреждение — и запись продолжалась.
+                # Строку с путём может написать не хозяин машины: список задач
+                # приезжает вместе с чужим workflow, а значит абсолютный путь
+                # позволял положить файл куда угодно, куда дотягивается процесс
+                # ComfyUI. Теперь такой путь по умолчанию отвергается, а
+                # разрешение живёт СНАРУЖИ workflow — в переменной окружения,
+                # которую ставит хозяин машины, а не автор графа.
+                if not _external_targets_allowed():
+                    raise ValueError(
+                        f"{LOG_PREFIX} Target '{target_path}' points OUTSIDE ComfyUI "
+                        f"('{resolved}'). Downloads outside the ComfyUI folder are "
+                        f"refused: a workflow can carry any path. Set "
+                        f"{_EXTERNAL_TARGETS_ENV}=1 on this machine if that is "
+                        f"really what you want, or name a model folder instead."
+                    )
                 logger.warning(
                     f"{LOG_PREFIX} Target '{target_path}' resolves OUTSIDE ComfyUI -> '{resolved}'. "
-                    f"Honouring it, but check this line if you did not write it yourself."
+                    f"Allowed by {_EXTERNAL_TARGETS_ENV}; check this line if you did not write it yourself."
                 )
             return resolved
 

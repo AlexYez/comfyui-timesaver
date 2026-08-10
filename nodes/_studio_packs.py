@@ -23,6 +23,7 @@ import io
 import json
 import logging
 import os
+import re
 import shutil
 import urllib.error
 import urllib.request
@@ -247,6 +248,42 @@ def _safe_members(archive: zipfile.ZipFile) -> list[zipfile.ZipInfo]:
     return safe
 
 
+def pack_folder(root: Path, pack_id: str) -> Path:
+    r"""Папка набора внутри `root` — и никогда снаружи.
+
+    ⚠️ Раньше здесь стояло `root / pack_id.replace("/", "-")`. Прямой слэш это
+    обезвреживало, а ОБРАТНЫЙ нет: на Windows `pathlib` считает разделителем и
+    его, поэтому `..\..\..\Documents` уводил путь за пределы папки наборов —
+    а по этому пути дальше шёл `rmtree`. Проверено на живых путях.
+
+    Имя набора приходит из тела запроса и из каталога в интернете, то есть
+    доверять ему нельзя ни там, ни там. Оставляем только буквы, цифры, точку,
+    дефис и подчёркивание, а затем ещё раз убеждаемся, что получившийся путь
+    лежит внутри корня: одно правило на установку и на удаление, чтобы они не
+    разошлись.
+
+    Args:
+        root: папка установленных наборов.
+        pack_id: идентификатор набора, как его назвал каталог или запрос.
+
+    Returns:
+        Путь к папке набора.
+
+    Raises:
+        ValueError: имя пустое или уводит за пределы корня.
+    """
+    raw = str(pack_id or "").strip()
+    safe = re.sub(r"[^A-Za-z0-9._-]+", "-", raw.replace("\\", "/")).strip("-")
+    if not safe or set(safe) <= {"."}:
+        raise ValueError(f"unsafe pack id: {pack_id!r}")
+    target = (root / safe).resolve()
+    try:
+        target.relative_to(root.resolve())
+    except ValueError as error:
+        raise ValueError(f"unsafe pack id: {pack_id!r}") from error
+    return target
+
+
 def install_pack(entry: dict, *, base: str | None = None,
                  product: str = PRODUCT, data: bytes | None = None) -> dict:
     """Fetch and unpack one pack. Returns its stamp.
@@ -276,7 +313,7 @@ def install_pack(entry: dict, *, base: str | None = None,
                 raise PermissionError("this pass does not carry the key for that tier")
             data = decrypt_pack(data, secret)
 
-    target = root / str(entry["id"]).replace("/", "-")
+    target = pack_folder(root, entry.get("id"))
     staging = target.with_name(target.name + ".incoming")
     shutil.rmtree(staging, ignore_errors=True)
     staging.mkdir(parents=True, exist_ok=True)
@@ -307,13 +344,24 @@ def install_pack(entry: dict, *, base: str | None = None,
 
 
 def remove_pack(pack_id: str) -> bool:
+    """Удалить установленный набор.
+
+    ⚠️ Операция необратимая и приходит прямо из HTTP-запроса, поэтому имя
+    проверяется (`pack_folder`) и результат записывается в журнал: молчаливое
+    удаление каталога — не то, о чём человек должен узнавать по пропаже файлов.
+    """
     root = installed_dir()
     if root is None:
         return False
-    target = root / str(pack_id).replace("/", "-")
+    try:
+        target = pack_folder(root, pack_id)
+    except ValueError as error:
+        logger.warning("%s refused to remove: %s", LOG_PREFIX, error)
+        return False
     if not target.is_dir():
         return False
     shutil.rmtree(target, ignore_errors=True)
+    logger.info("%s removed pack %s", LOG_PREFIX, target.name)
     return True
 
 

@@ -29,7 +29,7 @@ from comfy.utils import ProgressBar
 from comfy_api.v0_0_2 import IO
 from PIL import Image, ImageFilter
 
-from .._hf_download import snapshot_download_resilient
+from .._hf_download import pinned_revision, snapshot_download_resilient
 from ._image_utils import (
     _format_device_label,
     _get_target_device,
@@ -244,7 +244,7 @@ def _download_model_files(variant: str) -> Path:
     snapshot_download_resilient(
         repo_id=repo_id,
         local_dir=str(local_dir),
-        revision="main",
+        revision=pinned_revision(repo_id),
         allow_patterns=["*.json", "*.safetensors", "*.bin", "*.txt"],
         log=logger,
         log_prefix=_LOG_PREFIX,
@@ -332,10 +332,10 @@ def _load_model(
     # _download_model_files(); from_pretrained will not hit the network here,
     # but bandit B615 still requires an explicit revision argument on every
     # from_pretrained call regardless of source.
-    processor = VitMatteImageProcessor.from_pretrained(str(local_dir), revision="main")
+    processor = VitMatteImageProcessor.from_pretrained(str(local_dir))
     if progress is not None:
         _update_progress(progress, 15)
-    model = VitMatteForImageMatting.from_pretrained(str(local_dir), revision="main")
+    model = VitMatteForImageMatting.from_pretrained(str(local_dir))
     model.eval()
     if target_dtype == torch.float16:
         model.half()
