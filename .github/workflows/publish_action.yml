@@ -15,6 +15,9 @@ jobs:
       - name: Check out code
         uses: actions/checkout@v4
       - name: Publish Custom Node
-        uses: Comfy-Org/publish-node-action@main
+        # ⚠️ Полный коммит, а не ветка: `@main` означает «выполнить то, что
+        # окажется в чужом репозитории в момент публикации», причём с
+        # доступом к токену реестра. Это коммит тега 1.0.1.
+        uses: Comfy-Org/publish-node-action@7578cdb0c1410f2515e6f9b1443c6859cab94f05
         with:
           personal_access_token: ${{ secrets.REGISTRY_ACCESS_TOKEN }} ## Add your own personal access token to your Github Repository secrets and reference it here.
