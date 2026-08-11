@@ -6,9 +6,9 @@ Injects a custom string into the workflow's positive prompt at runtime — usefu
 
 
 <a id="video"></a>
-### 🎬 Video (6 nodes)
+### 🎬 Video (8 nodes)
 
-Frame interpolation, model-based upscale, depth, animation preview, and VRAM hygiene.
+Reading and writing video files, frame interpolation, model-based upscale, depth, animation preview.
 
 ---
 

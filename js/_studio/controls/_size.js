@@ -65,6 +65,7 @@ export const render = (control, ctx) => {
     slider.max = String(mpMax);
     slider.step = "0.05";
     slider.value = String(state.mp);
+    slider.title = ctx.t.resolutionTitle || ctx.t.resolution || "";
     slider.addEventListener("input", () => { state.mp = Number(slider.value); sync(); });
     row.appendChild(slider);
     const info = document.createElement("div");

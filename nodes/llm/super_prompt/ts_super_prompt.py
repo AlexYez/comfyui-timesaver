@@ -39,6 +39,9 @@ from aiohttp import web
 from comfy_api.v0_0_2 import IO
 
 from ._helpers import (
+    cancel_operation,
+    forget_operation,
+    resolve_prompt_model,
     ACTIVE_MODEL,
     AI_ROUTE_BASE,
     ALLOWED_AUDIO_SUFFIXES,
@@ -417,6 +420,26 @@ async def status_endpoint(request: web.Request) -> web.StreamResponse:
 # ---------------------------------------------------------------------------
 
 
+@register_post("/ts_super_prompt/cancel")
+async def cancel_endpoint(request: web.Request) -> web.StreamResponse:
+    """Отменить идущее усиление.
+
+    ⚠️ Отмена честная, но не мгновенная везде одинаково: генерация встаёт на
+    ближайшем токене, а начатое скачивание модели доводится до конца — рвать его
+    на середине дороже, чем дождаться. Интерфейс об этом и сообщает.
+    """
+    try:
+        data = await request.json()
+    except Exception:                       # noqa: BLE001 - пустое тело тоже ответ
+        data = {}
+    operation_id = str(data.get("operation_id") or "")
+    if not cancel_operation(operation_id):
+        return web.json_response({"ok": False, "error": "operation_id is required."},
+                                 status=400)
+    LOGGER.info("%s cancel requested for %s", LOG_PREFIX, operation_id)
+    return web.json_response({"ok": True})
+
+
 @register_post(f"{AI_ROUTE_BASE}/enhance")
 async def enhance_endpoint(request: web.Request) -> web.StreamResponse:
     try:
@@ -433,6 +456,9 @@ async def enhance_endpoint(request: web.Request) -> web.StreamResponse:
             status=413,
         )
 
+    # Галочка приезжает вместе с остальными значениями виджетов. Её нет в
+    # запросе со страницы, которую не перезагружали, — тогда прежняя модель.
+    bigger_model = bool(data.get("bigger_model"))
     preset = str(data.get("system_preset") or DEFAULT_PRESET)
     if preset not in preset_options():
         LOGGER.warning(
@@ -488,6 +514,7 @@ async def enhance_endpoint(request: web.Request) -> web.StreamResponse:
             image_pil,
             seed,
             True,
+            resolve_prompt_model(bigger_model),
         )
         send_done(operation_id, "AI prompt ready")
         return web.json_response(
@@ -572,6 +599,18 @@ class TS_SuperPrompt(IO.ComfyNode):
                     ),
                     socketless=True,
                 ),
+                # Тоже последним и по той же причине: `widgets_values`
+                # позиционен. Сохранённый workflow приходит вообще без этого
+                # поля, получает False и продолжает работать на прежней модели.
+                IO.Boolean.Input(
+                    "bigger_model",
+                    default=False,
+                    tooltip=(
+                        "Off: the 2B prompt model (fast, already downloaded). "
+                        "On: the 4B one — better prompts, about twice the download "
+                        "and twice the VRAM. The 4B model is fetched on first use."
+                    ),
+                ),
                 # Wired references, for when the frames come from the graph
                 # rather than from the node's own attach buttons. ONE input
                 # taking a batch, not a socket per frame: the order inside the
@@ -610,6 +649,7 @@ class TS_SuperPrompt(IO.ComfyNode):
         system_preset: str = DEFAULT_PRESET,
         attached_image: str = "",
         attached_image_2: str = "",
+        bigger_model: bool = False,
         images: Any = None,
         **_: Any,
     ) -> bool | str:
@@ -623,6 +663,8 @@ class TS_SuperPrompt(IO.ComfyNode):
             return "attached_image must be a string (annotated filepath)."
         if not isinstance(attached_image_2, str):
             return "attached_image_2 must be a string (annotated filepath)."
+        if not isinstance(bigger_model, bool):
+            return "bigger_model must be a boolean."
         # Unknown ``system_preset`` values are intentionally accepted here:
         # ``_resolve_preset`` in _qwen.py silently falls back to the canonical
         # ``DEFAULT_PRESET`` ("Prompts enhance") so workflows saved before a
@@ -637,6 +679,7 @@ class TS_SuperPrompt(IO.ComfyNode):
         system_preset: str = DEFAULT_PRESET,
         attached_image: str = "",
         attached_image_2: str = "",
+        bigger_model: bool = False,
         images: Any = None,
         **_: Any,
     ) -> IO.NodeOutput:
@@ -656,6 +699,7 @@ class TS_SuperPrompt(IO.ComfyNode):
             system_preset=system_preset,
             operation_id=None,
             image=frames or None,
+            model_id=resolve_prompt_model(bigger_model),
         )
         return IO.NodeOutput(enhanced)
 

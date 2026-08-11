@@ -324,7 +324,7 @@ class TS_DownloadFilesNode(IO.ComfyNode):
     def define_schema(cls) -> IO.Schema:
         return IO.Schema(
             node_id="TS Files Downloader",
-            display_name="TS Files Downloader (Ultimate)",
+            display_name="TS Files Downloader",
             category="TS/Files",
             essentials_category="Files",
             description="Download every model a workflow needs from a list of URL + target-folder lines, with resume, mirrors and integrity checks.",
@@ -532,7 +532,15 @@ class TS_DownloadFilesNode(IO.ComfyNode):
         # arbitrary hosts. `hf_domain_active` extends the HF allowlist to the
         # user-configured mirror the download actually targets.
         headers = {}
-        hf_hosts_ok = cls._is_hf_url(url)
+        # ⚠️ Токен — только официальному origin. Зеркало (`hf-mirror.com` и
+        # любое другое) файл отдаёт и без него; отдать ему `Authorization`
+        # значит отдать доступ к приватным репозиториям пользователя.
+        hf_hosts_ok = cls._is_hf_official_origin(url)
+        if cls._is_hf_url(url) and not hf_hosts_ok and hf_token and hf_token.strip():
+            logger.info(
+                "%s %s is a HuggingFace mirror, not huggingface.co — downloading "
+                "without the token.", LOG_PREFIX, cls._url_host(url),
+            )
         if not hf_hosts_ok and hf_domain_active and hf_token and hf_token.strip():
             # `hf_domain` is a widget, so its value travels INSIDE the workflow:
             # a graph from someone else can name any host there. Extending the
@@ -700,6 +708,81 @@ class TS_DownloadFilesNode(IO.ComfyNode):
             return False
 
     @classmethod
+    def resolve_model_target_directory(cls, target_path):
+        """Строгий разбор папки назначения — для запросов ИЗ БРАУЗЕРА.
+
+        ⚠️ Отличается от ``_resolve_target_directory`` тем, что НЕ имеет запасного
+        пути «сложим относительно корня ComfyUI». Через этот запасной путь
+        HTTP-клиент мог назвать ``custom_nodes/evil``, подсунуть заголовок
+        ``Content-Disposition: __init__.py`` — и после перезапуска ComfyUI
+        импортировал бы присланный код. Здесь принимается только имя
+        ЗАРЕГИСТРИРОВАННОЙ модельной папки (с необязательной приставкой
+        ``models/``): именно это и присылает интерфейс.
+
+        Args:
+            target_path: значение поля ``target`` из запроса.
+
+        Returns:
+            Абсолютный путь внутри модельного каталога, либо ``None``, если имя
+            не является модельной папкой.
+        """
+        if not target_path:
+            return None
+        cleaned = str(target_path).strip().strip('"').strip("'")
+        if not cleaned:
+            return None
+        # Никаких переменных окружения и тильды: это ввод из сети, а не строка,
+        # которую человек набрал у себя.
+        segments = [s for s in cleaned.replace("\\", "/").split("/") if s and s != "."]
+        if not segments or any(s == ".." for s in segments):
+            return None
+        if os.path.isabs(cleaned) or os.path.splitdrive(cleaned)[0]:
+            return None
+
+        model_segments = segments[1:] if segments[0].lower() == "models" else segments
+        if not model_segments:
+            return None
+        # ⚠️ Не всякое ЗАРЕГИСТРИРОВАННОЕ имя — модельная папка. ComfyUI держит
+        # в том же реестре `custom_nodes` (его содержимое импортируется при
+        # старте) и `datasets`. Без этой проверки строгий разбор пропускал
+        # `custom_nodes/что угодно` — то есть ровно ту дыру, ради которой он и
+        # писался. Проверено на живом реестре: остальные имена ведут внутрь
+        # models/.
+        if model_segments[0].lower() in cls._NON_MODEL_FOLDER_NAMES:
+            return None
+        known_root = cls._known_model_folder_root(model_segments[0])
+        if not known_root:
+            return None
+        resolved = os.path.abspath(os.path.join(known_root, *model_segments[1:]))
+        if not cls._is_within(known_root, resolved):
+            return None
+        # Вторая линия: куда бы ни указывали пользовательские пути из
+        # extra_model_paths.yaml, папка расширений остаётся запретной.
+        for guarded in cls._custom_nodes_roots():
+            if cls._is_within(guarded, resolved):
+                return None
+        return resolved
+
+    # Имена, которые ComfyUI регистрирует наравне с модельными папками, но
+    # моделей в них не хранит.
+    _NON_MODEL_FOLDER_NAMES = frozenset({"custom_nodes", "datasets"})
+
+    @staticmethod
+    def _custom_nodes_roots() -> list[str]:
+        """Все каталоги, откуда ComfyUI импортирует расширения."""
+        roots = []
+        if folder_paths:
+            try:
+                paths, _ = folder_paths.folder_names_and_paths.get("custom_nodes", ([], set()))
+                roots.extend(os.path.abspath(p) for p in paths)
+            except Exception:               # noqa: BLE001 - чужой реестр, форма не гарантирована
+                pass
+            base = getattr(folder_paths, "base_path", None)
+            if base:
+                roots.append(os.path.abspath(os.path.join(base, "custom_nodes")))
+        return roots
+
+    @classmethod
     def _resolve_target_directory(cls, target_path):
         if target_path is None:
             return None
@@ -837,6 +920,47 @@ class TS_DownloadFilesNode(IO.ComfyNode):
             files.append({'url': url, 'target_dir': target_path})
         return files
 
+    # Расширения, которые ComfyUI или ОС исполнят сами: питоновские модули,
+    # которые загрузчик пака импортирует при старте, нативные библиотеки и
+    # сценарии оболочки. Ни одна модель так не называется, а вот скачанный по
+    # такому имени файл — готовый способ выполнить чужой код на этой машине.
+    _REFUSED_DOWNLOAD_SUFFIXES = frozenset({
+        ".py", ".pyw", ".pyc", ".pyo", ".pyd", ".pth",
+        ".so", ".dylib", ".dll",
+        ".exe", ".com", ".scr", ".msi", ".jar",
+        ".bat", ".cmd", ".ps1", ".psm1", ".sh", ".bash", ".zsh",
+        ".vbs", ".js", ".jse", ".wsf", ".lnk", ".reg",
+    })
+
+    @classmethod
+    def _refused_download_suffix(cls, filename: str) -> str | None:
+        """Расширение, с которым файл писать нельзя, либо ``None``.
+
+        ⚠️ ``.pth`` в этом списке НЕ случайно и не по недосмотру: у PyTorch это
+        «веса», а у самого Python — файл списка путей, который интерпретатор
+        читает при старте из ``site-packages`` и умеет исполнять строки с
+        ``import``. Разбирать, куда именно ляжет файл, ненадёжно, поэтому
+        отказываем всегда: веса моделей давно раздают как ``.safetensors``.
+        """
+        suffix = os.path.splitext(str(filename or ""))[1].lower()
+        return suffix if suffix in cls._REFUSED_DOWNLOAD_SUFFIXES else None
+
+    @staticmethod
+    def _safe_url(url: str) -> str:
+        """Адрес для журнала: без строки запроса и без секретных сегментов.
+
+        В путях платных пакетов сегмент может БЫТЬ ключом, а строка запроса —
+        нести подписанную ссылку. В журнал попадает только схема, узел и имя
+        файла — этого хватает, чтобы понять, откуда качали.
+        """
+        try:
+            parsed = urlparse(str(url or ""))
+        except Exception:                       # noqa: BLE001 - мусор вместо адреса
+            return "<unparseable url>"
+        name = os.path.basename(parsed.path or "")
+        return f"{parsed.scheme}://{parsed.netloc}/…/{name}" if name else \
+               f"{parsed.scheme}://{parsed.netloc}/…"
+
     @staticmethod
     def _sanitize_filename(name, fallback_prefix="downloaded_file"):
         if not name:
@@ -931,6 +1055,27 @@ class TS_DownloadFilesNode(IO.ComfyNode):
             or host == "hf-mirror.com"
             or host.endswith(".hf-mirror.com")
         )
+
+    @staticmethod
+    def _is_hf_official_origin(url):
+        """Только сам Hugging Face — и никаких зеркал.
+
+        ⚠️ Отдельная проверка нужна потому, что ``_is_hf_url`` отвечает на другой
+        вопрос: «ведёт ли себя хост как Hugging Face» (тот же формат ссылок, тот
+        же ETag с SHA256). Зеркалу этого достаточно, чтобы скачать файл и
+        сверить хеш, но НЕ достаточно, чтобы получить токен: токен даёт доступ к
+        приватным репозиториям и может иметь право записи, а зеркало — чужая
+        машина. Раньше `hf-mirror.com` стоял в общем списке, и заголовок
+        ``Authorization`` уезжал туда вместе с запросом.
+        """
+        try:
+            host = urlparse(url).netloc.lower()
+        except Exception:                       # noqa: BLE001 - мусор вместо адреса
+            return False
+        if "@" in host:
+            host = host.rsplit("@", 1)[-1]
+        host = host.split(":", 1)[0]
+        return host == "huggingface.co" or host.endswith(".huggingface.co")
 
     @classmethod
     def _extract_hf_expected_sha256(cls, remote_etag, final_url):
@@ -1174,6 +1319,19 @@ class TS_DownloadFilesNode(IO.ComfyNode):
                 (n for n in candidates if os.path.exists(os.path.join(target_dir, n))),
                 candidates[0],
             )
+
+            # ⚠️ Имя файла приходит с ЧУЖОЙ стороны — из адреса или из заголовка
+            # ``Content-Disposition``. Файл, который ComfyUI или Python способны
+            # исполнить при следующем запуске, скачиванием модели не бывает
+            # никогда, а вот путём к запуску чужого кода — легко. Отказ
+            # молчаливым не делаем: строка в журнале объясняет, что произошло.
+            refused = cls._refused_download_suffix(final_filename)
+            if refused:
+                logger.error(
+                    f"{LOG_PREFIX} Refusing to write '{final_filename}': '{refused}' files are "
+                    f"executable or imported by ComfyUI. Source: {cls._safe_url(url)}"
+                )
+                return False
 
             local_file_path = os.path.join(target_dir, final_filename)
             # Everything below reads, resumes, writes and renames this exact
@@ -1724,5 +1882,5 @@ NODE_CLASS_MAPPINGS = {
     "TS Files Downloader": TS_DownloadFilesNode,
 }
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "TS Files Downloader": "TS Files Downloader (Ultimate)",
+    "TS Files Downloader": "TS Files Downloader",
 }

@@ -288,6 +288,17 @@ function themeCss() {
 .ts-ui-spinner{width:26px;height:26px;border-radius:999px;border:3px solid var(--ts-border-soft);
   border-top-color:var(--ts-accent);animation:ts-ui-spin .9s linear infinite}
 @keyframes ts-ui-spin{to{transform:rotate(360deg)}}
+
+/* Подсказка пака. Лежит в корне документа и поверх всего: она объясняет то, что
+   находится и в ноде, и в полноэкранном редакторе. Курсору не мешает —
+   pointer-events:none, иначе она перекрывала бы саму кнопку. */
+.ts-ui-tip{position:fixed;z-index:12000;max-width:300px;padding:5px 9px;
+  border-radius:var(--ts-radius-sm);border:1px solid var(--ts-border-strong);
+  background:var(--ts-elevated);color:var(--ts-text);font-family:var(--ts-font);
+  font-size:var(--ts-fs-xs);line-height:1.35;pointer-events:none;
+  box-shadow:var(--ts-shadow);opacity:0;visibility:hidden;transition:opacity .12s ease}
+.ts-ui-tip.is-visible{opacity:1;visibility:visible}
+
 .ts-ui-checker{background:var(--ts-checker)}
 .ts-ui-drop{position:absolute;inset:8px;display:none;align-items:center;justify-content:center;
   border:2px dashed var(--ts-accent-line);border-radius:var(--ts-radius-lg);background:var(--ts-accent-soft);
@@ -496,6 +507,12 @@ export function createRatioCards({ values = [], onSelect, boxSize = 34, label } 
         caption.className = "ts-ui-ratio__label";
         caption.textContent = label ? label(value) : value;
 
+        // Подсказка обязательна и здесь: карточка показывает пропорцию, но не
+        // говорит, что с ней случится по нажатию.
+        button.title = getUiLanguage() === "ru"
+            ? `Взять пропорцию ${value}`
+            : `Use the ${value} aspect ratio`;
+
         button.append(wrap, caption);
         button.addEventListener("click", () => {
             select(value);
@@ -569,6 +586,8 @@ export function createRatioPicker({
     const trigger = document.createElement("button");
     trigger.type = "button";
     trigger.className = "ts-ui-ratiopick__trigger";
+    trigger.title = getUiLanguage() === "ru"
+        ? "Выбрать пропорцию кадра" : "Choose the aspect ratio";
     let preview = createRatioFrame("1:1");
     const valueText = document.createElement("span");
     valueText.className = "ts-ui-ratiopick__value";
@@ -886,11 +905,142 @@ export function setOpenInterfaceLabel(button, lang, description) {
 
 /** Inject the shared stylesheet once per document. Safe to call repeatedly. */
 export function ensureThemeStyles() {
+    ensureTooltips();
     if (document.getElementById(STYLE_ID)) return;
     const style = document.createElement("style");
     style.id = STYLE_ID;
     style.textContent = themeCss();
     document.head.appendChild(style);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Подсказки
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// ⚠️ ШТАТНОЙ ПОДСКАЗКИ БРАУЗЕРА НЕДОСТАТОЧНО. Она появляется примерно через
+// секунду неподвижного курсора, рисуется средствами системы и на тёмном
+// интерфейсе теряется — человек успевает увести мышь и решить, что подсказки
+// нет вовсе (реальная жалоба). Поэтому пак показывает свою: быстрее, своим
+// шрифтом и цветами.
+//
+// Источник текста — тот же атрибут `title`, что и раньше. Ничего в нодах
+// переписывать не нужно: подсказка находит их сама. На время показа `title`
+// снимается (иначе поверх нашей всплывёт ещё и системная) и возвращается, как
+// только курсор ушёл, — атрибут нужен и программам чтения с экрана, и тестам.
+
+const TOOLTIP_DELAY_MS = 320;
+const TOOLTIP_ID = "ts-ui-tooltip";
+const tooltipState = { installed: false, node: null, target: null, timer: 0,
+                       dragging: false };
+
+function tooltipElement() {
+    if (tooltipState.node?.isConnected) return tooltipState.node;
+    const element = document.createElement("div");
+    element.id = TOOLTIP_ID;
+    element.className = `${TS_UI_CLASS} ts-ui-tip`;
+    element.setAttribute("role", "tooltip");
+    document.body.appendChild(element);
+    tooltipState.node = element;
+    return element;
+}
+
+function restoreTitle(element) {
+    const kept = element?.dataset?.tsTitle;
+    if (kept && !element.getAttribute("title")) element.setAttribute("title", kept);
+}
+
+function hideTooltip() {
+    clearTimeout(tooltipState.timer);
+    tooltipState.timer = 0;
+    if (tooltipState.target) restoreTitle(tooltipState.target);
+    tooltipState.target = null;
+    if (tooltipState.node) tooltipState.node.classList.remove("is-visible");
+}
+
+function placeTooltip(element, target) {
+    const box = target.getBoundingClientRect();
+    const own = element.getBoundingClientRect();
+    const margin = 8;
+    let left = box.left + box.width / 2 - own.width / 2;
+    left = Math.max(margin, Math.min(window.innerWidth - own.width - margin, left));
+    // Под элементом, а если снизу тесно — над ним.
+    const below = box.bottom + 6;
+    const top = below + own.height + margin > window.innerHeight
+        ? Math.max(margin, box.top - own.height - 6)
+        : below;
+    element.style.left = `${Math.round(left)}px`;
+    element.style.top = `${Math.round(top)}px`;
+}
+
+function showTooltip(target, text) {
+    const element = tooltipElement();
+    element.textContent = text;
+    element.classList.add("is-visible");
+    placeTooltip(element, target);
+    // Пока подсказка видна, системную показывать нельзя — иначе их будет две.
+    // ⚠️ Текст остаётся НА САМОМ ЭЛЕМЕНТЕ (`data-ts-title`), а не только в
+    // состоянии модуля: элемент могут перерисовать или удалить, не дав события
+    // ухода курсора, и тогда `title` пропал бы навсегда.
+    tooltipState.target = target;
+    target.dataset.tsTitle = text;
+    target.removeAttribute("title");
+}
+
+function tooltipCandidate(node) {
+    if (!(node instanceof Element)) return null;
+    const owner = node.closest("[title]");
+    if (!owner) return null;
+    // Только внутри интерфейса пака: чужие элементы ComfyUI трогать нельзя.
+    if (!owner.closest(`.${TS_UI_CLASS}`) && !/\bts-[a-z]/.test(owner.className || "")) {
+        return null;
+    }
+    const text = (owner.getAttribute("title") || "").trim();
+    return text ? { owner, text } : null;
+}
+
+/** Включить подсказки пака. Идемпотентно; зовётся из `ensureThemeStyles`. */
+export function ensureTooltips() {
+    if (tooltipState.installed) return;
+    // ⚠️ Подсказки — украшение поверх работающего интерфейса, и уронить его они
+    // права не имеют. Тесты гоняют модули темы под Node с урезанной заглушкой
+    // документа: там нет ни слушателей, ни окна. Проверяем возможность, а не
+    // «браузер ли это», — иначе то же самое повторится в любой новой заглушке.
+    if (typeof document?.addEventListener !== "function") return;
+    tooltipState.installed = true;
+
+    document.addEventListener("pointerover", (event) => {
+        // Первым делом вернуть атрибут тому, у кого он мог остаться снятым.
+        if (event.target instanceof Element) restoreTitle(event.target.closest("[data-ts-title]"));
+        // ⚠️ Пока кнопка мыши зажата, человек ТЯНЕТ, а не разглядывает. Всплывшая
+        // в этот момент подсказка закрывает как раз то место, за которым он
+        // следит.
+        if (tooltipState.dragging) return;
+        const found = tooltipCandidate(event.target);
+        if (!found) return;
+        if (found.owner === tooltipState.target) return;
+        hideTooltip();
+        tooltipState.timer = setTimeout(
+            () => showTooltip(found.owner, found.text), TOOLTIP_DELAY_MS);
+    }, true);
+
+    document.addEventListener("pointerout", (event) => {
+        const found = tooltipCandidate(event.target);
+        if (found && found.owner === tooltipState.target) hideTooltip();
+        else if (!found) hideTooltip();
+    }, true);
+
+    // Любое действие прячет подсказку: она объясняет, а не мешает.
+    for (const name of ["pointerdown", "wheel", "keydown"]) {
+        document.addEventListener(name, hideTooltip, true);
+    }
+    document.addEventListener("pointerdown", () => { tooltipState.dragging = true; }, true);
+    for (const name of ["pointerup", "pointercancel"]) {
+        document.addEventListener(name, () => { tooltipState.dragging = false; }, true);
+    }
+    if (typeof window?.addEventListener === "function") {
+        window.addEventListener("blur", hideTooltip);
+    }
+    document.addEventListener("visibilitychange", hideTooltip);
 }
 
 // Canvas-drawn widgets (sliders, waveforms, LiteGraph node bodies) cannot use

@@ -74,6 +74,7 @@ const STRINGS = {
         emptyHintRemove: "Click on an existing point to remove it.",
         uploading: "Uploading...",
         loadButton: "Load Image/Video",
+        loadButtonTitle: "Pick an image or a video — drag and drop or Ctrl+V work too",
         clearButton: "Clear Points",
         clearButtonTitle: "Remove every positive and negative point.",
         pillConnect: "Connect SAM3 model",
@@ -106,6 +107,7 @@ const STRINGS = {
         emptyHintRemove: "Клик по существующей точке удаляет её.",
         uploading: "Загрузка...",
         loadButton: "Загрузить изображение/видео",
+        loadButtonTitle: "Выбрать изображение или видео — можно и перетаскиванием, и Ctrl+V",
         clearButton: "Очистить точки",
         clearButtonTitle: "Удалить все позитивные и негативные точки.",
         pillConnect: "Подключите модель SAM3",
@@ -408,6 +410,7 @@ export function setupSamMediaLoader(node) {
     const loadButton = document.createElement("button");
     loadButton.className = "ts-sml__btn ts-sml__btn--primary";
     loadButton.textContent = L.loadButton;
+    loadButton.title = L.loadButtonTitle;
 
     const clearButton = document.createElement("button");
     clearButton.className = "ts-sml__btn ts-sml__btn--danger";

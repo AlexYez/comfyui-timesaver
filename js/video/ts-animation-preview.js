@@ -27,6 +27,10 @@ const STRINGS = {
 // Layout Configuration
 const MIN_NODE_WIDTH = 300;
 const MIN_NODE_HEIGHT = 200;
+// Размер, до которого нода разворачивается при появлении на холсте: столько
+// нужно, чтобы кадр и ряд управления поместились оба.
+const DEFAULT_NODE_WIDTH = 300;
+const DEFAULT_NODE_HEIGHT = 260;
 const HEADER_HEIGHT_V1 = 30;
 const FOOTER_PADDING_V1 = 10;
 // Nodes 2.0 widget sizing: a floor for the preview pane and the chrome (title +
@@ -207,9 +211,17 @@ function setupAnimationPreview(node) {
 
     // Node configuration
     node.resizable = true;
-    if (!node.size || node.size.length < 2) {
-        node.size = [Math.max(300, MIN_NODE_WIDTH), Math.max(260, MIN_NODE_HEIGHT)];
-    }
+    // ⚠️ Проверка «размера ещё нет» не срабатывает никогда: LiteGraph выдаёт
+    // ноде размер ДО того, как расширение до неё доберётся (замерено — 250x100).
+    // Из-за этого нода оставалась заводского размера, и ряд управления плеером
+    // не помещался: пользователь, вытащивший ноду из меню, не видел ни play, ни
+    // звука, пока не растянет её руками. Поэтому не «задать, если пусто», а
+    // ДОРАСТИТЬ до своего минимума. Загрузка workflow всё равно перезапишет
+    // размер сохранённым.
+    node.size = [
+        Math.max(Number(node.size?.[0]) || 0, DEFAULT_NODE_WIDTH),
+        Math.max(Number(node.size?.[1]) || 0, DEFAULT_NODE_HEIGHT),
+    ];
 
     // -- DOM Structure --
     const container = document.createElement("div");

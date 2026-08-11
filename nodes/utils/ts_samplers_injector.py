@@ -124,7 +124,7 @@ def _register_res_2s() -> None:
             added = True
 
     if added:
-        _LOGGER.info("%s Registered sampler '%s' (exponential RK2 / RES).", LOG_PREFIX, name)
+        _LOGGER.debug("%s Registered sampler '%s' (exponential RK2 / RES).", LOG_PREFIX, name)
     else:
         _LOGGER.info("%s Sampler '%s' already registered; nothing to do.", LOG_PREFIX, name)
 

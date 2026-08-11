@@ -115,20 +115,20 @@ def _upload_root() -> Path:
 
 
 def _allowed_view_roots() -> tuple[Path, ...]:
+    """Собственная папка загрузчика — открыта всегда, сверх общей политики."""
     roots: list[Path] = []
     try:
         roots.append(_input_root().resolve())
     except (OSError, ValueError):
         pass
-    try:
-        roots.append(Path(folder_paths.get_output_directory()).resolve())
-    except (OSError, ValueError, AttributeError):
-        pass
-    try:
-        roots.append(Path(folder_paths.get_temp_directory()).resolve())
-    except (OSError, ValueError, AttributeError):
-        pass
     return tuple(roots)
+
+
+def _is_inside_allowed_root(path: Path) -> bool:
+    """Единая политика пака (см. ``nodes/_shared.media_path_allowed``)."""
+    from ..._shared import media_path_allowed
+
+    return media_path_allowed(path, [str(r) for r in _allowed_view_roots()])
 
 
 def _is_inside_allowed_root(path: Path) -> bool:

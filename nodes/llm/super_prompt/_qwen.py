@@ -53,6 +53,9 @@ from .._qwen_engine import (
     load_presets as _qwen_load_presets,
 )
 from ._helpers import (
+    cancel_operation,
+    forget_operation,
+    operation_cancelled,
     CUSTOM_PRESET,
     DEFAULT_MODEL_ID,
     DEFAULT_PRESET,
@@ -116,6 +119,13 @@ class QwenDownloadProgressMonitor:
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
         self._last_size = -1
+        # ⚠️ `total_bytes` на входе — ОЦЕНКА (см. SUPER_PROMPT_DOWNLOAD_SIZE_ESTIMATES).
+        # Настоящий размер спрашивается у HuggingFace в фоне: пока ответа нет,
+        # доля считается от оценки, после — от факта. Показывать проценты от
+        # выдуманного числа хуже, чем не показывать вовсе, поэтому источник
+        # виден и в тексте.
+        self._exact_total = 0
+        self._history: list[tuple[float, int]] = []
 
     def start(self) -> None:
         if not self.enabled:
@@ -125,8 +135,65 @@ class QwenDownloadProgressMonitor:
             f"Connecting to HuggingFace for {self.model_id}",
             self.start_percent,
         )
+        # ⚠️ Настоящий размер спрашивается ДО первого показа, иначе доля
+        # прыгает назад: пока отвечает оценка, полоса ушла вперёд, а с приходом
+        # факта откатывается (замерено — с 30% на 1%). Ждём недолго: сама
+        # загрузка идёт минутами, а без ответа просто останемся на оценке.
+        lookup = threading.Thread(target=self._resolve_exact_total, daemon=True)
+        lookup.start()
+        lookup.join(timeout=2.5)
+
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
+
+    def _resolve_exact_total(self) -> None:
+        """Спросить у HuggingFace настоящий размер репозитория."""
+        try:
+            from huggingface_hub import HfApi
+
+            info = HfApi().model_info(self.model_id, files_metadata=True)
+            total = sum(int(getattr(f, "size", 0) or 0) for f in (info.siblings or []))
+            if total <= 0:
+                return
+            # ⚠️ Ответ, опоздавший к первому показу, НЕ принимаем: подменить
+            # знаменатель на ходу значит откатить долю назад (замерено — с 30%
+            # на 1%). Оценка, честно названная оценкой, лучше прыгающей полосы.
+            if self._last_size > 0:
+                log_info(f"{self.model_id}: exact size arrived late, keeping the estimate")
+                return
+            self._exact_total = total
+            log_info(f"{self.model_id}: {format_bytes(total)} to download")
+        except Exception as error:              # noqa: BLE001 - без сети остаётся оценка
+            log_info(f"could not read the exact size of {self.model_id}: {error}")
+
+    def _speed_and_eta(self, size: int, total: int) -> str:
+        """Скорость и остаток по последним замерам.
+
+        Считается по окну, а не от начала: в начале загрузки среднее сильно
+        занижено распаковкой и проверками, и обещанное время выходит вдвое
+        больше правды.
+        """
+        import time
+
+        now = time.monotonic()
+        self._history.append((now, size))
+        self._history = [(when, got) for when, got in self._history if now - when <= 12.0]
+        if len(self._history) < 2:
+            return ""
+        (first_t, first_size), (last_t, last_size) = self._history[0], self._history[-1]
+        seconds = last_t - first_t
+        gained = last_size - first_size
+        if seconds <= 0.5 or gained <= 0:
+            return ""
+        speed = gained / seconds
+        parts = [f"{format_bytes(int(speed))}/s"]
+        if total > size:
+            left = (total - size) / speed
+            if left < 90:
+                parts.append(f"~{int(left)} s left")
+            else:
+                parts.append(f"~{int(left / 60)} min left")
+        return " · " + " · ".join(parts)
 
     def stop(self, success: bool) -> None:
         if not self.enabled:
@@ -145,19 +212,31 @@ class QwenDownloadProgressMonitor:
     def _run(self) -> None:
         while not self._stop.is_set():
             self._emit_progress()
-            self._stop.wait(0.7)
+            self._stop.wait(0.5)
 
     def _emit_progress(self) -> None:
         size = directory_size(self.local_dir)
         if size == self._last_size and size > 0:
             return
         self._last_size = size
-        ratio = max(0.0, min(1.0, size / float(self.total_bytes)))
+
+        total = self._exact_total or self.total_bytes
+        ratio = max(0.0, min(1.0, size / float(total)))
         percent = self.start_percent + (self.end_percent - self.start_percent) * ratio
+
+        name = self.model_id.split("/")[-1]
         if size <= 0:
-            text = f"Downloading Qwen model {self.model_id}"
+            text = f"Downloading {name}: starting"
         else:
-            text = f"Downloading Qwen model {self.model_id}: {format_bytes(size)}"
+            share = int(round(ratio * 100))
+            about = "" if self._exact_total else "about "
+            left = max(0, total - size)
+            # Сколько уже пришло И сколько осталось — обе цифры сразу: доля в
+            # процентах отвечает «долго ли ещё», а мегабайты остатка — «сколько
+            # именно», и одно другое не заменяет.
+            text = (f"Downloading {name}: {format_bytes(size)} done, "
+                    f"{format_bytes(left)} left of {about}{format_bytes(total)} "
+                    f"({share}%){self._speed_and_eta(size, total)}")
         send_progress(self.operation_id, text, percent)
 
 
@@ -437,8 +516,62 @@ def _unused_model_kwargs_from_error(exc: ValueError) -> list[str]:
     return re.findall(r"'([^']+)'", match.group(1))
 
 
-def _generate_with_filtered_kwargs(model, inputs: dict[str, Any], gen_params: dict[str, Any]):
+class _CancelledByUser(RuntimeError):
+    """Человек нажал «Отмена». Не ошибка — решение."""
+
+
+# Границы полосы на время генерации. Стадии до и после уже заняли свои
+# проценты (см. вызовы send_progress), поэтому написание текста живёт здесь.
+_GENERATION_START_PERCENT = 78.0
+_GENERATION_END_PERCENT = 92.0
+# Каждый токен слать в сокет незачем: их сотни, а глаз разницы не увидит.
+_PROGRESS_EVERY_TOKENS = 8
+
+
+def _stopping_criteria_for(operation_id: str | None, max_new_tokens: int | None = None):
+    """Критерий, который на каждом токене делает две вещи: смотрит на отмену и
+    двигает полосу.
+
+    ⚠️ Именно так генерацию и останавливают: ``model.generate`` блокирует поток
+    целиком, снаружи его не прервать. И ровно поэтому же прогресс во время
+    написания текста больше взять негде — а это самая долгая стадия. Без него
+    полоса замирала на 78% и прыгала сразу к готовому промпту.
+    """
+    if not operation_id:
+        return None
+    try:
+        from transformers import StoppingCriteria, StoppingCriteriaList
+    except Exception:                       # noqa: BLE001 - без transformers генерации и нет
+        return None
+
+    budget = max(1, int(max_new_tokens or 0)) if max_new_tokens else 0
+    span = _GENERATION_END_PERCENT - _GENERATION_START_PERCENT
+    state = {"seen": 0}
+
+    class _Watch(StoppingCriteria):
+        def __call__(self, input_ids, scores, **kwargs):
+            state["seen"] += 1
+            seen = state["seen"]
+            if seen % _PROGRESS_EVERY_TOKENS == 0:
+                if budget:
+                    share = min(1.0, seen / budget)
+                    percent = _GENERATION_START_PERCENT + span * share
+                    send_progress(operation_id, f"Writing the prompt ({seen} tokens)", percent)
+                else:
+                    # Потолок неизвестен — говорим сколько написано, без процента:
+                    # выдуманная доля хуже честной неизвестности.
+                    send_progress(operation_id, f"Writing the prompt ({seen} tokens)", None)
+            return operation_cancelled(operation_id)
+
+    return StoppingCriteriaList([_Watch()])
+
+
+def _generate_with_filtered_kwargs(model, inputs: dict[str, Any], gen_params: dict[str, Any],
+                                   operation_id: str | None = None):
     current_params = dict(gen_params)
+    stopping = _stopping_criteria_for(operation_id, current_params.get("max_new_tokens"))
+    if stopping is not None:
+        current_params["stopping_criteria"] = stopping
     for _attempt in range(4):
         try:
             return model.generate(**inputs, **current_params)
@@ -477,6 +610,7 @@ def _generate_with_qwen(
     image: Any = None,
     seed: int | None = None,
     interactive: bool = False,
+    model_id: str | None = None,
 ) -> str:
     """Run the shared Qwen engine and return the cleaned prompt text.
 
@@ -489,6 +623,10 @@ def _generate_with_qwen(
     if not str(text or "").strip() and image is None:
         return ""
 
+    # Ничего не передали — работаем на прежней модели, как и все вызовы,
+    # написанные до появления галочки «крупнее модель».
+    model_id = str(model_id or DEFAULT_MODEL_ID)
+
     lock_acquired = MODEL_LOCK.acquire(blocking=False)
     if not lock_acquired:
         send_progress(operation_id, "Waiting for Qwen", 2.0)
@@ -498,12 +636,12 @@ def _generate_with_qwen(
         send_progress(operation_id, "Preparing prompt", 5.0)
         engine = _get_qwen_engine()
         system_prompt, gen_params = _resolve_preset(system_preset, SUPER_PROMPT_CUSTOM_SYSTEM_PROMPT)
-        resolved_precision = engine.resolve_precision(SUPER_PROMPT_PRECISION, DEFAULT_MODEL_ID)
+        resolved_precision = engine.resolve_precision(SUPER_PROMPT_PRECISION, model_id)
         resolved_attention = engine.resolve_attention(SUPER_PROMPT_ATTENTION_MODE, resolved_precision)
-        estimated_vram = engine.estimate_vram_usage(DEFAULT_MODEL_ID, resolved_precision)
+        estimated_vram = engine.estimate_vram_usage(model_id, resolved_precision)
 
         log_info(
-            f"model={DEFAULT_MODEL_ID} precision={resolved_precision} "
+            f"model={model_id} precision={resolved_precision} "
             f"attention={resolved_attention} thinking=disabled"
         )
         send_progress(operation_id, "Checking memory", 12.0)
@@ -517,7 +655,7 @@ def _generate_with_qwen(
         engine.ensure_memory_available(estimated_vram, allow_unload_others=allow_unload_others)
 
         send_progress(operation_id, "Checking Qwen model files", 16.0)
-        qwen_model_available = _is_qwen_model_available(engine, DEFAULT_MODEL_ID)
+        qwen_model_available = _is_qwen_model_available(engine, model_id)
         if qwen_model_available:
             send_progress(operation_id, "Qwen model found locally", 22.0)
         elif SUPER_PROMPT_OFFLINE_MODE:
@@ -528,15 +666,15 @@ def _generate_with_qwen(
         if not qwen_model_available and not bool(SUPER_PROMPT_OFFLINE_MODE):
             qwen_monitor = QwenDownloadProgressMonitor(
                 operation_id=operation_id,
-                model_id=DEFAULT_MODEL_ID,
-                local_dir=_qwen_model_dir(DEFAULT_MODEL_ID),
-                total_bytes=_qwen_download_estimate(DEFAULT_MODEL_ID),
+                model_id=model_id,
+                local_dir=_qwen_model_dir(model_id),
+                total_bytes=_qwen_download_estimate(model_id),
             )
             qwen_monitor.start()
             download_success = False
             try:
                 engine.ensure_model_available(
-                    DEFAULT_MODEL_ID,
+                    model_id,
                     bool(SUPER_PROMPT_OFFLINE_MODE),
                     str(SUPER_PROMPT_HF_TOKEN or ""),
                     str(SUPER_PROMPT_HF_ENDPOINT or ""),
@@ -547,7 +685,7 @@ def _generate_with_qwen(
 
         send_progress(operation_id, "Loading Qwen model into memory", 46.0)
         model, processor = engine.load_model(
-            DEFAULT_MODEL_ID,
+            model_id,
             resolved_precision,
             resolved_attention,
             bool(SUPER_PROMPT_OFFLINE_MODE),
@@ -659,9 +797,9 @@ def _generate_with_qwen(
                 with torch.inference_mode():
                     if use_autocast:
                         with torch.autocast(device_type="cuda", dtype=dtype):
-                            generated_ids = _generate_with_filtered_kwargs(model, inputs, gen_params)
+                            generated_ids = _generate_with_filtered_kwargs(model, inputs, gen_params, operation_id)
                     else:
-                        generated_ids = _generate_with_filtered_kwargs(model, inputs, gen_params)
+                        generated_ids = _generate_with_filtered_kwargs(model, inputs, gen_params, operation_id)
 
             send_progress(operation_id, "Decoding prompt", 92.0)
             generated_trimmed = [
@@ -673,15 +811,21 @@ def _generate_with_qwen(
                 skip_special_tokens=True,
                 clean_up_tokenization_spaces=True,
             )[0]
+            if operation_cancelled(operation_id):
+                # Отменённое не отдаём как результат: обрезанный на середине
+                # промпт выглядит готовым, и тем он хуже пустого ответа.
+                log_info("enhancement cancelled by the user")
+                return ""
             return _clean_model_output(output_text)
         finally:
+            forget_operation(operation_id)
             if SUPER_PROMPT_UNLOAD_AFTER_GENERATION:
                 send_progress(operation_id, "Unloading Qwen", 96.0)
                 # Drop our own references first: the engine's unload cannot free
                 # the module while these locals still point at it.
                 model = None
                 processor = None
-                engine.unload_model(DEFAULT_MODEL_ID, resolved_precision, resolved_attention)
+                engine.unload_model(model_id, resolved_precision, resolved_attention)
             elif moved_to_gpu:
                 try:
                     model.to("cpu")

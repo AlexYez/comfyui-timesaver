@@ -64,7 +64,7 @@ def _register_beta57() -> None:
     SCHEDULER_HANDLERS[name] = SchedulerHandler(handler=handler_callable, use_ms=True)
     if name not in SCHEDULER_NAMES:
         SCHEDULER_NAMES.append(name)
-    _LOGGER.info("%s Registered scheduler '%s' (beta_scheduler alpha=0.5, beta=0.7).", LOG_PREFIX, name)
+    _LOGGER.debug("%s Registered scheduler '%s' (beta_scheduler alpha=0.5, beta=0.7).", LOG_PREFIX, name)
 
 
 # ---------------------------------------------------------------------------
@@ -145,7 +145,7 @@ def _register_bong_tangent() -> None:
     SCHEDULER_HANDLERS[name] = SchedulerHandler(handler=_bong_tangent_scheduler, use_ms=True)
     if name not in SCHEDULER_NAMES:
         SCHEDULER_NAMES.append(name)
-    _LOGGER.info("%s Registered scheduler '%s' (two-stage arctangent curve).", LOG_PREFIX, name)
+    _LOGGER.debug("%s Registered scheduler '%s' (two-stage arctangent curve).", LOG_PREFIX, name)
 
 
 _register_beta57()

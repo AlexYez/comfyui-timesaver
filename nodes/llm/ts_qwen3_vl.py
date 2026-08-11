@@ -170,7 +170,7 @@ class TS_Qwen3_VL_V3(IO.ComfyNode):
 
         return IO.Schema(
             node_id="TS_Qwen3_VL_V3",
-            display_name="TS Qwen 3 VL V3",
+            display_name="TS Qwen 3",
             category="TS/LLM",
             description="Run Qwen 3 VL locally over image, video and text to caption, describe or answer.",
             inputs=[
@@ -624,4 +624,4 @@ def _run_qwen_generation(
 
 
 NODE_CLASS_MAPPINGS = {"TS_Qwen3_VL_V3": TS_Qwen3_VL_V3}
-NODE_DISPLAY_NAME_MAPPINGS = {"TS_Qwen3_VL_V3": "TS Qwen 3 VL V3"}
+NODE_DISPLAY_NAME_MAPPINGS = {"TS_Qwen3_VL_V3": "TS Qwen 3"}

@@ -12,6 +12,7 @@ Private — loader skips paths with `_`-prefixed components.
 from __future__ import annotations
 
 import logging
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -44,13 +45,29 @@ VOICE_LOG_PREFIX = "[TS Super Prompt Voice]"
 # User-configurable settings for the compact TS Super Prompt UI.
 # Change these values here instead of exposing extra widgets in ComfyUI.
 SUPER_PROMPT_MODEL_HUIHUI_2B = "huihui-ai/Huihui-Qwen3.5-2B-abliterated"
+SUPER_PROMPT_MODEL_HUIHUI_4B = "huihui-ai/Huihui-Qwen3.5-4B-abliterated"
 SUPER_PROMPT_MODEL_QWEN_2B = "Qwen/Qwen3.5-2B"
 SUPER_PROMPT_MODEL_OPTIONS = (
     SUPER_PROMPT_MODEL_HUIHUI_2B,
+    SUPER_PROMPT_MODEL_HUIHUI_4B,
     SUPER_PROMPT_MODEL_QWEN_2B,
 )
 # To switch back to stock Qwen, set DEFAULT_MODEL_ID = SUPER_PROMPT_MODEL_QWEN_2B.
 DEFAULT_MODEL_ID = SUPER_PROMPT_MODEL_HUIHUI_2B
+# Что выбирает галочка «bigger model» в ноде. Умолчание — двухмиллиардная:
+# именно она стоит у всех, кто уже пользуется нодой, и включение галочки не
+# должно случаться само собой (четырёхмиллиардную ещё надо скачать).
+BIGGER_MODEL_ID = SUPER_PROMPT_MODEL_HUIHUI_4B
+
+
+def resolve_prompt_model(bigger: bool | None) -> str:
+    """Идентификатор модели по положению галочки.
+
+    ⚠️ Отдельный вход, а не подмена ``DEFAULT_MODEL_ID``: сохранённые workflow
+    приходят вообще без этого поля, получают ``False`` и продолжают работать на
+    той же модели, что и раньше.
+    """
+    return BIGGER_MODEL_ID if bool(bigger) else DEFAULT_MODEL_ID
 DEFAULT_PRESET = "Prompts enhance"
 CUSTOM_PRESET = "Your instruction"
 SUPER_PROMPT_TARGET = "auto"
@@ -67,6 +84,7 @@ SUPER_PROMPT_HF_ENDPOINT = "huggingface.co, hf-mirror.com"
 SUPER_PROMPT_CUSTOM_SYSTEM_PROMPT = ""
 SUPER_PROMPT_DOWNLOAD_SIZE_ESTIMATES = {
     SUPER_PROMPT_MODEL_HUIHUI_2B: 4_500_000_000,
+    SUPER_PROMPT_MODEL_HUIHUI_4B: 8_500_000_000,
     SUPER_PROMPT_MODEL_QWEN_2B: 4_500_000_000,
 }
 
@@ -255,6 +273,48 @@ def send_voice_event(event: str, payload: dict[str, Any]) -> None:
         PROMPT_SERVER.send_sync(f"{VOICE_EVENT_PREFIX}.{event}", payload)
     except Exception as exc:
         LOGGER.debug("%s WebSocket event send failed: %s", VOICE_LOG_PREFIX, exc)
+
+
+# ── Отмена ──────────────────────────────────────────────────────────────── #
+#
+# Кнопка отмены на странице и работающая генерация — разные потоки, поэтому
+# связь между ними одна: множество отменённых операций. Оно маленькое и
+# самоочищающееся: запись живёт от нажатия до конца своей операции.
+#
+# ⚠️ Что отмена МОЖЕТ и чего НЕ может. Генерация останавливается на ближайшем
+# токене — это честная остановка. Скачивание модели прервать нельзя: его ведёт
+# huggingface_hub внутри себя, и на полпути его бросать опаснее, чем дождаться.
+# Поэтому во время загрузки отмена срабатывает на следующей границе стадии, о
+# чём интерфейс и говорит.
+_CANCELLED_OPERATIONS: set[str] = set()
+_CANCEL_GUARD = threading.Lock()
+
+
+def cancel_operation(operation_id: str | None) -> bool:
+    """Пометить операцию отменённой. Возвращает False, если нечего отменять."""
+    key = str(operation_id or "").strip()
+    if not key:
+        return False
+    with _CANCEL_GUARD:
+        _CANCELLED_OPERATIONS.add(key)
+    return True
+
+
+def operation_cancelled(operation_id: str | None) -> bool:
+    key = str(operation_id or "").strip()
+    if not key:
+        return False
+    with _CANCEL_GUARD:
+        return key in _CANCELLED_OPERATIONS
+
+
+def forget_operation(operation_id: str | None) -> None:
+    """Убрать запись — операция закончилась, чем бы она ни закончилась."""
+    key = str(operation_id or "").strip()
+    if not key:
+        return
+    with _CANCEL_GUARD:
+        _CANCELLED_OPERATIONS.discard(key)
 
 
 def send_progress(operation_id: str | None, text: str, percent: float | None = None) -> None:

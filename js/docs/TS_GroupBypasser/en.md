@@ -9,6 +9,7 @@ The state is not kept in this node — it is read back from the graph, so a node
 Bypassed groups survive a save without any help from this node: the state lives in the modes of the nodes themselves.
 
 **Use when:** a heavy workflow with several branches and only one of them wanted per run.
+**On the canvas, every group also gets its own badge** — a small square in the group's top-right corner (the same idea rgthree-comfy popularised). One click sends the whole group into bypass, another brings it back; empty groups get no badge, because there is nothing there to switch. It works with classic nodes and with Nodes 2.0, and needs no node on the graph at all — turn it off in **Settings → TS Timesaver → Canvas → "Bypass button on group headers"** if you'd rather not have it.
 
 ---
 

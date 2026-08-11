@@ -6,7 +6,7 @@ Convert a DaVinci Resolve EDL (Edit Decision List) export into a YouTube-friendl
 
 
 <a id="utils"></a>
-### 🛠️ Utils (4 nodes)
+### 🛠️ Utils (6 nodes)
 
 Tiny helpers that make the graph less cluttered.
 

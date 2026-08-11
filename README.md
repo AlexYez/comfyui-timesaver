@@ -4,13 +4,13 @@
 
 # 🚀 Timesaver Nodes for ComfyUI
 
-**A friendly toolkit of 75 production-ready nodes that take the boring busywork out of your ComfyUI graphs.**
+**A friendly toolkit of 63 production-ready nodes that take the boring busywork out of your ComfyUI graphs.**
 
-> 13 of them belong to TS Image Studio — its own node plus the markers and backends it drives — and are not written up separately below; the reference covers the other 62.
+> 13 of them belong to TS Image Studio — its own node plus the markers and backends it drives — and are not written up separately below; the reference covers the other 66.
 
 Resize, color-grade, key, denoise, transcribe, translate, prompt-build, manage models — without leaving the canvas.
 
-[![Version](https://img.shields.io/badge/version-10.1.0-blue.svg)](pyproject.toml)
+[![Version](https://img.shields.io/badge/version-11.0.0-blue.svg)](pyproject.toml)
 [![ComfyUI](https://img.shields.io/badge/ComfyUI-V3%20API-orange.svg)](https://github.com/comfyanonymous/ComfyUI)
 [![Python](https://img.shields.io/badge/python-3.10+-green.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-see%20LICENSE.txt-lightgrey.svg)](LICENSE.txt)
@@ -28,7 +28,7 @@ Whether you build pipelines for image generation, video, audio, or just want to 
 |  | Category | Count | Highlights |
 |---|---|---|---|
 | 🖼️ | **[Image](#image)** | 29 | Resize, color, masks, keyer, tiling, 360°, Lama cleanup, Smart Inpaint, BiRefNet bg removal, ViTMatte, SAM3 picker |
-| 🎬 | **[Video](#video)** | 6 | Frame interpolation, RTX/spandrel upscale, depth, animation preview |
+| 🎬 | **[Video](#video)** | 9 | Frame interpolation, RTX/spandrel upscale, depth, animation preview |
 | 🎵 | **[Audio](#audio)** | 6 | Whisper transcription, Silero TTS, Demucs stem split, audio cropping |
 | 🤖 | **[LLM](#llm)** | 2 | Qwen 3 VL multimodal chat, Super Prompt with voice input |
 | 📝 | **[Text & Prompts](#text)** | 4 | Prompt builder, batch loader, style picker, Russian stress marks |
@@ -37,7 +37,7 @@ Whether you build pipelines for image generation, video, audio, or just want to 
 | 🛠️ | **[Utils](#utils)** | 5 | Workflow group bypass panel, custom sliders, math, smart type-aware switch |
 | 🎨 | **[Conditioning](#conditioning)** | 1 | Multi-reference image conditioning |
 
-> All 75 nodes use the **ComfyUI V3 API** (`comfy_api.v0_0_2.IO` — a pinned namespace, not a stable one: the adapter itself declares `STABLE = False`. Pinning keeps the pack off the moving `latest` alias; it does not promise the API will not change).
+> All 63 nodes use the **ComfyUI V3 API** (`comfy_api.v0_0_2.IO` — a pinned namespace, not a stable one: the adapter itself declares `STABLE = False`. Pinning keeps the pack off the moving `latest` alias; it does not promise the API will not change).
 >
 > **Plus extra samplers & schedulers** added straight into the native KSampler / KSamplerAdvanced / BasicScheduler dropdowns (no node to wire — they just appear after install): sampler **`res_2s`** (2nd-order exponential RK / "RES"), schedulers **`bong_tangent`** (two-stage arctangent sigma curve) and **`beta57`** (`beta` α=0.5/β=0.7). Algorithms reimplemented clean-room from [RES4LYF](https://github.com/ClownsharkBatwing/RES4LYF)'s public math (no code copied).
 
@@ -173,7 +173,7 @@ Every node below shows the actual look in ComfyUI (English UI). Click any image 
 ---
 
 <a id="image"></a>
-### 🖼️ Image (29 nodes)
+### 🖼️ Image (20 nodes)
 
 Everything that touches pixels: resize, color, masks, background removal, keying, tiling, panoramas, and inpainting.
 
@@ -192,42 +192,6 @@ The resize node you actually want. Pick one of: exact target (`target_width` × 
 Visual aspect-ratio picker. Choose 1:1, 4:3, 3:2, 16:9, 21:9, 3:4, 2:3, 9:16, 9:21, or a custom ratio, then pick a target megapixel budget (0.5 – 4 MP). The output is a blank canvas with dimensions snapped to multiples of 32 — perfect as a `latent_image` source. If you connect an image, the node fits it onto the canvas; with `original_aspect=True` the ratio is taken from the image instead of the preset.
 
 **Use when:** starting a generation from scratch with a fixed aspect, or normalising an arbitrary image into a latent grid.
-
----
-
-#### TS Qwen Safe Resize
-<img src="doc/screenshots/ts_qwen_safe_resize.png" alt="TS Qwen Safe Resize" width="450" />
-
-One-click resize to the closest official Qwen-Image resolution (1344×1344, 1792×1008, etc.). Picks the supported size with the nearest aspect ratio, then center-crops.
-
-**Use when:** sending images into Qwen-Image / Qwen-Edit pipelines without resolution mismatch errors.
-
----
-
-#### TS Qwen Canvas
-<img src="doc/screenshots/ts_qwen_canvas.png" alt="TS Qwen Canvas" width="450" />
-
-Generates a blank Qwen-Image canvas at one of the supported resolutions and optionally pastes your image into it (with mask-aware cropping if you provide one).
-
-**Use when:** you need a Qwen-friendly canvas size and want to drop a reference image in the middle automatically.
-
----
-
-#### TS WAN Safe Resize
-<img src="doc/screenshots/ts_wan_safe_resize.png" alt="TS WAN Safe Resize" width="450" />
-
-Same idea as Qwen Safe Resize but for WAN-Video. Detects the closest aspect (16:9, 9:16, 1:1) and picks one of three quality presets: Fast (240p), Standard (480p / 832p), High (720p / 1280p). The `interconnection_in/out` string lets several WAN nodes share the same quality tier.
-
-**Use when:** preparing video frames for WAN i2v / t2v models.
-
----
-
-#### TS Color Grade
-<img src="doc/screenshots/ts_color_grade.png" alt="TS Color Grade" width="450" />
-
-Eight-knob colour correction in one node: `hue`, `temperature`, `saturation`, `contrast`, `gain`, `lift`, `gamma`, `brightness`. Comparable to the basic page in DaVinci Resolve.
-
-**Use when:** matching shots, warming up cold renders, fixing flat-looking output, or stylising images.
 
 ---
 
@@ -254,39 +218,12 @@ Built-in film stock presets (Kodak Portra/Vision3, Fuji, Cineon-style, …) plus
 
 ---
 
-#### TS Film Grain
-<img src="doc/screenshots/ts_film_grain.png" alt="TS Film Grain" width="450" />
-
-Three-octave organic film grain. Tune `grain_size`, `intensity`, `softness`, and a `mid_tone_grain_bias` for realistic distribution (more grain in midtones than highlights/shadows). `grain_speed` controls how much the grain pattern changes per frame for video.
-
-**Use when:** breaking the "AI-clean" look or matching a film aesthetic.
-
----
-
 #### TS Remove Background (BiRefNet)
 <img src="doc/screenshots/ts_bgrm_birefnet.png" alt="TS Remove Background" width="450" />
 
 State-of-the-art background removal via BiRefNet. Outputs the cut-out image, an alpha mask, and a "mask preview" image. Options: model picker (HR-matting / general / portrait / DIS), `process_resolution` (with `use_custom_resolution` override), `precision` (auto/fp16/fp32), `mask_blur`, `mask_offset`, `invert_output`, `temporal_smooth` for video (`none`/`median3`/`ema` with `ema_alpha`), background mode (Alpha / colour via the COLOR widget). v9.4 cleanup removed the unstable `refine_foreground` option.
 
 **Use when:** isolating subjects, building product shots, or feeding clean alpha masks into compositing nodes.
-
----
-
-#### TS Keyer
-<img src="doc/screenshots/ts_keyer.png" alt="TS Keyer" width="450" />
-
-Professional chroma keyer for green/blue/red screens. Color-difference matte extraction with despill, edge softness, matte gamma, and inversion. Returns RGBA foreground, alpha mask, and a despilled RGB image — ready to composite.
-
-**Use when:** keying actors out of a green screen, removing solid-color backgrounds, or compositing CG.
-
----
-
-#### TS Despill
-<img src="doc/screenshots/ts_despill.png" alt="TS Despill" width="450" />
-
-Standalone despill with four algorithms: `classic`, `balanced`, `adaptive` (edge-aware), and `hue_preserve`. Can take an optional spill mask, has skin-tone protection, and saturation restore. Use after a separate keyer or directly on plate footage that has chroma contamination.
-
-**Use when:** cleaning up green/blue/red spill on hair edges or skin without losing colour fidelity.
 
 ---
 
@@ -365,22 +302,6 @@ Pick `tile_count` (4, 8, 16) and the node figures out the best `tile_width` × `
 
 ---
 
-#### TS Cube to Equirectangular
-<img src="doc/screenshots/ts_cube_to_equirect.png" alt="TS Cube to Equirectangular" width="450" />
-
-Six cube faces (front/right/back/left/top/bottom) → one equirectangular 360° panorama at the size you choose.
-
----
-
-#### TS Equirectangular to Cube
-<img src="doc/screenshots/ts_equirect_to_cube.png" alt="TS Equirectangular to Cube" width="450" />
-
-The inverse: equirectangular panorama → six cube faces at a chosen `cube_size`.
-
-**Use the pair when:** generating 360° content (Skybox AI, equirect-aware diffusion) and you need to swap formats.
-
----
-
 #### TS Image Batch Cut
 <img src="doc/screenshots/ts_image_batch_cut.png" alt="TS Image Batch Cut" width="450" />
 
@@ -426,9 +347,49 @@ Injects a custom string into the workflow's positive prompt at runtime — usefu
 ---
 
 <a id="video"></a>
-### 🎬 Video (6 nodes)
+### 🎬 Video (8 nodes)
 
-Frame interpolation, model-based upscale, depth, animation preview, and VRAM hygiene.
+Reading and writing video files, frame interpolation, model-based upscale, depth, animation preview.
+
+#### TS Video Loader
+<img src="doc/screenshots/ts_video_loader.png" alt="TS Video Loader" width="450" />
+
+Reads a video into frames, audio and a compact `video_info` bundle — and lets you pick the piece **visually**. The node's body holds a player and a timeline with a filmstrip: drag the handles to set in and out, zoom into a single second of an hour-long take (Ctrl/Cmd + wheel), and loop the selection while you judge it. Type an exact timecode when the mouse is not precise enough.
+
+**It is fast on purpose.** All resizing, rotation and colour conversion happen inside the decoder's own filter graph, and reading stops at the end of your selection — a two-second piece of an hour-long 4K take costs a seek plus two seconds, not an hour. Measured on a 4K clip: 0.43 s where the naive path (decode at full resolution, then resize) takes 5.9 s and 6.4 GB.
+
+**The sound track is drawn under the filmstrip** whenever the file has audio — a beat or a spoken word is far easier to hit by the wave than by the picture — and the player follows the handle you drag, so the exact frame that will become the first or the last one is on screen while you are still choosing it.
+
+`frame_rate` resamples by real timestamps, so a variable-frame-rate source comes out evenly spaced. Size is set as `longer_side`/`shorter_side` rather than width and height, so one graph fits landscape and portrait footage alike; either may be `0` to derive it from the other. `divisible_by` rounds down to what video models want, the scaling filter defaults to `area` (footage is almost always scaled down, and averaging beats interpolation there), and `max_frames` is the memory guard — an oversized request explains itself instead of running the machine out of RAM.
+
+Footage arrives by **drag and drop** — from the file manager, from the Artius browser, or from another node's preview — by the button, by paste, or as a path to a file anywhere on the ComfyUI machine.
+
+> **A path anywhere on the machine — and what happens when the server is not yours alone.** Running ComfyUI the usual way, on `127.0.0.1`, the node and its preview read **any path you give them**: Documents, Desktop, another drive. Nothing is copied into `input`, which is the whole point — that folder grows without end otherwise.
+> If ComfyUI is started open to a network (`--listen 0.0.0.0`, a LAN box, a cloud machine), the preview is served over HTTP to whoever can reach that port, so it then stays inside your home folder and ComfyUI's own directories. Add more with `TS_MEDIA_EXTRA_ROOTS=D:/footage` (several separated by your OS path separator), or lift the limit with `TS_MEDIA_ALLOW_ANY_PATH=1`. Both are set on the machine by its owner — not inside a workflow, which can arrive from anyone.
+
+**Use when:** any workflow that starts from footage rather than from a still.
+
+---
+
+#### TS Video Info
+<img src="doc/screenshots/ts_video_info.png" alt="TS Video Info" width="330" />
+
+The small companion that unpacks `video_info` into plain numbers: frame rate, frame count, duration and size — both as loaded and as stored in the file — plus `has_audio`, `has_alpha` and a one-line summary. Keeping them here rather than on the loader saves the loader from carrying fifteen output sockets nobody connects at once. A `VHS_VIDEOINFO` bundle from Video Helper Suite plugs in too.
+
+---
+
+#### TS Video Saver
+<img src="doc/screenshots/ts_video_saver.png" alt="TS Video Saver" width="450" />
+
+Writes frames to a video file and plays the result in the node. Format and quality are named in words — **MP4 / H.264** with draft…lossless, **MP4 / H.265** — about half the size at the same quality, with an optional 10-bit — or **MOV / ProRes** with the usual Proxy…4444 XQ profiles — not in encoder flags. Audio is muxed **in the same pass, into the same file**: no temporary WAV, no second ffmpeg run, no `-audio` duplicate on disk.
+
+**Encoding shows its progress on the node**, the way sampling does: a long clip takes minutes, and a silent node during that time looks stuck.
+
+The player remembers whether you turned sound on. ProRes is not playable in a browser, so the node writes a small H.264 proxy next to it just for the preview (`preview: off` skips that). Hardware encoding is available but never chosen for you: it is much faster and noticeably worse at the same file size.
+
+**Use when:** you want the finished clip on disk, in a format an editor will actually accept.
+
+---
 
 #### TS Animation Preview
 <img src="doc/screenshots/ts_animation_preview.png" alt="TS Animation Preview" width="450" />
@@ -445,15 +406,6 @@ Drop-in preview node for image batches. Renders a looping H.265 video right insi
 Smooth frame interpolation using RIFE / FILM models. Boost a 12 fps animation to 24/48/60 fps, or smooth jittery video.
 
 **Use when:** the model output is choppy and you want cinema-smooth motion.
-
----
-
-#### TS Video Upscale With Model
-<img src="doc/screenshots/ts_video_upscale_with_model.png" alt="TS Video Upscale With Model" width="450" />
-
-Per-frame upscaling with any spandrel-loaded model (RealESRGAN, 4x-Ultrasharp, etc.). Three device strategies: `auto`, `load_unload_each_frame` (low VRAM, slower), `keep_loaded` (faster, more VRAM), `cpu_only`.
-
-**Use when:** upscaling video without OOM, or batching upscale jobs with a controllable VRAM footprint.
 
 ---
 
@@ -548,7 +500,7 @@ Turns any `AUDIO` clip into a stylized SoundCloud-style waveform image at the re
 
 Multimodal LLM-powered prompt enhancement and image understanding.
 
-#### TS Qwen 3 VL V3
+#### TS Qwen 3
 <img src="doc/screenshots/ts_qwen3_vl.png" alt="TS Qwen 3 VL V3" width="450" />
 
 Multimodal Qwen 3 VL (image + video + text) running locally. Built-in model picker (Qwen 2B / 4B / 8B variants and uncensored mods), system-prompt presets ("Image Edit Command Translation", "Prompt Enhancement", …), 4-bit/8-bit quantisation via `bitsandbytes`, FlashAttention-2 support, on-the-fly download from HuggingFace. Since v9.5 the heavy pipeline lives in a shared `nodes/llm/_qwen_engine.py` reused by Super Prompt — bug fixes and perf improvements land in both nodes at once.
@@ -660,11 +612,11 @@ Visual JSON-prompt designer for Ideogram 4. Open a full-screen editor, drag and 
 ---
 
 <a id="files"></a>
-### 📁 Files & Models (8 nodes)
+### 📁 Files & Models (2 nodes)
 
 Tools for managing model files, downloads, EDLs, and inspecting weights.
 
-#### TS Files Downloader (Ultimate)
+#### TS Files Downloader
 <img src="doc/screenshots/ts_downloader.png" alt="TS Files Downloader" width="450" />
 
 Multi-file downloader that takes a list of `URL <space> target_path` lines and downloads them sequentially. Auto-replaces HuggingFace mirrors with reachability check across the full mirror list, supports `models/<subdir>` aliases, resumes interrupted downloads, validates archives against zip-slip on auto-unzip, and shows progress (including SHA256 verification). Handy for one-shot pulling all assets a workflow needs.
@@ -685,56 +637,6 @@ The folder it proposes is the one your models of that category are **already in*
 
 ---
 
-#### TS Model Scanner
-<img src="doc/screenshots/ts_model_scanner.png" alt="TS Model Scanner" width="450" />
-
-Inspect any `.safetensors` (from `models/diffusion_models/`) or a loaded `MODEL` and print a detailed report: every parameter's name, shape, dtype, and device, plus aggregated statistics by dtype.
-
-**Use when:** debugging model loading, checking precision (fp16 vs fp8 vs bf16), or learning what's inside an unfamiliar checkpoint.
-
----
-
-#### TS Model Converter
-<img src="doc/screenshots/ts_model_converter.png" alt="TS Model Converter" width="450" />
-
-In-memory FP8 conversion (`float8_e4m3fn`) of a loaded `MODEL`. Cuts VRAM in half on supported GPUs.
-
----
-
-#### TS Model Converter Advanced
-<img src="doc/screenshots/ts_model_converter_advanced.png" alt="TS Model Converter Advanced" width="450" />
-
-Same idea with finer control: pick the target dtype (fp8 e4m3 / e5m2, bf16, fp16, fp32), keyword filters for which layers to convert, and load/save options.
-
----
-
-#### TS Model Converter Advanced Direct
-<img src="doc/screenshots/ts_model_converter_advanced_direct.png" alt="TS Model Converter Advanced Direct" width="450" />
-
-Same as Advanced but writes the converted weights directly to disk — no in-memory roundtrip needed.
-
-**Use the trio when:** preparing FP8 / mixed-precision variants of large models for slower hardware, or testing precision impact on output quality.
-
----
-
-#### TS CPU LoRA Merger
-<img src="doc/screenshots/ts_cpu_lora_merger.png" alt="TS CPU LoRA Merger" width="450" />
-
-Merge LoRA weights into a base model on CPU — no VRAM needed, suitable for huge models that won't fit on GPU.
-
-**Use when:** baking a LoRA into a checkpoint for distribution, or merging multiple LoRAs without GPU.
-
----
-
-#### TS File Path Loader
-<img src="doc/screenshots/ts_file_path_loader.png" alt="TS File Path Loader" width="450" />
-
-Picks the N-th file from a folder by sorted order. Outputs the full path and the basename without extension. Filters by ComfyUI-supported extensions (`.safetensors`, `.ckpt`, `.pt`, `.mp4`, `.mov`, …). Indices wrap around.
-
-**Use when:** iterating over a folder of inputs in a queue, or grabbing the latest checkpoint by index.
-
----
-
 #### TS YouTube Chapters
 <img src="doc/screenshots/ts_edl_chapters.png" alt="TS YouTube Chapters" width="450" />
 
@@ -745,11 +647,12 @@ Convert a DaVinci Resolve EDL (Edit Decision List) export into a YouTube-friendl
 ---
 
 <a id="utils"></a>
-### 🛠️ Utils (5 nodes)
+### 🛠️ Utils (6 nodes)
 
 Tiny helpers that make the graph less cluttered.
 
 #### TS Group Bypasser
+<img src="doc/screenshots/ts_group_bypasser.png" alt="TS Group Bypasser" width="450" />
 
 A control panel for the groups of the open workflow. The node's body holds nothing but group names and checkboxes: unchecking one puts **every node inside that group into bypass**. Double-click a row to show that group on the canvas. The node sizes itself to the number of groups — two groups give a two-row node, with no empty space underneath.
 
@@ -760,6 +663,23 @@ The state is not kept in this node — it is read back from the graph, so a node
 Bypassed groups survive a save without any help from this node: the state lives in the modes of the nodes themselves.
 
 **Use when:** a heavy workflow with several branches and only one of them wanted per run.
+**On the canvas, every group also gets its own badge** — a small square in the group's top-right corner (the same idea rgthree-comfy popularised). One click sends the whole group into bypass, another brings it back; empty groups get no badge, because there is nothing there to switch. It works with classic nodes and with Nodes 2.0, and needs no node on the graph at all — turn it off in **Settings → TS Timesaver → Canvas → "Bypass button on group headers"** if you'd rather not have it.
+
+
+---
+
+#### TS LoRA Loader
+<img src="doc/screenshots/ts_lora_loader.png" alt="TS LoRA Loader" width="450" />
+
+A stack of model-only LoRAs in one node. The plus button opens a search box over the LoRAs this install actually has; a chosen one drops in as a row with its own strength field, and the plus stays where it is for the next one. Rows are reordered by dragging the grip — order matters, because LoRAs are applied one after another. Clicking a row's name sets it aside without deleting it, so an A/B comparison does not cost you the entry.
+
+**Strength may be negative** (down to −10): that is how you damp a LoRA baked into the checkpoint, or run one in reverse. Dragging left and right over the strength field scrubs the value.
+
+The node does not load anything itself — it expands into a chain of **native `LoraLoaderModelOnly` nodes**. Two consequences, and they are the whole point: the result is identical to a hand-built chain, and ComfyUI caches each link separately, so changing the last LoRA's strength does not recompute the ones before it. A LoRA missing on this machine costs its own row and not the run, which matters for workflows that arrive from someone else.
+
+Model only, no CLIP — modern families keep the text encoder separate, and most LoRAs in circulation are model-side anyway.
+
+**Use when:** more than one LoRA, or any time you expect to be reordering them.
 
 ---
 
@@ -846,6 +766,32 @@ You can override these with `extra_model_paths.yaml` — Timesaver respects Comf
 ## 🛟 Troubleshooting
 
 <details>
+<summary><b>The pack used to print a big table at startup — where did it go?</b></summary>
+
+On a clean load the pack now says one line and nothing else:
+
+```
+[TS Timesaver] All 63 nodes loaded successfully.
+```
+
+The ComfyUI console is shared by every pack you have installed, and two screens
+of tables on each launch buried real errors — including ours. Anything that does
+go wrong is still printed, and only that.
+
+The full report (module table, external-import table, totals) is one variable
+away:
+
+```bash
+TS_VERBOSE_STARTUP=1
+```
+
+Set it before starting ComfyUI (on Windows: `set TS_VERBOSE_STARTUP=1` in the
+same console, or add it to your `.bat`). Useful when a node is missing and you
+want to see exactly which module refused to load and why.
+
+</details>
+
+<details>
 <summary><b>"ffmpeg not found" or audio and video nodes failing to decode</b></summary>
 
 You should not have to install ffmpeg at all: `imageio-ffmpeg` is a required
@@ -926,7 +872,7 @@ Timesaver freezes node ids and inputs across versions on purpose. If something b
 ```text
 comfyui-timesaver/
 ├─ ts_pasted_media_fix.py  # the pack's one patch to ComfyUI itself
-├─ nodes/                  # 79 modules: 75 nodes + 4 that register none
+├─ nodes/                  # 67 modules: 63 nodes + 4 that register none
 │                          #   (sampler + scheduler injectors, shared routes,
 │                          #    one backward-compat re-export shim)
 ├─ js/                     # frontend extensions for DOM-widget nodes

@@ -236,9 +236,14 @@ export function setupIdeogramNode(node) {
     };
 
     node.resizable = true;
+    // ⚠️ `node.size?.[0] || DEFAULT` — ловушка: LiteGraph выдаёт ноде размер
+    // ДО расширения, поэтому левая часть всегда истинна и заводской размер
+    // никогда не применялся. Нода оставалась ниже задуманного, и её нижний ряд
+    // не помещался. Растём до своего размера по умолчанию; сохранённый workflow
+    // перезапишет его своим.
     node.size = [
-        Math.max(Number(node.size?.[0]) || DEFAULT_NODE_SIZE[0], MIN_NODE_WIDTH),
-        Math.max(Number(node.size?.[1]) || DEFAULT_NODE_SIZE[1], MIN_NODE_HEIGHT),
+        Math.max(Number(node.size?.[0]) || 0, DEFAULT_NODE_SIZE[0], MIN_NODE_WIDTH),
+        Math.max(Number(node.size?.[1]) || 0, DEFAULT_NODE_SIZE[1], MIN_NODE_HEIGHT),
     ];
     node.min_size = [MIN_NODE_WIDTH, MIN_NODE_HEIGHT];
 

@@ -12,12 +12,25 @@ import {
     pickLocaleStrings,
     TS_UI_CLASS,
 } from "../../_theme.js";
-import { hideWidget } from "../../_dom_widget.js";
+import { addResizableDomWidget, hideWidget } from "../../_dom_widget.js";
 import { publishAssetAction } from "../../_studio/_asset_actions.js";
 import { studioStateFromPng } from "../../_studio/_pnginfo.js";
 import { openStudio, openStudioInstance } from "./_app.js";
 
 const NODE_ID = "TS_ImageStudio";
+// Размер, до которого нода разворачивается на холсте: столько нужно, чтобы
+// кнопка запуска поместилась целиком вместе с шапкой и сокетами.
+const LAUNCH_NODE_MIN_WIDTH = 270;
+// ⚠️ Все три числа ИЗМЕРЕНЫ на живой ноде, а не прикинуты. Разница между
+// высотой ноды и высотой слота держится ровно 78 точек (проверено на 106, 140,
+// 200 и 300): столько занимают шапка, сокеты и отступы. Прежние 58 были
+// прикидкой — слоту доставалось 28, и кнопка высотой 31 обрезалась.
+const LAUNCH_NODE_CHROME = 78;
+// Кнопка темы — 31 точка вместе со своими отступами; 44 дают ей воздух и
+// оставляют запас на более крупный шрифт.
+const LAUNCH_WIDGET_MIN_HEIGHT = 44;
+// Отсюда и минимальная высота ноды: обвязка плюс то, что нужно кнопке.
+const LAUNCH_NODE_MIN_HEIGHT = LAUNCH_NODE_CHROME + LAUNCH_WIDGET_MIN_HEIGHT;
 const W_SESSION = "session_id";
 const W_RESULT = "result_path";
 
@@ -191,7 +204,9 @@ function setupStudioNode(node) {
 
     const host = document.createElement("div");
     host.className = `${TS_UI_CLASS} ts-istudio-launch`;
-    host.style.cssText = "display:flex;align-items:center;justify-content:center;padding:6px";
+    // box-sizing обязателен: хост получает высоту в 100% от слота, и без него
+    // отступы прибавляются СВЕРХ неё — кнопка вылезала за нижний край.
+    host.style.cssText = "display:flex;align-items:center;justify-content:center;padding:6px;box-sizing:border-box";
     // Сборка студии идёт секундами, и без отклика кнопка выглядит мёртвой —
     // человек жмёт ещё раз. Вторую студию это больше не создаёт (сторож в
     // `openStudio`), но молчать всё равно нельзя: гасим кнопку на время.
@@ -203,12 +218,40 @@ function setupStudioNode(node) {
             .finally(() => { button.disabled = false; });
     });
     host.appendChild(button);
-    node.addDOMWidget("ts_studio_launch", "div", host, {
-        serialize: false,
-        hideOnZoom: false,
-        getMinHeight: () => 44,
-        getMaxHeight: () => 44,
+    // ⚠️ Через ОБЩИЙ помощник, а не голым `addDOMWidget`. Своя пара
+    // getMinHeight/getMaxHeight = 44 не работала: слот всё равно получал 24, и
+    // кнопка высотой 31 обрезалась снизу на четыре точки. Помощник считает
+    // высоту от `node.size` в единицах графа и вешает нужный хук на каждый из
+    // двух рендереров — это и есть единственный верный способ (CLAUDE.md §12.6).
+    addResizableDomWidget(node, host, {
+        name: "ts_studio_launch",
+        minWidth: LAUNCH_NODE_MIN_WIDTH,
+        minHeight: LAUNCH_NODE_MIN_HEIGHT,
+        chromeHeight: LAUNCH_NODE_CHROME,
+        minWidgetHeight: LAUNCH_WIDGET_MIN_HEIGHT,
     });
+
+    // ⚠️ И всё равно СВЕРЯЕМСЯ С ФАКТОМ. Сколько ноды занимает её обвязка,
+    // константой не описывается: сразу после создания слот получает одно, а
+    // после первого изменения размера — другое (замерено: 24 против 44 при
+    // одной и той же высоте ноды). Поэтому вместо подгонки числа измеряем,
+    // чего не хватило, и дорастаем ровно на столько.
+    //
+    // Проверок несколько: раскладка складывается не за один кадр, и
+    // единственная попытка успевала не всегда — тест видел ещё необсчитанные
+    // 25 точек. Останавливаемся, как только хватило.
+    let attemptsLeft = 6;
+    const fitLauncher = () => {
+        const got = host.clientHeight;
+        const need = Math.max(LAUNCH_WIDGET_MIN_HEIGHT, host.scrollHeight);
+        if (got > 0 && got >= need) return;
+        if (got > 0 && got < need) {
+            node.setSize([node.size[0], node.size[1] + (need - got)]);
+            node.graph?.setDirtyCanvas(true, true);
+        }
+        if (--attemptsLeft > 0) requestAnimationFrame(fitLauncher);
+    };
+    requestAnimationFrame(fitLauncher);
 
     node._tsStudioRehydrate = () => {
         // Values restored from the workflow land AFTER onNodeCreated; mirror

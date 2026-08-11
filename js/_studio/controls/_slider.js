@@ -45,7 +45,9 @@ export const render = (control, ctx) => {
     slider.min = String(min);
     slider.max = String(max);
     slider.step = String(step);
-    const tip = localized(control.tooltip, ctx.locale, "");
+    // Подсказка своя, если она есть у настройки; иначе — хотя бы подпись:
+      // у ползунка её не видно, а гадать по положению бегунка человек не должен.
+    const tip = localized(control.tooltip, ctx.locale, "") || label.textContent || "";
     if (tip) { slider.title = tip; label.title = tip; }
     row.appendChild(slider);
     wrap.append(head, row);

@@ -249,14 +249,14 @@
     },
     {
       "id": 3,
-      "type": "TS_Color_Grade",
+      "type": "TS_Film_Emulation",
       "pos": [
         772.798828125,
         80
       ],
       "size": [
-        270,
-        226
+        274.58984375,
+        346
       ],
       "flags": {},
       "order": 2,
@@ -283,15 +283,15 @@
           "color_on": null,
           "dir": null,
           "label": null,
-          "localized_name": "hue",
+          "localized_name": "enable",
           "locked": null,
-          "name": "hue",
+          "name": "enable",
           "nameLocked": null,
           "removable": null,
           "shape": null,
-          "type": "FLOAT",
+          "type": "BOOLEAN",
           "widget": {
-            "name": "hue"
+            "name": "enable"
           },
           "link": null
         },
@@ -300,15 +300,15 @@
           "color_on": null,
           "dir": null,
           "label": null,
-          "localized_name": "temperature",
+          "localized_name": "film_preset",
           "locked": null,
-          "name": "temperature",
+          "name": "film_preset",
           "nameLocked": null,
           "removable": null,
           "shape": null,
-          "type": "FLOAT",
+          "type": "COMBO",
           "widget": {
-            "name": "temperature"
+            "name": "film_preset"
           },
           "link": null
         },
@@ -317,15 +317,15 @@
           "color_on": null,
           "dir": null,
           "label": null,
-          "localized_name": "saturation",
+          "localized_name": "lut_choice",
           "locked": null,
-          "name": "saturation",
+          "name": "lut_choice",
           "nameLocked": null,
           "removable": null,
           "shape": null,
-          "type": "FLOAT",
+          "type": "COMBO",
           "widget": {
-            "name": "saturation"
+            "name": "lut_choice"
           },
           "link": null
         },
@@ -334,15 +334,15 @@
           "color_on": null,
           "dir": null,
           "label": null,
-          "localized_name": "contrast",
+          "localized_name": "lut_strength",
           "locked": null,
-          "name": "contrast",
+          "name": "lut_strength",
           "nameLocked": null,
           "removable": null,
           "shape": null,
           "type": "FLOAT",
           "widget": {
-            "name": "contrast"
+            "name": "lut_strength"
           },
           "link": null
         },
@@ -351,15 +351,15 @@
           "color_on": null,
           "dir": null,
           "label": null,
-          "localized_name": "gain",
+          "localized_name": "gamma_correction",
           "locked": null,
-          "name": "gain",
+          "name": "gamma_correction",
           "nameLocked": null,
           "removable": null,
           "shape": null,
-          "type": "FLOAT",
+          "type": "BOOLEAN",
           "widget": {
-            "name": "gain"
+            "name": "gamma_correction"
           },
           "link": null
         },
@@ -368,15 +368,15 @@
           "color_on": null,
           "dir": null,
           "label": null,
-          "localized_name": "lift",
+          "localized_name": "film_strength",
           "locked": null,
-          "name": "lift",
+          "name": "film_strength",
           "nameLocked": null,
           "removable": null,
           "shape": null,
           "type": "FLOAT",
           "widget": {
-            "name": "lift"
+            "name": "film_strength"
           },
           "link": null
         },
@@ -385,15 +385,15 @@
           "color_on": null,
           "dir": null,
           "label": null,
-          "localized_name": "gamma",
+          "localized_name": "contrast_curve",
           "locked": null,
-          "name": "gamma",
+          "name": "contrast_curve",
           "nameLocked": null,
           "removable": null,
           "shape": null,
           "type": "FLOAT",
           "widget": {
-            "name": "gamma"
+            "name": "contrast_curve"
           },
           "link": null
         },
@@ -402,15 +402,100 @@
           "color_on": null,
           "dir": null,
           "label": null,
-          "localized_name": "brightness",
+          "localized_name": "warmth",
           "locked": null,
-          "name": "brightness",
+          "name": "warmth",
           "nameLocked": null,
           "removable": null,
           "shape": null,
           "type": "FLOAT",
           "widget": {
-            "name": "brightness"
+            "name": "warmth"
+          },
+          "link": null
+        },
+        {
+          "color_off": null,
+          "color_on": null,
+          "dir": null,
+          "label": null,
+          "localized_name": "grain_intensity",
+          "locked": null,
+          "name": "grain_intensity",
+          "nameLocked": null,
+          "removable": null,
+          "shape": null,
+          "type": "FLOAT",
+          "widget": {
+            "name": "grain_intensity"
+          },
+          "link": null
+        },
+        {
+          "color_off": null,
+          "color_on": null,
+          "dir": null,
+          "label": null,
+          "localized_name": "grain_size",
+          "locked": null,
+          "name": "grain_size",
+          "nameLocked": null,
+          "removable": null,
+          "shape": null,
+          "type": "FLOAT",
+          "widget": {
+            "name": "grain_size"
+          },
+          "link": null
+        },
+        {
+          "color_off": null,
+          "color_on": null,
+          "dir": null,
+          "label": null,
+          "localized_name": "fade",
+          "locked": null,
+          "name": "fade",
+          "nameLocked": null,
+          "removable": null,
+          "shape": null,
+          "type": "FLOAT",
+          "widget": {
+            "name": "fade"
+          },
+          "link": null
+        },
+        {
+          "color_off": null,
+          "color_on": null,
+          "dir": null,
+          "label": null,
+          "localized_name": "shadow_saturation",
+          "locked": null,
+          "name": "shadow_saturation",
+          "nameLocked": null,
+          "removable": null,
+          "shape": null,
+          "type": "FLOAT",
+          "widget": {
+            "name": "shadow_saturation"
+          },
+          "link": null
+        },
+        {
+          "color_off": null,
+          "color_on": null,
+          "dir": null,
+          "label": null,
+          "localized_name": "highlight_saturation",
+          "locked": null,
+          "name": "highlight_saturation",
+          "nameLocked": null,
+          "removable": null,
+          "shape": null,
+          "type": "FLOAT",
+          "widget": {
+            "name": "highlight_saturation"
           },
           "link": null
         }
@@ -436,24 +521,29 @@
         }
       ],
       "properties": {
-        "Node name for S&R": "TS_Color_Grade"
+        "Node name for S&R": "TS_Film_Emulation"
       },
       "widgets_values": [
+        true,
+        "External LUT",
+        "None",
+        1,
+        true,
+        1,
+        1,
         0,
+        0.02,
+        0.5,
         0,
-        1,
-        1,
-        1,
-        0,
-        1,
-        0
+        0.8,
+        0.85
       ]
     },
     {
       "id": 4,
       "type": "TS_ImageTileMerger",
       "pos": [
-        1132.798828125,
+        1137.388671875,
         80
       ],
       "size": [
@@ -522,7 +612,7 @@
       "id": 5,
       "type": "PreviewImage",
       "pos": [
-        1405.009375,
+        1409.59921875,
         80
       ],
       "size": [

@@ -6,7 +6,7 @@ Visual JSON-prompt designer for Ideogram 4. Open a full-screen editor, drag and 
 
 
 <a id="files"></a>
-### 📁 Files & Models (8 nodes)
+### 📁 Files & Models (2 nodes)
 
 Tools for managing model files, downloads, EDLs, and inspecting weights.
 

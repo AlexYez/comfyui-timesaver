@@ -22,6 +22,7 @@ export const render = (control, ctx) => {
     const addButton = document.createElement("button");
     addButton.type = "button";
     addButton.className = "ts-studio__loraadd";
+    addButton.title = ctx.t.loraAddTitle || "";
     addButton.textContent = ctx.t.loraAdd;
     const pop = document.createElement("div");
     pop.className = "ts-studio__lorapop";

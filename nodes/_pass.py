@@ -193,9 +193,36 @@ def describe(payload: dict | None, activated_at_iso: str, *,
         "expiresAt": expires.isoformat(),
         "daysLeft": max(0, (expires - now).days),
         # Paid files live under an unguessable path named by the tier secret,
-        # so a studio needs these to build a download URL.
+        # so the SERVER needs these to build a download URL and to decrypt.
+        # ⚠️ Наружу это поле не отдаётся никогда — см. `public_state` ниже.
         "secrets": {str(k): v for k, v in (payload.get("sec") or {}).items()},
     }
+
+
+# Ключи состояния, которые существуют только для серверной стороны.
+_INTERNAL_STATE_KEYS = frozenset({"secrets"})
+
+
+def public_state(state: dict | None) -> dict:
+    """То же состояние, но пригодное к отправке в браузер.
+
+    ⚠️ ``describe`` кладёт в состояние секреты уровней: ими собирается адрес
+    платного пакета и ими же он расшифровывается. Состояние целиком уходило в
+    ответы ``/api/ts_pass/status``, ``/api/ts_studio/packs`` и активации —
+    значит любой, кто дотянулся до порта ComfyUI, мог забрать ключи и качать
+    платные пакеты сам. Фронтенду эти поля не нужны: поиск по ``js/`` не находит
+    ни одного обращения к ``secrets``.
+
+    Args:
+        state: словарь от ``describe``/``current_pass``.
+
+    Returns:
+        Копия без служебных полей. Вложенные значения не копируются: их не
+        меняют, а отдают как есть.
+    """
+    if not isinstance(state, dict):
+        return {}
+    return {k: v for k, v in state.items() if k not in _INTERNAL_STATE_KEYS}
 
 
 # ── stored pass ─────────────────────────────────────────────────────────── #

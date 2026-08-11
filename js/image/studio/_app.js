@@ -134,6 +134,7 @@ const STRINGS = {
         aspectCustomTip: "Your own ratio, as width:height — 21:9, 5:4, 2.35:1",
         sizeFromReference: "Size follows the reference image",
         resolution: "Resolution",
+        resolutionTitle: "How many megapixels the result has — the aspect ratio stays",
         seed: "Seed",
         randomize: "randomize",
         randomizeTip: "Random seed on every run — click to pin the current one",
@@ -143,6 +144,8 @@ const STRINGS = {
         seedHintRandom: "New seed every run",
         seedHintFixed: "This seed is used every run",
         advanced: "Advanced",
+        advancedTitle: "Show the settings that are rarely touched",
+        modelTitle: "Which model does the work",
         stages: {
             load: "Loading the model",
             prompt: "Reading the prompt",
@@ -166,6 +169,7 @@ const STRINGS = {
         },
         fitView: "Fit to the work area (double-click, or wheel to zoom)",
         run: "Run",
+        runTitle: "Start the job with the current settings",
         sourceGone: "The image of this sitting is no longer on disk — drop it in again.",
         stop: "Stop",
         stopTip: "Stop the run in progress. Anything running from the canvas is left alone.",
@@ -178,7 +182,9 @@ const STRINGS = {
         cancel: "Cancel",
         generating: (p) => `Generating… ${p}%`,
         tabSession: "Session",
+        tabSessionTitle: "What this session has produced, newest first",
         tabLibrary: "Library",
+        tabLibraryTitle: "Everything saved to the output folder",
         libraryHint: "Recent server results. Drag into a reference slot; double-click to view.",
         libraryPickTip: "Drag into a slot · double-click to view on the stage",
         libraryEmpty: "No recent images on this server yet.",
@@ -248,6 +254,7 @@ const STRINGS = {
         i2iNeedsImage: "Bring in an image first — this mode redraws the one you have.",
         outFrame: (w, h) => `${w} × ${h}`,
         tabQueue: "Queue",
+        tabQueueTitle: "Jobs waiting to run and the one running now",
         recreate: "Recreate",
         recreateTip: "Restore the mode, settings and source image this result was made with",
         recreated: (f) => `Session recreated (${f}).`,
@@ -267,6 +274,7 @@ const STRINGS = {
         refSlotTip: (n) => `Reference ${n}: drop an image here, or click to pick a file`,
         refClear: "Remove this reference",
         loraAdd: "+ Add LoRA",
+        loraAddTitle: "Search the LoRAs installed here and add one",
         loraSearch: "Search LoRAs…",
         loraDrag: "Drag to reorder — the chain applies top to bottom",
         loraStrength: "Strength (negative values invert the effect)",
@@ -362,6 +370,7 @@ const STRINGS = {
         aspectCustomTip: "Своё соотношение в виде ширина:высота — 21:9, 5:4, 2.35:1",
         sizeFromReference: "Размер берётся от референса",
         resolution: "Разрешение",
+        resolutionTitle: "Сколько мегапикселей в результате — пропорция при этом сохраняется",
         seed: "Seed",
         randomize: "случайный",
         randomizeTip: "Случайный сид на каждый запуск — клик закрепит текущий",
@@ -371,6 +380,8 @@ const STRINGS = {
         seedHintRandom: "Новый сид на каждый запуск",
         seedHintFixed: "Этот сид используется на каждом запуске",
         advanced: "Дополнительно",
+        advancedTitle: "Показать настройки, которые трогают редко",
+        modelTitle: "Какая модель будет работать",
         stages: {
             load: "Загружаю модель",
             prompt: "Читаю промпт",
@@ -394,6 +405,7 @@ const STRINGS = {
         },
         fitView: "Вписать в рабочую область (двойной клик; колесо — масштаб)",
         run: "Run",
+        runTitle: "Запустить с текущими настройками",
         sourceGone: "Картинки этой сессии больше нет на диске — перетащите её заново.",
         stop: "Стоп",
         stopTip: "Остановить текущий прогон. То, что считается с холста, не трогается.",
@@ -406,7 +418,9 @@ const STRINGS = {
         cancel: "Отмена",
         generating: (p) => `Генерация… ${p}%`,
         tabSession: "Сессия",
+        tabSessionTitle: "Что получилось в этой сессии, новое сверху",
         tabLibrary: "Библиотека",
+        tabLibraryTitle: "Всё, что сохранено в папку output",
         libraryHint: "Недавние результаты сервера. Тяните в слот референса; двойной клик — просмотр.",
         libraryPickTip: "Тяните в слот · двойной клик — показать на холсте",
         libraryEmpty: "На сервере пока нет недавних изображений.",
@@ -475,6 +489,7 @@ const STRINGS = {
         i2iNeedsImage: "Сначала принесите картинку — этот режим перерисовывает её.",
         outFrame: (w, h) => `${w} × ${h}`,
         tabQueue: "Очередь",
+        tabQueueTitle: "Задания в очереди и то, что считается сейчас",
         recreate: "Повторить",
         recreateTip: "Восстановить режим, настройки и исходник, с которыми сделан результат",
         recreated: (f) => `Сессия восстановлена (${f}).`,
@@ -494,6 +509,7 @@ const STRINGS = {
         refSlotTip: (n) => `Референс ${n}: перетащите картинку или кликните для выбора файла`,
         refClear: "Убрать этот референс",
         loraAdd: "+ Добавить LoRA",
+        loraAddTitle: "Найти LoRA среди установленных и добавить её",
         loraSearch: "Поиск LoRA…",
         loraDrag: "Перетащите, чтобы изменить порядок — цепочка применяется сверху вниз",
         loraStrength: "Сила (отрицательные значения инвертируют эффект)",
@@ -1170,6 +1186,7 @@ async function buildStudio(node, persist) {
         extraTabs: [{
             id: "queue",
             label: t.tabQueue,
+            title: t.tabQueueTitle,
             element: queuePanel.element,
             onVisible: (visible) => queuePanel.setVisible(visible),
         }],
@@ -1282,6 +1299,7 @@ async function buildStudio(node, persist) {
         modelRow.className = "ts-istudio__modelrow";
         const select = document.createElement("select");
         select.className = "ts-ui-select";
+        select.title = t.modelTitle || "";
         for (const role of roles.values()) {
             const option = document.createElement("option");
             option.value = role.family.family;
@@ -1429,6 +1447,7 @@ async function buildStudio(node, persist) {
             const toggle = document.createElement("button");
             toggle.type = "button";
             toggle.className = "ts-studio__advanced";
+            toggle.title = t.advancedTitle || "";
             toggle.textContent = `▸ ${t.advanced}`;
             const holder = document.createElement("div");
             holder.style.display = "none";
@@ -1478,6 +1497,7 @@ async function buildStudio(node, persist) {
         runButton.type = "button";
         runButton.className = "ts-ui-btn ts-ui-btn--primary";
         runButton.textContent = t.run;
+        runButton.title = t.runTitle || "";
         runButton.addEventListener("click", () => run());
         // Остановка стоит там же, где запуск, и появляется только когда есть
         // что останавливать. Снимает ТОЛЬКО свои прогоны: рендер, запущенный с

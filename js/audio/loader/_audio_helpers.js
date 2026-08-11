@@ -69,6 +69,10 @@ const STRINGS = {
         fitTitle: "Reset zoom and pan to full waveform",
         noFile: "No file selected",
         loopTitle: "Loop playback",
+        loadAudioTitle: "Pick an audio or video file — it is uploaded into the ComfyUI input folder",
+        startRecordTitle: "Record from the microphone straight into this node",
+        resetCropTitle: "Take the whole file again, dropping the trim",
+        playTitle: "Play or pause the selected range (Space)",
         cropFull: "Crop: full",
         cropRange: (from, to, length) => `Crop: ${from} -> ${to} | Length: ${length}`,
         loadingWaveform: "Loading waveform...",
@@ -107,6 +111,10 @@ const STRINGS = {
         fitTitle: "Сбросить масштаб и показать всю волну",
         noFile: "Файл не выбран",
         loopTitle: "Зациклить воспроизведение",
+        loadAudioTitle: "Выбрать аудио- или видеофайл — он загрузится в папку input ComfyUI",
+        startRecordTitle: "Записать с микрофона прямо в эту ноду",
+        resetCropTitle: "Взять файл целиком, сбросив обрезку",
+        playTitle: "Воспроизвести или остановить выделенный кусок (пробел)",
         cropFull: "Обрезка: весь файл",
         cropRange: (from, to, length) => `Обрезка: ${from} -> ${to} | Длина: ${length}`,
         loadingWaveform: "Загрузка волны...",
@@ -335,14 +343,17 @@ export function setupAudioLoader(node) {
         loadButton = document.createElement("button");
         loadButton.className = "ts-audio-loader__button is-primary";
         loadButton.textContent = L.loadAudio;
+        loadButton.title = L.loadAudioTitle;
         recordButton = document.createElement("button");
         recordButton.className = "ts-audio-loader__button";
         recordButton.textContent = L.startRecord;
+        recordButton.title = L.startRecordTitle;
         actions.append(loadButton, recordButton);
     }
     const resetCropButton = document.createElement("button");
     resetCropButton.className = "ts-audio-loader__button";
     resetCropButton.textContent = L.resetCrop;
+    resetCropButton.title = L.resetCropTitle;
     actions.append(resetCropButton);
 
     const zoomGroup = document.createElement("div");
@@ -417,6 +428,7 @@ export function setupAudioLoader(node) {
     const playButton = document.createElement("button");
     playButton.className = "ts-audio-loader__play";
     playButton.innerHTML = playIcon();
+    playButton.title = L.playTitle;
     const loopButton = document.createElement("button");
     loopButton.className = "ts-audio-loader__play";
     loopButton.innerHTML = loopIcon();

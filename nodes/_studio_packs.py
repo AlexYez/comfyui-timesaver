@@ -26,6 +26,7 @@ import os
 import re
 import shutil
 import urllib.error
+import urllib.parse
 import urllib.request
 import zipfile
 from datetime import datetime, timezone
@@ -113,6 +114,23 @@ def installed_dir() -> Path | None:
     return None if root is None else root / WORKFLOWS_SUBDIR
 
 
+def _loggable_url(url: str) -> str:
+    """Адрес без секретной части — для журнала.
+
+    ⚠️ У платного пакета СЕГМЕНТ ПУТИ и есть ключ уровня (см. `pack_url`), а
+    строка запроса может нести подпись. Полный адрес в журнале — это тот же
+    ключ, просто записанный в файл, который потом уезжает в отчёт об ошибке.
+    Оставляем схему, узел и имя файла.
+    """
+    try:
+        parsed = urllib.parse.urlparse(str(url or ""))
+    except Exception:                       # noqa: BLE001 - мусор вместо адреса
+        return "<unparseable url>"
+    name = Path(parsed.path or "").name
+    return f"{parsed.scheme}://{parsed.netloc}/…/{name}" if name else \
+           f"{parsed.scheme}://{parsed.netloc}/…"
+
+
 def _fetch_bytes(url: str, limit: int = _MAX_PACK_BYTES) -> bytes | None:
     """GET with a ceiling. Returns None on any failure — offline is not fatal."""
     try:
@@ -121,11 +139,11 @@ def _fetch_bytes(url: str, limit: int = _MAX_PACK_BYTES) -> bytes | None:
             data = response.read(limit + 1)
         if len(data) > limit:
             logger.warning("%s %s is larger than the %d MB ceiling; refused.",
-                           LOG_PREFIX, url, limit // (1024 * 1024))
+                           LOG_PREFIX, _loggable_url(url), limit // (1024 * 1024))
             return None
         return data
     except (urllib.error.URLError, OSError, ValueError) as error:
-        logger.info("%s could not fetch %s (%s)", LOG_PREFIX, url, error)
+        logger.info("%s could not fetch %s (%s)", LOG_PREFIX, _loggable_url(url), error)
         return None
 
 
@@ -333,8 +351,26 @@ def install_pack(entry: dict, *, base: str | None = None,
             json.dumps(stamp, ensure_ascii=False, indent=1), encoding="utf-8")
         # Swap only once the archive is known good: a failed install must not
         # leave a half-written pack where the studio will read it.
-        shutil.rmtree(target, ignore_errors=True)
-        staging.rename(target)
+        #
+        # ⚠️ Порядок «снести старое → переименовать новое» терял установленный
+        # набор, если переименование не проходило: антивирус подержал папку,
+        # файл открыт, не хватило прав — и у человека не остаётся НИЧЕГО, хотя
+        # до обновления всё работало. Поэтому старое сначала отводится в
+        # сторону и удаляется лишь после успеха, а на любой осечке
+        # возвращается на место.
+        backup = None
+        if target.exists():
+            backup = target.with_name(target.name + ".previous")
+            shutil.rmtree(backup, ignore_errors=True)
+            target.rename(backup)
+        try:
+            staging.rename(target)
+        except Exception:
+            if backup is not None and not target.exists():
+                backup.rename(target)       # вернули рабочую версию
+            raise
+        if backup is not None:
+            shutil.rmtree(backup, ignore_errors=True)
     except Exception:
         shutil.rmtree(staging, ignore_errors=True)
         raise
@@ -528,9 +564,14 @@ def describe_catalog(catalog: dict, *, product: str = PRODUCT,
             "hidden": hidden_why,
             "enabled": not hidden_why,
         })
+    from . import _pass
+
     return {
         "product": product,
-        "pass": state,
+        # ⚠️ Каталог уходит в браузер целиком, поэтому состояние подписки в нём
+        # — только публичная часть. Секреты уровней нужны серверу для сборки
+        # адреса и расшифровки, клиенту — никогда.
+        "pass": _pass.public_state(state),
         "packs": entries,
         "tiers": (local if local is not None else local_catalog()).get("tiers", {}),
         "viewTier": ceiling,

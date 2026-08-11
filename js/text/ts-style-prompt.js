@@ -37,6 +37,11 @@ const SEARCH_DEBOUNCE_MS = 100;
 const STRINGS = {
     en: {
         searchPlaceholder: "Search styles...",
+        searchTitle: "Filter the list by name — type any part of it",
+        cardTitle: (name, category) => category ? `${name} · ${category}` : name,
+        clearTitle: "Deselect every style",
+        doneTitle: "Close the picker and keep what is selected",
+        categoryTitle: "Show only styles from one category",
         allCategories: "All categories",
         loading: "Loading styles...",
         noStyles: "No styles found.",
@@ -51,6 +56,11 @@ const STRINGS = {
     },
     ru: {
         searchPlaceholder: "Поиск стилей...",
+        searchTitle: "Отобрать по названию — печатайте любую его часть",
+        cardTitle: (name, category) => category ? `${name} · ${category}` : name,
+        clearTitle: "Снять выбор со всех стилей",
+        doneTitle: "Закрыть выбор и оставить отмеченное",
+        categoryTitle: "Показать стили только одной категории",
         allCategories: "Все категории",
         loading: "Загрузка стилей...",
         noStyles: "Стили не найдены.",
@@ -531,9 +541,11 @@ function setupStyleSelector(node) {
     search.type = "search";
     search.className = "ts-style-search";
     search.placeholder = L.searchPlaceholder;
+    search.title = L.searchTitle;
 
     const categorySelect = document.createElement("select");
     categorySelect.className = "ts-ui-select ts-style-cat";
+    categorySelect.title = L.categoryTitle;
 
     const body = document.createElement("div");
     body.className = "ts-style-body";
@@ -802,6 +814,7 @@ function setupStyleSelector(node) {
             styles.forEach((style) => {
                 const value = styleValue(style);
                 const card = document.createElement("button");
+                card.title = L.cardTitle(style.name, style.category || "");
                 card.type = "button";
                 card.className = "ts-style-card";
                 card.dataset.value = value;
@@ -950,20 +963,24 @@ function setupStyleSelector(node) {
         const mSearch = doc.createElement("input");
         mSearch.type = "search";
         mSearch.className = "ts-style-modal__search";
+        mSearch.title = L.searchTitle;
         mSearch.placeholder = L.modalSearch;
 
         const mCat = doc.createElement("select");
         mCat.className = "ts-ui-select ts-style-modal__cat";
+        mCat.title = L.categoryTitle;
 
         const selInfo = doc.createElement("div");
         selInfo.className = "ts-style-modal__selinfo";
 
         const clearBtn = doc.createElement("button");
+        clearBtn.title = L.clearTitle;
         clearBtn.type = "button";
         clearBtn.className = "ts-ui-btn";
         clearBtn.textContent = L.clear;
 
         const doneBtn = doc.createElement("button");
+        doneBtn.title = L.doneTitle;
         doneBtn.type = "button";
         doneBtn.className = "ts-ui-btn ts-ui-btn--primary";
         doneBtn.textContent = L.done;
@@ -1027,6 +1044,7 @@ function setupStyleSelector(node) {
             styles.forEach((style) => {
                 const value = styleValue(style);
                 const card = doc.createElement("button");
+                card.title = L.cardTitle(style.name, style.category || "");
                 card.type = "button";
                 card.className = "ts-style-modal__card";
                 card.title = styleTooltip(style);

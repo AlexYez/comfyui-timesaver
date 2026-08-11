@@ -116,16 +116,8 @@ def _get_ffmpeg_executable() -> str:
 
 
 def _allowed_view_roots() -> tuple[Path, ...]:
-    # Resolved on every call so changes to folder_paths (rare) are picked up.
+    """Собственные папки ноды — они открыты всегда, сверх общей политики."""
     roots: list[Path] = []
-    try:
-        roots.append(Path(folder_paths.get_input_directory()).resolve())
-    except (OSError, ValueError):
-        pass
-    try:
-        roots.append(Path(folder_paths.get_output_directory()).resolve())
-    except (OSError, ValueError, AttributeError):
-        pass
     for candidate in (RECORDINGS_DIR, GENERATED_AUDIO_DIR, CACHE_DIR):
         try:
             roots.append(candidate.resolve())
@@ -135,17 +127,16 @@ def _allowed_view_roots() -> tuple[Path, ...]:
 
 
 def _is_inside_allowed_root(path: Path) -> bool:
-    try:
-        resolved = path.resolve(strict=False)
-    except OSError:
-        return False
-    for root in _allowed_view_roots():
-        try:
-            resolved.relative_to(root)
-            return True
-        except ValueError:
-            continue
-    return False
+    """Единая политика пака плюс собственные папки ноды.
+
+    ⚠️ Раньше здесь стоял свой список (только input/output и служебные папки), и
+    у трёх медиа-нод он был РАЗНЫЙ: положив материал в «Документы», человек
+    получал превью в одной ноде и пустоту в другой. Теперь правило одно —
+    ``nodes/_shared.media_path_allowed``.
+    """
+    from ..._shared import media_path_allowed
+
+    return media_path_allowed(path, [str(r) for r in _allowed_view_roots()])
 
 
 def _hash_file_identity(filepath: str) -> str:

@@ -77,6 +77,7 @@ const STRINGS = {
         startHint: "or paste with Ctrl+V, or click “Load Image”",
         processing: "Processing...",
         load: "Load Image",
+        loadTitle: "Pick an image — drag and drop or Ctrl+V work too",
         save: "Save Image",
         saveTitle: "Save the current cleaned image into the ComfyUI output folder.",
         reset: "Reset",
@@ -84,6 +85,7 @@ const STRINGS = {
         undoTitle: "Undo last edit",
         redoTitle: "Redo edit",
         brush: "Brush",
+        brushTitle: "Brush size — the mouse wheel changes it too",
         fit: "Fit",
         fitTitle: "Fit image to view (resets zoom and pan).",
         oneToOne: "1:1",
@@ -128,6 +130,7 @@ const STRINGS = {
         startHint: "или вставьте через Ctrl+V, или нажмите «Загрузить изображение»",
         processing: "Обработка...",
         load: "Загрузить изображение",
+        loadTitle: "Выбрать изображение — можно и перетаскиванием, и Ctrl+V",
         save: "Сохранить изображение",
         saveTitle: "Сохранить текущее очищенное изображение в папку output ComfyUI.",
         reset: "Сброс",
@@ -135,6 +138,7 @@ const STRINGS = {
         undoTitle: "Отменить последнюю правку",
         redoTitle: "Вернуть правку",
         brush: "Кисть",
+        brushTitle: "Размер кисти — его же меняет колесо мыши",
         fit: "Вписать",
         fitTitle: "Вписать изображение в окно (сбрасывает масштаб и смещение).",
         oneToOne: "1:1",
@@ -390,7 +394,7 @@ function redoIconSvg() {
     return `<svg viewBox="0 0 24 24"><path d="M18.4 10.6C16.55 8.99 14.15 8 11.5 8c-4.65 0-8.58 3.03-9.96 7.22L3.9 16c1.05-3.19 4.05-5.5 7.6-5.5 1.95 0 3.73.72 5.12 1.88L13 16h9V7l-3.6 3.6z"/></svg>`;
 }
 
-function makeSlider({ min, max, step, value, onInput, className }) {
+function makeSlider({ min, max, step, value, onInput, className, title }) {
     const slider = document.createElement("input");
     slider.type = "range";
     slider.min = String(min);
@@ -398,6 +402,9 @@ function makeSlider({ min, max, step, value, onInput, className }) {
     slider.step = String(step);
     slider.value = String(value);
     slider.className = className;
+    // Подсказка обязательна: у ползунка нет подписи, по которой видно, что он
+    // делает и в чём измеряется.
+    if (title) slider.title = title;
     slider.addEventListener("input", (event) => {
         const next = Number(event.target.value);
         onInput(next);
@@ -550,6 +557,7 @@ export function setupLamaCleanup(node) {
     const loadButton = document.createElement("button");
     loadButton.className = "ts-ui-btn ts-ui-btn--primary";
     loadButton.textContent = L.load;
+    loadButton.title = L.loadTitle;
     const saveButton = document.createElement("button");
     saveButton.className = "ts-ui-btn";
     saveButton.textContent = L.save;
@@ -585,6 +593,7 @@ export function setupLamaCleanup(node) {
         step: 1,
         value: brushToSliderValue(state.brushSize),
         className: "ts-ui-slider ts-lama__brush-slider",
+        title: L.brushTitle,
         onInput: (sliderValue) => {
             const brushPx = sliderValueToBrush(sliderValue);
             state.brushSize = brushPx;
@@ -650,6 +659,7 @@ export function setupLamaCleanup(node) {
             step: options.step,
             value: getter(),
             className: "ts-ui-slider",
+            title: options.title || name,
             onInput: (next) => {
                 setter(next);
                 valueEl.textContent = String(Math.round(next));

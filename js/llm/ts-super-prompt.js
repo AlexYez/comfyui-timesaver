@@ -37,6 +37,7 @@ const HIGH_QUALITY_WIDGET = "high_quality";
 const SYSTEM_PRESET_WIDGET = "system_preset";
 const ATTACHED_IMAGE_WIDGET = "attached_image";
 const ATTACHED_IMAGE_2_WIDGET = "attached_image_2";
+const BIGGER_MODEL_WIDGET = "bigger_model";
 // Two slots, and the order is the meaning: one image is a reference, two
 // are the first and the last frame of the shot being described.
 const IMAGE_SLOTS = [ATTACHED_IMAGE_WIDGET, ATTACHED_IMAGE_2_WIDGET];
@@ -164,6 +165,40 @@ const STYLE_TEXT = `
     0%{transform:translateX(-100%)}100%{transform:translateX(285%)}
 }
 .ts-sp__file{position:fixed;left:-9999px;top:-9999px}
+/* Оверлей работы: накрывает ноду целиком, пока модель занята.
+   ⚠️ Он именно НАКРЫВАЕТ, а не блокирует по одному: пока идёт генерация,
+   нажимать в этой ноде нечего, кроме отмены, и пусть это будет видно. */
+.ts-sp__busy{position:absolute;inset:0;z-index:40;display:none;
+    flex-direction:column;align-items:center;justify-content:center;gap:14px;
+    padding:18px;box-sizing:border-box;text-align:center;
+    background:color-mix(in srgb, var(--ts-bg) 88%, transparent);
+    backdrop-filter:blur(3px);border-radius:var(--ts-radius)}
+.ts-sp__busy.is-on{display:flex}
+.ts-sp__busy-stage{font-size:15px;font-weight:600;color:var(--ts-text);
+    line-height:1.25;max-width:92%}
+.ts-sp__busy-detail{font-size:12px;color:var(--ts-text-dim);min-height:1.2em;
+    max-width:92%;word-break:break-word}
+.ts-sp__busy-track{position:relative;width:min(340px,92%);height:8px;
+    border-radius:99px;overflow:hidden;
+    background:color-mix(in srgb, var(--ts-text) 12%, transparent)}
+.ts-sp__busy-fill{position:absolute;inset:0 auto 0 0;width:0%;border-radius:99px;
+    background:linear-gradient(90deg,
+        color-mix(in srgb, var(--ts-accent) 60%, transparent), var(--ts-accent));
+    transition:width .35s ease}
+/* Пока процент неизвестен (скачивание без общего размера) — бегущая полоса,
+   а не замерший ноль: замерший ноль читается как «зависло». */
+.ts-sp__busy.is-waiting .ts-sp__busy-fill{width:35%;
+    animation:ts-sp-slide 1.4s ease-in-out infinite}
+@keyframes ts-sp-slide{0%{transform:translateX(-110%)}100%{transform:translateX(320%)}}
+.ts-sp__busy-steps{display:flex;gap:6px;flex-wrap:wrap;justify-content:center}
+.ts-sp__busy-step{font-size:10px;letter-spacing:.04em;text-transform:uppercase;
+    padding:3px 8px;border-radius:99px;color:var(--ts-text-dim);
+    border:1px solid var(--ts-border)}
+.ts-sp__busy-step.is-done{color:var(--ts-text);
+    border-color:color-mix(in srgb, var(--ts-accent) 45%, var(--ts-border))}
+.ts-sp__busy-step.is-now{color:var(--ts-bg);background:var(--ts-accent);
+    border-color:var(--ts-accent)}
+.ts-sp__busy-cancel{min-width:150px;font-size:13px;padding:9px 18px}
 `;
 
 const SVG_ICON_MIC = `<svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 19v3"/></svg>`;
@@ -175,6 +210,18 @@ const SVG_ICON_IMAGE = `<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" he
 // as received and are NOT in this table.
 const STRINGS = {
     en: {
+        aiHqTitle: "Higher-quality prompt model (4B). Off: the fast 2B one. The 4B model is downloaded on first use.",
+        busyPrepare: "Preparing",
+        busyDownload: "Downloading the model",
+        busyLoad: "Loading the model into memory",
+        busyGenerate: "Writing the prompt",
+        busyCancel: "Cancel",
+        busyCancelling: "Cancelling…",
+        busyCancelled: "Cancelled",
+        busyStepPrepare: "prepare",
+        busyStepDownload: "download",
+        busyStepLoad: "load",
+        busyStepGenerate: "write",
         attachTitle: "Attach image (drop from Artius / paste / click)",
         attachSecondTitle: "Attach a second image — the two become the first and last frame",
         firstFrame: "first frame",
@@ -240,6 +287,18 @@ const STRINGS = {
         finishRecordingHq: "Finish recording before switching HQ",
     },
     ru: {
+        aiHqTitle: "Модель промпта покрупнее (4B). Выключено — быстрая 2B. Четырёхмиллиардная скачивается при первом включении.",
+        busyPrepare: "Подготовка",
+        busyDownload: "Скачивание модели",
+        busyLoad: "Загрузка модели в память",
+        busyGenerate: "Пишем промпт",
+        busyCancel: "Отмена",
+        busyCancelling: "Отменяем…",
+        busyCancelled: "Отменено",
+        busyStepPrepare: "подготовка",
+        busyStepDownload: "скачивание",
+        busyStepLoad: "загрузка",
+        busyStepGenerate: "написание",
         attachTitle: "Прикрепить изображение (перетащить из Artius / вставить / клик)",
         attachSecondTitle: "Прикрепить вторую — вместе они станут первым и последним кадром",
         firstFrame: "первый кадр",
@@ -309,6 +368,32 @@ const STRINGS = {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+// Стадии работы, в порядке прохождения. Сопоставление идёт по тексту, который
+// шлёт сервер: он один и тот же в обоих местах, и держать здесь копию процентов
+// значило бы обещать точность, которой нет.
+const BUSY_STEPS = [
+    { label: "busyStepPrepare", title: "busyPrepare",
+      match: /prepar|waiting|checking/i },
+    { label: "busyStepDownload", title: "busyDownload",
+      match: /download/i },
+    { label: "busyStepLoad", title: "busyLoad",
+      match: /loading|loaded|memory|offline|found locally|model files/i },
+    { label: "busyStepGenerate", title: "busyGenerate",
+      match: /generat|writing|prompt|token|unloading/i },
+];
+
+
+function busyStepIndexFor(text) {
+    const line = String(text || "");
+    // Идём с конца: «Loading Qwen model into memory» содержит и «model», и
+    // «loading», а стадия у неё поздняя.
+    for (let index = BUSY_STEPS.length - 1; index >= 0; index -= 1) {
+        if (BUSY_STEPS[index].match.test(line)) return index;
+    }
+    return 0;
+}
+
 
 function ensureStylesInjected(doc) {
     // Colours come from the shared --ts-* tokens in js/_theme.js; the
@@ -500,7 +585,14 @@ function setupSuperPrompt(node) {
     // Mic first (primary action), HQ flag right next to it.
     voiceGroup.append(recordBtn, hqToggle);
 
-    // ---- AI pill (text label, accent gradient). ----
+    // ---- AI group: the enhance pill + its own HQ flag. ----
+    // Ровно та же пара, что у микрофона: действие и флажок качества рядом. У
+    // голоса HQ означает крупную модель распознавания, здесь — крупную модель
+    // промпта. Держать это виджетом в теле ноды было неверно: галочка
+    // относится к кнопке, а не к параметрам прогона.
+    const aiGroup = doc.createElement("div");
+    aiGroup.className = "ts-sp__group";
+
     const aiBtn = doc.createElement("button");
     aiBtn.type = "button";
     aiBtn.className = "ts-sp__pill ts-sp__pill--ai";
@@ -509,6 +601,14 @@ function setupSuperPrompt(node) {
     // an abbreviation nobody can decode without hovering, and it is the one
     // control in this toolbar that does the node's actual work.
     aiBtn.textContent = L.aiLabel;
+
+    const aiHqToggle = doc.createElement("button");
+    aiHqToggle.type = "button";
+    aiHqToggle.className = "ts-sp__pill ts-sp__pill--toggle";
+    aiHqToggle.title = L.aiHqTitle;
+    aiHqToggle.textContent = "HQ";
+
+    aiGroup.append(aiBtn, aiHqToggle);
 
     // ---- Preset select (fills remaining toolbar space). ----
     const presetSelect = doc.createElement("select");
@@ -526,7 +626,7 @@ function setupSuperPrompt(node) {
     // voice-quality flag. The image button visually groups with AI because
     // both feed the prompt-enhance pipeline. Preset stretches to fill.
     bar.append(voiceGroup, attachSlots[0].button, attachSlots[1].button,
-        aiBtn, presetSelect);
+        aiGroup, presetSelect);
 
     // -------- Textarea (main surface) --------
     const textarea = doc.createElement("textarea");
@@ -553,7 +653,41 @@ function setupSuperPrompt(node) {
     fileInput.accept = IMAGE_ACCEPT;
     fileInput.className = "ts-sp__file";
 
-    container.append(bar, textarea, statusRow, fileInput);
+    // -------- Экран работы --------
+    // Пока модель занята, в ноде нечего нажимать, кроме отмены. Оверлей это и
+    // показывает: крупная стадия, дорожка стадий, полоса и одна кнопка.
+    const busy = doc.createElement("div");
+    busy.className = "ts-sp__busy";
+    const busyStage = doc.createElement("div");
+    busyStage.className = "ts-sp__busy-stage";
+    const busySteps = doc.createElement("div");
+    busySteps.className = "ts-sp__busy-steps";
+    const busyStepEls = BUSY_STEPS.map((step) => {
+        const el = doc.createElement("span");
+        el.className = "ts-sp__busy-step";
+        el.textContent = L[step.label];
+        busySteps.appendChild(el);
+        return el;
+    });
+    const busyTrack = doc.createElement("div");
+    busyTrack.className = "ts-sp__busy-track";
+    const busyFill = doc.createElement("div");
+    busyFill.className = "ts-sp__busy-fill";
+    busyTrack.appendChild(busyFill);
+    const busyDetail = doc.createElement("div");
+    busyDetail.className = "ts-sp__busy-detail";
+    const busyCancel = doc.createElement("button");
+    busyCancel.type = "button";
+    busyCancel.className = "ts-ui-btn ts-sp__busy-cancel";
+    busyCancel.textContent = L.busyCancel;
+    busy.append(busyStage, busySteps, busyTrack, busyDetail, busyCancel);
+
+    // Виджет остаётся в схеме (значение обязано доехать до `execute` и до
+    // сохранённого workflow), но из тела ноды убирается: им управляет кнопка HQ.
+    hideWidget(node, BIGGER_MODEL_WIDGET);
+    refreshAiHqToggle();
+
+    container.append(bar, textarea, statusRow, fileInput, busy);
 
     // -----------------------------------------------------------------
     // State
@@ -629,6 +763,52 @@ function setupSuperPrompt(node) {
         }
         return modelName;
     }
+
+    let busyStepShown = -1;
+
+    function showBusy(on) {
+        busy.classList.toggle("is-on", Boolean(on));
+        if (on) {
+            busyCancel.disabled = false;
+            busyCancel.textContent = L.busyCancel;
+            busyStepShown = -1;
+            setBusyStage(L.busyPrepare, null, L.busyPrepare);
+        }
+    }
+
+    function setBusyStage(serverText, percent, forcedTitle = "") {
+        const index = forcedTitle ? 0 : busyStepIndexFor(serverText);
+        if (index !== busyStepShown) {
+            busyStepShown = index;
+            busyStepEls.forEach((el, i) => {
+                el.classList.toggle("is-done", i < index);
+                el.classList.toggle("is-now", i === index);
+            });
+        }
+        busyStage.textContent = forcedTitle || L[BUSY_STEPS[index].title];
+        // Строка от сервера — подпись под стадией: она конкретнее (какой файл,
+        // сколько мегабайт) и меняется чаще, чем сама стадия.
+        busyDetail.textContent = forcedTitle ? "" : String(serverText || "");
+        const known = Number.isFinite(percent);
+        busy.classList.toggle("is-waiting", !known);
+        if (known) busyFill.style.width = `${Math.max(0, Math.min(100, percent))}%`;
+    }
+
+    busyCancel.addEventListener("click", async () => {
+        if (busyCancel.disabled) return;
+        busyCancel.disabled = true;
+        busyCancel.textContent = L.busyCancelling;
+        busyDetail.textContent = "";
+        try {
+            await api.fetchApi(`${AI_ROUTE_BASE}/cancel`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ operation_id: state.activeAiOperationId }),
+            });
+        } catch (error) {
+            console.warn("[TS Super Prompt] cancel failed", error);
+        }
+    });
 
     function setProgress({ percent, active, error, indeterminate }) {
         window.clearTimeout(progressClearTimer);
@@ -846,6 +1026,7 @@ function setupSuperPrompt(node) {
         const text = String(event.detail?.text || L.aiProgressFallback);
         const percent = clampPercent(event.detail?.percent);
         setStatus(text);
+        setBusyStage(text, percent);
         setProgress({ percent, active: true, indeterminate: percent === null });
     }
     function onAiDone(event) {
@@ -1156,6 +1337,30 @@ function setupSuperPrompt(node) {
     // -----------------------------------------------------------------
     // AI enhance
     // -----------------------------------------------------------------
+    function aiHqEnabled() {
+        return Boolean(getWidgetValue(node, BIGGER_MODEL_WIDGET, false));
+    }
+
+    function refreshAiHqToggle() {
+        aiHqToggle.classList.toggle("is-on", aiHqEnabled());
+        aiHqToggle.setAttribute("aria-pressed", aiHqEnabled() ? "true" : "false");
+    }
+
+    aiHqToggle.addEventListener("click", () => {
+        const next = !aiHqEnabled();
+        // Значение живёт в скрытом виджете: так оно уезжает в сохранённый
+        // workflow и доезжает до `execute`, а зеркало в properties страхует
+        // Vue-режим (§12.5.13).
+        const widget = getWidget(node, BIGGER_MODEL_WIDGET);
+        if (widget) {
+            widget.value = next;
+            widget.callback?.(next);
+        }
+        node.properties ||= {};
+        node.properties[BIGGER_MODEL_WIDGET] = next;
+        refreshAiHqToggle();
+    });
+
     function buildAiPayload(frames) {
         const list = (frames && frames.length)
             ? frames
@@ -1167,6 +1372,9 @@ function setupSuperPrompt(node) {
             // Kept for a server that has not been restarted since the update.
             attached_image: String(list[0] || ""),
             attached_image_2: String(list[1] || ""),
+            // Галочка «крупнее модель» — такое же значение виджета, как пресет.
+            // Сервер, не знающий о ней, поле просто игнорирует.
+            bigger_model: Boolean(getWidgetValue(node, BIGGER_MODEL_WIDGET, false)),
             operation_id: state.activeAiOperationId,
         };
     }
@@ -1201,6 +1409,7 @@ function setupSuperPrompt(node) {
         }
         state.isAiBusy = true;
         state.activeAiOperationId = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`;
+        showBusy(true);
         payload.operation_id = state.activeAiOperationId;
         setStatus(L.startingAi);
         setProgress({ active: true, indeterminate: true });
@@ -1225,6 +1434,7 @@ function setupSuperPrompt(node) {
             setProgress({ active: false, error: true });
         } finally {
             state.isAiBusy = false;
+            showBusy(false);
             if (!disposed) {
                 refreshAiButton();
                 refreshRecordButton();

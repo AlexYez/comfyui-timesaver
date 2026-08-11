@@ -2,6 +2,7 @@ import ast
 import importlib
 import importlib.util
 import logging
+import os
 import re
 import sys
 from pathlib import Path
@@ -272,21 +273,8 @@ def _load_module(module_import: str, module_label: str) -> None:
 
 
 def _print_startup_report() -> None:
-    loaded = sum(1 for r in _MODULE_LOAD_RESULTS if r["status"] == "OK")
-    skipped = sum(1 for r in _MODULE_LOAD_RESULTS if r["status"] == "SKIPPED")
-    errors = sum(1 for r in _MODULE_LOAD_RESULTS if r["status"] == "ERROR")
     load_issues = [r for r in _MODULE_LOAD_RESULTS if r["status"] in {"SKIPPED", "ERROR"}]
     critical_missing_roots = _collect_critical_missing_roots()
-
-    module_rows = [
-        [r["module"], r["status"], r["nodes"], r["details"]]
-        for r in _MODULE_LOAD_RESULTS
-    ]
-    module_table = _render_table(
-        headers=["Module", "Status", "Nodes", "Details"],
-        rows=module_rows,
-        max_widths=[30, 10, 8, 90],
-    )
 
     import_rows = []
     critical_missing_imports = []
@@ -302,47 +290,72 @@ def _print_startup_report() -> None:
                 optional_missing_imports.append(item)
         import_rows.append([item["import"], item["available"], severity, item["source"]])
 
-    import_table = _render_table(
-        headers=["Import", "Available", "Severity", "Source"],
-        rows=import_rows,
-        max_widths=[28, 10, 10, 86],
-    )
+    # ⚠️ Тихо, когда всё хорошо. Консоль ComfyUI — общая для десятков паков, и
+    # две простыни таблиц на каждом запуске в ней только мешают: в них тонут
+    # чужие настоящие ошибки. Когда всё загрузилось — одна строка. Когда нет —
+    # только то, что сломалось. Таблицы целиком остаются доступны по
+    # TS_VERBOSE_STARTUP=1: они писались для разбора аварий, и выбрасывать их
+    # нельзя, а показывать всем каждый раз — незачем.
+    #
+    # Отсутствующие НЕобязательные зависимости молчат сознательно: они
+    # отсутствуют у большинства и по замыслу (§14), а расскажет о них
+    # TSDependencyManager в тот момент, когда нужная нода действительно
+    # запустится, — там это уже не шум, а ответ на вопрос.
+    verbose = os.environ.get("TS_VERBOSE_STARTUP", "").strip().lower() in {"1", "true", "yes"}
+    troubled = bool(load_issues or critical_missing_imports)
 
-    logger.info("[TS Startup] comfyui-timesaver load report")
-    logger.info("[TS Startup] Package path: %s", _PACKAGE_DIR)
-    logger.info("[TS Startup] Modules discovered: %d", len(_MODULE_ENTRIES))
-    for line in module_table.splitlines():
-        logger.info("%s", line)
-    logger.info("[TS Startup] External imports discovered: %d", len(_IMPORT_AUDIT_RESULTS))
-    for line in import_table.splitlines():
-        logger.info("%s", line)
-    logger.info(
-        "[TS Startup] Summary: "
-        "loaded=%d, skipped=%d, errors=%d, load_issues=%d, "
-        "nodes_registered=%d, critical_missing_imports=%d, optional_missing_imports=%d",
-        loaded, skipped, errors, len(load_issues),
-        len(NODE_CLASS_MAPPINGS),
-        len(critical_missing_imports),
-        len(optional_missing_imports),
-    )
-    if load_issues:
-        logger.info("[TS Startup] Module load issues:")
-        for item in load_issues:
-            logger.info("  - %s: %s", item["module"], item["details"])
-    else:
-        logger.info("[TS Startup] Module load issues: none")
-    if critical_missing_imports:
-        logger.warning("[TS Startup] Critical missing imports:")
-        for item in critical_missing_imports:
-            logger.warning("  - %s (used in: %s)", item["import"], item["source"])
-    else:
-        logger.info("[TS Startup] Critical missing imports: none")
-    if optional_missing_imports:
-        logger.info("[TS Startup] Optional missing imports:")
-        for item in optional_missing_imports:
-            logger.info("  - %s (used in: %s)", item["import"], item["source"])
-    else:
-        logger.info("[TS Startup] Optional missing imports: none")
+    if verbose:
+        # Таблицы форматируются ЗДЕСЬ, а не выше: в тихом режиме их результат
+        # всё равно отбрасывался, а строится он на каждом запуске ComfyUI по
+        # всем модулям и всем внешним импортам.
+        module_table = _render_table(
+            headers=["Module", "Status", "Nodes", "Details"],
+            rows=[[r["module"], r["status"], r["nodes"], r["details"]]
+                  for r in _MODULE_LOAD_RESULTS],
+            max_widths=[30, 10, 8, 90],
+        )
+        import_table = _render_table(
+            headers=["Import", "Available", "Severity", "Source"],
+            rows=import_rows,
+            max_widths=[28, 10, 10, 86],
+        )
+        loaded = sum(1 for r in _MODULE_LOAD_RESULTS if r["status"] == "OK")
+        skipped = sum(1 for r in _MODULE_LOAD_RESULTS if r["status"] == "SKIPPED")
+        errors = sum(1 for r in _MODULE_LOAD_RESULTS if r["status"] == "ERROR")
+
+        logger.info("[TS Startup] comfyui-timesaver load report")
+        logger.info("[TS Startup] Package path: %s", _PACKAGE_DIR)
+        logger.info("[TS Startup] Modules discovered: %d", len(_MODULE_ENTRIES))
+        for line in module_table.splitlines():
+            logger.info("%s", line)
+        logger.info("[TS Startup] External imports discovered: %d",
+                    len(_IMPORT_AUDIT_RESULTS))
+        for line in import_table.splitlines():
+            logger.info("%s", line)
+        logger.info(
+            "[TS Startup] Summary: "
+            "loaded=%d, skipped=%d, errors=%d, load_issues=%d, "
+            "nodes_registered=%d, critical_missing_imports=%d, optional_missing_imports=%d",
+            loaded, skipped, errors, len(load_issues),
+            len(NODE_CLASS_MAPPINGS),
+            len(critical_missing_imports),
+            len(optional_missing_imports),
+        )
+
+    if not troubled:
+        if not verbose:
+            logger.info("[TS Timesaver] All %d nodes loaded successfully.",
+                        len(NODE_CLASS_MAPPINGS))
+        return
+
+    logger.warning(
+        "[TS Timesaver] %d node(s) loaded, %d module(s) did not. "
+        "Set TS_VERBOSE_STARTUP=1 for the full report.",
+        len(NODE_CLASS_MAPPINGS), len(load_issues))
+    for item in load_issues:
+        logger.warning("  - %s: %s", item["module"], item["details"])
+    for item in critical_missing_imports:
+        logger.warning("  - missing %s (used in: %s)", item["import"], item["source"])
 
 
 def _collect_critical_missing_roots() -> set[str]:

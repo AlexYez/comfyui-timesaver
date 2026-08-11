@@ -59,7 +59,6 @@ class TSDependencyManager:
         "cv2": "pip install opencv-python",
         "PIL": "pip install Pillow",
         "spandrel": "pip install spandrel",
-        "py360convert": "pip install py360convert",
         "importlib_resources": "pip install importlib_resources",
     }
 

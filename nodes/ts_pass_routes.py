@@ -83,7 +83,8 @@ async def pass_status(_request):
     is simply the truth (see nodes/_studio_dev.py).
     """
     _adopt_launcher_pass_if_any()
-    state = _studio_packs.current_pass()
+    # ⚠️ Только публичная часть: секреты уровней остаются на сервере.
+    state = _pass.public_state(_studio_packs.current_pass())
     state["links"] = STORE_LINKS
     state["dev"] = _studio_dev.read_dev()
     return _json(state)
@@ -136,6 +137,7 @@ async def pass_activate(request):
         logger.warning("%s activation failed: %s", LOG_PREFIX, error)
         return _json({"error": str(error)}, status=500)
 
+    state = _pass.public_state(state)
     state["links"] = STORE_LINKS
     logger.info("%s activated until %s", LOG_PREFIX, state.get("expiresAt"))
     return _json(state)
@@ -144,7 +146,7 @@ async def pass_activate(request):
 @register_post("/api/ts_pass/clear")
 async def pass_clear(_request):
     """Forget the stored pass. Installed packs keep working — see _pass.py."""
-    state = _pass.clear_pass()
+    state = _pass.public_state(_pass.clear_pass())
     state["links"] = STORE_LINKS
     return _json(state)
 

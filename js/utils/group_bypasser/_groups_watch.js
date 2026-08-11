@@ -134,16 +134,61 @@ export function applyDecisions(decisions, records) {
         for (const decision of decisions) {
             const row = byKey.get(decision.key);
             if (!row) continue;
-            const wanted = decision.on ? MODE_ALWAYS : MODE_BYPASS;
-            // Re-read membership at the moment of writing: the reading this
-            // decision came from may be up to a poll old, and a node dragged
-            // out in the meantime is no longer ours to switch.
-            for (const node of managedNodes(row._group)) {
-                if (Number(node.mode) === wanted) continue;
-                node.mode = wanted;
-                touched += 1;
-            }
+            touched += writeGroupMode(row._group, decision.on);
         }
+    } finally {
+        graph?.afterChange?.();
+        canvas?.emitAfterChange?.();
+    }
+    if (touched) {
+        graph?.change?.();
+        canvas?.setDirty?.(true, true);
+    }
+    return touched;
+}
+
+/**
+ * Написать режим всем нодам ОДНОЙ группы. Без обёртки отмены — её ставит тот,
+ * кто вызывает: одно нажатие человека должно отменяться одним Ctrl+Z, сколько
+ * бы групп оно ни задело.
+ *
+ * ⚠️ Состав группы перечитывается в момент записи: решение могло быть принято
+ * по чтению минутной давности, а нода, уехавшая из группы, больше не наша.
+ *
+ * @param {object} group группа LiteGraph
+ * @param {boolean} on включить (иначе — в байпас)
+ * @returns {number} сколько нод действительно сменили режим
+ */
+function writeGroupMode(group, on) {
+    const wanted = on ? MODE_ALWAYS : MODE_BYPASS;
+    let touched = 0;
+    for (const node of managedNodes(group)) {
+        if (Number(node.mode) === wanted) continue;
+        node.mode = wanted;
+        touched += 1;
+    }
+    return touched;
+}
+
+/**
+ * Переключить одну группу — для значка на самой группе.
+ *
+ * Отдельная точка входа, а не `applyDecisions`: там на входе снимок панели с
+ * ключами, а у значка на руках сама группа. Запись при этом одна и та же
+ * (`writeGroupMode`), и обёртка отмены тоже.
+ *
+ * @param {object} group группа LiteGraph
+ * @param {boolean} on включить (иначе — в байпас)
+ * @returns {number} сколько нод сменили режим
+ */
+export function setGroupBypassed(group, on) {
+    const graph = currentGraph();
+    const canvas = app?.canvas;
+    canvas?.emitBeforeChange?.();
+    graph?.beforeChange?.();
+    let touched = 0;
+    try {
+        touched = writeGroupMode(group, on);
     } finally {
         graph?.afterChange?.();
         canvas?.emitAfterChange?.();

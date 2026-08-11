@@ -1,45 +1,9 @@
 {
-  "TS Cube to Equirectangular": {
-    "api": "v3",
-    "category": "TS/Image/360",
-    "class_name": "TS_CubemapFacesToEquirectangularNode",
-    "display_name": "TS Cube to Equirectangular",
-    "python_file": "nodes/image/ts_cube_to_equirect.py",
-    "widgets": {
-      "output_height": {
-        "default": 1024,
-        "max": 4096,
-        "min": 32,
-        "step": 32
-      },
-      "output_width": {
-        "default": 2048,
-        "max": 8192,
-        "min": 64,
-        "step": 64
-      }
-    }
-  },
-  "TS Equirectangular to Cube": {
-    "api": "v3",
-    "category": "TS/Image/360",
-    "class_name": "TS_EquirectangularToCubemapFacesNode",
-    "display_name": "TS Equirectangular to Cube",
-    "python_file": "nodes/image/ts_equirect_to_cube.py",
-    "widgets": {
-      "cube_size": {
-        "default": 512,
-        "max": 4096,
-        "min": 64,
-        "step": 64
-      }
-    }
-  },
   "TS Files Downloader": {
     "api": "v3",
     "category": "TS/Files",
     "class_name": "TS_DownloadFilesNode",
-    "display_name": "TS Files Downloader (Ultimate)",
+    "display_name": "TS Files Downloader",
     "python_file": "nodes/files/ts_downloader.py",
     "widgets": {
       "chunk_size_kb": {
@@ -540,111 +504,6 @@
       }
     }
   },
-  "TS_CPULoraMerger": {
-    "api": "v3",
-    "category": "TS/Files",
-    "class_name": "TS_CPULoraMergerNode",
-    "display_name": "TS CPU LoRA Merger",
-    "python_file": "nodes/files/ts_cpu_lora_merger.py",
-    "widgets": {
-      "lora_1_name": {
-        "default": "None"
-      },
-      "lora_1_strength": {
-        "default": 1.0,
-        "max": 100.0,
-        "min": -100.0,
-        "step": 0.01
-      },
-      "lora_2_name": {
-        "default": "None"
-      },
-      "lora_2_strength": {
-        "default": 1.0,
-        "max": 100.0,
-        "min": -100.0,
-        "step": 0.01
-      },
-      "lora_3_name": {
-        "default": "None"
-      },
-      "lora_3_strength": {
-        "default": 1.0,
-        "max": 100.0,
-        "min": -100.0,
-        "step": 0.01
-      },
-      "lora_4_name": {
-        "default": "None"
-      },
-      "lora_4_strength": {
-        "default": 1.0,
-        "max": 100.0,
-        "min": -100.0,
-        "step": 0.01
-      },
-      "output_model_name": {
-        "default": "ts_merged_model.safetensors"
-      }
-    }
-  },
-  "TS_Color_Grade": {
-    "api": "v3",
-    "category": "TS/Image/Color",
-    "class_name": "TS_Color_Grade",
-    "display_name": "TS Color Grade",
-    "python_file": "nodes/image/ts_color_grade.py",
-    "widgets": {
-      "brightness": {
-        "default": 0.0,
-        "max": 1.0,
-        "min": -1.0,
-        "step": 0.01
-      },
-      "contrast": {
-        "default": 1.0,
-        "max": 3.0,
-        "min": 0.0,
-        "step": 0.01
-      },
-      "gain": {
-        "default": 1.0,
-        "max": 3.0,
-        "min": 0.0,
-        "step": 0.01
-      },
-      "gamma": {
-        "default": 1.0,
-        "max": 3.0,
-        "min": 0.1,
-        "step": 0.01
-      },
-      "hue": {
-        "default": 0.0,
-        "max": 180.0,
-        "min": -180.0,
-        "step": 0.1
-      },
-      "lift": {
-        "default": 0.0,
-        "max": 1.0,
-        "min": -1.0,
-        "step": 0.01
-      },
-      "saturation": {
-        "default": 1.0,
-        "max": 3.0,
-        "min": 0.0,
-        "step": 0.01
-      },
-      "temperature": {
-        "default": 0.0,
-        "max": 1.0,
-        "min": -1.0,
-        "step": 0.01
-      }
-    }
-  },
   "TS_Color_Match": {
     "api": "v3",
     "category": "TS/Image/Color",
@@ -708,151 +567,6 @@
       },
       "temporal_smoothing": {
         "default": true
-      }
-    }
-  },
-  "TS_Despill": {
-    "api": "v3",
-    "category": "TS/Image/Cutout",
-    "class_name": "TS_Despill",
-    "display_name": "TS Despill",
-    "python_file": "nodes/image/keying/ts_despill.py",
-    "widgets": {
-      "algorithm": {
-        "default": "adaptive"
-      },
-      "compensation": {
-        "default": 1.0,
-        "max": 2.0,
-        "min": 0.0,
-        "step": 0.01
-      },
-      "edge_blur": {
-        "default": 0.0,
-        "max": 8.0,
-        "min": 0.0,
-        "step": 0.1
-      },
-      "edge_boost": {
-        "default": 1.0,
-        "max": 2.0,
-        "min": 0.0,
-        "step": 0.01
-      },
-      "enable": {
-        "default": true
-      },
-      "invert_spill_mask": {
-        "default": false
-      },
-      "preserve_luma": {
-        "default": true
-      },
-      "saturation_restore": {
-        "default": 0.35,
-        "max": 2.0,
-        "min": 0.0,
-        "step": 0.01
-      },
-      "screen_color": {
-        "default": "green"
-      },
-      "skin_protection": {
-        "default": 0.5,
-        "max": 1.0,
-        "min": 0.0,
-        "step": 0.01
-      },
-      "spill_softness": {
-        "default": 0.001,
-        "max": 1.0,
-        "min": 0.001,
-        "step": 0.001
-      },
-      "spill_threshold": {
-        "default": 0.0,
-        "max": 1.0,
-        "min": 0.0,
-        "step": 0.001
-      },
-      "strength": {
-        "default": 1.3,
-        "max": 2.5,
-        "min": 0.0,
-        "step": 0.01
-      },
-      "use_input_alpha_for_edges": {
-        "default": false
-      }
-    }
-  },
-  "TS_FilePathLoader": {
-    "api": "v3",
-    "category": "TS/Files",
-    "class_name": "TS_FilePathLoader",
-    "display_name": "TS File Path Loader",
-    "python_file": "nodes/files/ts_file_path_loader.py",
-    "widgets": {
-      "folder_path": {
-        "default": ""
-      },
-      "index": {
-        "default": 0,
-        "min": 0,
-        "step": 1
-      }
-    }
-  },
-  "TS_FilmGrain": {
-    "api": "v3",
-    "category": "TS/Image/Color",
-    "class_name": "TS_FilmGrain",
-    "display_name": "TS Film Grain",
-    "python_file": "nodes/image/ts_film_grain.py",
-    "widgets": {
-      "color_grain_strength": {
-        "default": 0.15,
-        "max": 1.0,
-        "min": 0.0,
-        "step": 0.01
-      },
-      "force_gpu": {
-        "default": true
-      },
-      "grain_intensity": {
-        "default": 0.065,
-        "max": 0.5,
-        "min": 0.0,
-        "step": 0.005
-      },
-      "grain_size": {
-        "default": 1.0,
-        "max": 5.0,
-        "min": 0.1,
-        "step": 0.1
-      },
-      "grain_softness": {
-        "default": 0.5,
-        "max": 2.0,
-        "min": 0.0,
-        "step": 0.1
-      },
-      "grain_speed": {
-        "default": 0.5,
-        "max": 1.0,
-        "min": 0.0,
-        "step": 0.01
-      },
-      "mid_tone_grain_bias": {
-        "default": 0.5,
-        "max": 0.99,
-        "min": 0.01,
-        "step": 0.01
-      },
-      "seed": {
-        "default": 0,
-        "max": 18446744073709551615,
-        "min": 0
       }
     }
   },
@@ -1218,81 +932,6 @@
       }
     }
   },
-  "TS_Keyer": {
-    "api": "v3",
-    "category": "TS/Image/Cutout",
-    "class_name": "TS_Keyer",
-    "display_name": "TS Keyer",
-    "python_file": "nodes/image/keying/ts_keyer.py",
-    "widgets": {
-      "black_point": {
-        "default": 0.05,
-        "max": 0.99,
-        "min": 0.0,
-        "step": 0.001
-      },
-      "despill_compensate": {
-        "default": true
-      },
-      "despill_edge_only": {
-        "default": true
-      },
-      "despill_strength": {
-        "default": 1.0,
-        "max": 2.5,
-        "min": 0.0,
-        "step": 0.01
-      },
-      "edge_softness": {
-        "default": 0.0,
-        "max": 12.0,
-        "min": 0.0,
-        "step": 0.1
-      },
-      "enable": {
-        "default": true
-      },
-      "invert_alpha": {
-        "default": false
-      },
-      "key_channel": {
-        "default": "auto"
-      },
-      "key_color": {
-        "default": "#00ff00"
-      },
-      "key_strength": {
-        "default": 1.0,
-        "max": 4.0,
-        "min": 0.0,
-        "step": 0.01
-      },
-      "matte_gamma": {
-        "default": 1.0,
-        "max": 3.0,
-        "min": 0.1,
-        "step": 0.01
-      },
-      "matte_preblur": {
-        "default": 0.0,
-        "max": 8.0,
-        "min": 0.0,
-        "step": 0.1
-      },
-      "screen_balance": {
-        "default": 1.0,
-        "max": 2.0,
-        "min": 0.0,
-        "step": 0.01
-      },
-      "white_point": {
-        "default": 0.85,
-        "max": 1.0,
-        "min": 0.01,
-        "step": 0.001
-      }
-    }
-  },
   "TS_LTX_FirstLastFrame": {
     "api": "v3",
     "category": "TS/Video",
@@ -1416,6 +1055,18 @@
       }
     }
   },
+  "TS_LoraLoader": {
+    "api": "v3",
+    "category": "TS/utils",
+    "class_name": "TS_LoraLoader",
+    "display_name": "TS LoRA Loader",
+    "python_file": "nodes/utils/ts_lora_loader.py",
+    "widgets": {
+      "loras_json": {
+        "default": "[]"
+      }
+    }
+  },
   "TS_Math_Int": {
     "api": "v3",
     "category": "TS/Utils",
@@ -1509,61 +1160,6 @@
       }
     }
   },
-  "TS_ModelConverter": {
-    "api": "v3",
-    "category": "TS/Files",
-    "class_name": "TS_ModelConverterNode",
-    "display_name": "TS Model Converter",
-    "python_file": "nodes/files/ts_model_converter.py"
-  },
-  "TS_ModelConverterAdvanced": {
-    "api": "v3",
-    "category": "TS/Files",
-    "class_name": "TS_ModelConverterAdvancedNode",
-    "display_name": "TS Model Converter Advanced",
-    "python_file": "nodes/files/ts_model_converter_advanced.py",
-    "widgets": {
-      "conversion_preset": {
-        "default": "WAN"
-      },
-      "final_filename": {
-        "default": "converted_model_fp8.safetensors"
-      },
-      "fp8_mode": {
-        "default": "e5m2"
-      }
-    }
-  },
-  "TS_ModelConverterAdvancedDirect": {
-    "api": "v3",
-    "category": "TS/Files",
-    "class_name": "TS_ModelConverterAdvancedDirectNode",
-    "display_name": "TS Model Converter Advanced Direct",
-    "python_file": "nodes/files/ts_model_converter_advanced_direct.py",
-    "widgets": {
-      "conversion_preset": {
-        "default": "WAN"
-      },
-      "final_filename": {
-        "default": "converted_model_fp8.safetensors"
-      },
-      "fp8_mode": {
-        "default": "e5m2"
-      }
-    }
-  },
-  "TS_ModelScanner": {
-    "api": "v3",
-    "category": "TS/Files",
-    "class_name": "TS_ModelScanner",
-    "display_name": "TS Model Scanner",
-    "python_file": "nodes/files/ts_model_scanner.py",
-    "widgets": {
-      "summary_only": {
-        "default": false
-      }
-    }
-  },
   "TS_MultiReference": {
     "api": "v3",
     "category": "TS/Conditioning",
@@ -1642,7 +1238,7 @@
     "api": "v3",
     "category": "TS/LLM",
     "class_name": "TS_Qwen3_VL_V3",
-    "display_name": "TS Qwen 3 VL V3",
+    "display_name": "TS Qwen 3",
     "python_file": "nodes/llm/ts_qwen3_vl.py",
     "widgets": {
       "attention_mode": {
@@ -1696,25 +1292,6 @@
         "step": 4
       }
     }
-  },
-  "TS_QwenCanvas": {
-    "api": "v3",
-    "category": "TS/Image/Size",
-    "class_name": "TS_QwenCanvas",
-    "display_name": "TS Qwen Canvas",
-    "python_file": "nodes/image/ts_qwen_canvas.py",
-    "widgets": {
-      "resolution": {
-        "default": "1:1"
-      }
-    }
-  },
-  "TS_QwenSafeResize": {
-    "api": "v3",
-    "category": "TS/Image/Size",
-    "class_name": "TS_QwenSafeResize",
-    "display_name": "TS Qwen Safe Resize",
-    "python_file": "nodes/image/ts_qwen_safe_resize.py"
   },
   "TS_RTX_Upscaler": {
     "api": "v3",
@@ -2106,6 +1683,9 @@
       "attached_image_2": {
         "default": ""
       },
+      "bigger_model": {
+        "default": false
+      },
       "high_quality": {
         "default": false
       },
@@ -2188,33 +1768,97 @@
       }
     }
   },
-  "TS_Video_Upscale_With_Model": {
+  "TS_VideoInfo": {
     "api": "v3",
     "category": "TS/Video",
-    "class_name": "TS_Video_Upscale_With_Model",
-    "display_name": "TS Video Upscale With Model",
-    "python_file": "nodes/video/ts_video_upscale_with_model.py",
+    "class_name": "TS_VideoInfo",
+    "display_name": "TS Video Info",
+    "python_file": "nodes/video/media/ts_video_info.py"
+  },
+  "TS_VideoLoader": {
+    "api": "v3",
+    "category": "TS/Video",
+    "class_name": "TS_VideoLoader",
+    "display_name": "TS Video Loader",
+    "python_file": "nodes/video/media/ts_video_loader.py",
     "widgets": {
-      "device_strategy": {
-        "default": "auto"
+      "divisible_by": {
+        "default": 1,
+        "max": 64,
+        "min": 1
       },
-      "factor": {
-        "default": 2.0,
-        "max": 8.0,
-        "min": 0.1,
-        "step": 0.1
+      "end_seconds": {
+        "default": -1.0,
+        "max": 1000000.0,
+        "min": -1.0,
+        "step": 0.001
+      },
+      "frame_rate": {
+        "default": 0.0,
+        "max": 240.0,
+        "min": 0.0,
+        "step": 0.001
+      },
+      "frame_step": {
+        "default": 1,
+        "max": 1000,
+        "min": 1
+      },
+      "longer_side": {
+        "default": 0,
+        "max": 16384,
+        "min": 0,
+        "step": 2
+      },
+      "max_frames": {
+        "default": 0,
+        "max": 1000000,
+        "min": 0
+      },
+      "resize_filter": {
+        "default": "area"
+      },
+      "shorter_side": {
+        "default": 0,
+        "max": 16384,
+        "min": 0,
+        "step": 2
+      },
+      "source_path": {
+        "default": ""
+      },
+      "start_seconds": {
+        "default": 0.0,
+        "max": 1000000.0,
+        "min": 0.0,
+        "step": 0.001
       }
     }
   },
-  "TS_WAN_SafeResize": {
+  "TS_VideoSaver": {
     "api": "v3",
-    "category": "TS/Image/Size",
-    "class_name": "TS_WAN_SafeResize",
-    "display_name": "TS WAN Safe Resize",
-    "python_file": "nodes/image/ts_wan_safe_resize.py",
+    "category": "TS/Video",
+    "class_name": "TS_VideoSaver",
+    "display_name": "TS Video Saver",
+    "python_file": "nodes/video/media/ts_video_saver.py",
     "widgets": {
-      "quality": {
-        "default": "Standard quality"
+      "encoder": {
+        "default": "software"
+      },
+      "filename_prefix": {
+        "default": "video/TS"
+      },
+      "fps": {
+        "default": 24.0,
+        "max": 240.0,
+        "min": 0.01,
+        "step": 0.01
+      },
+      "preview": {
+        "default": "auto"
+      },
+      "save_metadata": {
+        "default": true
       }
     }
   }

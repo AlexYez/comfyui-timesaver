@@ -62,9 +62,11 @@ def _run_job_blocking(job: dict[str, Any]) -> None:
 
     url = job["_url"]
     target = job["_target"]
-    resolved = Node._resolve_target_directory(target)
+    # Тот же строгий разбор, что и на входе в маршрут: между постановкой задачи
+    # и её запуском ничего не должно расширить область записи.
+    resolved = Node.resolve_model_target_directory(target)
     if not resolved:
-        raise RuntimeError(f"Target '{target}' did not resolve to a directory.")
+        raise RuntimeError(f"Target '{target}' is not a registered model folder.")
 
     started = time.monotonic()
     state = {"last_done": 0, "last_t": started}
@@ -140,6 +142,22 @@ async def fetch_route(request):
     target = str(data.get("target") or "").strip()
     if not url.lower().startswith(("http://", "https://")) or not target:
         return web.json_response({"error": "url and target are required."}, status=400)
+
+    # ⚠️ Папку назначения называет СЕТЕВОЙ клиент, поэтому разбираем её строго:
+    # только зарегистрированный модельный каталог. Общий разбор, которым
+    # пользуется нода, имеет запасной путь «сложим относительно корня ComfyUI»
+    # — через него запрос мог назвать `custom_nodes/evil`, а заголовок
+    # `Content-Disposition: __init__.py` довершил бы дело: следующий запуск
+    # ComfyUI импортировал бы присланный код. Интерфейс шлёт `models/<папка>`,
+    # так что настоящую работу это не задевает.
+    from .ts_downloader import TS_DownloadFilesNode as _Node
+
+    if _Node.resolve_model_target_directory(target) is None:
+        return web.json_response(
+            {"error": f"Target '{target}' is not a registered model folder. "
+                      f"Downloads through this route go into model folders only."},
+            status=400,
+        )
 
     job_id = f"dl_{uuid.uuid4().hex[:10]}"
     job = {

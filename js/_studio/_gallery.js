@@ -54,10 +54,12 @@ export function createGallery(options) {
     sessionTab.type = "button";
     sessionTab.className = "ts-studio__gallerytab is-active";
     sessionTab.textContent = options.t.tabSession;
+    sessionTab.title = options.t.tabSessionTitle || "";
     const libraryTab = document.createElement("button");
     libraryTab.type = "button";
     libraryTab.className = "ts-studio__gallerytab";
     libraryTab.textContent = options.t.tabLibrary;
+    libraryTab.title = options.t.tabLibraryTitle || "";
     tabs.append(sessionTab, libraryTab);
     // Extra tabs are data (the queue panel is the first of them): the gallery
     // hosts them without knowing what they show.

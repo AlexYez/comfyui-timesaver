@@ -116,7 +116,9 @@ def apply_patch() -> bool:
 
     target.INPUT_TYPES = classmethod(_build_input_types(original, folder_paths))
     setattr(target, PATCH_MARKER, True)
-    LOGGER.info(
+    # Успешно применённая заплатка — не новость, а норма: сообщать о ней при
+    # каждом запуске незачем. Всё, что пошло не так, по-прежнему на warning.
+    LOGGER.debug(
         "%s Load Image and Load Image (as Mask) now list images in input subfolders "
         "(pasted, clipspace, and the rest).", LOG_PREFIX,
     )
