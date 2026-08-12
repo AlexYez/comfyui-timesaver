@@ -26,6 +26,15 @@ def _is_valid_video(data) -> bool:
         return data.ndim == 5
     if isinstance(data, (list, tuple)) and data:
         return all(isinstance(item, torch.Tensor) and item.ndim == 4 for item in data)
+    # ⚠️ Родной VIDEO в ComfyUI — это ОБЪЕКТ (`VideoInput`/`VideoFromFile`), а
+    # не тензор: у него есть `get_components`/`get_stream_source`. Проверка
+    # знала только про тензоры и пятимерные списки, поэтому настоящее видео из
+    # ядра признавалось «неверным типом» и переключатель ронял прогон.
+    if hasattr(data, "get_components") or hasattr(data, "get_stream_source"):
+        return True
+    # Словарь с кадрами — форма, в которой видео ходит между частью нод.
+    if isinstance(data, dict) and isinstance(data.get("images"), torch.Tensor):
+        return True
     return False
 
 

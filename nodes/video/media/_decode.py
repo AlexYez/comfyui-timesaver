@@ -374,8 +374,16 @@ def decode(req: DecodeRequest, *, progress: bool = True) -> DecodeResult:
         graph = source = sink = None
         sampler = FrameSampler(req.frame_rate, start, req.frame_step, end)
         flags = _RESIZE_FLAGS.get(req.resize_filter, "bicubic")
-        needs_scale = (size[0], size[1]) != (
-            media.display_width or media.width, media.display_height or media.height)
+        # ⚠️ Сравнивать надо с КОДИРОВАННЫМ размером, а не с экранным.
+        #
+        # Без фильтра масштаба граф отдаёт кадр ровно таким, каким он лежит в
+        # файле, — то есть `media.width x media.height`. Экранный размер
+        # отличается у анаморфного материала (SAR ≠ 1), и там это ломалось
+        # насмерть: `target_size` при нулевых сторонах возвращает ЭКРАННЫЙ
+        # размер, сравнение с ним давало «масштабировать не нужно», буфер
+        # выделялся под экранный размер, а кадры приезжали кодированного —
+        # и загрузчик падал на несовпадении формы.
+        needs_scale = (size[0], size[1]) != (media.width, media.height)
 
         audio_chunks: list = []
         audio_rate = 0
@@ -392,10 +400,8 @@ def decode(req: DecodeRequest, *, progress: bool = True) -> DecodeResult:
                         continue
                     if end > 0 and when >= end:
                         continue
-                    chunk = frame.to_ndarray()
-                    if chunk.ndim == 1:
-                        chunk = chunk.reshape(1, -1)
-                    audio_chunks.append((when, np.asarray(chunk, dtype=np.float32)))
+                    chunk = _audio_frame_to_float(frame, np)
+                    audio_chunks.append((when, chunk))
                     audio_rate = frame.sample_rate or audio_rate
                     audio_channels = max(audio_channels, chunk.shape[0])
                 continue
@@ -535,6 +541,60 @@ def _safe_decode(packet, av):
     except Exception as error:              # noqa: BLE001 - редкие ошибки декодера
         logger.debug("%s frame dropped: %s", LOG_PREFIX, error)
         return ()
+
+
+# Во сколько раз делить целочисленный отсчёт, чтобы он лёг в [-1, 1].
+# Ключ — имя формата PyAV без суффикса планарности.
+_AUDIO_INT_SCALE = {
+    "u8": 128.0,        # беззнаковый: сначала сдвигаем на 128, потом делим
+    "s16": 32768.0,
+    "s32": 2147483648.0,
+    "s64": 9223372036854775808.0,
+}
+
+
+def _audio_frame_to_float(frame, np):
+    """Кадр звука → float32 [C, T] в диапазоне [-1, 1].
+
+    ⚠️ ``frame.to_ndarray()`` отдаёт СЫРОЙ формат кадра. У распространённого
+    ``s16`` это целые ±32767, и прежний ``astype(np.float32)`` просто расширял
+    целое: конвенция ComfyUI AUDIO (float в [-1, 1]) нарушалась, а всё, что
+    дальше считало громкость или писало файл, получало клиппинг.
+
+    Второе: у ПАКОВАННЫХ форматов (без ``p`` на конце) PyAV кладёт каналы
+    вперемешку в одну строку, поэтому стерео выглядело как одна дорожка вдвое
+    длиннее — «искажённое моно». Разворачиваем по числу каналов.
+    """
+    data = frame.to_ndarray()
+    fmt = str(getattr(getattr(frame, "format", None), "name", "") or "")
+    planar = fmt.endswith("p")
+    base = fmt[:-1] if planar else fmt
+
+    try:
+        channels = int(getattr(frame.layout, "nb_channels", 0) or 0)
+    except Exception:                       # noqa: BLE001 - старые сборки PyAV
+        channels = 0
+    if channels <= 0:
+        channels = int(data.shape[0]) if data.ndim > 1 else 1
+
+    if data.ndim == 1:
+        data = data.reshape(1, -1)
+
+    # Паковано: одна строка, каналы чередуются отсчёт за отсчётом.
+    if not planar and data.shape[0] == 1 and channels > 1:
+        total = data.shape[1]
+        if total % channels == 0:
+            data = data.reshape(total // channels, channels).T
+
+    scale = _AUDIO_INT_SCALE.get(base)
+    if scale is None:
+        # flt/dbl уже в [-1, 1] — только приводим тип.
+        return np.ascontiguousarray(data, dtype=np.float32)
+
+    out = data.astype(np.float32)
+    if base == "u8":
+        out -= 128.0
+    return np.ascontiguousarray(out / scale, dtype=np.float32)
 
 
 def _assemble_audio(chunks, rate: int, channels: int, start: float, end: float) -> dict:

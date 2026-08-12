@@ -176,9 +176,20 @@ class TS_Film_Emulation(IO.ComfyNode):
 
     @classmethod
     def execute(cls, image, enable=True, film_preset="External LUT", lut_choice="None", lut_strength=1.0,
-                gamma_correction=False, film_strength=1.0, contrast_curve=1.0, warmth=0.0,
-                grain_intensity=0.0, grain_size=1.0, fade=0.0,
-                shadow_saturation=1.0, highlight_saturation=1.0) -> IO.NodeOutput:
+                gamma_correction=True, film_strength=1.0, contrast_curve=1.0, warmth=0.0,
+                grain_intensity=0.02, grain_size=0.5, fade=0.0,
+                shadow_saturation=0.8, highlight_saturation=0.85) -> IO.NodeOutput:
+        # ⚠️ Эти значения обязаны совпадать с `default=` в схеме выше.
+        #
+        # Пять из них разошлись: схема обещала `gamma_correction=True` и зерно
+        # 0.02, а подпись — `False` и 0.0. На результат это не влияло (входы
+        # обязательные, и ComfyUI всегда передаёт их явно — из `widgets_values`
+        # либо из схемы), поэтому расхождение и жило незамеченным. Но читается
+        # такой код как второй, тайный набор умолчаний: стоит кому-нибудь
+        # сделать вход опциональным или позвать `execute` напрямую из теста —
+        # и нода тихо начнёт считать по другим числам.
+        #
+        # Сторож: tests/test_schema_execute_defaults.py — по всему паку.
 
         if not enable:
             return IO.NodeOutput(image)

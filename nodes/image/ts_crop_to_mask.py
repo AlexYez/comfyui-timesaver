@@ -66,6 +66,28 @@ class TSCropToMask(IO.ComfyNode):
         batch_size = images.shape[0]
         original_img_h, original_img_w = images.shape[1], images.shape[2]
 
+        # ⚠️ Маска обязана быть в тех же координатах, что и картинка.
+        #
+        # Совпадение размеров нигде не проверялось, а bbox считается ПО МАСКЕ и
+        # применяется К КАРТИНКЕ. Маска приходит и от превью вдвое меньше, и от
+        # соседней ноды с другим разрешением — и тогда вырез молча уезжал и по
+        # месту, и по масштабу, без единой строчки в журнале.
+        #
+        # Растягиваем ближайшим соседом: маска здесь — указание области, а не
+        # изображение, и промежуточные полутона на её границе только размыли бы
+        # рамку выреза.
+        if mask.shape[-2:] != (original_img_h, original_img_w):
+            logger.warning(
+                "%s Mask is %dx%d but the image is %dx%d — resizing the mask to match. "
+                "Feed a mask at the image's own resolution to avoid this.",
+                LOG_PREFIX, mask.shape[-1], mask.shape[-2], original_img_w, original_img_h,
+            )
+            mask = torch.nn.functional.interpolate(
+                mask.unsqueeze(1).float(),
+                size=(original_img_h, original_img_w),
+                mode="nearest",
+            ).squeeze(1)
+
         if mask.shape[0] == batch_size:
             pass
         elif mask.shape[0] == 1 and batch_size > 1:

@@ -215,6 +215,25 @@ class QwenDownloadProgressMonitor:
             self._stop.wait(0.5)
 
     def _emit_progress(self) -> None:
+        # ⚠️ Про отмену человеку надо СКАЗАТЬ.
+        #
+        # Скачивание ведёт huggingface_hub внутри себя, прервать его нечем, и
+        # это осознанное решение (см. _helpers.py): бросать модель на полпути
+        # хуже, чем дождаться. Но молчать об этом нельзя — человек жмёт
+        # «Отмена» на девяти гигабайтах, полоса продолжает ехать, и выглядит
+        # это как «кнопка не работает». Теперь она говорит, чего ждать.
+        if operation_cancelled(self.operation_id):
+            name = self.model_id.split("/")[-1]
+            size = directory_size(self.local_dir)
+            send_progress(
+                self.operation_id,
+                f"Downloading {name}: cancel requested — the download finishes "
+                f"the current file first, then the run stops "
+                f"({format_bytes(size)} so far)",
+                None,
+            )
+            return
+
         size = directory_size(self.local_dir)
         if size == self._last_size and size > 0:
             return
@@ -241,6 +260,20 @@ class QwenDownloadProgressMonitor:
 
 
 def _qwen_model_dir(model_id: str) -> Path:
+    """Папка модели: `models/LLM/<последний сегмент repo id>`.
+
+    ⚠️ ОДНО правило на весь пак, и оно обязано совпадать с
+    `QwenEngine._cache_dir_name`. Стоило им разойтись (движок ненадолго начал
+    раскладывать модели по полному repo id), как сломалось сразу двое:
+
+      * `_is_qwen_model_available` отвечал про одну папку, а качалось в другую —
+        интерфейс писал «загрузка», хотя шло скачивание;
+      * монитор прогресса следил за ПУСТОЙ папкой, полоса не двигалась, и
+        прогон выглядел зависшим, хотя файлы шли в соседнюю.
+
+    Имя папки — решение владельца пака: `Huihui-Qwen3.5-2B-abliterated`, а не
+    `huihui-ai--Huihui-…`. Чей это репозиторий, проверяет паспорт внутри папки.
+    """
     return (
         Path(getattr(folder_paths, "models_dir", Path.cwd() / "models"))
         / "LLM"
@@ -632,6 +665,14 @@ def _generate_with_qwen(
         send_progress(operation_id, "Waiting for Qwen", 2.0)
         MODEL_LOCK.acquire()
 
+    # ⚠️ Объявляем ДО try: блок `finally` внизу читает эту переменную
+    # (`elif moved_to_gpu:`), а присваивалась она глубоко внутри — то есть
+    # любой ранний выход из try (отмена, нехватка памяти, сбой загрузки)
+    # обрушивал сам обработчик ошибки в NameError и прятал настоящую причину.
+    moved_to_gpu = False
+    model = None
+    processor = None
+
     try:
         send_progress(operation_id, "Preparing prompt", 5.0)
         engine = _get_qwen_engine()
@@ -682,6 +723,20 @@ def _generate_with_qwen(
                 download_success = True
             finally:
                 qwen_monitor.stop(download_success)
+
+        # ⚠️ Граница стадии — то самое место, где отмена наконец срабатывает.
+        #
+        # Само скачивание прервать нечем (huggingface_hub ведёт его внутри
+        # себя), и это осознанное решение. Но раньше проверки не было и ЗДЕСЬ:
+        # человек жал «Отмена» на девяти гигабайтах, дожидался конца загрузки —
+        # и прогон как ни в чём не бывало ехал дальше, грузил модель в память и
+        # генерировал ответ. Со стороны это и есть «кнопка не работает».
+        if operation_cancelled(operation_id):
+            send_progress(operation_id, "Cancelled", None)
+            log_info("run cancelled by the user after the model download")
+            # Пустая строка — тот же ответ, что и у отмены в конце генерации:
+            # вызывающий уже умеет его читать как «человек передумал».
+            return ""
 
         send_progress(operation_id, "Loading Qwen model into memory", 46.0)
         model, processor = engine.load_model(

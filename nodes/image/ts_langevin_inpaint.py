@@ -352,10 +352,23 @@ def _match_mask(mask: torch.Tensor, latent: torch.Tensor) -> torch.Tensor:
     while m.ndim < latent.ndim:
         m = m.unsqueeze(1) if m.ndim == 3 else m.unsqueeze(0)
     if m.shape[-2:] != latent.shape[-2:]:
-        m = comfy.utils.common_upscale(
-            m.reshape(-1, 1, m.shape[-2], m.shape[-1]),
-            latent.shape[-1], latent.shape[-2], "bilinear", "center")
-        m = m.reshape(latent.shape[0], 1, latent.shape[-2], latent.shape[-1])
+        flat = m.reshape(-1, 1, m.shape[-2], m.shape[-1])
+        flat = comfy.utils.common_upscale(
+            flat, latent.shape[-1], latent.shape[-2], "bilinear", "center")
+        # ⚠️ Разворачиваем ПО ФАКТИЧЕСКОМУ числу кадров маски, а не по размеру
+        # батча латента. Одна маска на батч из четырёх латентов — обычное дело
+        # (маску рисуют один раз), и прежний `reshape(latent.shape[0], ...)`
+        # требовал вчетверо больше элементов, чем есть: нода падала с
+        # RuntimeError на любом батче больше единицы. Недостающие кадры
+        # повторяются — маска одна на всех, это и имелось в виду.
+        frames = flat.shape[0]
+        m = flat.reshape(frames, 1, latent.shape[-2], latent.shape[-1])
+        if frames != latent.shape[0]:
+            if frames == 1:
+                m = m.expand(latent.shape[0], -1, -1, -1)
+            else:
+                repeats = -(-latent.shape[0] // frames)   # ceil
+                m = m.repeat(repeats, 1, 1, 1)[: latent.shape[0]]
     return m.expand_as(latent) if m.shape != latent.shape else m
 
 

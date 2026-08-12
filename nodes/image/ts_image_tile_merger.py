@@ -69,6 +69,7 @@ class TS_ImageTileMerger(IO.ComfyNode):
         height: int,
         width: int,
         feather_ratio: float,
+        overlap: int,
         x: int,
         y: int,
         img_w: int,
@@ -82,6 +83,20 @@ class TS_ImageTileMerger(IO.ComfyNode):
 
         feather_w = int(width * feather_ratio)
         feather_h = int(height * feather_ratio)
+
+        # ⚠️ Растушёвка живёт ТОЛЬКО внутри перекрытия. Спад строится через
+        # `linspace(0, 1, n)`, а его первый элемент — ровно ноль: крайняя
+        # колонка тайла получает вес 0. Пока соседний тайл её тоже накрывает,
+        # веса складываются в единицу и всё сходится. Но при `overlap = 0`
+        # тайлы стыкуются встык, эту колонку не накрывает никто, суммарный вес
+        # остаётся нулём — и `weights[weights == 0] = 1.0` превращает пиксель
+        # в ЧЁРНЫЙ. На стыках появлялась сетка тёмных линий.
+        #
+        # Половина перекрытия — предел, при котором спады двух соседей ровно
+        # встречаются. `overlap < 2` растушёвывать нечем: её просто нет.
+        max_feather = max(0, int(overlap) // 2)
+        feather_w = min(feather_w, max_feather)
+        feather_h = min(feather_h, max_feather)
 
         if feather_w > 0:
             grad_x = torch.linspace(0.0, 1.0, feather_w, device=device, dtype=dtype)
@@ -117,6 +132,8 @@ class TS_ImageTileMerger(IO.ComfyNode):
         tile_width = int(tile_data.get("tile_width", images.shape[2]))
         tile_height = int(tile_data.get("tile_height", images.shape[1]))
         feather_ratio = float(tile_data.get("feather", tile_data.get("feather_ratio", 0.0)))
+        # Перекрытие задаёт потолок растушёвки — см. _build_weight_mask.
+        overlap = int(tile_data.get("overlap", 0) or 0)
         positions = tile_data.get("positions", [])
 
         device = images.device
@@ -162,6 +179,7 @@ class TS_ImageTileMerger(IO.ComfyNode):
                 tile_h,
                 tile_w,
                 feather_ratio,
+                overlap,
                 x,
                 y,
                 orig_w,
