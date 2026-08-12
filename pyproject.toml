@@ -2,7 +2,7 @@
 name = "comfyui-timesaver"
 description = "ComfyUI nodes from [Timesaver](https://github.com/AlexYez/comfyui-timesaver)."
 # ⚠️ Три составляющих: Comfy Registry принимает только SemVer.
-version = "10.1.0"
+version = "12.0.0"
 license = { file = "LICENSE.txt" }
 # Matches CI (.github/workflows/ci.yml) and the Python range ComfyUI itself
 # supports; >=3.12 wrongly blocked pip installs on 3.10/3.11.
@@ -21,7 +21,6 @@ dependencies = [
     # ни imshow, ни waitKey, ни namedWindow), а полный пакет тащит GUI-
     # библиотеки и чаще конфликтует с другими нодами.
     "opencv-python-headless>=4.5.0",
-    "py360convert>=0.1.0",
     # Фронтенд пака живёт внутри ComfyUI: DOM-виджеты, оверлей, темы.
     # Нижняя граница — версия, на которой пак реально проверялся
     # (установлена в эталонной сборке X1); верхней нет, потому что
@@ -89,7 +88,7 @@ Repository = "https://github.com/AlexYez/comfyui-timesaver"
 PublisherId = "timesaver"
 DisplayName = "ComfyUI Timesaver Nodes"
 Icon = "https://raw.githubusercontent.com/AlexYez/comfyui-timesaver/refs/heads/master/icon.png"
-# Pinned to the ComfyUI release that exposes the comfy_api.latest IO surface
+# Pinned to the ComfyUI release that exposes the comfy_api.v0_0_2 IO surface
 # this pack relies on (IO.ComfyNode, IO.Schema, IO.NodeOutput, IO.Color, etc.).
 requires-comfyui = ">=0.20.1"
 

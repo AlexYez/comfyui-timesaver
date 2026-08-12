@@ -11,7 +11,7 @@ Reads a video into frames, audio and a compact `video_info` bundle — and lets 
 Footage arrives by **drag and drop** — from the file manager, from the Artius browser, or from another node's preview — by the button, by paste, or as a path to a file anywhere on the ComfyUI machine.
 
 > **A path anywhere on the machine — and what happens when the server is not yours alone.** Running ComfyUI the usual way, on `127.0.0.1`, the node and its preview read **any path you give them**: Documents, Desktop, another drive. Nothing is copied into `input`, which is the whole point — that folder grows without end otherwise.
-> If ComfyUI is started open to a network (`--listen 0.0.0.0`, a LAN box, a cloud machine), the preview is served over HTTP to whoever can reach that port, so it then stays inside your home folder and ComfyUI's own directories. Add more with `TS_VIDEO_EXTRA_ROOTS=D:/footage` (several separated by your OS path separator), or lift the limit with `TS_VIDEO_ALLOW_ANY_PATH=1`. Both are set on the machine by its owner — not inside a workflow, which can arrive from anyone.
+> If ComfyUI is started open to a network (`--listen 0.0.0.0`, a LAN box, a cloud machine), the preview is served over HTTP to whoever can reach that port, so it then stays inside your home folder and ComfyUI's own directories. Add more with `TS_MEDIA_EXTRA_ROOTS=D:/footage` (several separated by your OS path separator), or lift the limit with `TS_MEDIA_ALLOW_ANY_PATH=1`. Both are set on the machine by its owner — not inside a workflow, which can arrive from anyone.
 
 **Use when:** any workflow that starts from footage rather than from a still.
 

@@ -1,4 +1,4 @@
-﻿import logging
+import logging
 import math
 import os
 from concurrent.futures import ThreadPoolExecutor

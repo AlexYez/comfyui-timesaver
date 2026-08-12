@@ -12,6 +12,10 @@ srt>=3.5.0
 # Native OpenAI Whisper — unified engine for TS Whisper + TS Super Prompt voice.
 openai-whisper>=20231117
 opencv-python-headless>=4.5.0
+# Фронтенд пака живёт внутри ComfyUI (DOM-виджеты, оверлей, темы). Держим в
+# обоих файлах: pip install -r requirements.txt не читает pyproject.toml, и
+# строка была только там.
+comfyui-frontend-package>=1.48.0
 matplotlib>=3.4.0
 imageio>=2.20.0
 imageio-ffmpeg>=0.4.0

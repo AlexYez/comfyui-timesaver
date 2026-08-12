@@ -4,13 +4,13 @@
 
 # 🚀 Timesaver Nodes for ComfyUI
 
-**A friendly toolkit of 63 production-ready nodes that take the boring busywork out of your ComfyUI graphs.**
+**A friendly toolkit of 64 production-ready nodes that take the boring busywork out of your ComfyUI graphs.**
 
-> 13 of them belong to TS Image Studio — its own node plus the markers and backends it drives — and are not written up separately below; the reference covers the other 66.
+> 13 of them belong to TS Image Studio — its own node plus the markers and backends it drives — and are not written up separately below; the reference covers the other 51.
 
 Resize, color-grade, key, denoise, transcribe, translate, prompt-build, manage models — without leaving the canvas.
 
-[![Version](https://img.shields.io/badge/version-11.0.0-blue.svg)](pyproject.toml)
+[![Version](https://img.shields.io/badge/version-12.0.0-blue.svg)](pyproject.toml)
 [![ComfyUI](https://img.shields.io/badge/ComfyUI-V3%20API-orange.svg)](https://github.com/comfyanonymous/ComfyUI)
 [![Python](https://img.shields.io/badge/python-3.10+-green.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-see%20LICENSE.txt-lightgrey.svg)](LICENSE.txt)
@@ -37,7 +37,7 @@ Whether you build pipelines for image generation, video, audio, or just want to 
 | 🛠️ | **[Utils](#utils)** | 5 | Workflow group bypass panel, custom sliders, math, smart type-aware switch |
 | 🎨 | **[Conditioning](#conditioning)** | 1 | Multi-reference image conditioning |
 
-> All 63 nodes use the **ComfyUI V3 API** (`comfy_api.v0_0_2.IO` — a pinned namespace, not a stable one: the adapter itself declares `STABLE = False`. Pinning keeps the pack off the moving `latest` alias; it does not promise the API will not change).
+> All 64 nodes use the **ComfyUI V3 API** (`comfy_api.v0_0_2.IO` — a pinned namespace, not a stable one: the adapter itself declares `STABLE = False`. Pinning keeps the pack off the moving `latest` alias; it does not promise the API will not change).
 >
 > **Plus extra samplers & schedulers** added straight into the native KSampler / KSamplerAdvanced / BasicScheduler dropdowns (no node to wire — they just appear after install): sampler **`res_2s`** (2nd-order exponential RK / "RES"), schedulers **`bong_tangent`** (two-stage arctangent sigma curve) and **`beta57`** (`beta` α=0.5/β=0.7). Algorithms reimplemented clean-room from [RES4LYF](https://github.com/ClownsharkBatwing/RES4LYF)'s public math (no code copied).
 
@@ -161,7 +161,9 @@ git pull
 python -m pip install -r requirements.txt
 ```
 
-Restart ComfyUI. Your existing workflows keep working — node ids and inputs are frozen across versions.
+Restart ComfyUI. Node ids, inputs and defaults are frozen across versions, so saved workflows keep working.
+
+> ⚠️ **One exception, 11 Aug 2026 (v11.0.0): 16 nodes were retired.** A workflow that used one of them shows it in red as a missing node; everything else in that graph is untouched. What was removed, why, and how to get it back is in [CHANGELOG.md](CHANGELOG.md).
 
 ---
 
@@ -245,6 +247,26 @@ Mask-driven regenerate **or** refine in one node: feed the full image + a painte
 
 ---
 
+#### TS Langevin Inpaint
+Inpaint sampler that spends extra inner steps at every noise level, so the repainted area agrees with the pixels around it instead of merely filling the hole. It replaces a plain KSampler: feed it a latent that carries a **noise mask**, and it returns the finished `LATENT`.
+
+Why it exists: ordinary sampling looks at the masked region and its surroundings only through the model's own attention. Langevin dynamics adds a short corrective loop at each level (`think_steps` of it), pulled towards the known pixels with `guidance` and damped by `step_size`, `beta` and `friction`. The defaults are tuned for photographic content; raise `think_steps` when a seam is still visible, lower it when the patch turns mushy.
+
+Works with any model family — no Fill checkpoint, no ControlNet.
+
+**Use when:** a repaint has to blend into complicated surroundings (skin, fabric, foliage) and a normal sampler leaves a visible patch.
+
+---
+
+#### TS Universal Inpaint Sampler
+The same idea as TS Langevin Inpaint, packaged as a **SAMPLER** you plug into ComfyUI's own `SamplerCustomAdvanced` instead of replacing the sampler node. Training-free and model-agnostic: no Fill checkpoint, no ControlNet.
+
+Feed `SamplerCustomAdvanced` a latent whose noise mask marks the region to repaint, and hand it this sampler. `think_steps` sets how much correction happens at each noise level; `resample_strength` sets how hard the known pixels pull the masked ones towards them.
+
+**Use when:** you already have a custom sampling chain (own sigmas, own guider) and want inpaint-aware sampling inside it rather than around it.
+
+---
+
 #### TS Matting (ViTMatte)
 <img src="doc/screenshots/ts_matting_vitmatte.png" alt="TS Matting (ViTMatte)" width="450" />
 
@@ -308,6 +330,17 @@ Pick `tile_count` (4, 8, 16) and the node figures out the best `tile_width` × `
 Trim N frames from the start (`first_cut`) and N frames from the end (`last_cut`) of an image batch. Negative values are treated as zero; an over-cut returns an empty batch.
 
 **Use when:** trimming intro/outro frames from a video, dropping the warm-up frames of a sampler, or splitting a batch into segments.
+
+---
+
+#### TS Smart Batch
+Batch images — and keep working when one of them is not there. Inputs **grow**: fill the last slot and the next one appears, up to 32. Every slot is **optional**, so an empty or bypassed one is simply skipped. Nothing connected at all is the only error, and it says so plainly instead of handing you a blank frame.
+
+Why it exists: core's **Batch Images** has two *required* inputs, so muting or bypassing either side breaks the whole graph before it even runs. Building a first-frame / last-frame pair usually means switching one side off and on again, and that should not require rewiring.
+
+Frames come out in slot order — `image0`, `image1`, `image2`, … — whatever gaps you leave. Pairs are reconciled exactly as core does: a missing alpha channel is padded with 1.0, and a differently sized image is resized to match the first one that actually arrived. Batches concatenate — 3 frames plus 2 frames give 5.
+
+**Use when:** feeding an FLF (first/last frame) video model, or any time one node should emit a batch of however many sources happen to be switched on.
 
 ---
 
@@ -771,7 +804,7 @@ You can override these with `extra_model_paths.yaml` — Timesaver respects Comf
 On a clean load the pack now says one line and nothing else:
 
 ```
-[TS Timesaver] All 63 nodes loaded successfully.
+[TS Timesaver] All 64 nodes loaded successfully.
 ```
 
 The ComfyUI console is shared by every pack you have installed, and two screens
@@ -872,7 +905,7 @@ Timesaver freezes node ids and inputs across versions on purpose. If something b
 ```text
 comfyui-timesaver/
 ├─ ts_pasted_media_fix.py  # the pack's one patch to ComfyUI itself
-├─ nodes/                  # 67 modules: 63 nodes + 4 that register none
+├─ nodes/                  # 68 modules: 64 nodes + 4 that register none
 │                          #   (sampler + scheduler injectors, shared routes,
 │                          #    one backward-compat re-export shim)
 ├─ js/                     # frontend extensions for DOM-widget nodes
