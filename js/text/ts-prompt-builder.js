@@ -158,7 +158,104 @@ function tsMakeLabel(tsFileName) {
     return String(tsFileName || "").replace(/\.txt$/i, "");
 }
 
-function tsBuildItems(tsBlocks, tsFiles) {
+/**
+ * Разобрать сохранённый в ноде `config_json`.
+ *
+ * @param {string} tsRaw значение виджета или зеркала в properties
+ * @returns {Array<{name: string, enabled: boolean}>} набор блоков ноды
+ */
+function tsParseConfig(tsRaw) {
+    if (typeof tsRaw !== "string" || !tsRaw.trim()) {
+        return [];
+    }
+    try {
+        const tsData = JSON.parse(tsRaw);
+        const tsList = Array.isArray(tsData) ? tsData : tsData?.blocks;
+        if (!Array.isArray(tsList)) {
+            return [];
+        }
+        const tsOut = [];
+        for (const tsEntry of tsList) {
+            const tsName = typeof tsEntry === "string"
+                ? tsEntry
+                : (tsEntry?.file || tsEntry?.name);
+            if (!tsName) {
+                continue;
+            }
+            tsOut.push({
+                name: String(tsName),
+                enabled: typeof tsEntry === "string" ? true : tsEntry?.enabled !== false,
+            });
+        }
+        return tsOut;
+    } catch (tsError) {
+        console.warn("[TS PromptBuilder] config_json is not readable", tsError);
+        return [];
+    }
+}
+
+/**
+ * Собрать список блоков: НАБОР И ПОРЯДОК — из ноды, наличие файлов — с сервера.
+ *
+ * ⚠️ Раньше список строился только из ответа `/ts_prompt_builder/state`, а
+ * сразу за этим `tsSyncConfig()` записывал его в `config_json`. То есть при
+ * каждом открытии workflow сохранённый в графе выбор молча заменялся
+ * НАСТРОЙКОЙ МАШИНЫ: открыл свой же граф на другом компьютере (или после того,
+ * как в соседнем графе поменяли порядок блоков) — и получил чужой набор.
+ *
+ * Теперь ответ сервера отвечает только на вопрос «какие файлы существуют»:
+ * порядок и включённость берутся из ноды, новые файлы дописываются в конец
+ * выключенными, а исчезнувшие с диска просто выпадают.
+ *
+ * @param {Array} tsBlocks блоки из ответа сервера
+ * @param {Array<string>} tsFiles все файлы блоков на диске
+ * @param {Array<{name: string, enabled: boolean}>} [tsSaved] выбор, сохранённый в ноде
+ */
+function tsBuildItems(tsBlocks, tsFiles, tsSaved) {
+    const tsAvailable = new Set();
+    if (Array.isArray(tsBlocks)) {
+        for (const tsEntry of tsBlocks) {
+            const tsName = tsEntry?.file || tsEntry?.name;
+            if (tsName) tsAvailable.add(String(tsName));
+        }
+    }
+    if (Array.isArray(tsFiles)) {
+        for (const tsName of tsFiles) {
+            if (tsName) tsAvailable.add(String(tsName));
+        }
+    }
+
+    if (Array.isArray(tsSaved) && tsSaved.length) {
+        const tsItems = [];
+        const tsSeen = new Set();
+        for (const tsEntry of tsSaved) {
+            // Файла больше нет на диске — молча выбрасываем: держать в списке
+            // блок, который нечем наполнить, значит обещать несуществующее.
+            if (!tsAvailable.has(tsEntry.name) || tsSeen.has(tsEntry.name)) {
+                continue;
+            }
+            tsSeen.add(tsEntry.name);
+            tsItems.push({
+                name: tsEntry.name,
+                label: tsMakeLabel(tsEntry.name),
+                enabled: tsEntry.enabled !== false,
+            });
+        }
+        // Появившиеся на машине файлы дописываем в конец и ВЫКЛЮЧЕННЫМИ:
+        // включить их — решение человека, а не следствие обновления пака.
+        for (const tsName of tsAvailable) {
+            if (tsSeen.has(tsName)) continue;
+            tsSeen.add(tsName);
+            tsItems.push({ name: tsName, label: tsMakeLabel(tsName), enabled: false });
+        }
+        return tsItems;
+    }
+
+    return tsBuildItemsFromServer(tsBlocks, tsFiles);
+}
+
+/** Прежнее поведение — для новой ноды, у которой своего выбора ещё нет. */
+function tsBuildItemsFromServer(tsBlocks, tsFiles) {
     const tsItems = [];
     const tsSeen = new Set();
     if (Array.isArray(tsBlocks)) {
@@ -443,9 +540,17 @@ function tsSetupPromptBuilder(tsNode) {
                 throw new Error(`HTTP ${tsResponse.status}`);
             }
             const tsPayload = await tsResponse.json();
-            tsState.items = tsBuildItems(tsPayload.blocks, tsPayload.files);
+            // Сохранённый в ноде выбор читается ЗДЕСЬ, а не при создании:
+            // на момент onNodeCreated виджеты ещё держат дефолты, значения из
+            // workflow приезжают позже (CLAUDE.md §12.5.12).
+            const tsRaw = sharedGetWidget(tsNode, TS_PROMPT_BUILDER_CONFIG_INPUT)?.value
+                ?? tsNode?.properties?.[TS_PROMPT_BUILDER_CONFIG_INPUT];
+            const tsSaved = tsParseConfig(tsRaw);
+            tsState.items = tsBuildItems(tsPayload.blocks, tsPayload.files, tsSaved);
             tsState.loading = false;
             tsRenderList();
+            // Запись обратно нужна, чтобы дописанные новые файлы попали в граф;
+            // порядок и включённость при этом уже те, что были сохранены.
             tsSyncConfig();
         } catch (tsError) {
             tsState.loading = false;

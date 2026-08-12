@@ -251,17 +251,35 @@ export function createQueuePanel(options) {
     // No reorder endpoint exists: clear the pending block, then resubmit the
     // prompts in the order the user just dropped them into. The running job is
     // untouched, and each prompt keeps the extra_data it arrived with.
+    //
+    // ⚠️ Между «стёрли» и «дослали» очередь существует только в этой переменной.
+    // Раньше цикл шёл без защиты: первая же неудачная отправка (сеть моргнула,
+    // сервер занят, промпт не прошёл валидацию) обрывала его, и ВСЕ оставшиеся
+    // задания пропадали молча — они уже были сняты с сервера. Теперь досылаем
+    // остаток в любом случае и говорим человеку, что именно не уехало.
     async function applyOrder() {
         const order = pending.slice();
+        const failed = [];
         await post("/queue", { clear: true });
-        for (const job of order) {
-            await post("/prompt", {
-                prompt: job.prompt,
-                client_id: job.extra?.client_id || api.clientId,
-                extra_data: job.extra,
-            });
+        try {
+            for (const job of order) {
+                try {
+                    await post("/prompt", {
+                        prompt: job.prompt,
+                        client_id: job.extra?.client_id || api.clientId,
+                        extra_data: job.extra,
+                    });
+                } catch (err) {
+                    failed.push(job);
+                    console.warn("[TS Studio] queue reorder: resubmit failed", err);
+                }
+            }
+        } finally {
+            if (failed.length) {
+                options.onReorderFailed?.(failed);
+            }
+            await refresh();
         }
-        await refresh();
     }
 
     stopButton.addEventListener("click", () => {

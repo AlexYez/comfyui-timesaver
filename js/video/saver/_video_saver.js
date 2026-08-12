@@ -238,7 +238,17 @@ export function setupVideoSaver(node) {
         if (!payload) return;
         state.payload = payload;
         node.properties ||= {};
-        node.properties[PROP_PAYLOAD] = payload;
+        // ⚠️ В СВОЙСТВА — БЕЗ `saved_path`.
+        //
+        // Бэкенд присылает абсолютный путь результата (`C:\Users\<имя>\...`),
+        // а `node.properties` LiteGraph сериализует в JSON workflow. Поделился
+        // графом — поделился именем пользователя и раскладкой своих дисков.
+        // Кнопке «скопировать путь» он по-прежнему доступен: она берёт его из
+        // `state.payload`, который живёт только в этой вкладке и никуда не
+        // сохраняется. Восстановить превью после перезагрузки хватает
+        // filename/subfolder/type — тем же, чем пользуется `/view`.
+        const { saved_path: _savedPath, ...persistable } = payload;
+        node.properties[PROP_PAYLOAD] = persistable;
 
         const params = new URLSearchParams({
             filename: payload.filename || "",

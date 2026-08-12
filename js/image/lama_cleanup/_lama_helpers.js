@@ -1904,6 +1904,28 @@ export function setupLamaCleanup(node) {
     state.sourcePollHandle = window.setInterval(async () => {
         const nextSource = String(getWidgetValue(node, INPUT_SOURCE_PATH, "") || "");
         if (nextSource === state.sourcePath) return;
+
+        // ⚠️ ЭТО ВОССТАНОВЛЕНИЕ, А НЕ СМЕНА ИСТОЧНИКА.
+        //
+        // Опрос идёт каждые 300 мс, а загрузка графа занимает больше: ComfyUI
+        // успевает положить значения в виджеты, но `loadedGraphNode` (а с ним
+        // и rehydrate) ещё не случился. Опрос видел «путь изменился с пустого»,
+        // стирал `working_path` и заново снимал рабочую копию с ИСХОДНИКА — то
+        // есть выбрасывал всю ретушь. Поймано живым тестом: значение уезжало
+        // даже после того, как rehydrate появился.
+        //
+        // Признак надёжный и не зависящий от порядка событий: у виджета есть
+        // рабочая копия, а у состояния — нет. Значит нода просто ещё не
+        // догнала workflow; догоняем, ничего не выбрасывая.
+        const savedWorking = String(getWidgetValue(node, INPUT_WORKING_PATH, "") || "");
+        if (!state.sourcePath && !state.workingPath && savedWorking) {
+            state.sourcePath = nextSource;
+            state.workingPath = savedWorking;
+            resetHistoryTo(savedWorking);
+            await refreshImage({ clearMask: true });
+            return;
+        }
+
         state.sourcePath = nextSource;
         state.workingPath = "";
         setWidgetValue(node, INPUT_WORKING_PATH, "");
@@ -1918,6 +1940,45 @@ export function setupLamaCleanup(node) {
         }
         await seedWorkingFile();
     }, SOURCE_POLL_INTERVAL_MS);
+
+    // ⚠️ Восстановление состояния при загрузке workflow — БЕЗ пересборки
+    // DOM-виджета (§12.5.12: пересборка двоит верх ноды в Nodes 2.0).
+    //
+    // Почему это вообще нужно. `setup` вызывается из `onNodeCreated`, когда
+    // виджеты ещё держат ДЕФОЛТЫ: значения из workflow ComfyUI применяет
+    // позже. Поэтому `state.sourcePath` и `state.workingPath` оставались
+    // пустыми, а следом просыпался опрос источника — видел «путь изменился»
+    // и обнулял `working_path`, то есть выбрасывал всю ретушь. Человек
+    // открывал свой же сохранённый граф и получал исходник без правок.
+    //
+    // Порядок важен: сперва состояние, потом картинка. `workingPath` дороже
+    // `sourcePath` — это и есть результат работы.
+    node._tsLamaCleanupRehydrate = () => {
+        state.sourcePath = String(getWidgetValue(node, INPUT_SOURCE_PATH, state.sourcePath) || "");
+        state.workingPath = String(getWidgetValue(node, INPUT_WORKING_PATH, state.workingPath) || "");
+        state.brushSize = clamp(
+            readNumber(node, INPUT_BRUSH_SIZE, state.brushSize), BRUSH_MIN_PX, BRUSH_MAX_PX);
+        state.maxResolution = readNumber(node, INPUT_MAX_RESOLUTION, state.maxResolution);
+        state.maskPadding = readNumber(node, INPUT_MASK_PADDING, state.maskPadding);
+        state.feather = readNumber(node, INPUT_FEATHER, state.feather);
+        const restoredSession = String(getWidgetValue(node, INPUT_SESSION_ID, "") || "");
+        if (restoredSession) state.sessionId = restoredSession;
+
+        if (state.workingPath) {
+            // Ретушь уже есть — показываем её и делаем началом истории.
+            resetHistoryTo(state.workingPath);
+            refreshImage({ clearMask: true }).catch((error) => {
+                console.warn("[TS LamaCleanup] restoring the working image failed", error);
+            });
+        } else if (state.sourcePath) {
+            seedWorkingFile().catch((error) => {
+                console.warn("[TS LamaCleanup] seeding the working copy failed", error);
+            });
+        } else {
+            updateMeta();
+            requestRedraw();
+        }
+    };
 
     node._tsLamaCleanupCleanup = () => {
         // The overlay lives on document.body, so it would survive node removal

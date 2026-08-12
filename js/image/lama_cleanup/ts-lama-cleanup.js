@@ -29,6 +29,11 @@ app.registerExtension({
         if (node?.type !== NODE_NAME && node?.comfyClass !== NODE_NAME) return;
         if (!getWidget(node, DOM_WIDGET_NAME)) {
             setupLamaCleanup(node);
+            return;
         }
+        // Виджет уже создан в onNodeCreated — значит здесь надо не собирать
+        // ноду заново (это двоит её верх в Nodes 2.0), а перечитать значения,
+        // которые ComfyUI восстановил уже ПОСЛЕ создания.
+        node._tsLamaCleanupRehydrate?.();
     },
 });

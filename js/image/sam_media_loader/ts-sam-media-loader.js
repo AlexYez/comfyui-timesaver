@@ -30,6 +30,10 @@ app.registerExtension({
         if (node?.type !== NODE_NAME && node?.comfyClass !== NODE_NAME) return;
         if (!getWidget(node, DOM_WIDGET_NAME)) {
             setupSamMediaLoader(node);
+            return;
         }
+        // Виджет уже собран в onNodeCreated — здесь только перечитываем
+        // значения, восстановленные ComfyUI после создания ноды.
+        node._tsSamMediaLoaderRehydrate?.();
     },
 });

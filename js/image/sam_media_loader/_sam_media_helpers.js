@@ -667,9 +667,25 @@ export function setupSamMediaLoader(node) {
         return findCheckpointNameUpstream(src, new Set(), 0);
     }
 
-    function refreshCheckpointDetection() {
+    /**
+     * Сверить имя чекпойнта с тем, что реально подключено ко входу `model`.
+     *
+     * @param {object} [options]
+     * @param {boolean} [options.allowClear=true] Можно ли СТЕРЕТЬ уже
+     *   сохранённое имя, если сейчас ничего не найдено.
+     *
+     * ⚠️ Про `allowClear`. `detectConnectedCheckpoint()` отвечает пустой
+     * строкой в двух разных случаях: «связь убрали» и «связи ещё не
+     * разрешены». Второе — обычное состояние сразу после загрузки графа, и
+     * фоновый опрос (раз в 1.5 с) успевал записать эту пустоту в виджет
+     * поверх сохранённого имени: человек открывал свой граф, а чекпойнт в
+     * ноде оказывался пустым. Настоящее отключение приходит отдельным
+     * событием `onConnectionsChange` — вот ему стирать можно, опросу нет.
+     */
+    function refreshCheckpointDetection({ allowClear = true } = {}) {
         const next = detectConnectedCheckpoint();
         if (next === state.checkpointName) return false;
+        if (!next && !allowClear) return false;
         state.checkpointName = next;
         setWidgetValue(node, INPUT_SAM3_CHECKPOINT, next || "");
         return true;
@@ -712,7 +728,7 @@ export function setupSamMediaLoader(node) {
             }
             return;
         }
-        refreshCheckpointDetection();
+        refreshCheckpointDetection({ allowClear: false });
         if (!state.checkpointName) {
             clearPreviewMask();
             setPreviewPill("disconnected", L.pillConnect);
@@ -1271,13 +1287,71 @@ export function setupSamMediaLoader(node) {
     // the link change fires (e.g. after a "convert widget to input" flow).
     // A low-rate poller catches those late updates without blocking the UI.
     state.previewStatusPollHandle = window.setInterval(() => {
-        if (refreshCheckpointDetection()) {
+        // Опрос только ДОГОНЯЕТ появившееся имя; стирать он не вправе —
+        // «ничего не найдено» здесь чаще значит «связи ещё не разрешены».
+        if (refreshCheckpointDetection({ allowClear: false })) {
             state.lastRequestSignature = "";
             schedulePreview();
         } else if (state.previewState === "loading") {
             pollSam3Status();
         }
     }, SAM3_STATUS_POLL_MS);
+
+    // ⚠️ Восстановление состояния при загрузке workflow — БЕЗ пересборки
+    // DOM-виджета (§12.5.12).
+    //
+    // `setup` вызывается из `onNodeCreated`, когда виджеты держат ещё дефолты:
+    // `sourcePath` пустой, точки — пустые списки. Отложенная проба (см. rAF
+    // ниже) поэтому не находила источника и не запускала превью, редактор
+    // оставался пустым, а первое же нажатие писало в виджет пустой список
+    // поверх сохранённых координат. Работа терялась молча.
+    node._tsSamMediaLoaderRehydrate = () => {
+        state.sourcePath = String(getWidgetValue(node, INPUT_SOURCE_PATH, state.sourcePath) || "");
+        state.mediaType = String(getWidgetValue(node, INPUT_MEDIA_TYPE, state.mediaType) || "");
+        state.positivePoints = parsePointsJson(getWidgetValue(node, INPUT_COORDS, "[]"));
+        state.negativePoints = parsePointsJson(getWidgetValue(node, INPUT_NEG_COORDS, "[]"));
+        // ⚠️ `sam3_checkpoint` здесь НЕ ТРОГАЕМ — и это важно.
+        //
+        // Он и так восстанавливался правильно: значение живёт в
+        // `node.properties`, откуда его возвращает `onConfigure` из
+        // `_dom_widget.js`, а уточняет `onConnectionsChange`, когда связи графа
+        // уже разрешены. На момент `loadedGraphNode` они ЕЩЁ НЕ разрешены, и
+        // `detectConnectedCheckpoint()` честно отвечает «ничего не
+        // подключено» — а `refreshCheckpointDetection()` немедленно пишет эту
+        // пустоту в виджет. Первая версия этого восстановления так и делала и
+        // затирала сохранённое имя чекпойнта; поймано `test_all_nodes_roundtrip`
+        // и `test_legacy_widget_values`.
+        //
+        // Правило общее: восстанавливать здесь только то, что БЫЛО сломано —
+        // источник и точки. Работающее не трогать.
+        state.checkpointName = String(
+            getWidgetValue(node, INPUT_SAM3_CHECKPOINT, state.checkpointName) || "");
+
+        updateCounter();
+        updateMeta();
+        requestRedraw();
+
+        const restore = async () => {
+            if (state.sourcePath) {
+                await probeExistingSource();
+            }
+            // ⚠️ Превью запускаем ТОЛЬКО ради восстановленных точек.
+            //
+            // Условие setup-а (`refreshCheckpointDetection() || точки`) читается
+            // как «появилась НОВАЯ связь либо есть точки». Подставить сюда
+            // «есть имя чекпойнта» нельзя: при загрузке графа имя восстановлено
+            // всегда, связи ещё не разрешены, и прогон превью уходит в отказ —
+            // а по дороге `refreshCheckpointDetection()` записывает в виджет
+            // пустоту поверх сохранённого имени. Ровно это и ловили
+            // `test_all_nodes_roundtrip` и `test_legacy_widget_values`.
+            if (state.positivePoints.length > 0 || state.negativePoints.length > 0) {
+                schedulePreview();
+            }
+        };
+        restore().catch((error) => {
+            console.warn("[TS SamMediaLoader] restoring the saved state failed", error);
+        });
+    };
 
     node._tsSamMediaLoaderCleanup = () => {
         try { closeEditor(); } catch {}
@@ -1311,7 +1385,7 @@ export function setupSamMediaLoader(node) {
     updateMeta();
     // Initial pill state. Graph may not be fully wired yet at this point;
     // onConnectionsChange / the poller will refine it once links resolve.
-    refreshCheckpointDetection();
+    refreshCheckpointDetection({ allowClear: false });
     setPreviewPill(
         state.checkpointName ? "idle" : "disconnected",
         state.checkpointName ? L.pillAddPoints : L.pillConnect,
@@ -1325,7 +1399,7 @@ export function setupSamMediaLoader(node) {
         }
         // Re-detect once layout/links are stable, then trigger a preview if
         // saved points were restored from the workflow.
-        if (refreshCheckpointDetection()
+        if (refreshCheckpointDetection({ allowClear: false })
             || state.positivePoints.length > 0
             || state.negativePoints.length > 0) {
             schedulePreview();

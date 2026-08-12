@@ -865,7 +865,11 @@ export function openIdeogramEditor(node, { design, presets, onSave, graphRef }) 
         try {
             const form = new FormData();
             form.append("image", file, file.name);
-            form.append("overwrite", "true");
+            // ⚠️ Без overwrite. Он затирал одноимённый файл в input/ — а на него
+            // мог ссылаться LoadImage в чужом графе. Имя всё равно берётся из
+            // ответа сервера (data.name), поэтому дедуплицированное подхватится
+            // само. `type` шлют все остальные загрузки пака; здесь его не было.
+            form.append("type", "input");
             const resp = await api.fetchApi("/upload/image", { method: "POST", body: form });
             if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
             const data = await resp.json();
