@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import logging
 import os
+import time
 
 LOGGER = logging.getLogger("comfyui_timesaver.pasted_media_fix")
 LOG_PREFIX = "[TS PastedMediaFix]"
@@ -56,6 +57,29 @@ def _is_hidden(relative_path: str) -> bool:
     return any(segment.startswith(".") for segment in relative_path.split("/") if segment)
 
 
+# Короткая память о последнем обходе: (момент, каталог, список).
+#
+# ⚠️ Это КЭШ ПО ВРЕМЕНИ, а не сужение области. Доступ ко всем подпапкам `input`
+# сохраняется полностью — ради него патч и написан. Обход же случается на
+# КАЖДЫЙ `/object_info`, а его фронтенд спрашивает часто: при открытии графа, у
+# каждой панели нод, после любой загрузки файла. На папке в десятки тысяч
+# картинок это заметная пауза, причём результат между двумя соседними
+# запросами почти всегда один и тот же.
+#
+# Полсекунды выбраны так, чтобы только что вставленная картинка появлялась в
+# списке практически сразу: человек не успевает дойти до ноды быстрее.
+_LISTING_TTL_SECONDS = 0.5
+_listing_cache: tuple[float, str, list[str]] | None = None
+
+
+def _list_input_images_uncached(folder_paths) -> list[str]:
+    input_dir = folder_paths.get_input_directory()
+    files, _ = folder_paths.recursive_search(input_dir)
+    images = folder_paths.filter_files_content_types(files, ["image"])
+    unique = {str(path).replace("\\", "/") for path in images}
+    return sorted((path for path in unique if not _is_hidden(path)), key=str.casefold)
+
+
 def list_input_images(folder_paths) -> list[str]:
     """Every image under the input directory, as ComfyUI would name it.
 
@@ -63,11 +87,25 @@ def list_input_images(folder_paths) -> list[str]:
     what saved workflows contain, and the frontend compares these strings
     literally.
     """
-    input_dir = folder_paths.get_input_directory()
-    files, _ = folder_paths.recursive_search(input_dir)
-    images = folder_paths.filter_files_content_types(files, ["image"])
-    unique = {str(path).replace("\\", "/") for path in images}
-    return sorted((path for path in unique if not _is_hidden(path)), key=str.casefold)
+    global _listing_cache
+
+    input_dir = str(folder_paths.get_input_directory())
+    now = time.monotonic()
+    cached = _listing_cache
+    if cached is not None:
+        stamped_at, cached_dir, cached_list = cached
+        if cached_dir == input_dir and (now - stamped_at) < _LISTING_TTL_SECONDS:
+            return list(cached_list)
+
+    listing = _list_input_images_uncached(folder_paths)
+    _listing_cache = (now, input_dir, listing)
+    return list(listing)
+
+
+def forget_cached_listing() -> None:
+    """Забыть последний обход — для тестов и для явного обновления."""
+    global _listing_cache
+    _listing_cache = None
 
 
 def _build_input_types(original, folder_paths):

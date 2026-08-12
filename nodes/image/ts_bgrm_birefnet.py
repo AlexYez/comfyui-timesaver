@@ -1,4 +1,4 @@
-﻿# Model License Notice:
+# Model License Notice:
 # - BiRefNet Models: Apache-2.0 License (https://huggingface.co/ZhengPeng7)
 # Code based on : https://github.com/AILab-AI/ComfyUI-RMBG
 
@@ -18,6 +18,7 @@ from comfy_api.v0_0_2 import IO
 from PIL import Image, ImageFilter
 
 from .._hf_download import pinned_revision, snapshot_download_resilient
+from .._shared import raise_if_interrupted
 
 # Shared with ts_matting_vitmatte. Imported (not defined) here, and re-exported
 # so any existing `from .ts_bgrm_birefnet import pil2tensor, ...` keeps working.
@@ -813,6 +814,7 @@ class BiRefNetModel:
             masks = []
             processed = 0
             while processed < batch_size:
+                raise_if_interrupted()
                 current_chunk_size = min(chunk_size, batch_size - processed)
                 chunk = image[processed:processed + current_chunk_size]
 

@@ -215,6 +215,12 @@ async function nativeSpec() {
                 return names;
             } catch (error) {
                 console.warn(`[TS LoRA Loader] could not read ${NATIVE_LOADER}`, error);
+                // ⚠️ Неудачу НЕ запоминаем. Раньше промис оставался в
+                // `nativePromise` вместе с пустым списком, и одна временная
+                // осечка `/object_info` (сервер ещё поднимался, сеть моргнула)
+                // означала пустой список LoRA до перезагрузки страницы —
+                // выбрать было нечего, а причина ничем не показывалась.
+                nativePromise = null;
                 return [];
             }
         })();

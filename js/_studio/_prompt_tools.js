@@ -189,6 +189,8 @@ export function mountPromptTools(options) {
     let recChunks = [];
     let recTimer = 0;
     let recStarted = 0;
+    // Живой поток микрофона — teardown обязан его отпустить (см. ниже).
+    let activeStream = null;
 
     async function toggleRecording() {
         if (recorder) {
@@ -205,6 +207,7 @@ export function mountPromptTools(options) {
                 recBadge.classList.remove("is-active");
                 micButton.classList.remove("is-active");
                 stream.getTracks().forEach((track) => track.stop());
+                if (activeStream === stream) activeStream = null;
                 const blob = new Blob(recChunks, { type: recorder.mimeType || "audio/webm" });
                 recorder = null;
                 await transcribe(blob);
@@ -218,11 +221,37 @@ export function mountPromptTools(options) {
                 const seconds = Math.floor((Date.now() - recStarted) / 1000);
                 recTime.textContent = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
             }, 500);
+            activeStream = stream;
         } catch (err) {
             setStatus(t.pt.micDenied);
             console.warn("[TS Studio] microphone", err);
         }
     }
+
+    // ⚠️ Дорожки микрофона останавливались ТОЛЬКО в recorder.onstop, а панель
+    // разбирается и без остановки записи (сменили модель — buildDeck собрал
+    // деку заново). Индикатор записи в браузере продолжал гореть, поток жил
+    // дальше. Снимаем его в teardown явно, не запуская transcribe в уже
+    // разобранной панели.
+    teardowns.push(() => {
+        clearInterval(recTimer);
+        const stream = activeStream;
+        activeStream = null;
+        if (recorder) {
+            try {
+                recorder.onstop = null;
+                if (recorder.state !== "inactive") recorder.stop();
+            } catch (err) {
+                console.warn("[TS Studio] stopping the recorder failed", err);
+            }
+            recorder = null;
+        }
+        try {
+            stream?.getTracks?.().forEach((track) => track.stop());
+        } catch (err) {
+            console.warn("[TS Studio] releasing the microphone failed", err);
+        }
+    });
 
     async function transcribe(blob) {
         setStatus(t.pt.transcribing);
@@ -273,7 +302,12 @@ export function mountPromptTools(options) {
         try {
             setStatus(t.pt.uploading);
             state.attached = await uploadImage(api, blob, name || "studio_ref.png");
-            attachImg.src = URL.createObjectURL(blob);
+            // Прежний blob отзываем: приложить картинку можно сколько угодно
+            // раз подряд, и каждая держала свой URL до закрытия вкладки.
+            if (attachImg.dataset.blobUrl) URL.revokeObjectURL(attachImg.dataset.blobUrl);
+            const previewUrl = URL.createObjectURL(blob);
+            attachImg.dataset.blobUrl = previewUrl;
+            attachImg.src = previewUrl;
             attachPreview.classList.add("is-active");
             attachButton.classList.add("is-active");
             setStatus("");

@@ -15,6 +15,7 @@ import folder_paths
 import torch
 from comfy_api.v0_0_2 import IO
 
+from .._shared import raise_if_interrupted
 from ..frame_interpolation_models import FILMNet, IFNet, detect_rife_config
 
 logger = logging.getLogger(__name__)
@@ -675,6 +676,9 @@ class TS_Frame_Interpolation(IO.ComfyNode):
 
                             request_index += current_batch
                             progress.update(current_batch)
+                            # Cancel действует между пачками: одна пачка — доли секунды,
+                            # а весь прогон на пятистах кадрах — минуты.
+                            raise_if_interrupted()
                         except model_management.OOM_EXCEPTION:
                             if batch_size <= 1:
                                 raise

@@ -948,6 +948,11 @@ async function buildStudio(node, persist) {
             rememberWorkspaceNow();
             openInstance = null;
             stageDropTeardown?.();
+            // ⚠️ Сцена тоже разбирается. Её `teardown` существовал, но здесь
+            // его не звали: слушатели документа и окна (зум, панорама, шторка)
+            // оставались жить, а вместе с ними в памяти держалась вся студия
+            // целиком — со всеми кадрами истории.
+            stage.teardown?.();
             stageMenu.teardown();
             gallery.teardown?.();
             queuePanel.teardown();

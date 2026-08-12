@@ -80,6 +80,52 @@ DOWNLOAD_LOCK = threading.Lock()
 LOAD_LOCK = threading.Lock()
 MODEL_CACHE: dict[tuple[str, str, bool], Any] = {}
 
+# ⚠️ Кэш держит ОДНУ модель. Раньше он рос без границ и не чистился нигде:
+# перебрал small → medium → large-v3, и все три остались в VRAM до перезапуска
+# ComfyUI, потому что `model_management` про них не знает и выгрузить их не
+# может. Следующий KSampler на большом разрешении уходил в OOM.
+# Тот же приём, что у `ts_silero_tts.py`: перед укладкой новой записи прежние
+# выгружаются.
+_MAX_CACHED_MODELS = 1
+
+
+def _free_cuda_cache() -> None:
+    """Вернуть освободившуюся VRAM драйверу. Без torch — тихо ничего."""
+    try:
+        import torch
+
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    except Exception as exc:                # noqa: BLE001 - освобождение best-effort
+        LOGGER.debug("%s could not empty the CUDA cache: %s", LOG_PREFIX, exc)
+
+
+def unload_models() -> int:
+    """Выбросить все загруженные модели Whisper. Возвращает сколько выброшено.
+
+    Зовётся при укладке новой модели в кэш и доступна снаружи — из ноды или
+    из маршрута, когда человек хочет вернуть себе видеопамять не перезапуская
+    ComfyUI.
+    """
+    count = len(MODEL_CACHE)
+    if not count:
+        return 0
+    MODEL_CACHE.clear()
+    _free_cuda_cache()
+    LOGGER.info("%s released %d cached Whisper model(s).", LOG_PREFIX, count)
+    return count
+
+
+def _remember_model(cache_key: tuple, model: Any) -> None:
+    """Положить модель в кэш, вытеснив прежние."""
+    for stale_key in [k for k in MODEL_CACHE if k != cache_key]:
+        MODEL_CACHE.pop(stale_key, None)
+    if len(MODEL_CACHE) >= _MAX_CACHED_MODELS and cache_key not in MODEL_CACHE:
+        MODEL_CACHE.clear()
+    if not MODEL_CACHE:
+        _free_cuda_cache()
+    MODEL_CACHE[cache_key] = model
+
 # torchaudio resampler cache keyed by (orig, new, device, quality).
 _RESAMPLER_CACHE: dict[tuple[int, int, str, str], Any] = {}
 
@@ -279,7 +325,7 @@ def load_model(
                 return MODEL_CACHE[cache_key], target_device, use_fp16
             model = whisper.load_model(name, device=target_device, download_root=str(WHISPER_DIR), in_memory=False)
 
-        MODEL_CACHE[cache_key] = model
+        _remember_model(cache_key, model)
 
     _emit(progress_cb, "loaded", name=name, device=target_device)
     return model, target_device, use_fp16

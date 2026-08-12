@@ -94,6 +94,30 @@ export function createStage(options) {
     const image = document.createElement("img");
     image.alt = "";
     frame.appendChild(image);
+
+    // ⚠️ ОДНА точка смены картинки — она же отзывает предыдущий blob-URL.
+    // Раньше кадры латентного превью и загруженные исходники держали по blob
+    // на каждый показ: за прогон их десятки, и жили они до закрытия вкладки.
+    // Адрес приходит и снаружи (`show` получает готовый URL из _app.js),
+    // поэтому владение забирает область: она последняя, кто его показывает.
+    let ownedBlobUrl = "";
+
+    function setImageSrc(next) {
+        if (ownedBlobUrl && ownedBlobUrl !== next) {
+            URL.revokeObjectURL(ownedBlobUrl);
+            ownedBlobUrl = "";
+        }
+        if (typeof next === "string" && next.startsWith("blob:")) ownedBlobUrl = next;
+        image.src = next;
+    }
+
+    function clearImageSrc() {
+        if (ownedBlobUrl) {
+            URL.revokeObjectURL(ownedBlobUrl);
+            ownedBlobUrl = "";
+        }
+        image.removeAttribute("src");
+    }
     // Пропорция приходит из самой картинки — это её собственные данные, а не
     // замер экрана, поэтому правило «никакой JS-геометрии» не нарушено.
     image.addEventListener("load", () => layout());
@@ -366,7 +390,7 @@ export function createStage(options) {
         if (!keepView) fit();
         if (!keepSource) source = "";
         final = true;
-        image.src = url;
+        setImageSrc(url);
         fitbox.style.display = "";
         empty.style.display = "none";
         layout();
@@ -412,7 +436,7 @@ export function createStage(options) {
             // смотрит на картинку, а не на анимацию.
             warmup.hide();
             final = false;
-            image.src = URL.createObjectURL(blob);
+            setImageSrc(URL.createObjectURL(blob));
             fitbox.style.display = "";
             empty.style.display = "none";
             layout();
@@ -444,7 +468,7 @@ export function createStage(options) {
             reserveRatio(0);
             underlay.classList.remove("is-active");
             underlay.removeAttribute("src");
-            image.removeAttribute("src");
+            clearImageSrc();
             fitbox.style.display = "none";
             empty.style.display = "";
             setCaption("", null);
@@ -539,12 +563,12 @@ export function createStage(options) {
             final = kept?.final === undefined ? Boolean(kept?.src) : Boolean(kept.final);
             reserveRatio(0);
             if (kept?.src) {
-                image.src = kept.src;
+                setImageSrc(kept.src);
                 fitbox.style.display = "";
                 empty.style.display = "none";
                 layout();
             } else {
-                image.removeAttribute("src");
+                clearImageSrc();
                 fitbox.style.display = "none";
                 empty.style.display = "";
             }
@@ -566,6 +590,12 @@ export function createStage(options) {
             compare.teardown?.();
             tiles.hide();
             outframe.hide();
+            // Последний показанный кадр держал blob — отпускаем вместе со сценой.
+            clearImageSrc();
+            if (underlay.dataset.url) {
+                URL.revokeObjectURL(underlay.dataset.url);
+                delete underlay.dataset.url;
+            }
             element.remove();
             caption.remove();
         },

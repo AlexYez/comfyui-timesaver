@@ -27,6 +27,127 @@ class TS_Logger:
 
 
 # ---------------------------------------------------------------------------
+# Токены даты в пути сохранения
+# ---------------------------------------------------------------------------
+#
+# ⚠️ ЯДРО ЭТОГО НЕ ДЕЛАЕТ. Подсказки ComfyUI обещают `%date:yyyy-MM-dd%` у
+# каждой сохраняющей ноды, но `folder_paths.get_save_image_path` знает только
+# `%year%`, `%month%`, `%day%`, `%hour%`, `%minute%`, `%second%`, `%width%` и
+# `%height%`. Форму с двоеточием подставляет ФРОНТЕНД — перед отправкой графа,
+# и только своим нодам. Проверено на живом сервере: тот же префикс, посланный
+# в родную `SaveImage` через API, доезжает сырым и падает с
+# `OSError: Invalid argument`, потому что двоеточие в имени файла Windows не
+# принимает.
+#
+# Отсюда две вещи. Первая: нашей ноде фронтенд токены не разворачивает, и без
+# этой функции человек получал в имени файла буквальное `%date:yyyy-MM-dd%`.
+# Вторая: делать надо на сервере — тогда работает и из интерфейса, и из API, и
+# из чужого скрипта, а не только там, где повезло.
+#
+# Формат снят с самого фронтенда (замерено, а не угадано):
+#
+#     yyyy -> 2026   yy -> 26     MM -> 08   M -> 8
+#     dd   -> 12     d  -> 12     hh -> 13   h -> 13   (часы 24-часовые)
+#     mm   -> 26     m  -> 26     ss -> 55   s -> 55
+#
+# Одна буква — без ведущего нуля, две — с ним; пара `M`/`MM` это показывает
+# прямо, остальные ведут себя так же.
+
+_DATE_TOKEN = None
+
+
+def expand_date_tokens(text: str, when=None) -> str:
+    """Развернуть `%date:ФОРМАТ%` в готовую строку.
+
+    Всё остальное остаётся нетронутым: `%width%` и прочие токены ядра
+    разворачивает сам `folder_paths.get_save_image_path` дальше по пути, и
+    съедать их здесь нельзя.
+
+    Args:
+        text: префикс имени файла, как его написал человек.
+        when: момент времени (для тестов); по умолчанию — сейчас.
+
+    Returns:
+        Строку с раскрытыми токенами даты.
+    """
+    import re
+    import time as _time
+
+    global _DATE_TOKEN
+    if _DATE_TOKEN is None:
+        _DATE_TOKEN = re.compile(r"%date:([^%]*)%", re.IGNORECASE)
+
+    raw = str(text or "")
+    if "%date:" not in raw.lower():
+        return raw
+
+    moment = when or _time.localtime()
+    # Порядок важен: длинные подстановки идут первыми, иначе `yyyy` съедается
+    # правилом для `yy` и год превращается в «2626».
+    pieces = (
+        ("yyyy", f"{moment.tm_year:04d}"),
+        ("yy", f"{moment.tm_year % 100:02d}"),
+        ("MM", f"{moment.tm_mon:02d}"),
+        ("M", str(moment.tm_mon)),
+        ("dd", f"{moment.tm_mday:02d}"),
+        ("d", str(moment.tm_mday)),
+        ("hh", f"{moment.tm_hour:02d}"),
+        ("h", str(moment.tm_hour)),
+        ("mm", f"{moment.tm_min:02d}"),
+        ("m", str(moment.tm_min)),
+        ("ss", f"{moment.tm_sec:02d}"),
+        ("s", str(moment.tm_sec)),
+    )
+
+    def render(match: "re.Match") -> str:
+        pattern = match.group(1)
+        out = []
+        index = 0
+        while index < len(pattern):
+            for token, value in pieces:
+                if pattern.startswith(token, index):
+                    out.append(value)
+                    index += len(token)
+                    break
+            else:
+                # Не токен — символ разделителя, он идёт как есть.
+                out.append(pattern[index])
+                index += 1
+        return "".join(out)
+
+    return _DATE_TOKEN.sub(render, raw)
+
+
+# ---------------------------------------------------------------------------
+# Отмена прогона
+# ---------------------------------------------------------------------------
+#
+# ⚠️ ComfyUI прерывает выполнение МЕЖДУ нодами само. Внутри ноды это работает
+# только там, где её об этом спросили. Из всего пака спрашивали три места, а
+# прогресс-бар рисовали десяток: человек жал Cancel на интерполяции пятисот
+# кадров и ждал до конца, потому что `ProgressBar.update_absolute` прерывание
+# не бросает — он только рисует.
+#
+# Правило: где есть ProgressBar, там же должен быть и этот вызов.
+
+
+def raise_if_interrupted() -> None:
+    """Прервать работу, если человек нажал Cancel.
+
+    Бросает ``comfy.model_management.InterruptProcessingException`` — она
+    наследует ``BaseException`` именно затем, чтобы её не проглотил случайный
+    ``except Exception`` по дороге. Вне ComfyUI (в тестах) не делает ничего.
+    """
+    try:
+        import comfy.model_management as mm
+    except Exception:                       # noqa: BLE001 - вне ComfyUI
+        return
+    check = getattr(mm, "throw_exception_if_processing_interrupted", None)
+    if callable(check):
+        check()
+
+
+# ---------------------------------------------------------------------------
 # aiohttp route registration (shared by the route-owning helper modules)
 # ---------------------------------------------------------------------------
 # TS_LamaCleanup, TS_SAM_MediaLoader, TS_AudioLoader, TS_SuperPrompt and the

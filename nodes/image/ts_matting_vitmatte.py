@@ -30,6 +30,7 @@ from comfy_api.v0_0_2 import IO
 from PIL import Image, ImageFilter
 
 from .._hf_download import pinned_revision, snapshot_download_resilient
+from .._shared import raise_if_interrupted
 from ._image_utils import (
     _format_device_label,
     _get_target_device,
@@ -756,6 +757,7 @@ class TS_Matting_ViTMatte(IO.ComfyNode):
         raw_alphas: list[np.ndarray] = []
 
         for frame_index in range(batch_size):
+            raise_if_interrupted()
             # OOM-retry: ViTMatte global attention is quadratic in token
             # count; on OOM we halve max_resolution until the frame fits or
             # we hit 256 px (at which point GPU is truly out of room).
@@ -812,6 +814,7 @@ class TS_Matting_ViTMatte(IO.ComfyNode):
         processed_masks: list[torch.Tensor] = []
 
         for frame_index, alpha in enumerate(raw_alphas):
+            raise_if_interrupted()
             # Per-frame post-processing matches TS_BGRM_BiRefNet contract.
             pil_alpha = Image.fromarray(
                 np.clip(alpha * 255.0, 0, 255).astype(np.uint8), mode="L"

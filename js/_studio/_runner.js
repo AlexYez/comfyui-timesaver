@@ -133,8 +133,17 @@ export function createRunner(api) {
             console.warn("[TS Studio] queue delete failed", err);
         }
         if (executingPromptId === promptId) {
+            // Выполняющийся прогон прервёт сервер, и `finish` придёт из
+            // websocket-события — здесь ждать нечего.
             await api.fetchApi("/interrupt", { method: "POST" });
+            return;
         }
+        // ⚠️ Отложенный прогон сервер удаляет ТИХО: события `executed` по нему
+        // не будет никогда, потому что он и не начинался. Раньше задание так и
+        // оставалось в `jobs` — навсегда. `activeCount()` не возвращался к
+        // нулю, студия считала, что работа идёт, и следующий запуск упирался в
+        // несуществующую очередь. Закрываем задание сами.
+        finish(promptId, null, true);
     }
 
     function activeCount() {

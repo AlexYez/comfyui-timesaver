@@ -48,6 +48,27 @@
  *   поверхности пора перерисовать кнопки.
  * @returns {object} контракт истории
  */
+/**
+ * Отпустить blob-URL версий, которые больше не нужны.
+ *
+ * Обычные адреса (`/view?...`) трогать нельзя и незачем — отзыв касается
+ * только тех, что созданы `URL.createObjectURL`.
+ *
+ * @param {HistoryVersion[]} dropped
+ */
+function releaseVersions(dropped) {
+    for (const version of dropped || []) {
+        const url = version?.url;
+        if (typeof url === "string" && url.startsWith("blob:")) {
+            try {
+                URL.revokeObjectURL(url);
+            } catch (err) {
+                console.warn("[TS Studio] releasing a history frame failed", err);
+            }
+        }
+    }
+}
+
 export function createHistory({ limit = 40, onChange } = {}) {
     /** @type {HistoryVersion[]} */
     let versions = [];
@@ -83,9 +104,18 @@ export function createHistory({ limit = 40, onChange } = {}) {
         push(version) {
             if (!version?.url) throw new Error("[TS Studio] history needs a url");
             // Всё, что было «впереди», отрезается: человек выбрал другую ветку.
+            const dropped = versions.slice(cursor + 1);
             versions = versions.slice(0, cursor + 1);
             versions.push({ ...version });
-            if (versions.length > limit) versions = versions.slice(versions.length - limit);
+            if (versions.length > limit) {
+                dropped.push(...versions.slice(0, versions.length - limit));
+                versions = versions.slice(versions.length - limit);
+            }
+            // ⚠️ Выпавшие версии держали blob-URL. Предел в 40 ограничивал
+            // ДЛИНУ списка, но не память: каждая перерисовка сверх сорока
+            // роняла свой blob без отзыва, и за долгую сессию их набирались
+            // сотни. Отзываем ровно те, что больше никому не нужны.
+            releaseVersions(dropped);
             cursor = versions.length - 1;
             announce();
             return state();
@@ -148,6 +178,9 @@ export function createHistory({ limit = 40, onChange } = {}) {
 
         /** Новая работа — новая история. */
         reset(version = null) {
+            // Прежние кадры отпускаем — кроме того, который начинает новую
+            // историю: его URL остаётся живым и нужным.
+            releaseVersions(versions.filter((v) => v?.url !== version?.url));
             versions = version?.url ? [{ ...version }] : [];
             cursor = versions.length - 1;
             announce();

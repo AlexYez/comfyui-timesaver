@@ -108,8 +108,12 @@ export function createMaskCanvas(options = {}) {
 
     let tintCache = null;
     let tintDirty = true;
+    // Цвет, которым собрана копия: сменилась тема — пересобрать.
+    let tintColor = "";
     function tinted(color) {
-        if (!tintDirty && tintCache) return tintCache;
+        const sizeChanged = tintCache
+            && (tintCache.width !== maskCanvas.width || tintCache.height !== maskCanvas.height);
+        if (!tintDirty && tintCache && tintColor === color && !sizeChanged) return tintCache;
         tintCache = tintCache || document.createElement("canvas");
         tintCache.width = maskCanvas.width;
         tintCache.height = maskCanvas.height;
@@ -121,6 +125,7 @@ export function createMaskCanvas(options = {}) {
         tctx.fillRect(0, 0, tintCache.width, tintCache.height);
         tctx.globalCompositeOperation = "source-over";
         tintDirty = false;
+        tintColor = color;
         return tintCache;
     }
 
@@ -138,13 +143,45 @@ export function createMaskCanvas(options = {}) {
         };
     }
 
+    // ⚠️ Мазок кладётся СРАЗУ В ОБА холста — в маску и в её подкрашенную копию.
+    //
+    // Раньше каждая точка помечала тонировку грязной, а `redraw` пересобирал её
+    // целиком: очистка, копия всей маски, заливка `source-in` — в полном
+    // разрешении картинки, на КАЖДОЕ движение мыши. На 4K кисть заметно
+    // отставала от курсора. Тот же приём уже применён в TS_LamaCleanup
+    // (CLAUDE.md §12.5.6), здесь он просто не был перенесён.
+    //
+    // Полная пересборка осталась там, где она и нужна: отмена, очистка,
+    // смена размера холста и смена цвета темы.
     function drawDot(x, y) {
-        maskCtx.globalCompositeOperation = state.eraser ? "destination-out" : "source-over";
+        const radius = state.brush / 2 / state.scale;
+        const mode = state.eraser ? "destination-out" : "source-over";
+
+        maskCtx.globalCompositeOperation = mode;
         maskCtx.fillStyle = "#ffffff";
         maskCtx.beginPath();
-        maskCtx.arc(x, y, state.brush / 2 / state.scale, 0, Math.PI * 2);
+        maskCtx.arc(x, y, radius, 0, Math.PI * 2);
         maskCtx.fill();
-        tintDirty = true;
+
+        const tctx = tintContextForPainting();
+        if (tctx) {
+            tctx.globalCompositeOperation = mode;
+            tctx.fillStyle = tintColor || "#ffffff";
+            tctx.beginPath();
+            tctx.arc(x, y, radius, 0, Math.PI * 2);
+            tctx.fill();
+            tctx.globalCompositeOperation = "source-over";
+        }
+    }
+
+    /** Контекст подкрашенной копии, если она уже собрана и совпадает по размеру. */
+    function tintContextForPainting() {
+        if (tintDirty || !tintCache) return null;
+        if (tintCache.width !== maskCanvas.width || tintCache.height !== maskCanvas.height) {
+            tintDirty = true;
+            return null;
+        }
+        return tintCache.getContext("2d");
     }
 
     let last = null;

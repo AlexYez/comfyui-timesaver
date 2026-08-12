@@ -391,11 +391,34 @@ export function setupVideoLoader(node) {
         fetchMetadata(path);
     }
 
+    // ⚠️ Побеждает ПОСЛЕДНЕЕ действие человека, а не самая быстрая отправка.
+    //
+    // Видео — это гигабайты, и выбрать другой файл, не дождавшись первого,
+    // совершенно нормально. Обе отправки доходили до конца, и `applySource`
+    // срабатывал дважды: в ноде оставался тот ролик, чья загрузка кончилась
+    // позже, — то есть чаще НЕ тот, который выбрали последним. Плюс отправка
+    // продолжалась даже после удаления ноды.
+    let activeUpload = null;
+
+    function abortActiveUpload() {
+        if (!activeUpload) return;
+        const xhr = activeUpload;
+        activeUpload = null;
+        try {
+            xhr.abort();
+        } catch (error) {
+            console.warn("[TS Video Loader] aborting the previous upload failed", error);
+        }
+    }
+
     function uploadFile(file) {
+        abortActiveUpload();
         return new Promise((resolve, reject) => {
             // XHR, а не fetch: у fetch нет прогресса отправки, а видео — это
             // гигабайты, и молчащая полоса выглядит как зависший интерфейс.
             const xhr = new XMLHttpRequest();
+            activeUpload = xhr;
+            xhr.onabort = () => reject(new Error("aborted"));
             xhr.open("POST", api.apiURL("/upload/image"));
             xhr.upload.onprogress = (event) => {
                 if (event.lengthComputable) {
@@ -403,6 +426,7 @@ export function setupVideoLoader(node) {
                 }
             };
             xhr.onload = () => {
+                if (activeUpload === xhr) activeUpload = null;
                 if (xhr.status >= 400) { reject(new Error(xhr.statusText)); return; }
                 try {
                     const payload = JSON.parse(xhr.responseText);
@@ -410,7 +434,10 @@ export function setupVideoLoader(node) {
                     resolve(`${folder}${payload.name} [${payload.type || "input"}]`);
                 } catch (error) { reject(error); }
             };
-            xhr.onerror = () => reject(new Error("network"));
+            xhr.onerror = () => {
+                if (activeUpload === xhr) activeUpload = null;
+                reject(new Error("network"));
+            };
             const form = new FormData();
             form.append("image", file, file.name);
             form.append("type", "input");
@@ -423,6 +450,9 @@ export function setupVideoLoader(node) {
         try {
             applySource(await uploadFile(file));
         } catch (error) {
+            // Прерванная своя же отправка — не сбой: человек просто выбрал
+            // другой файл, и про предыдущий рассказывать нечего.
+            if (String(error?.message) === "aborted") return;
             console.warn("[TS Video Loader] upload failed", error);
             updateStatus(L.uploadFailed, true);
         }
@@ -567,6 +597,7 @@ export function setupVideoLoader(node) {
         if (!entry.isIntersecting) {
             editor.playback.pause();
             editor.strip.abortAll();
+            abortActiveUpload();
         }
     });
     visibility.observe(editor.element);
