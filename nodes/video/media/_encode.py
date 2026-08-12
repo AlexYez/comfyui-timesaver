@@ -354,17 +354,24 @@ def downscale_frames(frames: Iterable, max_width: int = 1280) -> Iterator:
 def output_path(prefix: str, extension: str) -> tuple[Path, str, str]:
     """Куда сохранять результат.
 
-    Использует штатный ``folder_paths.get_save_image_path``, поэтому работают и
-    подпапки в префиксе, и токены вида ``%date:yyyy-MM-dd%``, и нумерация без
-    затирания чужих файлов.
+    Дальше работает штатный ``folder_paths.get_save_image_path``: подпапки в
+    префиксе, его собственные токены (``%year%``, ``%width%`` и прочие) и
+    нумерация без затирания чужих файлов.
+
+    ⚠️ Но форму ``%date:yyyy-MM-dd%`` ядро НЕ разворачивает — её подставляет
+    фронтенд, и только своим нодам. Поэтому она раскрывается здесь, до вызова
+    ядра: иначе двоеточие уезжало в имя файла, и Windows отвечал
+    ``OSError: Invalid argument``. Правило одно на пак — ``nodes/_shared.py``.
 
     Returns:
         ``(полный путь, имя файла, подпапка)``.
     """
     import folder_paths
 
+    from ..._shared import expand_date_tokens
+
     base = folder_paths.get_output_directory()
     full_folder, filename, counter, subfolder, _ = folder_paths.get_save_image_path(
-        prefix, base)
+        expand_date_tokens(prefix), base)
     name = f"{filename}_{counter:05}_.{extension}"
     return Path(full_folder) / name, name, subfolder

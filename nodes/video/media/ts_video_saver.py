@@ -68,8 +68,12 @@ class TS_VideoSaver(IO.ComfyNode):
                     "filename_prefix",
                     default="video/TS",
                     tooltip=(
-                        "Where to save, relative to the output folder. Supports "
-                        "subfolders and tokens such as %date:yyyy-MM-dd%."
+                        "Where to save, relative to the output folder. Subfolders are "
+                        "created for you. Date tokens work anywhere in the path — "
+                        "%date:yyyy-MM-dd% and %date:hhmmss% (yyyy yy MM M dd d hh h "
+                        "mm m ss s), as do ComfyUI's own %year% %month% %day% %hour% "
+                        "%minute% %second% %width% %height%. Example: "
+                        "videos/my-run/my-run-%date:yyyy-MM-dd%_%date:hhmmss%"
                     ),
                 ),
                 # Умолчание задаётся ПОРЯДКОМ: первый вариант и есть выбранный по

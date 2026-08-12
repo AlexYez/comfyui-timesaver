@@ -377,10 +377,23 @@ const BUSY_STEPS = [
       match: /prepar|waiting|checking/i },
     { label: "busyStepDownload", title: "busyDownload",
       match: /download/i },
+    // ⚠️ `(?<!down)` — не опечатка и не украшение. «Downloading» содержит
+    // «loading», а список обходится С КОНЦА, поэтому стадия загрузки в память
+    // выигрывала у скачивания на КАЖДОМ сообщении о прогрессе: человек качал
+    // девять гигабайт, а подпись всё это время говорила «загрузка».
+    //
+    // `model files ready`, а не голое `model files`: иначе сюда же попадало
+    // «Checking Qwen model files» — а это ещё подготовка, до всякой загрузки.
+    // `gpu` — ради «Moving Qwen to GPU»: без него стадия откатывалась в самое
+    // начало, и полоса шагала назад посреди работы.
     { label: "busyStepLoad", title: "busyLoad",
-      match: /loading|loaded|memory|offline|found locally|model files/i },
+      match: /(?<!down)loading|loaded|memory|offline|found locally|model files ready|to gpu/i },
+    // Голого `prompt` здесь быть не должно: под него попадало и «Preparing
+    // prompt» — самое начало работы, до всякой генерации. Реальные сообщения
+    // этой стадии называют действие: generating / writing / decoding /
+    // unloading.
     { label: "busyStepGenerate", title: "busyGenerate",
-      match: /generat|writing|prompt|token|unloading/i },
+      match: /generat|writing|decoding|token|unloading/i },
 ];
 
 
