@@ -244,14 +244,26 @@ def decrypt_pack(blob: bytes, secret: str) -> bytes:
         raise ValueError("the pack did not open with this pass") from error
 
 
+# Потолки распаковки набора. `_MAX_PACK_BYTES` ограничивает только СКАЧАННЫЙ
+# архив; без этих трёх чисел заявленные в заголовке 64 МБ разворачивались во
+# столько, сколько попросит присланный файл. Набор — это описания графов и
+# обложки, поэтому границы тесные.
+_MAX_UNPACKED_BYTES = 512 * 1024 * 1024
+_MAX_PACK_MEMBERS = 4_000
+_MAX_PACK_RATIO = 200
+
+
 def _safe_members(archive: zipfile.ZipFile) -> list[zipfile.ZipInfo]:
     """Members that are plain files under the archive root.
 
     A pack is data from the internet: absolute paths, parent traversal and
     symlinks are refused rather than sanitised, because a pack has no reason
-    to contain them.
+    to contain them. Size is checked here too — the name allowlist alone does
+    not stop a bomb, because text formats compress about a thousand to one.
     """
     safe = []
+    declared = 0
+    compressed = 0
     for member in archive.infolist():
         name = member.filename.replace("\\", "/")
         if member.is_dir():
@@ -262,7 +274,18 @@ def _safe_members(archive: zipfile.ZipFile) -> list[zipfile.ZipInfo]:
             raise ValueError(f"pack contains a symlink: {member.filename}")
         if Path(name).suffix.lower() not in {".json", ".md", ".txt", ".webp", ".png"}:
             raise ValueError(f"pack contains an unexpected file: {member.filename}")
+        declared += int(member.file_size or 0)
+        compressed += int(member.compress_size or 0)
+        if declared > _MAX_UNPACKED_BYTES:
+            raise ValueError(
+                f"pack unpacks to more than {_MAX_UNPACKED_BYTES} bytes")
         safe.append(member)
+        if len(safe) > _MAX_PACK_MEMBERS:
+            raise ValueError(f"pack holds more than {_MAX_PACK_MEMBERS} files")
+    if compressed > 0 and declared / compressed > _MAX_PACK_RATIO:
+        raise ValueError(
+            f"pack compression ratio {declared / compressed:.0f}:1 "
+            f"exceeds {_MAX_PACK_RATIO}:1")
     return safe
 
 

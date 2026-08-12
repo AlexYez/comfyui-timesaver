@@ -29,10 +29,35 @@ from __future__ import annotations
 import logging
 import os
 from typing import Any, Sequence
+from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
 _DEFAULT_ENDPOINT = "https://huggingface.co"
+
+
+def is_official_hf_origin(url: str) -> bool:
+    """Сам Hugging Face — и никакое зеркало.
+
+    ⚠️ ОДНО правило на весь пак: кому можно отдать ``Authorization``. Токен
+    открывает приватные репозитории и нередко имеет право записи, а зеркало —
+    чужая машина. «Ведёт себя как HF» (тот же формат ссылок, тот же ETag с
+    SHA256) достаточно, чтобы скачать файл и сверить хеш, но НЕ достаточно,
+    чтобы получить токен.
+
+    Дыру закрыли в загрузчике файлов, но она оставалась ещё в двух местах —
+    в общем ``snapshot_download_resilient`` и в движке Qwen: токен вычислялся
+    один раз ДО цикла по зеркалам и уезжал на каждое из них. Теперь спрашивают
+    здесь все трое.
+    """
+    try:
+        host = urlparse(str(url or "")).netloc.lower()
+    except Exception:                       # noqa: BLE001 - мусор вместо адреса
+        return False
+    if "@" in host:
+        host = host.rsplit("@", 1)[-1]
+    host = host.split(":", 1)[0]
+    return host == "huggingface.co" or host.endswith(".huggingface.co")
 
 
 def resolve_endpoints(endpoints: Sequence[str] | str | None = None) -> list[str]:
@@ -189,8 +214,18 @@ def snapshot_download_resilient(
         }
         if allow_patterns:
             kwargs["allow_patterns"] = list(allow_patterns)
+        # ⚠️ Токен — ТОЛЬКО официальному origin. Список endpoint-ов может
+        # прийти из HF_ENDPOINT/HF_MIRROR, то есть указывать на чужую машину;
+        # раньше он получал `Authorization` наравне с самим Hugging Face.
         if clean_token:
-            kwargs["token"] = clean_token
+            if is_official_hf_origin(endpoint):
+                kwargs["token"] = clean_token
+            else:
+                log.warning(
+                    "%s %s is not huggingface.co — downloading without the token.",
+                    log_prefix,
+                    endpoint,
+                )
         # Only pass a non-default endpoint: on older hubs the kwarg does not
         # exist, and there is no reason to probe for it when we want the default.
         if endpoint != _DEFAULT_ENDPOINT:

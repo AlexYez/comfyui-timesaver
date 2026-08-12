@@ -10,6 +10,7 @@ out to the network unless someone asked for it.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import shutil
@@ -128,7 +129,7 @@ async def pass_activate(request):
         return _json({"error": "expected a JSON body"}, status=400)
 
     try:
-        state = _pass.activate(str(body.get("code") or ""))
+        state = await _off_loop(_pass.activate, str(body.get("code") or ""))
     except ValueError as error:
         # A wrong code is an ordinary answer, not a server fault: the UI shows
         # the text as-is next to the field.
@@ -151,10 +152,26 @@ async def pass_clear(_request):
     return _json(state)
 
 
+# ⚠️ ВСЯ СЕТЬ И ВСЕ ФАЙЛОВЫЕ ОПЕРАЦИИ — ЧЕРЕЗ asyncio.to_thread.
+#
+# `fetch_catalog` ходит по двум адресам блокирующим `urlopen(timeout=60)`, а
+# `install_pack` вдобавок качает до 64 МБ и распаковывает zip. Обработчик здесь
+# `async`, то есть выполняется прямо в цикле событий ComfyUI — том самом, что
+# отдаёт превью, ведёт websocket и принимает `/interrupt`. При недоступном
+# хосте интерфейс замирал примерно на две минуты целиком.
+#
+# Остальной пак так и работает: `video/media/_routes.py`, `_lama_helpers.py`,
+# `_sam_media_helpers.py`, `_downloader_jobs.py`. Студийные маршруты были
+# единственным исключением.
+async def _off_loop(func, *args):
+    """Выполнить блокирующий вызов в потоке, не занимая цикл событий."""
+    return await asyncio.to_thread(func, *args)
+
+
 @register_get("/api/ts_studio/packs")
 async def studio_packs(_request):
     """Catalogue joined with what is installed — the showcase reads this."""
-    catalog = _studio_packs.fetch_catalog()
+    catalog = await _off_loop(_studio_packs.fetch_catalog)
     return _json(_studio_packs.describe_catalog(catalog))
 
 
@@ -167,7 +184,7 @@ async def studio_pack_install(request):
         return _json({"error": "expected a JSON body"}, status=400)
 
     pack_id = str(body.get("id") or "")
-    catalog = _studio_packs.fetch_catalog()
+    catalog = await _off_loop(_studio_packs.fetch_catalog)
     entries = (catalog.get("products", {}).get(_studio_packs.PRODUCT, {})
                or {}).get("packs", [])
     entry = next((e for e in entries if str(e.get("id")) == pack_id), None)
@@ -175,7 +192,7 @@ async def studio_pack_install(request):
         return _json({"error": "no such pack in the catalogue"}, status=404)
 
     try:
-        stamp = _studio_packs.install_pack(entry)
+        stamp = await _off_loop(_studio_packs.install_pack, entry)
     except PermissionError as error:
         return _json({"error": str(error)}, status=403)
     except Exception as error:              # noqa: BLE001
@@ -191,10 +208,10 @@ async def studio_pack_remove(request):
         body = await request.json()
     except Exception:                       # noqa: BLE001
         return _json({"error": "expected a JSON body"}, status=400)
-    removed = _studio_packs.remove_pack(str(body.get("id") or ""))
+    removed = await _off_loop(_studio_packs.remove_pack, str(body.get("id") or ""))
     return _json({"removed": removed,
                   "packs": _studio_packs.describe_catalog(
-                      _studio_packs.fetch_catalog())})
+                      await _off_loop(_studio_packs.fetch_catalog))})
 
 
 @register_post("/api/ts_studio/packs/enable")
@@ -215,7 +232,7 @@ async def studio_pack_enable(request):
     except (ValueError, RuntimeError) as error:
         return _json({"error": str(error)}, status=400)
     return _json({"packs": _studio_packs.describe_catalog(
-        _studio_packs.fetch_catalog())})
+        await _off_loop(_studio_packs.fetch_catalog))})
 
 
 @register_get("/api/ts_studio/packs/state")

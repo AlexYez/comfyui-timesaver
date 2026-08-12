@@ -1097,6 +1097,93 @@ class QwenEngine:
     # ------------------------------------------------------------------
     # HuggingFace download
     # ------------------------------------------------------------------
+    @staticmethod
+    def _looks_like_local_path(model_id: str) -> bool:
+        """Похоже ли это на путь на диске, а не на repo id Hugging Face.
+
+        Repo id — это ровно `owner/name`: без буквы диска, без обратных слэшей,
+        без `~` и без ведущего слэша. Всё остальное человек имел в виду как
+        путь, и молча превращать его в имя репозитория нельзя.
+        """
+        raw = str(model_id or "").strip()
+        if not raw:
+            return False
+        if raw.startswith("~") or raw.startswith("/") or raw.startswith("\\"):
+            return True
+        if os.path.splitdrive(raw)[0]:
+            return True
+        if "\\" in raw:
+            return True
+        # `a/b` — repo id; `a/b/c` уже не бывает у HF.
+        return raw.count("/") > 1
+
+    # Паспорт модели внутри её папки: какой репозиторий и какой коммит тут лежат.
+    _STAMP_NAME = ".ts-model.json"
+
+    @staticmethod
+    def _cache_dir_name(model_id: str) -> str:
+        """Имя папки кэша — ПОСЛЕДНИЙ сегмент repo id.
+
+        ⚠️ Так решил владелец пака: папки называются
+        `models/LLM/Huihui-Qwen3.5-2B-abliterated`, коротко и узнаваемо, и
+        переименовывать их нельзя — у людей там уже лежат гигабайты, а имя
+        видно в проводнике и в чужих инструкциях.
+
+        Отсюда следует проблема, которую имя решить не может:
+        `Qwen/Qwen2-VL-7B` и `Кто-то-ещё/Qwen2-VL-7B` метят в ОДНУ папку.
+        Поэтому владельца репозитория проверяет не имя папки, а паспорт внутри
+        неё — см. `_read_stamp` / `_write_stamp` / `_stamp_conflict`.
+        """
+        raw = str(model_id or "").strip().strip("/")
+        last = raw.replace("\\", "/").split("/")[-1]
+        return "".join(ch if (ch.isalnum() or ch in "-._") else "_" for ch in last) or "model"
+
+    @classmethod
+    def _read_stamp(cls, local_dir: str) -> dict:
+        """Паспорт из папки модели, либо пустой словарь."""
+        path = os.path.join(local_dir, cls._STAMP_NAME)
+        try:
+            with open(path, encoding="utf-8") as handle:
+                data = json.load(handle)
+            return data if isinstance(data, dict) else {}
+        except (OSError, ValueError):
+            return {}
+
+    def _write_stamp(self, local_dir: str, model_id: str, revision: str) -> None:
+        """Записать, ЧЕЙ репозиторий сюда скачан и на каком коммите."""
+        try:
+            with open(os.path.join(local_dir, self._STAMP_NAME), "w", encoding="utf-8") as handle:
+                json.dump({"repo_id": str(model_id), "revision": str(revision)}, handle)
+        except OSError as error:            # noqa: BLE001 - паспорт не критичен
+            self._logger.debug("%s could not write the model stamp: %s",
+                               self._log_prefix, error)
+
+    def _stamp_conflict(self, local_dir: str, model_id: str) -> str | None:
+        """Лежит ли в папке модель ДРУГОГО владельца. Возвращает текст ошибки.
+
+        Паспорта нет — значит папка от прежних версий пака, и спорить не о чем:
+        считаем, что она наша. Ругаемся только когда точно знаем, что чужая.
+        """
+        stamped = str(self._read_stamp(local_dir).get("repo_id") or "").strip()
+        if not stamped or stamped == str(model_id).strip():
+            return None
+        return (
+            f"{self._log_prefix} '{os.path.basename(local_dir)}' already holds "
+            f"'{stamped}', not '{model_id}'. Two repositories share the same last "
+            f"name, so they would share one folder. Rename or remove that folder, "
+            f"or point the node at a full local path."
+        )
+
+    def _resolve_cache_dir(self, model_id: str, models_dir: str) -> str:
+        """Папка, в которой лежит (или будет лежать) эта модель.
+
+        Ничего не переименовывает и ничего не переносит: имя папки — решение
+        владельца пака, а любое переименование на живой машине рискует упасть
+        (папку держит антивирус или индексатор) и обернуться перекачкой
+        гигабайтов. Владельца репозитория стережёт паспорт внутри папки.
+        """
+        return os.path.join(models_dir, self._cache_dir_name(model_id))
+
     def ensure_model_available(
         self,
         model_id: str,
@@ -1104,9 +1191,32 @@ class QwenEngine:
         hf_token: str,
         hf_endpoint: str,
     ) -> str:
+        # ⚠️ Подсказка у `custom_model_id` обещает «or a full local path», и
+        # обещание надо держать: раньше от такого пути брался последний
+        # сегмент, поиск шёл в `models/LLM/<сегмент>`, а не найдя — пак пытался
+        # СКАЧАТЬ с Hugging Face репозиторий с именем `D:/models/MyQwen`.
+        if self._looks_like_local_path(model_id):
+            if os.path.isdir(model_id):
+                self._logger.info("%s Using the local model directory: %s",
+                                  self._log_prefix, model_id)
+                return model_id
+            raise FileNotFoundError(
+                f"{self._log_prefix} '{model_id}' looks like a local path but there is "
+                f"no such directory. Give an existing folder, or a Hugging Face repo id "
+                f"like 'Qwen/Qwen2-VL-7B-Instruct'."
+            )
+
         models_dir = os.path.join(folder_paths.models_dir, "LLM")
-        repo_name = model_id.split("/")[-1]
-        local_dir = os.path.join(models_dir, repo_name)
+        local_dir = self._resolve_cache_dir(model_id, models_dir)
+
+        # ⚠️ Папка называется последним сегментом repo id, поэтому два разных
+        # репозитория с одинаковым концом имени метят в одну и ту же. Раньше
+        # это кончалось молча загруженной ЧУЖОЙ моделью: проверка целостности
+        # видела «файлы на месте» и не спрашивала, чьи они. Паспорт внутри
+        # папки отвечает на этот вопрос, а имя папки остаётся прежним.
+        conflict = self._stamp_conflict(local_dir, model_id)
+        if conflict:
+            raise FileExistsError(conflict)
 
         if offline_mode:
             if not self.check_model_integrity(local_dir):
@@ -1117,6 +1227,12 @@ class QwenEngine:
             self._download_with_mirrors(model_id, local_dir, hf_token, hf_endpoint)
             if not self.check_model_integrity(local_dir):
                 raise RuntimeError("Model download completed but integrity check failed.")
+        # Паспорт пишется ПОСЛЕ успеха — и на уже лежавшую модель тоже: так
+        # папки, скачанные прежними версиями пака, постепенно обзаводятся им
+        # без единой перекачки.
+        from .._hf_download import pinned_revision
+
+        self._write_stamp(local_dir, model_id, pinned_revision(model_id))
         return local_dir
 
     def _download_with_mirrors(
@@ -1140,6 +1256,8 @@ class QwenEngine:
           transient/mirror-specific and we move on to the next endpoint.
         """
 
+        from .._hf_download import is_official_hf_origin
+
         endpoints = [e.strip() for e in (hf_endpoint or "").split(",") if e.strip()]
         if not endpoints:
             endpoints = ["https://huggingface.co"]
@@ -1157,8 +1275,19 @@ class QwenEngine:
                 len(endpoints),
                 endpoint_url,
             )
+            # ⚠️ Токен пересчитывается ДЛЯ КАЖДОГО endpoint-а, а не один раз до
+            # цикла. Список зеркал здесь зашит в ноду ("huggingface.co,
+            # hf-mirror.com"), поэтому первый же сбой официального хоста
+            # отправлял приватный токен на чужую машину.
+            endpoint_token = token if is_official_hf_origin(endpoint_url) else None
+            if token and endpoint_token is None:
+                self._logger.warning(
+                    "%s %s is not huggingface.co — downloading without the token.",
+                    self._log_prefix,
+                    endpoint_url,
+                )
             try:
-                self._snapshot_download(model_id, local_dir, token, endpoint_url)
+                self._snapshot_download(model_id, local_dir, endpoint_token, endpoint_url)
                 self._logger.info("%s Download completed.", self._log_prefix)
                 return
             except TypeError as exc:

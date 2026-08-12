@@ -843,6 +843,20 @@ class TS_DownloadFilesNode(IO.ComfyNode):
         # the prefix so all of them name ONE folder, resolved by ComfyUI.
         model_segments = segments[1:] if segments[0].lower() == "models" else segments
 
+        # ⚠️ Не всякое ЗАРЕГИСТРИРОВАННОЕ имя — модельная папка: ComfyUI держит
+        # в том же реестре `custom_nodes` (его содержимое ИМПОРТИРУЕТСЯ при
+        # старте) и `datasets`. Строгий разбор для запросов из браузера
+        # (`resolve_model_target_directory`) это уже проверял, а здесь — нет,
+        # хотя строка `file_list` приезжает внутри ЧУЖОГО workflow ровно так же.
+        # Связка «цель custom_nodes» + «архив с __init__.py внутри» давала
+        # исполнение чужого кода при следующем запуске ComfyUI.
+        if model_segments and model_segments[0].lower() in cls._NON_MODEL_FOLDER_NAMES:
+            logger.warning(
+                "%s Target '%s' names '%s', which is not a model folder. Skipping this line.",
+                LOG_PREFIX, target_path, model_segments[0],
+            )
+            return None
+
         # A model-folder name — registered, or one of ComfyUI's legacy aliases
         # — resolves into the directory ComfyUI itself reads, honouring
         # extra_model_paths.yaml, instead of becoming a stray sibling folder.
@@ -880,17 +894,23 @@ class TS_DownloadFilesNode(IO.ComfyNode):
                 logger.info(f"{LOG_PREFIX} Target '{target_path}' -> '{resolved}'")
                 return resolved
 
-        if folder_paths and getattr(folder_paths, "base_path", None):
-            resolved = os.path.abspath(os.path.join(folder_paths.base_path, *segments))
-            if not cls._is_within(folder_paths.base_path, resolved):
-                logger.warning(
-                    f"{LOG_PREFIX} Target '{target_path}' escapes the ComfyUI directory. Skipping this line."
-                )
-                return None
-            logger.info(f"{LOG_PREFIX} Target '{target_path}' -> '{resolved}'")
-            return resolved
-
-        return os.path.abspath(os.path.join(*segments))
+        # ⚠️ Запасного пути «сложим относительно корня ComfyUI» здесь БОЛЬШЕ НЕТ.
+        # Он принимал любое имя — `custom_nodes`, `web`, `user` — лишь бы оно не
+        # выходило за `base_path`, а строку пишет не обязательно хозяин машины:
+        # список задач приезжает вместе с чужим графом. Строгий разбор для
+        # браузера (`resolve_model_target_directory`) от этой ветки избавился
+        # ещё в v10.1; теперь оба входа судят одинаково.
+        #
+        # Абсолютный путь по-прежнему можно назвать осознанно — он разбирается
+        # выше и требует TS_DOWNLOADER_ALLOW_EXTERNAL=1, то есть решения хозяина
+        # машины, принятого СНАРУЖИ workflow.
+        logger.warning(
+            "%s Target '%s' is not a ComfyUI model folder. Downloads now go only "
+            "into registered model folders (optionally prefixed with 'models/'). "
+            "Name one of them, or give an absolute path with %s=1.",
+            LOG_PREFIX, target_path, _EXTERNAL_TARGETS_ENV,
+        )
+        return None
 
     @classmethod
     def _parse_file_list(cls, file_list_text):
@@ -1067,15 +1087,14 @@ class TS_DownloadFilesNode(IO.ComfyNode):
         приватным репозиториям и может иметь право записи, а зеркало — чужая
         машина. Раньше `hf-mirror.com` стоял в общем списке, и заголовок
         ``Authorization`` уезжал туда вместе с запросом.
+
+        Само правило живёт в ``nodes/_hf_download.py``: те же грабли нашлись
+        ещё в общем ``snapshot_download_resilient`` и в движке Qwen, и три
+        расходящиеся копии — это три разных ответа на один вопрос.
         """
-        try:
-            host = urlparse(url).netloc.lower()
-        except Exception:                       # noqa: BLE001 - мусор вместо адреса
-            return False
-        if "@" in host:
-            host = host.rsplit("@", 1)[-1]
-        host = host.split(":", 1)[0]
-        return host == "huggingface.co" or host.endswith(".huggingface.co")
+        from .._hf_download import is_official_hf_origin
+
+        return is_official_hf_origin(url)
 
     @classmethod
     def _extract_hf_expected_sha256(cls, remote_etag, final_url):
@@ -1235,8 +1254,16 @@ class TS_DownloadFilesNode(IO.ComfyNode):
         finally:
             response.close()
 
-    @staticmethod
-    def _is_zip_member_safe(member_name, extract_root):
+    # Потолки распаковки. Архив приезжает из сети, а `zipfile` пишет столько,
+    # сколько заявит заголовок: 64 МБ сжатых нулей разворачиваются в десятки
+    # гигабайт и забивают диск. Числа выбраны с запасом под реальные наборы
+    # весов (крупнейшие модели пака — единицы гигабайт).
+    _ZIP_MAX_TOTAL_BYTES = 64 * 1024 ** 3      # 64 ГиБ суммарно
+    _ZIP_MAX_MEMBERS = 20_000
+    _ZIP_MAX_RATIO = 200                        # сжатие выше — это уже бомба
+
+    @classmethod
+    def _is_zip_member_safe(cls, member_name, extract_root):
         if not member_name or member_name in (".", ".."):
             return False
         normalized = member_name.replace("\\", "/")
@@ -1244,6 +1271,13 @@ class TS_DownloadFilesNode(IO.ComfyNode):
             return False
         head = normalized.split("/", 1)[0]
         if len(head) >= 2 and head[1] == ":":
+            return False
+        # ⚠️ Тот же чёрный список, что и для скачиваемого файла. `.zip` в нём
+        # быть не может — ради авто-распаковки он и разрешён, — поэтому запрет
+        # на исполняемые имена обходился ровно одним вложением: архив проезжал
+        # проверку целиком, а `__init__.py` внутри него ложился на диск и
+        # импортировался при следующем запуске ComfyUI.
+        if cls._refused_download_suffix(normalized.rsplit("/", 1)[-1]):
             return False
         target = os.path.realpath(os.path.join(extract_root, member_name))
         if target == extract_root:
@@ -1257,14 +1291,60 @@ class TS_DownloadFilesNode(IO.ComfyNode):
             os.makedirs(extract_to, exist_ok=True)
             extract_root = os.path.realpath(extract_to)
             with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-                for info in zip_ref.infolist():
+                members = zip_ref.infolist()
+                if len(members) > cls._ZIP_MAX_MEMBERS:
+                    logger.error(
+                        "%s Refusing to extract '%s': %d members exceeds the limit of %d.",
+                        LOG_PREFIX, os.path.basename(zip_path), len(members), cls._ZIP_MAX_MEMBERS,
+                    )
+                    return False
+                declared_total = 0
+                for info in members:
                     if not cls._is_zip_member_safe(info.filename, extract_root):
                         logger.error(
-                            "%s Refusing to extract unsafe zip member '%s' (path traversal).",
+                            "%s Refusing to extract unsafe zip member '%s' "
+                            "(path traversal or an executable name).",
                             LOG_PREFIX, info.filename,
                         )
                         return False
-                zip_ref.extractall(extract_to)
+                    declared_total += int(info.file_size or 0)
+                    if declared_total > cls._ZIP_MAX_TOTAL_BYTES:
+                        logger.error(
+                            "%s Refusing to extract '%s': unpacked size exceeds %d bytes.",
+                            LOG_PREFIX, os.path.basename(zip_path), cls._ZIP_MAX_TOTAL_BYTES,
+                        )
+                        return False
+                compressed_total = sum(int(m.compress_size or 0) for m in members)
+                if compressed_total > 0 and declared_total / compressed_total > cls._ZIP_MAX_RATIO:
+                    logger.error(
+                        "%s Refusing to extract '%s': compression ratio %.0f:1 exceeds %d:1.",
+                        LOG_PREFIX, os.path.basename(zip_path),
+                        declared_total / compressed_total, cls._ZIP_MAX_RATIO,
+                    )
+                    return False
+                # ⚠️ Квота считается по ФАКТИЧЕСКИ записанным байтам, а не по
+                # заголовку: заголовок пишет тот же, кто прислал архив.
+                written = 0
+                for info in members:
+                    if info.is_dir():
+                        continue
+                    with zip_ref.open(info, "r") as source:
+                        destination = os.path.join(extract_to, info.filename)
+                        os.makedirs(os.path.dirname(destination) or extract_to, exist_ok=True)
+                        with open(destination, "wb") as sink:
+                            while True:
+                                block = source.read(1024 * 1024)
+                                if not block:
+                                    break
+                                written += len(block)
+                                if written > cls._ZIP_MAX_TOTAL_BYTES:
+                                    logger.error(
+                                        "%s Aborting extraction of '%s': wrote more than %d bytes.",
+                                        LOG_PREFIX, os.path.basename(zip_path),
+                                        cls._ZIP_MAX_TOTAL_BYTES,
+                                    )
+                                    return False
+                                sink.write(block)
             logger.info(f"{LOG_PREFIX} Extraction complete. Deleting archive.")
             try:
                 os.remove(zip_path)
@@ -1486,7 +1566,16 @@ class TS_DownloadFilesNode(IO.ComfyNode):
                         file_mode = "ab"
                         logger.info(f"{LOG_PREFIX} Resuming from {resume_byte_pos} bytes.")
 
-            request_headers = domain_headers.copy()
+            # ⚠️ Заголовки пересчитываются для ФАКТИЧЕСКОГО адреса. `domain_headers`
+            # посчитаны для `processed_url`, а качаем мы по `final_direct_url` —
+            # тому, куда привела цепочка редиректов из пробы. Разница важна
+            # только для `Authorization`: перенос заголовка, выписанного одному
+            # хосту, на другой — ровно то, от чего защищает `_is_hf_official_origin`.
+            # `requests` сам снимает `Authorization` при кросс-хостовом редиректе,
+            # но здесь редиректа нет: это новый запрос к уже известному адресу.
+            request_headers = cls._get_headers_for_url(
+                final_direct_url, hf_token, ms_token, hf_domain_active=hf_domain_active
+            )
             if resume_byte_pos > 0:
                 request_headers["Range"] = f"bytes={resume_byte_pos}-"
 
