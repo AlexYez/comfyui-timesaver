@@ -131,6 +131,27 @@ def _render_table(headers: list[str], rows: list[list[object]], max_widths: list
     return "\n".join(lines)
 
 
+def _is_internal_module_name(module_name: str) -> bool:
+    """Принадлежит ли отсутствующий модуль самому паку.
+
+    Отличает «у человека не стоит demucs» от «мы опечатались в собственном
+    импорте». Первое — штатный пропуск, второе — регрессия, которую обязано
+    быть видно.
+    """
+    name = str(module_name or "").strip()
+    if not name:
+        return False
+    if name.startswith(f"{__name__}.") or name == __name__:
+        return True
+    parts = name.split(".")
+    if parts[0] == "nodes" and len(parts) > 1:
+        # `nodes` — ещё и модуль ядра ComfyUI, поэтому одного имени мало:
+        # внутренним считаем только то, что и правда лежит в пакете.
+        candidate = _NODE_MODULE_DIR.joinpath(*parts[1:])
+        return candidate.is_dir() or candidate.with_suffix(".py").is_file()
+    return parts[0] in _LOCAL_MODULE_ROOTS and parts[0] not in _HOST_MODULE_ROOTS
+
+
 def _is_internal_or_host_module(root: str) -> bool:
     if not root:
         return True
@@ -184,7 +205,10 @@ def _scan_external_imports() -> list[dict]:
             continue
         rel = py_file.relative_to(_PACKAGE_DIR).as_posix()
         try:
-            content = py_file.read_text(encoding="utf-8", errors="ignore")
+            # utf-8-sig, а не utf-8: три файла пака несли BOM, `ast.parse`
+            # падал на нём, ошибка глоталась — и импорты этих файлов не
+            # попадали в аудит вовсе.
+            content = py_file.read_text(encoding="utf-8-sig", errors="ignore")
         except (OSError, UnicodeDecodeError) as exc:
             logger.debug("[TS Loader] Skipping import audit for %s: %s", rel, exc)
             continue
@@ -258,12 +282,25 @@ def _load_module(module_import: str, module_label: str) -> None:
         result["details"] = f"Loaded ({node_count} nodes)"
     except ImportError as exc:
         missing = TSDependencyManager.extract_missing_dependency(exc)
-        result["status"] = "SKIPPED"
-        if missing:
+        # ⚠️ SKIPPED — только про ЧУЖОЙ отсутствующий пакет. Раньше сюда падал
+        # любой ImportError, включая собственную опечатку в имени модуля пака:
+        # `No module named 'nodes.image.typo'` рапортовалось как «Missing
+        # dependency», CI такие модули пропускает по замыслу (у silero/demucs
+        # это норма), и нода исчезала молча — до жалобы пользователя.
+        if missing and not _is_internal_module_name(missing):
+            result["status"] = "SKIPPED"
             result["details"] = f"Missing dependency: {missing}"
+            logger.warning("[TS Loader] %s -> %s", module_label, result["details"])
         else:
-            result["details"] = f"ImportError: {exc}"
-        logger.warning("[TS Loader] %s -> %s", module_label, result["details"])
+            result["status"] = "ERROR"
+            if missing:
+                result["details"] = (
+                    f"Broken internal import: {missing} "
+                    f"(a module of this pack, not a third-party dependency)"
+                )
+            else:
+                result["details"] = f"ImportError: {exc}"
+            logger.exception("[TS Loader] %s -> %s", module_label, result["details"])
     except Exception as exc:
         result["status"] = "ERROR"
         result["details"] = f"{type(exc).__name__}: {exc}"
@@ -437,7 +474,28 @@ if _ComfyExtension is not None:
         """
 
         async def get_node_list(self) -> list[type]:
-            return list(_NODE_CLASSES)
+            # ⚠️ Схемы проверяются ПОШТУЧНО. Ядро строит их в одном try/except
+            # (V3-ветка `load_custom_node`) и на исключении возвращает False,
+            # а регистрация идёт инкрементально — значит упавшая `define_schema`
+            # уносит с собой саму ноду И ВСЕ следующие за ней по списку. Схемы
+            # трёх нод читают диск при построении (LUT-ы, папки аудио, модели
+            # Whisper), поэтому это не гипотетический случай.
+            #
+            # Отдавать наружу заведомо непригодный класс незачем: пусть пропадёт
+            # одна нода, а не половина пака.
+            usable = []
+            for node_cls in _NODE_CLASSES:
+                try:
+                    node_cls.GET_SCHEMA()
+                except Exception as exc:      # noqa: BLE001 - одна нода не стоит пака
+                    logger.exception(
+                        "[TS Loader] Schema build failed for '%s'; the node is "
+                        "withheld so the rest of the pack still registers: %s",
+                        getattr(node_cls, "__name__", node_cls), exc,
+                    )
+                    continue
+                usable.append(node_cls)
+            return usable
 
         async def on_load(self) -> None:
             # Заплатка на ядро — работа времени загрузки, а не времени импорта:

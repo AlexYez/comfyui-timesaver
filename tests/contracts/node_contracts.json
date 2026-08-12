@@ -4,6 +4,75 @@
     "category": "TS/Files",
     "class_name": "TS_DownloadFilesNode",
     "display_name": "TS Files Downloader",
+    "inputs": [
+      {
+        "index": 0,
+        "multiline": true,
+        "name": "file_list",
+        "type": "String"
+      },
+      {
+        "index": 1,
+        "name": "skip_existing",
+        "type": "Boolean"
+      },
+      {
+        "index": 2,
+        "name": "verify_size",
+        "type": "Boolean"
+      },
+      {
+        "index": 3,
+        "name": "chunk_size_kb",
+        "type": "Int"
+      },
+      {
+        "index": 4,
+        "multiline": false,
+        "name": "hf_token",
+        "optional": true,
+        "type": "String"
+      },
+      {
+        "index": 5,
+        "multiline": false,
+        "name": "hf_domain",
+        "optional": true,
+        "type": "String"
+      },
+      {
+        "index": 6,
+        "multiline": false,
+        "name": "proxy_url",
+        "optional": true,
+        "type": "String"
+      },
+      {
+        "index": 7,
+        "multiline": false,
+        "name": "modelscope_token",
+        "optional": true,
+        "type": "String"
+      },
+      {
+        "index": 8,
+        "name": "unzip_after_download",
+        "optional": true,
+        "type": "Boolean"
+      },
+      {
+        "index": 9,
+        "name": "enable",
+        "optional": true,
+        "type": "Boolean"
+      },
+      {
+        "index": 10,
+        "name": "integrity_mode",
+        "optional": true,
+        "type": "Combo"
+      }
+    ],
     "python_file": "nodes/files/ts_downloader.py",
     "widgets": {
       "chunk_size_kb": {
@@ -49,6 +118,22 @@
     "category": "TS/Files",
     "class_name": "TS_EDLToYouTubeChaptersNode",
     "display_name": "TS YouTube Chapters",
+    "inputs": [
+      {
+        "index": 0,
+        "multiline": false,
+        "name": "edl_file_path",
+        "type": "String"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "youtube_chapters",
+        "index": 0,
+        "name": "youtube_chapters",
+        "type": "String"
+      }
+    ],
     "python_file": "nodes/files/ts_edl_chapters.py",
     "widgets": {
       "edl_file_path": {
@@ -61,6 +146,55 @@
     "category": "TS/Image/Tiles",
     "class_name": "TSAutoTileSize",
     "display_name": "TS Auto Tile Size",
+    "inputs": [
+      {
+        "index": 0,
+        "name": "tile_count",
+        "type": "Combo"
+      },
+      {
+        "index": 1,
+        "name": "padding",
+        "type": "Int"
+      },
+      {
+        "index": 2,
+        "name": "divide_by",
+        "type": "Int"
+      },
+      {
+        "index": 3,
+        "name": "image",
+        "optional": true,
+        "type": "Image"
+      },
+      {
+        "index": 4,
+        "name": "width",
+        "optional": true,
+        "type": "Int"
+      },
+      {
+        "index": 5,
+        "name": "height",
+        "optional": true,
+        "type": "Int"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "tile_width",
+        "index": 0,
+        "name": "tile_width",
+        "type": "Int"
+      },
+      {
+        "display_name": "tile_height",
+        "index": 1,
+        "name": "tile_height",
+        "type": "Int"
+      }
+    ],
     "python_file": "nodes/image/ts_auto_tile_size.py",
     "widgets": {
       "divide_by": {
@@ -94,6 +228,89 @@
     "category": "TS/Image/Tiles",
     "class_name": "TSCropToMask",
     "display_name": "TS Crop To Mask",
+    "inputs": [
+      {
+        "index": 0,
+        "name": "images",
+        "type": "Image"
+      },
+      {
+        "index": 1,
+        "name": "mask",
+        "type": "Mask"
+      },
+      {
+        "index": 2,
+        "name": "padding",
+        "type": "Int"
+      },
+      {
+        "index": 3,
+        "name": "divide_by",
+        "type": "Int"
+      },
+      {
+        "index": 4,
+        "name": "max_resolution",
+        "type": "Int"
+      },
+      {
+        "index": 5,
+        "name": "fixed_mask_frame_index",
+        "type": "Int"
+      },
+      {
+        "index": 6,
+        "name": "interpolation_window_size",
+        "type": "Int"
+      },
+      {
+        "index": 7,
+        "name": "force_gpu",
+        "type": "Boolean"
+      },
+      {
+        "index": 8,
+        "name": "fixed_crop_size",
+        "type": "Boolean"
+      },
+      {
+        "index": 9,
+        "name": "fixed_width",
+        "type": "Int"
+      },
+      {
+        "index": 10,
+        "name": "fixed_height",
+        "type": "Int"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "cropped_images",
+        "index": 0,
+        "name": "cropped_images",
+        "type": "Image"
+      },
+      {
+        "display_name": "cropped_masks",
+        "index": 1,
+        "name": "cropped_masks",
+        "type": "Mask"
+      },
+      {
+        "display_name": "width",
+        "index": 3,
+        "name": "width",
+        "type": "Int"
+      },
+      {
+        "display_name": "height",
+        "index": 4,
+        "name": "height",
+        "type": "Int"
+      }
+    ],
     "python_file": "nodes/image/ts_crop_to_mask.py",
     "widgets": {
       "divide_by": {
@@ -149,6 +366,41 @@
     "category": "TS/Image/Tiles",
     "class_name": "TSRestoreFromCrop",
     "display_name": "TS Restore From Crop",
+    "inputs": [
+      {
+        "index": 0,
+        "name": "original_images",
+        "type": "Image"
+      },
+      {
+        "index": 1,
+        "name": "cropped_images",
+        "type": "Image"
+      },
+      {
+        "index": 3,
+        "name": "blur",
+        "type": "Int"
+      },
+      {
+        "index": 4,
+        "name": "blur_type",
+        "type": "Combo"
+      },
+      {
+        "index": 5,
+        "name": "force_gpu",
+        "type": "Boolean"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "IMAGE",
+        "index": 0,
+        "name": "IMAGE",
+        "type": "Image"
+      }
+    ],
     "python_file": "nodes/image/ts_restore_from_crop.py",
     "widgets": {
       "blur": {
@@ -170,6 +422,107 @@
     "category": "TS/Image/Retouch",
     "class_name": "TSSmartInpaint",
     "display_name": "TS Smart Inpaint",
+    "inputs": [
+      {
+        "index": 0,
+        "name": "model",
+        "type": "Model"
+      },
+      {
+        "index": 1,
+        "name": "vae",
+        "type": "Vae"
+      },
+      {
+        "index": 2,
+        "name": "positive",
+        "type": "Conditioning"
+      },
+      {
+        "index": 3,
+        "name": "negative",
+        "type": "Conditioning"
+      },
+      {
+        "index": 4,
+        "name": "image",
+        "type": "Image"
+      },
+      {
+        "index": 5,
+        "name": "mask",
+        "type": "Mask"
+      },
+      {
+        "index": 6,
+        "name": "replace",
+        "type": "Boolean"
+      },
+      {
+        "index": 7,
+        "name": "denoise",
+        "type": "Float"
+      },
+      {
+        "index": 8,
+        "name": "megapixels",
+        "type": "Float"
+      },
+      {
+        "index": 9,
+        "name": "context_pct",
+        "type": "Float"
+      },
+      {
+        "index": 10,
+        "name": "feather_pct",
+        "type": "Float"
+      },
+      {
+        "index": 11,
+        "name": "resize_method",
+        "type": "Combo"
+      },
+      {
+        "index": 12,
+        "name": "seed",
+        "type": "Int"
+      },
+      {
+        "index": 13,
+        "name": "steps",
+        "type": "Int"
+      },
+      {
+        "index": 14,
+        "name": "cfg",
+        "type": "Float"
+      },
+      {
+        "index": 15,
+        "name": "sampler_name",
+        "type": "Combo"
+      },
+      {
+        "index": 16,
+        "name": "scheduler",
+        "type": "Combo"
+      },
+      {
+        "index": 17,
+        "name": "reference",
+        "optional": true,
+        "type": "Image"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "image",
+        "index": 0,
+        "name": "image",
+        "type": "Image"
+      }
+    ],
     "python_file": "nodes/image/ts_smart_inpaint.py",
     "widgets": {
       "cfg": {
@@ -231,6 +584,117 @@
     "category": "TS/Audio",
     "class_name": "TSWhisper",
     "display_name": "TS Whisper",
+    "inputs": [
+      {
+        "index": 0,
+        "name": "audio",
+        "type": "Audio"
+      },
+      {
+        "index": 1,
+        "name": "model",
+        "type": "Combo"
+      },
+      {
+        "index": 2,
+        "name": "task",
+        "type": "Combo"
+      },
+      {
+        "index": 3,
+        "name": "source_language",
+        "type": "Combo"
+      },
+      {
+        "index": 4,
+        "name": "timestamps",
+        "type": "Combo"
+      },
+      {
+        "index": 5,
+        "name": "precision",
+        "type": "Combo"
+      },
+      {
+        "index": 6,
+        "name": "beam_size",
+        "type": "Int"
+      },
+      {
+        "index": 7,
+        "name": "temperature",
+        "type": "Float"
+      },
+      {
+        "index": 8,
+        "multiline": false,
+        "name": "temperature_fallbacks",
+        "type": "String"
+      },
+      {
+        "index": 9,
+        "name": "condition_on_previous_text",
+        "type": "Boolean"
+      },
+      {
+        "index": 10,
+        "name": "compression_ratio_threshold",
+        "type": "Float"
+      },
+      {
+        "index": 11,
+        "name": "logprob_threshold",
+        "type": "Float"
+      },
+      {
+        "index": 12,
+        "name": "no_speech_threshold",
+        "type": "Float"
+      },
+      {
+        "index": 13,
+        "multiline": true,
+        "name": "initial_prompt",
+        "type": "String"
+      },
+      {
+        "index": 14,
+        "name": "save_srt_file",
+        "type": "Boolean"
+      },
+      {
+        "index": 15,
+        "name": "output_filename_prefix",
+        "type": "String"
+      },
+      {
+        "index": 16,
+        "multiline": false,
+        "name": "output_dir",
+        "optional": true,
+        "type": "String"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "srt_content",
+        "index": 0,
+        "name": "srt_content",
+        "type": "String"
+      },
+      {
+        "display_name": "text_content",
+        "index": 1,
+        "name": "text_content",
+        "type": "String"
+      },
+      {
+        "display_name": "ttml_content",
+        "index": 2,
+        "name": "ttml_content",
+        "type": "String"
+      }
+    ],
     "python_file": "nodes/audio/ts_whisper.py",
     "widgets": {
       "beam_size": {
@@ -299,6 +763,24 @@
     "category": "TS/Video",
     "class_name": "TS_Animation_Preview",
     "display_name": "TS Animation Preview",
+    "inputs": [
+      {
+        "index": 0,
+        "name": "images",
+        "type": "Image"
+      },
+      {
+        "index": 1,
+        "name": "fps",
+        "type": "Float"
+      },
+      {
+        "index": 2,
+        "name": "audio",
+        "optional": true,
+        "type": "Audio"
+      }
+    ],
     "python_file": "nodes/video/ts_animation_preview.py",
     "widgets": {
       "fps": {
@@ -314,6 +796,48 @@
     "category": "TS/Audio",
     "class_name": "TS_AudioLoader",
     "display_name": "TS Audio Loader",
+    "inputs": [
+      {
+        "index": 0,
+        "name": "mode",
+        "socketless": true,
+        "type": "Combo"
+      },
+      {
+        "display_name": "audio",
+        "index": 1,
+        "name": "source_path",
+        "type": "Combo"
+      },
+      {
+        "advanced": true,
+        "index": 2,
+        "name": "crop_start_seconds",
+        "socketless": true,
+        "type": "Float"
+      },
+      {
+        "advanced": true,
+        "index": 3,
+        "name": "crop_end_seconds",
+        "socketless": true,
+        "type": "Float"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "audio",
+        "index": 0,
+        "name": "audio",
+        "type": "Audio"
+      },
+      {
+        "display_name": "duration",
+        "index": 1,
+        "name": "duration",
+        "type": "Int"
+      }
+    ],
     "python_file": "nodes/audio/loader/ts_audio_loader.py",
     "widgets": {
       "crop_end_seconds": {
@@ -335,6 +859,34 @@
     "category": "TS/Audio",
     "class_name": "TS_AudioPreview",
     "display_name": "TS Audio Preview",
+    "inputs": [
+      {
+        "index": 0,
+        "name": "audio",
+        "type": "Audio"
+      },
+      {
+        "advanced": true,
+        "index": 1,
+        "name": "crop_start_seconds",
+        "socketless": true,
+        "type": "Float"
+      },
+      {
+        "advanced": true,
+        "index": 2,
+        "name": "crop_end_seconds",
+        "socketless": true,
+        "type": "Float"
+      },
+      {
+        "advanced": true,
+        "index": 3,
+        "name": "preview_state_json",
+        "socketless": true,
+        "type": "String"
+      }
+    ],
     "python_file": "nodes/audio/loader/ts_audio_preview.py",
     "widgets": {
       "crop_end_seconds": {
@@ -356,6 +908,107 @@
     "category": "TS/Audio",
     "class_name": "TS_AudioVisualizer",
     "display_name": "TS Audio Visualizer",
+    "inputs": [
+      {
+        "index": 0,
+        "name": "audio",
+        "type": "Audio"
+      },
+      {
+        "index": 1,
+        "name": "width",
+        "type": "Int"
+      },
+      {
+        "index": 2,
+        "name": "height",
+        "type": "Int"
+      },
+      {
+        "index": 3,
+        "name": "style",
+        "type": "Combo"
+      },
+      {
+        "index": 4,
+        "name": "bar_width",
+        "type": "Int"
+      },
+      {
+        "index": 5,
+        "name": "bar_gap",
+        "type": "Int"
+      },
+      {
+        "index": 6,
+        "name": "color_preset",
+        "type": "Combo"
+      },
+      {
+        "index": 7,
+        "name": "gradient_mode",
+        "type": "Combo"
+      },
+      {
+        "index": 8,
+        "name": "background",
+        "type": "Combo"
+      },
+      {
+        "index": 9,
+        "name": "bg_pattern",
+        "type": "Combo"
+      },
+      {
+        "index": 10,
+        "name": "bg_intensity",
+        "type": "Float"
+      },
+      {
+        "index": 11,
+        "name": "glow",
+        "type": "Float"
+      },
+      {
+        "index": 12,
+        "name": "sensitivity",
+        "type": "Float"
+      },
+      {
+        "index": 13,
+        "name": "smoothing",
+        "type": "Float"
+      },
+      {
+        "index": 14,
+        "name": "height_scale",
+        "type": "Float"
+      },
+      {
+        "index": 15,
+        "name": "normalize",
+        "type": "Boolean"
+      },
+      {
+        "index": 16,
+        "name": "rounded_caps",
+        "type": "Boolean"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "IMAGE",
+        "index": 0,
+        "name": "IMAGE",
+        "type": "Image"
+      },
+      {
+        "display_name": "MASK",
+        "index": 1,
+        "name": "MASK",
+        "type": "Mask"
+      }
+    ],
     "python_file": "nodes/audio/ts_audio_visualizer.py",
     "widgets": {
       "background": {
@@ -440,6 +1093,103 @@
     "category": "TS/Image/Cutout",
     "class_name": "TS_BGRM_BiRefNet",
     "display_name": "TS Remove Background",
+    "inputs": [
+      {
+        "index": 0,
+        "name": "image",
+        "type": "Image"
+      },
+      {
+        "index": 1,
+        "name": "enable",
+        "type": "Boolean"
+      },
+      {
+        "index": 2,
+        "name": "model",
+        "type": "Combo"
+      },
+      {
+        "index": 3,
+        "name": "use_custom_resolution",
+        "optional": true,
+        "type": "Boolean"
+      },
+      {
+        "index": 4,
+        "name": "process_resolution",
+        "optional": true,
+        "type": "Int"
+      },
+      {
+        "index": 5,
+        "name": "mask_blur",
+        "optional": true,
+        "type": "Int"
+      },
+      {
+        "index": 6,
+        "name": "mask_offset",
+        "optional": true,
+        "type": "Int"
+      },
+      {
+        "index": 7,
+        "name": "invert_output",
+        "optional": true,
+        "type": "Boolean"
+      },
+      {
+        "index": 8,
+        "name": "background",
+        "optional": true,
+        "type": "Combo"
+      },
+      {
+        "index": 9,
+        "name": "background_color",
+        "optional": true,
+        "type": "Color"
+      },
+      {
+        "index": 10,
+        "name": "precision",
+        "optional": true,
+        "type": "Combo"
+      },
+      {
+        "index": 11,
+        "name": "temporal_smooth",
+        "optional": true,
+        "type": "Combo"
+      },
+      {
+        "index": 12,
+        "name": "ema_alpha",
+        "optional": true,
+        "type": "Float"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "IMAGE",
+        "index": 0,
+        "name": "IMAGE",
+        "type": "Image"
+      },
+      {
+        "display_name": "MASK",
+        "index": 1,
+        "name": "MASK",
+        "type": "Mask"
+      },
+      {
+        "display_name": "MASK_IMAGE",
+        "index": 2,
+        "name": "MASK_IMAGE",
+        "type": "Image"
+      }
+    ],
     "python_file": "nodes/image/ts_bgrm_birefnet.py",
     "widgets": {
       "background": {
@@ -497,6 +1247,29 @@
     "category": "TS/Text",
     "class_name": "TS_BatchPromptLoader",
     "display_name": "TS Batch Prompt Loader",
+    "inputs": [
+      {
+        "index": 0,
+        "multiline": true,
+        "name": "text",
+        "type": "String"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "prompt",
+        "index": 0,
+        "is_output_list": true,
+        "name": "prompt",
+        "type": "String"
+      },
+      {
+        "display_name": "prompts_count",
+        "index": 1,
+        "name": "prompts_count",
+        "type": "Int"
+      }
+    ],
     "python_file": "nodes/text/ts_batch_prompt_loader.py",
     "widgets": {
       "text": {
@@ -509,6 +1282,91 @@
     "category": "TS/Image/Color",
     "class_name": "TS_Color_Match",
     "display_name": "TS Color Match",
+    "inputs": [
+      {
+        "index": 0,
+        "name": "reference",
+        "type": "Image"
+      },
+      {
+        "index": 1,
+        "name": "target",
+        "type": "Image"
+      },
+      {
+        "index": 2,
+        "name": "mode",
+        "type": "Combo"
+      },
+      {
+        "index": 3,
+        "name": "device",
+        "type": "Combo"
+      },
+      {
+        "index": 4,
+        "name": "strength",
+        "type": "Float"
+      },
+      {
+        "index": 5,
+        "name": "enable",
+        "type": "Boolean"
+      },
+      {
+        "index": 6,
+        "name": "match_mask",
+        "type": "Combo"
+      },
+      {
+        "index": 7,
+        "name": "mask_size",
+        "type": "Int"
+      },
+      {
+        "index": 8,
+        "name": "compute_max_side",
+        "type": "Int"
+      },
+      {
+        "index": 9,
+        "name": "mkl_sample_points",
+        "type": "Int"
+      },
+      {
+        "index": 10,
+        "name": "sinkhorn_max_points",
+        "type": "Int"
+      },
+      {
+        "index": 11,
+        "name": "reuse_reference",
+        "type": "Boolean"
+      },
+      {
+        "index": 12,
+        "name": "temporal_smoothing",
+        "type": "Boolean"
+      },
+      {
+        "index": 13,
+        "name": "chunk_size",
+        "type": "Int"
+      },
+      {
+        "index": 14,
+        "name": "logging",
+        "type": "Boolean"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "image",
+        "index": 0,
+        "name": "image",
+        "type": "Image"
+      }
+    ],
     "python_file": "nodes/image/ts_color_match.py",
     "widgets": {
       "chunk_size": {
@@ -575,6 +1433,86 @@
     "category": "TS/Image/Color",
     "class_name": "TS_Film_Emulation",
     "display_name": "TS Film Emulation",
+    "inputs": [
+      {
+        "index": 0,
+        "name": "image",
+        "type": "Image"
+      },
+      {
+        "index": 1,
+        "name": "enable",
+        "type": "Boolean"
+      },
+      {
+        "index": 2,
+        "name": "film_preset",
+        "type": "Combo"
+      },
+      {
+        "index": 3,
+        "name": "lut_choice",
+        "type": "Combo"
+      },
+      {
+        "index": 4,
+        "name": "lut_strength",
+        "type": "Float"
+      },
+      {
+        "index": 5,
+        "name": "gamma_correction",
+        "type": "Boolean"
+      },
+      {
+        "index": 6,
+        "name": "film_strength",
+        "type": "Float"
+      },
+      {
+        "index": 7,
+        "name": "contrast_curve",
+        "type": "Float"
+      },
+      {
+        "index": 8,
+        "name": "warmth",
+        "type": "Float"
+      },
+      {
+        "index": 9,
+        "name": "grain_intensity",
+        "type": "Float"
+      },
+      {
+        "index": 10,
+        "name": "grain_size",
+        "type": "Float"
+      },
+      {
+        "index": 11,
+        "name": "fade",
+        "type": "Float"
+      },
+      {
+        "index": 12,
+        "name": "shadow_saturation",
+        "type": "Float"
+      },
+      {
+        "index": 13,
+        "name": "highlight_saturation",
+        "type": "Float"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "IMAGE",
+        "index": 0,
+        "name": "IMAGE",
+        "type": "Image"
+      }
+    ],
     "python_file": "nodes/image/ts_film_emulation.py",
     "widgets": {
       "contrast_curve": {
@@ -644,6 +1582,21 @@
     "category": "TS/Utils",
     "class_name": "TS_FloatSlider",
     "display_name": "TS Float Slider",
+    "inputs": [
+      {
+        "index": 0,
+        "name": "value",
+        "type": "Float"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "float_value",
+        "index": 0,
+        "name": "float_value",
+        "type": "Float"
+      }
+    ],
     "python_file": "nodes/utils/ts_float_slider.py",
     "widgets": {
       "value": {
@@ -659,6 +1612,61 @@
     "category": "TS/Video",
     "class_name": "TS_Frame_Interpolation",
     "display_name": "TS Frame Interpolation",
+    "inputs": [
+      {
+        "index": 0,
+        "name": "images",
+        "type": "Image"
+      },
+      {
+        "index": 1,
+        "name": "model_name",
+        "type": "Combo"
+      },
+      {
+        "index": 2,
+        "name": "mode",
+        "type": "Combo"
+      },
+      {
+        "index": 3,
+        "name": "slowdown_factor",
+        "type": "Float"
+      },
+      {
+        "index": 4,
+        "name": "source_fps",
+        "type": "Float"
+      },
+      {
+        "index": 5,
+        "name": "target_fps",
+        "type": "Float"
+      },
+      {
+        "index": 6,
+        "name": "max_timestep_batch",
+        "type": "Int"
+      },
+      {
+        "index": 7,
+        "name": "tile_size",
+        "type": "Int"
+      },
+      {
+        "index": 8,
+        "name": "tile_overlap",
+        "type": "Int"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "images",
+        "index": 0,
+        "name": "images",
+        "type": "Image"
+      }
+    ],
     "python_file": "nodes/video/ts_frame_interpolation.py",
     "widgets": {
       "max_timestep_batch": {
@@ -710,6 +1718,21 @@
     "category": "TS/Image/Batch",
     "class_name": "TS_GetImageMegapixels",
     "display_name": "TS Get Image Megapixels",
+    "inputs": [
+      {
+        "index": 0,
+        "name": "image",
+        "type": "Image"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "megapixels",
+        "index": 0,
+        "name": "megapixels",
+        "type": "Float"
+      }
+    ],
     "python_file": "nodes/image/ts_get_image_megapixels.py"
   },
   "TS_GetImageSizeSide": {
@@ -717,6 +1740,26 @@
     "category": "TS/Image/Batch",
     "class_name": "TS_GetImageSizeSide",
     "display_name": "TS Get Image Size",
+    "inputs": [
+      {
+        "index": 0,
+        "name": "image",
+        "type": "Image"
+      },
+      {
+        "index": 1,
+        "name": "large_side",
+        "type": "Boolean"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "size",
+        "index": 0,
+        "name": "size",
+        "type": "Int"
+      }
+    ],
     "python_file": "nodes/image/ts_get_image_size_side.py",
     "widgets": {
       "large_side": {
@@ -736,6 +1779,62 @@
     "category": "TS/Ideogram",
     "class_name": "TS_IdeogramDesigner",
     "display_name": "TS Ideogram Designer",
+    "inputs": [
+      {
+        "index": 0,
+        "name": "image",
+        "optional": true,
+        "type": "Image"
+      },
+      {
+        "index": 1,
+        "multiline": false,
+        "name": "design_json",
+        "type": "String"
+      },
+      {
+        "index": 2,
+        "name": "mode",
+        "type": "String"
+      },
+      {
+        "index": 3,
+        "multiline": true,
+        "name": "auto_prompt",
+        "type": "String"
+      },
+      {
+        "index": 4,
+        "multiline": true,
+        "name": "auto_caption",
+        "type": "String"
+      },
+      {
+        "index": 5,
+        "name": "auto_seed",
+        "type": "Int"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "json_prompt",
+        "index": 0,
+        "name": "json_prompt",
+        "type": "String"
+      },
+      {
+        "display_name": "width",
+        "index": 1,
+        "name": "width",
+        "type": "Int"
+      },
+      {
+        "display_name": "height",
+        "index": 2,
+        "name": "height",
+        "type": "Int"
+      }
+    ],
     "python_file": "nodes/ideogram/ts_ideogram_designer.py",
     "widgets": {
       "auto_caption": {
@@ -762,6 +1861,31 @@
     "category": "TS/Image/Batch",
     "class_name": "TS_ImageBatchCut",
     "display_name": "TS Image Batch Cut",
+    "inputs": [
+      {
+        "index": 0,
+        "name": "image",
+        "type": "Image"
+      },
+      {
+        "index": 1,
+        "name": "first_cut",
+        "type": "Int"
+      },
+      {
+        "index": 2,
+        "name": "last_cut",
+        "type": "Int"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "image",
+        "index": 0,
+        "name": "image",
+        "type": "Image"
+      }
+    ],
     "python_file": "nodes/image/ts_image_batch_cut.py",
     "widgets": {
       "first_cut": {
@@ -781,6 +1905,22 @@
     "category": "TS/Image/Batch",
     "class_name": "TS_ImageBatchToImageList",
     "display_name": "TS Image Batch to Image List",
+    "inputs": [
+      {
+        "index": 0,
+        "name": "image",
+        "type": "Image"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "images",
+        "index": 0,
+        "is_output_list": true,
+        "name": "images",
+        "type": "Image"
+      }
+    ],
     "python_file": "nodes/image/ts_image_batch_to_list.py"
   },
   "TS_ImageListToImageBatch": {
@@ -788,6 +1928,21 @@
     "category": "TS/Image/Batch",
     "class_name": "TS_ImageListToImageBatch",
     "display_name": "TS Image List to Image Batch",
+    "inputs": [
+      {
+        "index": 0,
+        "name": "images",
+        "type": "Image"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "image",
+        "index": 0,
+        "name": "image",
+        "type": "Image"
+      }
+    ],
     "python_file": "nodes/image/ts_image_list_to_batch.py"
   },
   "TS_ImagePromptInjector": {
@@ -795,6 +1950,27 @@
     "category": "TS/Image/Batch",
     "class_name": "TS_ImagePromptInjector",
     "display_name": "TS Image Prompt Injector",
+    "inputs": [
+      {
+        "index": 0,
+        "name": "image",
+        "type": "Image"
+      },
+      {
+        "index": 1,
+        "multiline": true,
+        "name": "prompt",
+        "type": "String"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "image",
+        "index": 0,
+        "name": "image",
+        "type": "Image"
+      }
+    ],
     "python_file": "nodes/image/ts_image_prompt_injector.py",
     "widgets": {
       "prompt": {
@@ -807,6 +1983,95 @@
     "category": "TS/Image/Size",
     "class_name": "TS_ImageResize",
     "display_name": "TS Image Resize",
+    "inputs": [
+      {
+        "index": 0,
+        "name": "pixels",
+        "type": "Image"
+      },
+      {
+        "index": 1,
+        "name": "target_width",
+        "type": "Int"
+      },
+      {
+        "index": 2,
+        "name": "target_height",
+        "type": "Int"
+      },
+      {
+        "index": 3,
+        "name": "smaller_side",
+        "type": "Int"
+      },
+      {
+        "index": 4,
+        "name": "larger_side",
+        "type": "Int"
+      },
+      {
+        "index": 5,
+        "name": "scale_factor",
+        "type": "Float"
+      },
+      {
+        "index": 6,
+        "name": "keep_proportion",
+        "type": "Boolean"
+      },
+      {
+        "index": 7,
+        "name": "upscale_method",
+        "type": "Combo"
+      },
+      {
+        "index": 8,
+        "name": "divisible_by",
+        "type": "Int"
+      },
+      {
+        "index": 9,
+        "name": "megapixels",
+        "type": "Float"
+      },
+      {
+        "index": 10,
+        "name": "dont_enlarge",
+        "type": "Boolean"
+      },
+      {
+        "index": 11,
+        "name": "mask",
+        "optional": true,
+        "type": "Mask"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "IMAGE",
+        "index": 0,
+        "name": "IMAGE",
+        "type": "Image"
+      },
+      {
+        "display_name": "width",
+        "index": 1,
+        "name": "width",
+        "type": "Int"
+      },
+      {
+        "display_name": "height",
+        "index": 2,
+        "name": "height",
+        "type": "Int"
+      },
+      {
+        "display_name": "MASK",
+        "index": 3,
+        "name": "MASK",
+        "type": "Mask"
+      }
+    ],
     "python_file": "nodes/image/ts_image_resize.py",
     "widgets": {
       "divisible_by": {
@@ -867,6 +2132,28 @@
     "category": "TS/Image",
     "class_name": "TS_ImageStudio",
     "display_name": "TS Image Studio",
+    "inputs": [
+      {
+        "index": 0,
+        "name": "session_id",
+        "socketless": true,
+        "type": "String"
+      },
+      {
+        "index": 1,
+        "name": "result_path",
+        "socketless": true,
+        "type": "String"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "image",
+        "index": 0,
+        "name": "image",
+        "type": "Image"
+      }
+    ],
     "python_file": "nodes/image/studio/ts_image_studio.py",
     "widgets": {
       "result_path": {
@@ -882,6 +2169,21 @@
     "category": "TS/Image/Tiles",
     "class_name": "TS_ImageTileMerger",
     "display_name": "TS Image Tile Merger",
+    "inputs": [
+      {
+        "index": 0,
+        "name": "images",
+        "type": "Image"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "image",
+        "index": 0,
+        "name": "image",
+        "type": "Image"
+      }
+    ],
     "python_file": "nodes/image/ts_image_tile_merger.py"
   },
   "TS_ImageTileSplitter": {
@@ -889,6 +2191,41 @@
     "category": "TS/Image/Tiles",
     "class_name": "TS_ImageTileSplitter",
     "display_name": "TS Image Tile Splitter",
+    "inputs": [
+      {
+        "index": 0,
+        "name": "image",
+        "type": "Image"
+      },
+      {
+        "index": 1,
+        "name": "tile_width",
+        "type": "Int"
+      },
+      {
+        "index": 2,
+        "name": "tile_height",
+        "type": "Int"
+      },
+      {
+        "index": 3,
+        "name": "overlap",
+        "type": "Int"
+      },
+      {
+        "index": 4,
+        "name": "feather",
+        "type": "Float"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "tiles",
+        "index": 0,
+        "name": "tiles",
+        "type": "Image"
+      }
+    ],
     "python_file": "nodes/image/ts_image_tile_splitter.py",
     "widgets": {
       "feather": {
@@ -922,6 +2259,21 @@
     "category": "TS/Utils",
     "class_name": "TS_Int_Slider",
     "display_name": "TS Int Slider",
+    "inputs": [
+      {
+        "index": 0,
+        "name": "value",
+        "type": "Int"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "int_value",
+        "index": 0,
+        "name": "int_value",
+        "type": "Int"
+      }
+    ],
     "python_file": "nodes/utils/ts_int_slider.py",
     "widgets": {
       "value": {
@@ -937,6 +2289,70 @@
     "category": "TS/Video",
     "class_name": "TS_LTX_FirstLastFrame",
     "display_name": "TS LTX First/Last Frame",
+    "inputs": [
+      {
+        "index": 0,
+        "name": "positive",
+        "type": "Conditioning"
+      },
+      {
+        "index": 1,
+        "name": "negative",
+        "type": "Conditioning"
+      },
+      {
+        "index": 2,
+        "name": "vae",
+        "type": "Vae"
+      },
+      {
+        "index": 3,
+        "name": "latent",
+        "type": "Latent"
+      },
+      {
+        "index": 4,
+        "name": "first_strength",
+        "type": "Float"
+      },
+      {
+        "index": 5,
+        "name": "last_strength",
+        "type": "Float"
+      },
+      {
+        "index": 6,
+        "name": "first_image",
+        "optional": true,
+        "type": "Image"
+      },
+      {
+        "index": 7,
+        "name": "last_image",
+        "optional": true,
+        "type": "Image"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "positive",
+        "index": 0,
+        "name": "positive",
+        "type": "Conditioning"
+      },
+      {
+        "display_name": "negative",
+        "index": 1,
+        "name": "negative",
+        "type": "Conditioning"
+      },
+      {
+        "display_name": "latent",
+        "index": 2,
+        "name": "latent",
+        "type": "Latent"
+      }
+    ],
     "python_file": "nodes/video/ts_ltx_first_last_frame.py",
     "widgets": {
       "first_strength": {
@@ -958,6 +2374,58 @@
     "category": "TS/Image/Retouch",
     "class_name": "TS_LamaCleanup",
     "display_name": "TS Lama Cleanup",
+    "inputs": [
+      {
+        "index": 0,
+        "name": "source_path",
+        "socketless": true,
+        "type": "String"
+      },
+      {
+        "index": 1,
+        "name": "brush_size",
+        "socketless": true,
+        "type": "Int"
+      },
+      {
+        "index": 2,
+        "name": "max_resolution",
+        "socketless": true,
+        "type": "Int"
+      },
+      {
+        "index": 3,
+        "name": "mask_padding",
+        "socketless": true,
+        "type": "Int"
+      },
+      {
+        "index": 4,
+        "name": "feather",
+        "socketless": true,
+        "type": "Int"
+      },
+      {
+        "index": 5,
+        "name": "session_id",
+        "socketless": true,
+        "type": "String"
+      },
+      {
+        "index": 6,
+        "name": "working_path",
+        "socketless": true,
+        "type": "String"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "image",
+        "index": 0,
+        "name": "image",
+        "type": "Image"
+      }
+    ],
     "python_file": "nodes/image/lama_cleanup/ts_lama_cleanup.py",
     "widgets": {
       "brush_size": {
@@ -1000,6 +2468,95 @@
     "category": "TS/Image/Retouch",
     "class_name": "TS_LangevinInpaint",
     "display_name": "TS Langevin Inpaint",
+    "inputs": [
+      {
+        "index": 0,
+        "name": "model",
+        "type": "Model"
+      },
+      {
+        "index": 1,
+        "name": "positive",
+        "type": "Conditioning"
+      },
+      {
+        "index": 2,
+        "name": "negative",
+        "type": "Conditioning"
+      },
+      {
+        "index": 3,
+        "name": "latent_image",
+        "type": "Latent"
+      },
+      {
+        "index": 4,
+        "name": "seed",
+        "type": "Int"
+      },
+      {
+        "index": 5,
+        "name": "steps",
+        "type": "Int"
+      },
+      {
+        "index": 6,
+        "name": "cfg",
+        "type": "Float"
+      },
+      {
+        "index": 7,
+        "name": "sampler_name",
+        "type": "Combo"
+      },
+      {
+        "index": 8,
+        "name": "scheduler",
+        "type": "Combo"
+      },
+      {
+        "index": 9,
+        "name": "denoise",
+        "type": "Float"
+      },
+      {
+        "index": 10,
+        "name": "think_steps",
+        "type": "Int"
+      },
+      {
+        "advanced": true,
+        "index": 11,
+        "name": "guidance",
+        "type": "Float"
+      },
+      {
+        "advanced": true,
+        "index": 12,
+        "name": "step_size",
+        "type": "Float"
+      },
+      {
+        "advanced": true,
+        "index": 13,
+        "name": "beta",
+        "type": "Float"
+      },
+      {
+        "advanced": true,
+        "index": 14,
+        "name": "friction",
+        "type": "Float"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "LATENT",
+        "index": 0,
+        "name": "LATENT",
+        "type": "Latent"
+      }
+    ],
     "python_file": "nodes/image/ts_langevin_inpaint.py",
     "widgets": {
       "beta": {
@@ -1060,6 +2617,27 @@
     "category": "TS/utils",
     "class_name": "TS_LoraLoader",
     "display_name": "TS LoRA Loader",
+    "inputs": [
+      {
+        "index": 0,
+        "name": "model",
+        "type": "Model"
+      },
+      {
+        "index": 1,
+        "name": "loras_json",
+        "socketless": true,
+        "type": "String"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "MODEL",
+        "index": 0,
+        "name": "MODEL",
+        "type": "Model"
+      }
+    ],
     "python_file": "nodes/utils/ts_lora_loader.py",
     "widgets": {
       "loras_json": {
@@ -1072,6 +2650,31 @@
     "category": "TS/Utils",
     "class_name": "TS_Math_Int",
     "display_name": "TS Math Int",
+    "inputs": [
+      {
+        "index": 0,
+        "name": "a",
+        "type": "Int"
+      },
+      {
+        "index": 1,
+        "name": "b",
+        "type": "Int"
+      },
+      {
+        "index": 2,
+        "name": "operation",
+        "type": "Combo"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "result",
+        "index": 0,
+        "name": "result",
+        "type": "Int"
+      }
+    ],
     "python_file": "nodes/utils/ts_math_int.py",
     "widgets": {
       "a": {
@@ -1093,6 +2696,119 @@
     "category": "TS/Image/Cutout",
     "class_name": "TS_Matting_ViTMatte",
     "display_name": "TS Matting (ViTMatte)",
+    "inputs": [
+      {
+        "index": 0,
+        "name": "image",
+        "type": "Image"
+      },
+      {
+        "index": 1,
+        "name": "mask",
+        "type": "Mask"
+      },
+      {
+        "index": 2,
+        "name": "model",
+        "type": "Combo"
+      },
+      {
+        "index": 3,
+        "name": "trimap_erode_px",
+        "type": "Int"
+      },
+      {
+        "index": 4,
+        "name": "trimap_dilate_px",
+        "type": "Int"
+      },
+      {
+        "index": 5,
+        "name": "max_resolution",
+        "optional": true,
+        "type": "Int"
+      },
+      {
+        "index": 6,
+        "name": "auto_crop_by_mask",
+        "optional": true,
+        "type": "Boolean"
+      },
+      {
+        "index": 7,
+        "name": "crop_padding_pct",
+        "optional": true,
+        "type": "Int"
+      },
+      {
+        "index": 8,
+        "name": "precision",
+        "optional": true,
+        "type": "Combo"
+      },
+      {
+        "index": 9,
+        "name": "temporal_smooth",
+        "optional": true,
+        "type": "Combo"
+      },
+      {
+        "index": 10,
+        "name": "ema_alpha",
+        "optional": true,
+        "type": "Float"
+      },
+      {
+        "index": 11,
+        "name": "mask_blur",
+        "optional": true,
+        "type": "Int"
+      },
+      {
+        "index": 12,
+        "name": "mask_offset",
+        "optional": true,
+        "type": "Int"
+      },
+      {
+        "index": 13,
+        "name": "invert_output",
+        "optional": true,
+        "type": "Boolean"
+      },
+      {
+        "index": 14,
+        "name": "background",
+        "optional": true,
+        "type": "Combo"
+      },
+      {
+        "index": 15,
+        "name": "background_color",
+        "optional": true,
+        "type": "Color"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "IMAGE",
+        "index": 0,
+        "name": "IMAGE",
+        "type": "Image"
+      },
+      {
+        "display_name": "MASK",
+        "index": 1,
+        "name": "MASK",
+        "type": "Mask"
+      },
+      {
+        "display_name": "MASK_IMAGE",
+        "index": 2,
+        "name": "MASK_IMAGE",
+        "type": "Image"
+      }
+    ],
     "python_file": "nodes/image/ts_matting_vitmatte.py",
     "widgets": {
       "auto_crop_by_mask": {
@@ -1165,6 +2881,103 @@
     "category": "TS/Conditioning",
     "class_name": "TS_MultiReference",
     "display_name": "TS Multi Reference",
+    "inputs": [
+      {
+        "index": 0,
+        "name": "conditioning",
+        "optional": true,
+        "type": "Conditioning"
+      },
+      {
+        "index": 1,
+        "name": "vae",
+        "optional": true,
+        "type": "Vae"
+      },
+      {
+        "index": 2,
+        "name": "max_megapixels",
+        "type": "Float"
+      },
+      {
+        "index": 3,
+        "name": "divide_by",
+        "type": "Int"
+      },
+      {
+        "index": 4,
+        "name": "block_empty_slots",
+        "type": "Boolean"
+      },
+      {
+        "index": 5,
+        "name": "image_1",
+        "optional": true,
+        "type": "Image"
+      },
+      {
+        "index": 6,
+        "name": "mask_1",
+        "optional": true,
+        "type": "Mask"
+      },
+      {
+        "index": 7,
+        "name": "image_2",
+        "optional": true,
+        "type": "Image"
+      },
+      {
+        "index": 8,
+        "name": "mask_2",
+        "optional": true,
+        "type": "Mask"
+      },
+      {
+        "index": 9,
+        "name": "image_3",
+        "optional": true,
+        "type": "Image"
+      },
+      {
+        "index": 10,
+        "name": "mask_3",
+        "optional": true,
+        "type": "Mask"
+      },
+      {
+        "index": 11,
+        "name": "mask_orientation",
+        "optional": true,
+        "type": "Combo"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "image_1",
+        "index": 0,
+        "name": "image_1",
+        "type": "Image"
+      },
+      {
+        "display_name": "image_2",
+        "index": 1,
+        "name": "image_2",
+        "type": "Image"
+      },
+      {
+        "display_name": "image_3",
+        "index": 2,
+        "name": "image_3",
+        "type": "Image"
+      },
+      {
+        "display_name": "conditioning",
+        "index": 3,
+        "name": "conditioning",
+        "type": "Conditioning"
+      }
+    ],
     "python_file": "nodes/conditioning/ts_multi_reference.py",
     "widgets": {
       "block_empty_slots": {
@@ -1192,6 +3005,70 @@
     "category": "TS/Audio",
     "class_name": "TS_MusicStems",
     "display_name": "TS Music Stems",
+    "inputs": [
+      {
+        "index": 0,
+        "name": "audio",
+        "type": "Audio"
+      },
+      {
+        "index": 1,
+        "name": "model_name",
+        "type": "Combo"
+      },
+      {
+        "index": 2,
+        "name": "device",
+        "type": "Combo"
+      },
+      {
+        "index": 3,
+        "name": "shifts",
+        "type": "Int"
+      },
+      {
+        "index": 4,
+        "name": "overlap",
+        "type": "Float"
+      },
+      {
+        "index": 5,
+        "name": "jobs",
+        "type": "Int"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "vocal",
+        "index": 0,
+        "name": "vocal",
+        "type": "Audio"
+      },
+      {
+        "display_name": "bass",
+        "index": 1,
+        "name": "bass",
+        "type": "Audio"
+      },
+      {
+        "display_name": "drums",
+        "index": 2,
+        "name": "drums",
+        "type": "Audio"
+      },
+      {
+        "display_name": "others",
+        "index": 3,
+        "name": "others",
+        "type": "Audio"
+      },
+      {
+        "display_name": "instrumental",
+        "index": 4,
+        "name": "instrumental",
+        "type": "Audio"
+      }
+    ],
     "python_file": "nodes/audio/ts_music_stems.py",
     "widgets": {
       "device": {
@@ -1222,6 +3099,26 @@
     "category": "TS/Text",
     "class_name": "TS_PromptBuilder",
     "display_name": "TS Prompt Builder",
+    "inputs": [
+      {
+        "index": 0,
+        "name": "seed",
+        "type": "Int"
+      },
+      {
+        "index": 1,
+        "name": "config_json",
+        "type": "String"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "prompt",
+        "index": 0,
+        "name": "prompt",
+        "type": "String"
+      }
+    ],
     "python_file": "nodes/text/ts_prompt_builder.py",
     "widgets": {
       "config_json": {
@@ -1239,6 +3136,115 @@
     "category": "TS/LLM",
     "class_name": "TS_Qwen3_VL_V3",
     "display_name": "TS Qwen 3",
+    "inputs": [
+      {
+        "index": 0,
+        "name": "model_name",
+        "type": "Combo"
+      },
+      {
+        "index": 1,
+        "multiline": false,
+        "name": "custom_model_id",
+        "type": "String"
+      },
+      {
+        "index": 2,
+        "multiline": false,
+        "name": "hf_token",
+        "type": "String"
+      },
+      {
+        "index": 3,
+        "name": "system_preset",
+        "type": "Combo"
+      },
+      {
+        "index": 4,
+        "multiline": true,
+        "name": "prompt",
+        "type": "String"
+      },
+      {
+        "index": 5,
+        "name": "seed",
+        "type": "Int"
+      },
+      {
+        "index": 6,
+        "name": "max_new_tokens",
+        "type": "Int"
+      },
+      {
+        "index": 7,
+        "name": "precision",
+        "type": "Combo"
+      },
+      {
+        "index": 8,
+        "name": "attention_mode",
+        "type": "Combo"
+      },
+      {
+        "index": 9,
+        "name": "offline_mode",
+        "type": "Boolean"
+      },
+      {
+        "index": 10,
+        "name": "unload_after_generation",
+        "type": "Boolean"
+      },
+      {
+        "index": 11,
+        "name": "enable",
+        "type": "Boolean"
+      },
+      {
+        "index": 12,
+        "name": "max_image_size",
+        "type": "Int"
+      },
+      {
+        "index": 13,
+        "name": "video_max_frames",
+        "type": "Int"
+      },
+      {
+        "index": 14,
+        "name": "image",
+        "optional": true,
+        "type": "Image"
+      },
+      {
+        "index": 15,
+        "name": "video",
+        "optional": true,
+        "type": "Image"
+      },
+      {
+        "force_input": true,
+        "index": 16,
+        "multiline": true,
+        "name": "custom_system_prompt",
+        "optional": true,
+        "type": "String"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "generated_text",
+        "index": 0,
+        "name": "generated_text",
+        "type": "String"
+      },
+      {
+        "display_name": "processed_image",
+        "index": 1,
+        "name": "processed_image",
+        "type": "Image"
+      }
+    ],
     "python_file": "nodes/llm/ts_qwen3_vl.py",
     "widgets": {
       "attention_mode": {
@@ -1298,6 +3304,46 @@
     "category": "TS/Video",
     "class_name": "TS_RTX_Upscaler",
     "display_name": "TS RTX Upscaler",
+    "inputs": [
+      {
+        "index": 0,
+        "name": "images",
+        "type": "Image"
+      },
+      {
+        "index": 1,
+        "name": "resize_type",
+        "type": "Combo"
+      },
+      {
+        "index": 2,
+        "name": "scale",
+        "type": "Float"
+      },
+      {
+        "index": 3,
+        "name": "width",
+        "type": "Int"
+      },
+      {
+        "index": 4,
+        "name": "height",
+        "type": "Int"
+      },
+      {
+        "index": 5,
+        "name": "quality",
+        "type": "Combo"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "upscaled_images",
+        "index": 0,
+        "name": "upscaled_images",
+        "type": "Image"
+      }
+    ],
     "python_file": "nodes/video/ts_rtx_upscaler.py",
     "widgets": {
       "height": {
@@ -1328,6 +3374,42 @@
     "category": "TS/Image/Size",
     "class_name": "TS_ResolutionSelector",
     "display_name": "TS Resolution Selector",
+    "inputs": [
+      {
+        "index": 0,
+        "name": "aspect_ratio",
+        "type": "Combo"
+      },
+      {
+        "index": 1,
+        "name": "resolution",
+        "type": "Float"
+      },
+      {
+        "index": 2,
+        "name": "custom_ratio",
+        "type": "String"
+      },
+      {
+        "index": 3,
+        "name": "original_aspect",
+        "type": "Boolean"
+      },
+      {
+        "index": 4,
+        "name": "image",
+        "optional": true,
+        "type": "Image"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "img",
+        "index": 0,
+        "name": "img",
+        "type": "Image"
+      }
+    ],
     "python_file": "nodes/image/ts_resolution_selector.py",
     "widgets": {
       "aspect_ratio": {
@@ -1352,6 +3434,94 @@
     "category": "TS/Image/Cutout",
     "class_name": "TS_SAM_MediaLoader",
     "display_name": "TS SAM Media Loader",
+    "inputs": [
+      {
+        "index": 0,
+        "name": "model",
+        "optional": true,
+        "type": "Model"
+      },
+      {
+        "index": 1,
+        "name": "source_path",
+        "socketless": true,
+        "type": "String"
+      },
+      {
+        "index": 2,
+        "name": "media_type",
+        "socketless": true,
+        "type": "String"
+      },
+      {
+        "index": 3,
+        "name": "coordinates",
+        "socketless": true,
+        "type": "String"
+      },
+      {
+        "index": 4,
+        "name": "neg_coordinates",
+        "socketless": true,
+        "type": "String"
+      },
+      {
+        "index": 5,
+        "name": "sam3_checkpoint",
+        "socketless": true,
+        "type": "String"
+      },
+      {
+        "index": 6,
+        "name": "max_frames",
+        "socketless": true,
+        "type": "Int"
+      },
+      {
+        "index": 7,
+        "name": "frame_stride",
+        "socketless": true,
+        "type": "Int"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "images",
+        "index": 0,
+        "name": "images",
+        "type": "Image"
+      },
+      {
+        "display_name": "positive_coords",
+        "index": 1,
+        "name": "positive_coords",
+        "type": "String"
+      },
+      {
+        "display_name": "negative_coords",
+        "index": 2,
+        "name": "negative_coords",
+        "type": "String"
+      },
+      {
+        "display_name": "fps",
+        "index": 3,
+        "name": "fps",
+        "type": "Float"
+      },
+      {
+        "display_name": "audio",
+        "index": 4,
+        "name": "audio",
+        "type": "Audio"
+      },
+      {
+        "display_name": "initial_mask",
+        "index": 5,
+        "name": "initial_mask",
+        "type": "Mask"
+      }
+    ],
     "python_file": "nodes/image/sam_media_loader/ts_sam_media_loader.py",
     "widgets": {
       "coordinates": {
@@ -1388,6 +3558,75 @@
     "category": "TS/Text",
     "class_name": "TS_SileroStress",
     "display_name": "TS Silero Stress",
+    "inputs": [
+      {
+        "index": 0,
+        "multiline": true,
+        "name": "text",
+        "type": "String"
+      },
+      {
+        "advanced": true,
+        "index": 1,
+        "name": "run_device",
+        "type": "Combo"
+      },
+      {
+        "index": 2,
+        "name": "stress_marker",
+        "type": "Combo"
+      },
+      {
+        "index": 3,
+        "name": "use_accentor",
+        "type": "Boolean"
+      },
+      {
+        "index": 4,
+        "name": "use_homosolver",
+        "type": "Boolean"
+      },
+      {
+        "index": 5,
+        "name": "put_stress",
+        "type": "Boolean"
+      },
+      {
+        "index": 6,
+        "name": "put_yo",
+        "type": "Boolean"
+      },
+      {
+        "index": 7,
+        "name": "put_stress_homo",
+        "type": "Boolean"
+      },
+      {
+        "index": 8,
+        "name": "put_yo_homo",
+        "type": "Boolean"
+      },
+      {
+        "index": 9,
+        "name": "stress_single_vowel",
+        "type": "Boolean"
+      },
+      {
+        "advanced": true,
+        "index": 10,
+        "multiline": true,
+        "name": "words_to_ignore",
+        "type": "String"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "text",
+        "index": 0,
+        "name": "text",
+        "type": "String"
+      }
+    ],
     "python_file": "nodes/text/ts_silero_stress.py",
     "widgets": {
       "put_stress": {
@@ -1430,6 +3669,74 @@
     "category": "TS/Audio",
     "class_name": "TS_SileroTTS",
     "display_name": "TS Silero TTS",
+    "inputs": [
+      {
+        "index": 0,
+        "multiline": true,
+        "name": "text",
+        "type": "String"
+      },
+      {
+        "index": 1,
+        "name": "input_format",
+        "type": "Combo"
+      },
+      {
+        "index": 2,
+        "name": "speaker",
+        "type": "Combo"
+      },
+      {
+        "index": 3,
+        "name": "run_device",
+        "type": "Combo"
+      },
+      {
+        "index": 4,
+        "name": "enable_chunking",
+        "type": "Boolean"
+      },
+      {
+        "advanced": true,
+        "index": 5,
+        "name": "max_chunk_chars",
+        "type": "Int"
+      },
+      {
+        "advanced": true,
+        "index": 6,
+        "name": "chunk_pause_ms",
+        "type": "Int"
+      },
+      {
+        "index": 7,
+        "name": "put_accent",
+        "type": "Boolean"
+      },
+      {
+        "index": 8,
+        "name": "put_yo",
+        "type": "Boolean"
+      },
+      {
+        "index": 9,
+        "name": "put_stress_homo",
+        "type": "Boolean"
+      },
+      {
+        "index": 10,
+        "name": "put_yo_homo",
+        "type": "Boolean"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "audio",
+        "index": 0,
+        "name": "audio",
+        "type": "Audio"
+      }
+    ],
     "python_file": "nodes/audio/ts_silero_tts.py",
     "widgets": {
       "chunk_pause_ms": {
@@ -1471,11 +3778,66 @@
       }
     }
   },
+  "TS_SmartBatch": {
+    "api": "v3",
+    "category": "TS/Image/Batch",
+    "class_name": "TS_SmartBatch",
+    "display_name": "TS Smart Batch",
+    "inputs": [
+      {
+        "index": 0,
+        "name": "images",
+        "optional": true,
+        "type": "Autogrow"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "image",
+        "index": 0,
+        "name": "image",
+        "type": "Image"
+      }
+    ],
+    "python_file": "nodes/image/ts_smart_batch.py"
+  },
   "TS_Smart_Switch": {
     "api": "v3",
     "category": "TS/Utils",
     "class_name": "TS_Smart_Switch",
     "display_name": "TS Smart Switch",
+    "inputs": [
+      {
+        "index": 0,
+        "name": "data_type",
+        "type": "Combo"
+      },
+      {
+        "index": 1,
+        "name": "switch",
+        "type": "Boolean"
+      },
+      {
+        "index": 2,
+        "name": "input_1",
+        "optional": true,
+        "type": "AnyType"
+      },
+      {
+        "index": 3,
+        "name": "input_2",
+        "optional": true,
+        "type": "AnyType"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "output",
+        "index": 0,
+        "name": "output",
+        "type": "AnyType"
+      }
+    ],
     "python_file": "nodes/utils/ts_smart_switch.py",
     "widgets": {
       "switch": {
@@ -1488,6 +3850,69 @@
     "category": null,
     "class_name": "TS_StudioInpaintCrop",
     "display_name": "TS Studio Inpaint Crop",
+    "inputs": [
+      {
+        "index": 0,
+        "name": "image",
+        "type": "Image"
+      },
+      {
+        "index": 1,
+        "name": "mask",
+        "type": "Mask"
+      },
+      {
+        "index": 2,
+        "name": "megapixels",
+        "type": "Float"
+      },
+      {
+        "index": 3,
+        "name": "context_pct",
+        "type": "Float"
+      },
+      {
+        "index": 4,
+        "name": "denoise",
+        "type": "Float"
+      },
+      {
+        "index": 5,
+        "name": "snap_px",
+        "type": "Int"
+      },
+      {
+        "index": 6,
+        "name": "feather_pct",
+        "type": "Float"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "crop",
+        "index": 0,
+        "name": "crop",
+        "type": "Image"
+      },
+      {
+        "display_name": "crop_mask",
+        "index": 1,
+        "name": "crop_mask",
+        "type": "Mask"
+      },
+      {
+        "display_name": "crop_mask_soft",
+        "index": 2,
+        "name": "crop_mask_soft",
+        "type": "Mask"
+      },
+      {
+        "display_name": "source",
+        "index": 4,
+        "name": "source",
+        "type": "Image"
+      }
+    ],
     "python_file": "nodes/image/studio/inpaint/ts_studio_inpaint_crop.py",
     "widgets": {
       "context_pct": {
@@ -1527,6 +3952,26 @@
     "category": null,
     "class_name": "TS_StudioInpaintRestore",
     "display_name": "TS Studio Inpaint Restore",
+    "inputs": [
+      {
+        "index": 0,
+        "name": "image",
+        "type": "Image"
+      },
+      {
+        "index": 1,
+        "name": "patch",
+        "type": "Image"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "image",
+        "index": 0,
+        "name": "image",
+        "type": "Image"
+      }
+    ],
     "python_file": "nodes/image/studio/inpaint/ts_studio_inpaint_restore.py"
   },
   "TS_StudioInputImage": {
@@ -1534,6 +3979,39 @@
     "category": null,
     "class_name": "TS_StudioInputImage",
     "display_name": "TS Studio Input (Image)",
+    "inputs": [
+      {
+        "index": 0,
+        "name": "value",
+        "socketless": true,
+        "type": "String"
+      },
+      {
+        "index": 1,
+        "name": "param_name",
+        "type": "String"
+      },
+      {
+        "index": 2,
+        "name": "label",
+        "optional": true,
+        "type": "String"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "image",
+        "index": 0,
+        "name": "image",
+        "type": "Image"
+      },
+      {
+        "display_name": "mask",
+        "index": 1,
+        "name": "mask",
+        "type": "Mask"
+      }
+    ],
     "python_file": "nodes/image/studio/markers/ts_studio_input_image.py",
     "widgets": {
       "label": {
@@ -1552,6 +4030,33 @@
     "category": null,
     "class_name": "TS_StudioInputMask",
     "display_name": "TS Studio Input (Mask)",
+    "inputs": [
+      {
+        "index": 0,
+        "name": "value",
+        "socketless": true,
+        "type": "String"
+      },
+      {
+        "index": 1,
+        "name": "param_name",
+        "type": "String"
+      },
+      {
+        "index": 2,
+        "name": "label",
+        "optional": true,
+        "type": "String"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "mask",
+        "index": 0,
+        "name": "mask",
+        "type": "Mask"
+      }
+    ],
     "python_file": "nodes/image/studio/markers/ts_studio_input_mask.py",
     "widgets": {
       "label": {
@@ -1570,6 +4075,38 @@
     "category": null,
     "class_name": "TS_StudioInputNumber",
     "display_name": "TS Studio Input (Number)",
+    "inputs": [
+      {
+        "index": 0,
+        "name": "value",
+        "type": "Float"
+      },
+      {
+        "index": 1,
+        "name": "param_name",
+        "type": "String"
+      },
+      {
+        "index": 2,
+        "name": "label",
+        "optional": true,
+        "type": "String"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "float",
+        "index": 0,
+        "name": "float",
+        "type": "Float"
+      },
+      {
+        "display_name": "int",
+        "index": 1,
+        "name": "int",
+        "type": "Int"
+      }
+    ],
     "python_file": "nodes/image/studio/markers/ts_studio_input_number.py",
     "widgets": {
       "label": {
@@ -1591,6 +4128,26 @@
     "category": null,
     "class_name": "TS_StudioInputSeed",
     "display_name": "TS Studio Input (Seed)",
+    "inputs": [
+      {
+        "index": 0,
+        "name": "value",
+        "type": "Int"
+      },
+      {
+        "index": 1,
+        "name": "param_name",
+        "type": "String"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "seed",
+        "index": 0,
+        "name": "seed",
+        "type": "Int"
+      }
+    ],
     "python_file": "nodes/image/studio/markers/ts_studio_input_seed.py",
     "widgets": {
       "param_name": {
@@ -1608,6 +4165,33 @@
     "category": null,
     "class_name": "TS_StudioInputText",
     "display_name": "TS Studio Input (Text)",
+    "inputs": [
+      {
+        "index": 0,
+        "multiline": true,
+        "name": "value",
+        "type": "String"
+      },
+      {
+        "index": 1,
+        "name": "param_name",
+        "type": "String"
+      },
+      {
+        "index": 2,
+        "name": "label",
+        "optional": true,
+        "type": "String"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "text",
+        "index": 0,
+        "name": "text",
+        "type": "String"
+      }
+    ],
     "python_file": "nodes/image/studio/markers/ts_studio_input_text.py",
     "widgets": {
       "label": {
@@ -1626,6 +4210,21 @@
     "category": null,
     "class_name": "TS_StudioLoraStack",
     "display_name": "TS Studio LoRA Stack",
+    "inputs": [
+      {
+        "index": 0,
+        "name": "model",
+        "type": "Model"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "model",
+        "index": 0,
+        "name": "model",
+        "type": "Model"
+      }
+    ],
     "python_file": "nodes/image/studio/markers/ts_studio_lora_stack.py"
   },
   "TS_StudioManifest": {
@@ -1633,6 +4232,22 @@
     "category": null,
     "class_name": "TS_StudioManifest",
     "display_name": "TS Studio Manifest",
+    "inputs": [
+      {
+        "index": 0,
+        "multiline": true,
+        "name": "manifest",
+        "type": "String"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "manifest",
+        "index": 0,
+        "name": "manifest",
+        "type": "String"
+      }
+    ],
     "python_file": "nodes/image/studio/markers/ts_studio_manifest.py",
     "widgets": {
       "manifest": {
@@ -1645,6 +4260,32 @@
     "category": null,
     "class_name": "TS_StudioOutput",
     "display_name": "TS Studio Output",
+    "inputs": [
+      {
+        "index": 0,
+        "name": "image",
+        "type": "Image"
+      },
+      {
+        "index": 1,
+        "name": "filename_prefix",
+        "type": "String"
+      },
+      {
+        "index": 2,
+        "name": "folder",
+        "optional": true,
+        "socketless": true,
+        "type": "Combo"
+      },
+      {
+        "index": 3,
+        "name": "studio_state",
+        "optional": true,
+        "socketless": true,
+        "type": "String"
+      }
+    ],
     "python_file": "nodes/image/studio/markers/ts_studio_output.py",
     "widgets": {
       "filename_prefix": {
@@ -1663,6 +4304,21 @@
     "category": "TS/Text",
     "class_name": "TS_StylePromptSelector",
     "display_name": "TS Style Prompt Selector",
+    "inputs": [
+      {
+        "index": 0,
+        "name": "style_id",
+        "type": "String"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "prompt",
+        "index": 0,
+        "name": "prompt",
+        "type": "String"
+      }
+    ],
     "python_file": "nodes/text/ts_style_prompt_selector.py",
     "widgets": {
       "style_id": {
@@ -1675,6 +4331,55 @@
     "category": "TS/LLM",
     "class_name": "TS_SuperPrompt",
     "display_name": "TS Super Prompt",
+    "inputs": [
+      {
+        "index": 0,
+        "multiline": true,
+        "name": "text",
+        "type": "String"
+      },
+      {
+        "index": 1,
+        "name": "high_quality",
+        "type": "Boolean"
+      },
+      {
+        "index": 2,
+        "name": "system_preset",
+        "type": "Combo"
+      },
+      {
+        "index": 3,
+        "name": "attached_image",
+        "socketless": true,
+        "type": "String"
+      },
+      {
+        "index": 4,
+        "name": "attached_image_2",
+        "socketless": true,
+        "type": "String"
+      },
+      {
+        "index": 5,
+        "name": "bigger_model",
+        "type": "Boolean"
+      },
+      {
+        "index": 6,
+        "name": "images",
+        "optional": true,
+        "type": "Image"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "text",
+        "index": 0,
+        "name": "text",
+        "type": "String"
+      }
+    ],
     "python_file": "nodes/llm/super_prompt/ts_super_prompt.py",
     "widgets": {
       "attached_image": {
@@ -1699,6 +4404,23 @@
     "category": "TS/Image/Retouch",
     "class_name": "TS_UniversalInpaintSampler",
     "display_name": "TS Universal Inpaint Sampler",
+    "inputs": [
+      {
+        "index": 0,
+        "name": "model",
+        "type": "Model"
+      },
+      {
+        "index": 1,
+        "name": "think_steps",
+        "type": "Int"
+      },
+      {
+        "index": 2,
+        "name": "resample_strength",
+        "type": "Float"
+      }
+    ],
     "python_file": "nodes/image/ts_universal_inpaint.py",
     "widgets": {
       "resample_strength": {
@@ -1719,6 +4441,85 @@
     "category": "TS/Video",
     "class_name": "TS_VideoDepth",
     "display_name": "TS Video Depth",
+    "inputs": [
+      {
+        "index": 0,
+        "name": "images",
+        "type": "Image"
+      },
+      {
+        "index": 1,
+        "name": "model_filename",
+        "type": "Combo"
+      },
+      {
+        "index": 2,
+        "name": "input_size",
+        "type": "Int"
+      },
+      {
+        "index": 3,
+        "name": "max_res",
+        "type": "Int"
+      },
+      {
+        "index": 4,
+        "name": "precision",
+        "type": "Combo"
+      },
+      {
+        "index": 5,
+        "name": "colormap",
+        "type": "Combo"
+      },
+      {
+        "index": 6,
+        "name": "dithering_strength",
+        "type": "Float"
+      },
+      {
+        "index": 7,
+        "name": "apply_median_blur",
+        "type": "Boolean"
+      },
+      {
+        "index": 8,
+        "name": "upscale_algorithm",
+        "type": "Combo"
+      },
+      {
+        "index": 9,
+        "name": "normalization_mode",
+        "optional": true,
+        "type": "Combo"
+      },
+      {
+        "index": 10,
+        "name": "denoise_method",
+        "optional": true,
+        "type": "Combo"
+      },
+      {
+        "index": 11,
+        "name": "dither_pattern",
+        "optional": true,
+        "type": "Combo"
+      },
+      {
+        "index": 12,
+        "name": "edge_aware_upscale",
+        "optional": true,
+        "type": "Boolean"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "image",
+        "index": 0,
+        "name": "image",
+        "type": "Image"
+      }
+    ],
     "python_file": "nodes/video/ts_video_depth.py",
     "widgets": {
       "apply_median_blur": {
@@ -1773,6 +4574,93 @@
     "category": "TS/Video",
     "class_name": "TS_VideoInfo",
     "display_name": "TS Video Info",
+    "inputs": [
+      {
+        "index": 0,
+        "name": "video_info",
+        "type": "MultiType"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "fps",
+        "index": 0,
+        "name": "fps",
+        "type": "Float"
+      },
+      {
+        "display_name": "frame_count",
+        "index": 1,
+        "name": "frame_count",
+        "type": "Int"
+      },
+      {
+        "display_name": "duration",
+        "index": 2,
+        "name": "duration",
+        "type": "Float"
+      },
+      {
+        "display_name": "width",
+        "index": 3,
+        "name": "width",
+        "type": "Int"
+      },
+      {
+        "display_name": "height",
+        "index": 4,
+        "name": "height",
+        "type": "Int"
+      },
+      {
+        "display_name": "source_fps",
+        "index": 5,
+        "name": "source_fps",
+        "type": "Float"
+      },
+      {
+        "display_name": "source_frame_count",
+        "index": 6,
+        "name": "source_frame_count",
+        "type": "Int"
+      },
+      {
+        "display_name": "source_duration",
+        "index": 7,
+        "name": "source_duration",
+        "type": "Float"
+      },
+      {
+        "display_name": "source_width",
+        "index": 8,
+        "name": "source_width",
+        "type": "Int"
+      },
+      {
+        "display_name": "source_height",
+        "index": 9,
+        "name": "source_height",
+        "type": "Int"
+      },
+      {
+        "display_name": "has_audio",
+        "index": 10,
+        "name": "has_audio",
+        "type": "Boolean"
+      },
+      {
+        "display_name": "has_alpha",
+        "index": 11,
+        "name": "has_alpha",
+        "type": "Boolean"
+      },
+      {
+        "display_name": "summary",
+        "index": 12,
+        "name": "summary",
+        "type": "String"
+      }
+    ],
     "python_file": "nodes/video/media/ts_video_info.py"
   },
   "TS_VideoLoader": {
@@ -1780,6 +4668,86 @@
     "category": "TS/Video",
     "class_name": "TS_VideoLoader",
     "display_name": "TS Video Loader",
+    "inputs": [
+      {
+        "index": 0,
+        "name": "source_path",
+        "socketless": true,
+        "type": "String"
+      },
+      {
+        "index": 1,
+        "name": "start_seconds",
+        "socketless": true,
+        "type": "Float"
+      },
+      {
+        "index": 2,
+        "name": "end_seconds",
+        "socketless": true,
+        "type": "Float"
+      },
+      {
+        "index": 3,
+        "name": "frame_rate",
+        "type": "Float"
+      },
+      {
+        "index": 4,
+        "name": "max_frames",
+        "type": "Int"
+      },
+      {
+        "advanced": true,
+        "index": 5,
+        "name": "longer_side",
+        "type": "Int"
+      },
+      {
+        "advanced": true,
+        "index": 6,
+        "name": "shorter_side",
+        "type": "Int"
+      },
+      {
+        "advanced": true,
+        "index": 7,
+        "name": "divisible_by",
+        "type": "Int"
+      },
+      {
+        "advanced": true,
+        "index": 8,
+        "name": "frame_step",
+        "type": "Int"
+      },
+      {
+        "advanced": true,
+        "index": 9,
+        "name": "resize_filter",
+        "type": "Combo"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "images",
+        "index": 0,
+        "name": "images",
+        "type": "Image"
+      },
+      {
+        "display_name": "audio",
+        "index": 1,
+        "name": "audio",
+        "type": "Audio"
+      },
+      {
+        "display_name": "video",
+        "index": 3,
+        "name": "video",
+        "type": "Video"
+      }
+    ],
     "python_file": "nodes/video/media/ts_video_loader.py",
     "widgets": {
       "divisible_by": {
@@ -1840,6 +4808,73 @@
     "category": "TS/Video",
     "class_name": "TS_VideoSaver",
     "display_name": "TS Video Saver",
+    "inputs": [
+      {
+        "index": 0,
+        "name": "images",
+        "optional": true,
+        "type": "Image"
+      },
+      {
+        "index": 1,
+        "name": "fps",
+        "type": "Float"
+      },
+      {
+        "index": 2,
+        "name": "filename_prefix",
+        "type": "String"
+      },
+      {
+        "index": 3,
+        "name": "format",
+        "type": "DynamicCombo"
+      },
+      {
+        "index": 4,
+        "name": "audio",
+        "optional": true,
+        "type": "Audio"
+      },
+      {
+        "index": 5,
+        "name": "video",
+        "optional": true,
+        "type": "Video"
+      },
+      {
+        "advanced": true,
+        "index": 6,
+        "name": "encoder",
+        "type": "Combo"
+      },
+      {
+        "advanced": true,
+        "index": 7,
+        "name": "save_metadata",
+        "type": "Boolean"
+      },
+      {
+        "advanced": true,
+        "index": 8,
+        "name": "preview",
+        "type": "Combo"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "video",
+        "index": 0,
+        "name": "video",
+        "type": "Video"
+      },
+      {
+        "display_name": "path",
+        "index": 1,
+        "name": "path",
+        "type": "String"
+      }
+    ],
     "python_file": "nodes/video/media/ts_video_saver.py",
     "widgets": {
       "encoder": {

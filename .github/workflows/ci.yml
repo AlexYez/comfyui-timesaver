@@ -106,13 +106,25 @@ jobs:
           from comfy.cli_args import args
           args.cpu = True
 
+          import asyncio
+          import json
+          import pathlib
+
           pack = importlib.import_module("comfyui-timesaver")
           results = pack._MODULE_LOAD_RESULTS
           errors = [r for r in results if r["status"] == "ERROR"]
           skipped = [r for r in results if r["status"] == "SKIPPED"]
-          nodes = len(pack.NODE_CLASS_MAPPINGS)
 
-          print(f"modules={len(results)} nodes={nodes} "
+          # ⚠️ НЕ pack.NODE_CLASS_MAPPINGS. На любом ComfyUI с V3-загрузчиком
+          # __init__.py удаляет этот словарь из модуля (иначе ядро уходит в
+          # V1-ветку и не доходит до comfy_entrypoint). Проверка молча падала
+          # с AttributeError, то есть единственный поведенческий тест CI не
+          # проверял ничего. Спрашиваем ровно то, что увидит ComfyUI.
+          extension = asyncio.run(pack.comfy_entrypoint())
+          node_classes = asyncio.run(extension.get_node_list())
+          node_ids = sorted(cls.GET_SCHEMA().node_id for cls in node_classes)
+
+          print(f"modules={len(results)} nodes={len(node_ids)} "
                 f"errors={len(errors)} skipped={len(skipped)}")
           for r in skipped:
               print(f"  SKIPPED {r['module']}: {r['details']}")
@@ -122,5 +134,18 @@ jobs:
           # Optional-deps modules (silero, demucs) may legitimately SKIP;
           # an ERROR is always a shipped regression.
           assert not errors, f"{len(errors)} module(s) failed to import"
-          assert nodes >= 50, f"node count regressed: {nodes} < 50"
+
+          # Точный список, а не порог: «>= 50» пропускало исчезновение десяти
+          # нод. Снимок контрактов едет вместе с паком и знает их поимённо.
+          snapshot = pathlib.Path("custom_nodes/comfyui-timesaver/tests/contracts/node_contracts.json")
+          if snapshot.is_file():
+              expected = sorted(json.loads(snapshot.read_text(encoding="utf-8")))
+              missing = [n for n in expected if n not in node_ids]
+              extra = [n for n in node_ids if n not in expected]
+              assert not missing and not extra, (
+                  f"node set drift: missing={missing} unexpected={extra}")
+          else:
+              # tests/ намеренно вне git (project_memory/feedback_runtime_only_locations)
+              assert len(node_ids) >= 60, f"node count regressed: {len(node_ids)} < 60"
+          assert len(node_ids) == len(set(node_ids)), "duplicate node_id registered"
           EOF
