@@ -620,8 +620,27 @@ def _generate_with_filtered_kwargs(model, inputs: dict[str, Any], gen_params: di
     return model.generate(**inputs, **current_params)
 
 
+# ⚠️ Модель иногда не ставит конец ответа и ПРОДОЛЖАЕТ диалог за пользователя:
+# в готовый промпт приезжает строка `user`, следом выдуманная реплика с чужой
+# инструкцией и второй ответ. Замерено на 4B с пресетом LTX — человек получал
+# промпт с приклеенным к нему куском переписки.
+#
+# Отрезаем по границе хода. Строка `user` / `assistant` / `system` сама по себе
+# в видеопромпте не встречается, а маркеры шаблона Qwen — тем более.
+_TURN_BREAK = re.compile(
+    r"\n\s*(?:<\|im_(?:start|end)\|>|(?:user|assistant|system)\b\s*:?\s*$)",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+
+def _cut_hallucinated_turn(text: str) -> str:
+    """Оставить только ПЕРВЫЙ ответ, отрезав дописанный моделью диалог."""
+    match = _TURN_BREAK.search(text)
+    return text[:match.start()].rstrip() if match else text
+
+
 def _clean_model_output(text: str) -> str:
-    cleaned = str(text or "").strip()
+    cleaned = _cut_hallucinated_turn(str(text or "").strip())
     cleaned = re.sub(r"<think>.*?</think>", "", cleaned, flags=re.IGNORECASE | re.DOTALL).strip()
     cleaned = re.sub(r"^\s*```(?:text|markdown|prompt)?\s*", "", cleaned, flags=re.IGNORECASE)
     cleaned = re.sub(r"\s*```\s*$", "", cleaned).strip()

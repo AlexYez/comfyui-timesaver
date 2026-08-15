@@ -77,7 +77,11 @@ function ensureStyles() {
 .ts-lora__row{display:flex;align-items:center;gap:6px;padding:3px 4px;
     border:1px solid var(--ts-border);border-radius:var(--ts-radius-sm);
     background:var(--ts-surface);height:${ROW_HEIGHT - 4}px;box-sizing:border-box}
-.ts-lora__row.is-off{opacity:.45}
+/* ⚠️ Бледнеет СОДЕРЖИМОЕ, а не строка. Прозрачность на строке делает группу, из
+   которой ребёнку не выйти: выключатель — то самое, чем строку возвращают, —
+   гас бы вместе с ней и оказывался самым незаметным местом строки. */
+.ts-lora__row.is-off .ts-lora__name,
+.ts-lora__row.is-off .ts-lora__spin{opacity:.45}
 /* Взятая строка прилипает к курсору: сама она едет отдельной карточкой в корне
    документа, а на её месте в списке остаётся пустая рамка — видно и что несёшь,
    и куда оно встанет. */
@@ -97,6 +101,17 @@ function ensureStyles() {
 .ts-lora__grip{flex:0 0 auto;width:14px;text-align:center;cursor:grab;color:var(--ts-muted);
     font-size:12px;line-height:1;user-select:none;touch-action:none}
 .ts-lora__grip:active{cursor:grabbing}
+/* Выключатель строки. Тот же квадрат, что у переключателей групп в
+   TS Group Bypasser (js/utils/group_bypasser/_groups_view.js): пак должен
+   читаться как одна система, а не как набор разных галочек. */
+.ts-lora__on{flex:0 0 auto;position:relative;width:15px;height:15px;padding:0;
+    border:1px solid var(--ts-border-strong);border-radius:4px;
+    background:var(--ts-sunken);cursor:pointer}
+.ts-lora__on::after{content:"";position:absolute;inset:3px;border-radius:2px;
+    background:transparent}
+.ts-lora__on[aria-checked="true"]{border-color:var(--ts-accent)}
+.ts-lora__on[aria-checked="true"]::after{background:var(--ts-accent)}
+.ts-lora__on:hover{border-color:var(--ts-accent)}
 .ts-lora__name{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;
     white-space:nowrap;font-size:var(--ts-fs-sm);color:var(--ts-text);cursor:pointer}
 /* Сила и стрелки — одним блоком, как числовой виджет самого ComfyUI. */
@@ -166,6 +181,8 @@ const STRINGS = {
         stepUp: "Step up",
         grip: "Drag to reorder. Order matters: LoRAs apply one after another.",
         toggle: "Click the name to set the row aside without removing it",
+        turnOff: "Turn this LoRA off — it stays in the list with its strength",
+        turnOn: "Turn this LoRA back on",
         missing: "This LoRA is not in the loras folder on this machine",
     },
     ru: {
@@ -184,6 +201,8 @@ const STRINGS = {
         grip: "Перетащите, чтобы изменить порядок. Порядок важен: LoRA "
             + "накладываются одна за другой.",
         toggle: "Нажмите на имя, чтобы отложить строку, не удаляя её",
+        turnOff: "Выключить эту LoRA — строка останется в списке вместе с силой",
+        turnOn: "Включить эту LoRA обратно",
         missing: "Такой LoRA нет в папке loras на этой машине",
     },
 };
@@ -198,21 +217,45 @@ const STRINGS = {
 const NATIVE_LOADER = "LoraLoaderModelOnly";
 let nativePromise = null;
 
+/**
+ * Варианты выпадающего списка из описания входа.
+ *
+ * ⚠️ Форматов ДВА, и они сосуществуют в одной сборке: у ноды на V1 вход выглядит
+ * как `[[...варианты], {...}]`, у ноды на V3 — как `["COMBO", {options: [...]}]`.
+ * В этой установке 256 виджетов описаны первым способом и 576 вторым (замерено).
+ * Родной загрузчик LoRA пока на V1 — но читать только его форму значит остаться
+ * с пустым списком в тот день, когда ComfyUI переведёт ноду на V3.
+ */
+function comboOptions(definition) {
+    if (!Array.isArray(definition) || !definition.length) return null;
+    const [head, spec] = definition;
+    if (Array.isArray(head)) return head.map(String);
+    if (Array.isArray(spec?.options)) return spec.options.map(String);
+    return null;
+}
+
+/** Разобрать описание родного загрузчика: имена LoRA + параметры силы. */
+function readNativeDef(def) {
+    const required = def?.input?.required ?? {};
+    const names = comboOptions(required.lora_name);
+    if (!names) return null;
+    // Второй элемент — параметры виджета; у старых сборок их может не быть
+    // вовсе, тогда останется запасной набор из _lora_stack.js.
+    if (required.strength_model?.[1]) setStrengthSpec(required.strength_model[1]);
+    return names;
+}
+
 async function nativeSpec() {
     if (!nativePromise) {
         nativePromise = (async () => {
             try {
                 const response = await api.fetchApi(`/object_info/${NATIVE_LOADER}`);
                 const info = await response.json();
-                const required = info?.[NATIVE_LOADER]?.input?.required ?? {};
-                const names = Array.isArray(required.lora_name?.[0])
-                    ? required.lora_name[0].map(String) : [];
-                // [1] — объект параметров виджета; у старых сборок его может не
-                // быть вовсе, тогда останется запасной набор из _lora_stack.js.
-                if (required.strength_model?.[1]) {
-                    setStrengthSpec(required.strength_model[1]);
-                }
-                return names;
+                const names = readNativeDef(info?.[NATIVE_LOADER]);
+                if (names) return names;
+                console.warn(`[TS LoRA Loader] ${NATIVE_LOADER} has no lora_name options`);
+                nativePromise = null;
+                return [];
             } catch (error) {
                 console.warn(`[TS LoRA Loader] could not read ${NATIVE_LOADER}`, error);
                 // ⚠️ Неудачу НЕ запоминаем. Раньше промис оставался в
@@ -226,6 +269,24 @@ async function nativeSpec() {
         })();
     }
     return nativePromise;
+}
+
+/**
+ * Забыть список установленных LoRA.
+ *
+ * Он спрашивается один раз на страницу — иначе каждая нода тянула бы сотни
+ * килобайт `/object_info`. Но человек, положивший файл в `models/loras`, жмёт
+ * «R» и ждёт, что новая LoRA появится: с этого момента запомненный список
+ * УСТАРЕЛ и его надо выбросить, а не ждать перезагрузки страницы.
+ *
+ * @param {object} [defs] ответ обновления; если родной загрузчик в нём есть,
+ *   свежий список берётся прямо оттуда и второй запрос не нужен.
+ * @returns {string[] | null} новые имена, когда они пришли вместе с `defs`.
+ */
+function forgetNativeSpec(defs) {
+    const fresh = readNativeDef(defs?.[NATIVE_LOADER]);
+    nativePromise = fresh ? Promise.resolve(fresh) : null;
+    return fresh;
 }
 
 /** Прочитать список из ноды: сперва виджет, затем зеркало в свойствах. */
@@ -309,6 +370,22 @@ function setupLoraLoader(node) {
         grip.title = t.grip;
         grip.addEventListener("pointerdown", (event) => startDrag(event, index));
 
+        // Выключатель строки. Отложить LoRA можно было и раньше — нажатием по
+        // имени, — но об этом знал только тот, кто прочитал подсказку: строка
+        // просто бледнела, и человек удалял LoRA вместо того, чтобы выключить.
+        // Выключатель говорит о себе сам и держит то же состояние `on`.
+        const on = entry.on !== false;
+        const power = document.createElement("button");
+        power.type = "button";
+        power.className = "ts-lora__on";
+        power.setAttribute("role", "switch");
+        power.setAttribute("aria-checked", String(on));
+        power.title = on ? t.turnOff : t.turnOn;
+        power.addEventListener("click", () => {
+            stack = setEnabled(stack, index, !on);
+            commit();
+        });
+
         const name = document.createElement("span");
         name.className = "ts-lora__name";
         name.textContent = shortName(entry.name);
@@ -382,7 +459,7 @@ function setupLoraLoader(node) {
             commit();
         });
 
-        row.append(grip, name, spin, drop);
+        row.append(grip, power, name, spin, drop);
         return row;
     }
 
@@ -680,6 +757,39 @@ function setupLoraLoader(node) {
         }
     };
     node._tsLoraRehydrate();
+
+    /**
+     * Обновление списков по «R» (Refresh Node Definitions).
+     *
+     * ⚠️ Родные combo-виджеты ComfyUI обновляет сам, перебирая `node.widgets`.
+     * У нашей ноды виджета-списка нет — весь выбор нарисован своими руками, — и
+     * до сих пор это означало, что положенная в `models/loras` LoRA не
+     * появлялась в поиске до перезагрузки страницы: «R» её не доносил.
+     *
+     * `refreshComboInNode` — штатный крючок ровно для этого случая: ComfyUI
+     * зовёт его у КАЖДОЙ ноды графа, включая лежащие внутри подграфов, и
+     * передаёт свежие описания. Список имён приезжает вместе с ними, так что
+     * второй поход на сервер не нужен.
+     */
+    const previousRefresh = node.refreshComboInNode;
+    node.refreshComboInNode = function tsLoraRefreshCombo(defs) {
+        const result = previousRefresh?.apply(this, arguments);
+        const fresh = forgetNativeSpec(defs);
+        if (fresh) {
+            names = fresh;
+            render();                       // пропавшие отмечаются заново
+            if (!picker.hidden) renderFound();
+        } else {
+            // Описания родного загрузчика в ответе не оказалось (чужая сборка,
+            // урезанный ответ) — спрашиваем сами, кэш уже сброшен.
+            nativeSpec().then((loaded) => {
+                names = loaded;
+                render();
+                if (!picker.hidden) renderFound();
+            });
+        }
+        return result;
+    };
 }
 
 app.registerExtension({
@@ -692,6 +802,12 @@ app.registerExtension({
             setupLoraLoader(this);
             return result;
         };
+    },
+    // Пар к `refreshComboInNode` выше: тот обходит ноды, ЛЕЖАЩИЕ в графе, а
+    // этот сбрасывает общий кэш. Без него «R» в пустом графе не менял ничего, и
+    // нода, поставленная сразу после него, получала список до обновления.
+    refreshComboInNodes(defs) {
+        forgetNativeSpec(defs);
     },
     loadedGraphNode(node) {
         if (node?.comfyClass !== NODE_TYPE && node?.type !== NODE_TYPE) return;

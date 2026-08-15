@@ -508,3 +508,172 @@ async def model_folders(_request: web.Request) -> web.StreamResponse:
     # Walking the tree is blocking work; the event loop must not wait on it.
     folders = await asyncio.to_thread(_collect)
     return web.json_response({"folders": folders, "available": True})
+
+
+# --------------------------------------------------------------------------- #
+# Which widget of which node names a model, and from which folder
+# --------------------------------------------------------------------------- #
+#
+# The scanner has to answer "this file belongs in models/<what>?" for every
+# loader a graph can contain. A hand-written table of node type -> folder cannot
+# do it: on this machine 49 installed node types own a model widget the table
+# never heard of, including two from ComfyUI itself (`LatentUpscaleModelLoader`
+# and its low-VRAM twin, which read `latent_upscale_models` — a whole category
+# the table did not know). Custom packs add more with every install.
+#
+# So the map is DERIVED from the running server instead of written down. Each
+# loader's dropdown is filled by `folder_paths.get_filename_list(<category>)`,
+# so the options themselves say which category they came from: find the folder
+# whose file list contains them.
+#
+# What this cannot see: a category with no files on this machine has an empty
+# dropdown, and an empty set matches everything, so it is skipped. The static
+# table in the frontend stays as the answer for that case.
+
+# Sentinels that share a dropdown with real files ("none" to disable a slot).
+_NON_FILE_OPTIONS = {"", "none", "null", "-", "disabled"}
+
+
+def _combo_options(definition) -> list[str] | None:
+    """Options of a combo input, whichever shape the node's API produced.
+
+    V1 nodes declare ``(["a.safetensors", …], {...})``; the V3 adapter can
+    hand back ``("COMBO", {"options": [...]})``. Both are in one running
+    server, so both are read.
+    """
+    if not isinstance(definition, (list, tuple)) or not definition:
+        return None
+    head = definition[0]
+    if isinstance(head, (list, tuple)):
+        return [str(item) for item in head if isinstance(item, str)]
+    spec = definition[1] if len(definition) > 1 else None
+    if isinstance(spec, dict) and isinstance(spec.get("options"), (list, tuple)):
+        return [str(item) for item in spec["options"] if isinstance(item, str)]
+    return None
+
+
+def _model_options(definition) -> frozenset[str] | None:
+    """The file-looking options of a combo, or None when it names no files."""
+    options = _combo_options(definition)
+    if not options:
+        return None
+    files = {
+        option for option in options
+        if option.strip().lower() not in _NON_FILE_OPTIONS
+        and os.path.splitext(option)[1].lower() in _MODEL_SUFFIXES
+    }
+    return frozenset(files) or None
+
+
+def match_category(options: frozenset[str], catalogue: dict) -> str | None:
+    """Which category a dropdown was filled from.
+
+    Exact match first: a dropdown that IS a folder's listing. Then the smallest
+    listing that CONTAINS it, which is how a filtered dropdown (the GGUF loaders
+    keep only `.gguf`) still finds its own folder. Ties are broken by name so two
+    machines answer the same way.
+
+    Args:
+        options: the file-looking options of one combo input.
+        catalogue: ``{category: (files, folder)}`` as built by the route.
+
+    Returns:
+        The category name, or None when nothing contains the options.
+    """
+    matches = [
+        (0 if files == options else 1, len(files), category)
+        for category, (files, _folder) in catalogue.items()
+        if options and options <= files
+    ]
+    return min(matches)[2] if matches else None
+
+
+def _relative_folder(path: str, models_dir: str) -> str:
+    """Where a category's directory sits under ``models/``, POSIX-spelled.
+
+    The registry key is not always a directory name: `clip_gguf` and
+    `unet_gguf` are read from `models/clip` and `models/diffusion_models`, and
+    `ultralytics_bbox` from `models/ultralytics/bbox`. Downloading into a folder
+    named after the key would put the file where no loader looks.
+    """
+    try:
+        relative = os.path.relpath(path, models_dir)
+    except (ValueError, TypeError):
+        return ""
+    if relative.startswith(".."):
+        return ""
+    return relative.replace("\\", "/").strip("/")
+
+
+@_register_get("/ts_downloader/loader_folders")
+async def loader_folders(_request: web.Request) -> web.StreamResponse:
+    """Every node widget that names a model, and the folder it reads from.
+
+    Answers ``{"types": {"<node type>": {"<widget>": "<folder under models/>"}}}``.
+    """
+    try:
+        import folder_paths
+        import nodes as comfy_nodes
+    except ImportError:
+        return web.json_response({"types": {}, "available": False})
+
+    def _collect() -> dict:
+        models_dir = str(getattr(folder_paths, "models_dir", "") or "")
+        # category -> (its files, where it lives under models/)
+        catalogue: dict[str, tuple[frozenset[str], str]] = {}
+        for category in getattr(folder_paths, "folder_names_and_paths", {}) or {}:
+            key = str(category)
+            try:
+                names = folder_paths.get_filename_list(key) or []
+            except Exception as exc:
+                LOGGER.debug("%s No file list for '%s': %s", LOG_PREFIX, key, exc)
+                continue
+            if not names:
+                continue
+            folder = ""
+            try:
+                paths = folder_paths.get_folder_paths(key) or []
+            except Exception:
+                paths = []
+            # The directory holding the files is the one to download into; when
+            # a category has several, the fullest one is the one in use.
+            best = max(
+                (path for path in paths if os.path.isdir(str(path))),
+                key=lambda path: _count_models(str(path)),
+                default="",
+            )
+            if best:
+                folder = _relative_folder(str(best), models_dir)
+            catalogue[key] = (frozenset(str(name) for name in names),
+                              folder or key.strip().lower())
+
+        out: dict = {}
+        for type_name, node_class in (getattr(comfy_nodes, "NODE_CLASS_MAPPINGS", {}) or {}).items():
+            try:
+                spec = node_class.INPUT_TYPES()
+            except Exception as exc:
+                # A node whose inputs cannot be described is not one we can map;
+                # it must not take the whole answer down with it.
+                LOGGER.debug("%s INPUT_TYPES failed for '%s': %s", LOG_PREFIX, type_name, exc)
+                continue
+            if not isinstance(spec, dict):
+                continue
+            widgets: dict = {}
+            for section in ("required", "optional"):
+                entries = spec.get(section)
+                if not isinstance(entries, dict):
+                    continue
+                for widget_name, definition in entries.items():
+                    options = _model_options(definition)
+                    if not options:
+                        continue
+                    category = match_category(options, catalogue)
+                    if category:
+                        widgets[str(widget_name)] = catalogue[category][1]
+            if widgets:
+                out[str(type_name)] = widgets
+        return out
+
+    types = await asyncio.to_thread(_collect)
+    LOGGER.debug("%s loader map: %d node type(s)", LOG_PREFIX, len(types))
+    return web.json_response({"types": types, "available": True})

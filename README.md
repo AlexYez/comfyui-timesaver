@@ -10,7 +10,7 @@
 
 Resize, color-grade, key, denoise, transcribe, translate, prompt-build, manage models — without leaving the canvas.
 
-[![Version](https://img.shields.io/badge/version-12.0.0-blue.svg)](pyproject.toml)
+[![Version](https://img.shields.io/badge/version-12.0.1-blue.svg)](pyproject.toml)
 [![ComfyUI](https://img.shields.io/badge/ComfyUI-V3%20API-orange.svg)](https://github.com/comfyanonymous/ComfyUI)
 [![Python](https://img.shields.io/badge/python-3.10+-green.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-see%20LICENSE.txt-lightgrey.svg)](LICENSE.txt)
@@ -555,7 +555,13 @@ Prompt enhancement node with a built-in **voice button** — speak your idea, Wh
 
 **On-screen text is not translated.** Anything in quotes is what should appear in the picture — a sign, a title, a lyric. It is copied through unchanged, in its original language, while everything else is translated to English. An obliging translation used to turn a Russian shop sign into an English one nobody asked for.
 
-**The `Video Prompt Enhance` and `Image Prompt Enhance` presets** are written for a small model (Qwen 2B/4B): short numbered steps, an explicit output format, one example. The video preset is tuned for LTX-2.3 and MiniMax H3 — camera move first, then the motion in order, then light and mood.
+**The video presets and `Image Prompt Enhance`** are written for a small model (Qwen 2B/4B): short numbered steps, an explicit output format, one example — and whatever matters most is put at the beginning and repeated at the end, because that is the part of a long instruction a 2B model actually keeps. There is a preset per target model rather than one for all of them: `Video Prompt Enhance LTX` for LTX-2.5, `Video Prompt Enhance H3` and `… H3 Reference` for MiniMax H3.
+
+**`Video Prompt Enhance LTX` — written against LTX 2.5's own rules, and it keeps your words.** The preset follows the system prompts LTX ships with its own ComfyUI pack: the prompt opens with `Style: …`, verbs are present-progressive, events are joined in time, the sound is woven through the action rather than gathered at the end, and camera movement appears only when the idea asks for it. Restrained wording throughout — a red dress, not a vibrant crimson one — one light source, and nothing that cannot be filmed: no smells, no textures felt by hand.
+
+Anything you put in quotes — `" "`, `« »`, `' '` or `( )` — is copied character for character, in its own alphabet. Russian stays in Cyrillic, whether it is a spoken line or a sign on a door. That rule is the first line of the preset and the last, because a 2B model keeps the beginning and the end of an instruction and loses the middle: the same rule buried in the body was being ignored, and Russian lines came back translated into English. Speech carries the same wording as the H3 preset — *a native Russian speaker with fully native Russian articulation and prosody*, never "with a Russian accent", which in English asks for a foreigner.
+
+**A sign is not a line of dialogue.** Call the quoted words a sign, a label or a title and they are written into the shot as something the camera sees, with nobody speaking them — a title appears *over* the picture rather than on an invented board. Left to itself the model conjures a person to read a shop window aloud, and it rewrites the words while doing it: the rule needed its own example before it held.
 
 **`Video Prompt Enhance H3` — spoken lines, and Russian that sounds Russian.** MiniMax H3 makes the sound in the same pass as the picture, and it has a schema for speech: the speaker gets a stable ID `(S1)`, who they are and how they sound is written outside the dialogue block, and inside the block there is only the language tag and the line itself — copied word for word, never translated:
 
@@ -658,6 +664,8 @@ Multi-file downloader that takes a list of `URL <space> target_path` lines and d
 
 Models you already have are listed too, on purpose: the list travels with the workflow, so whoever you send it to still needs those lines.
 
+**Which loaders it understands is asked of your ComfyUI, not written down here.** Every loader's dropdown is filled from a `models/` folder, so the options themselves say which folder they came from — the node reads that from the running server and maps each widget of each installed node to its folder. That is why a model in `Load Latent Upscale Model`, or in a node from a pack installed yesterday, is found the same as a checkpoint. A written-down table could not do it: on the maintainer's machine 49 installed node types own a model widget such a table never heard of, two of them from ComfyUI itself. One node with two model widgets from different folders keeps them apart — a text encoder and a checkpoint on the same loader go to their own places.
+
 The folder it proposes is the one your models of that category are **already in**. ComfyUI reads two directories per category — `clip` and `text_encoders`, `unet` and `diffusion_models` — and both are real; if your encoders live in `clip`, that is where the download is aimed, not at the empty folder next to it. A line you wrote in the list yourself is never rewritten.
 
 **Cancelling the run stops everything.** ComfyUI's cancel button ends the file in flight *and* every file still queued after it. A partial file is kept as `.part`, so the next run resumes from where it stopped instead of starting over. Progress is one bar for the whole list, from the first model to the last.
@@ -704,9 +712,13 @@ Bypassed groups survive a save without any help from this node: the state lives 
 #### TS LoRA Loader
 <img src="doc/screenshots/ts_lora_loader.png" alt="TS LoRA Loader" width="450" />
 
-A stack of model-only LoRAs in one node. The plus button opens a search box over the LoRAs this install actually has; a chosen one drops in as a row with its own strength field, and the plus stays where it is for the next one. Rows are reordered by dragging the grip — order matters, because LoRAs are applied one after another. Clicking a row's name sets it aside without deleting it, so an A/B comparison does not cost you the entry.
+A stack of model-only LoRAs in one node. The plus button opens a search box over the LoRAs this install actually has; a chosen one drops in as a row with its own strength field, and the plus stays where it is for the next one. Rows are reordered by dragging the grip — order matters, because LoRAs are applied one after another.
+
+**Each row has a switch.** Turn a LoRA off and it stays in the list with its strength and its place; the run simply goes without it, and one click brings it back. That is what an A/B comparison should cost — nothing. Clicking the row's name does the same thing, for whoever finds that quicker.
 
 **Strength may be negative** (down to −10): that is how you damp a LoRA baked into the checkpoint, or run one in reverse. Dragging left and right over the strength field scrubs the value.
+
+**A LoRA you just dropped into `models/loras` appears on `R`** — the same key that refreshes the native loaders. The search here is drawn by hand rather than by a stock dropdown, and until now that meant the refresh went past it: a new file stayed invisible until the page was reloaded.
 
 The node does not load anything itself — it expands into a chain of **native `LoraLoaderModelOnly` nodes**. Two consequences, and they are the whole point: the result is identical to a hand-built chain, and ComfyUI caches each link separately, so changing the last LoRA's strength does not recompute the ones before it. A LoRA missing on this machine costs its own row and not the run, which matters for workflows that arrive from someone else.
 

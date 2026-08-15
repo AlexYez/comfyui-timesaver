@@ -370,6 +370,58 @@ export function hideWidget(node, name) {
 }
 
 /**
+ * Удержать за нодой размер, который ей задали.
+ *
+ * ⚠️ Возвращённый графом размер живёт недолго. Замерено на живом ComfyUI:
+ * workflow хранит 520×640, после загрузки у ноды 520×480 (ровно её нижняя
+ * граница) — раскладка пересчитывает высоту по виджетам ПОСЛЕ `configure` и
+ * затирает восстановленную. У другой ноды та же механика дала не сжатие, а
+ * рост: 650 превращалось в 670. Человек каждый раз открывал свой workflow с
+ * чужим размером.
+ *
+ * Повторная установка после того, как раскладка улеглась, держится — это и
+ * делается здесь. Попыток НЕСКОЛЬКО и они конечны: пересчёт случается не в один
+ * момент, а бесконечная борьба с рендерером кончилась бы миганием.
+ *
+ * @param {object} node нода LiteGraph
+ * @param {number[]} size размер, который нужно удержать
+ */
+function holdSize(node, size) {
+    const width = Number(size?.[0]);
+    const height = Number(size?.[1]);
+    if (!Number.isFinite(width) || !Number.isFinite(height)) return;
+    if (width <= 0 || height <= 0) return;
+
+    const apply = () => {
+        if (!node.graph) return;                       // ноду успели удалить
+        const [currentWidth, currentHeight] = node.size || [];
+        if (currentWidth === width && currentHeight === height) return;
+        // ⚠️ Ниже собственной границы не опускаемся: раскладка всё равно вернёт
+        // своё, а нода останется с обрезанным содержимым.
+        const min = node.min_size || [0, 0];
+        const target = [Math.max(width, min[0] || 0), Math.max(height, min[1] || 0)];
+        if (typeof node.setSize === "function") node.setSize(target);
+        else node.size = target;
+    };
+
+    apply();
+    requestAnimationFrame(apply);
+    setTimeout(apply, 120);
+    setTimeout(apply, 400);
+}
+
+/** Размер из сохранённой ноды: массив или объект `{0:…,1:…}` — бывает и то, и то. */
+function savedSize(info) {
+    const size = info?.size;
+    if (!size) return null;
+    const width = Array.isArray(size) ? size[0] : size["0"];
+    const height = Array.isArray(size) ? size[1] : size["1"];
+    return Number.isFinite(Number(width)) && Number.isFinite(Number(height))
+        ? [Number(width), Number(height)]
+        : null;
+}
+
+/**
  * Mount a resizable DOM widget with correct sizing in both renderers.
  *
  * @param {object} node LiteGraph node.
@@ -455,6 +507,27 @@ export function addResizableDomWidget(node, element, options = {}) {
         return result;
     };
     node.onResize = onResizeWrapped;
+
+    // Размер, выставленный руками, — это решение человека, и оно обязано
+    // пережить и открытие workflow, и прогон очереди. Держим его в обоих
+    // случаях (почему одной установки мало — в комментарии к holdSize).
+    const previousConfigure = node.onConfigure;
+    node.onConfigure = function tsHoldSizeOnConfigure(info) {
+        const result = previousConfigure?.apply(this, arguments);
+        const size = savedSize(info);
+        if (size) holdSize(node, size);
+        return result;
+    };
+
+    const previousExecuted = node.onExecuted;
+    node.onExecuted = function tsHoldSizeOnExecuted() {
+        const size = node.size ? [node.size[0], node.size[1]] : null;
+        const result = previousExecuted?.apply(this, arguments);
+        // Результат прогона приносит в ноду новое содержимое (видео, превью), и
+        // раскладка пересчитывается заново — размер при этом не его дело.
+        if (size) holdSize(node, size);
+        return result;
+    };
 
     // Nodes 2.0 grants the widget its height from the element's own min-content,
     // so the mounted element MUST have in-flow content (a flex column, a grid).

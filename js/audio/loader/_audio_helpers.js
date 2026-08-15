@@ -8,6 +8,7 @@ import { api } from "/scripts/api.js";
 
 import { TS_UI_CLASS, ensureThemeStyles, getThemeColors, pickLocaleStrings } from "../../_theme.js";
 import { hideWidget as sharedHideWidget } from "../../_dom_widget.js";
+import { drawPeakBars } from "../../_media/_wave.js";
 
 export const LOADER_NODE_NAME = "TS_AudioLoader";
 export const PREVIEW_NODE_NAME = "TS_AudioPreview";
@@ -796,31 +797,14 @@ export function setupAudioLoader(node) {
         if (dimStartX > 0) ctx.fillRect(0, 0, dimStartX, drawHeight);
         if (dimEndX < drawWidth) ctx.fillRect(dimEndX, 0, drawWidth - dimEndX, drawHeight);
 
-        const peakCount = state.peaks.length;
-        const peakSpanSeconds = peakCount > 0 ? state.duration / peakCount : 0;
-        if (peakSpanSeconds > 0) {
-            const firstPeakIdx = clamp(Math.floor(viewStart / peakSpanSeconds), 0, peakCount - 1);
-            const lastPeakIdx = clamp(Math.ceil(viewEnd / peakSpanSeconds), firstPeakIdx, peakCount - 1);
-            const barInsetPx = peakCount > drawWidth ? 0 : 1;
-            for (let index = firstPeakIdx; index <= lastPeakIdx; index += 1) {
-                const peak = clamp(Number(state.peaks[index]) || 0, 0, 1);
-                const peakStartSec = index * peakSpanSeconds;
-                const peakEndSec = peakStartSec + peakSpanSeconds;
-                const x0 = secondsToX(peakStartSec, drawWidth);
-                const x1 = secondsToX(peakEndSec, drawWidth);
-                const barWidth = Math.max(1, (x1 - x0) - barInsetPx);
-                const barHeight = Math.max(2, peak * (drawHeight * 0.46));
-                const insideSelection = peakEndSec >= bounds.left && peakStartSec <= bounds.right;
-                // getThemeColors resolves opaque colours, but unselected peaks
-                // were previously drawn at ~0.38 alpha. Painting them solid
-                // would flatten the contrast that tells the user which part of
-                // the clip is selected, so the fade is reapplied here.
-                ctx.globalAlpha = insideSelection ? 1 : 0.42;
-                ctx.fillStyle = insideSelection ? colors.accent : colors.muted;
-                ctx.fillRect(x0, midY - barHeight, barWidth, barHeight * 2);
-            }
-            ctx.globalAlpha = 1;
-        }
+        // The bars themselves live in js/_media/_wave.js — the Prompt Designer
+        // draws the same waveform, and two hand-written copies of it drifted
+        // apart into two different-looking programs.
+        drawPeakBars(ctx, {
+            peaks: state.peaks, duration: state.duration,
+            x: 0, y: 0, width: drawWidth, height: drawHeight,
+            viewStart, viewEnd, selection: bounds, colors, baseline: false,
+        });
 
         const selectionWidth = Math.max(0, dimEndX - dimStartX);
         if (selectionWidth > 0) {

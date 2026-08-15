@@ -9,6 +9,58 @@ broken here, in writing, with a way back.
 
 ---
 
+## 12.0.1 — 15 Aug 2026
+
+### The size you gave a node is now the size it keeps
+
+Every TS node that draws its own interface — Video Saver, Video Loader, LoRA
+Loader, Super Prompt, Image Studio, Resolution Selector, Prompt Builder — used
+to open at a different size than you left it. The workflow file had the right
+numbers all along (measured: 520×640 saved, 520×480 restored); the layout
+recomputes a node's height from its widgets *after* the graph is applied and
+overwrote them. It could go either way — one node shrank to its minimum, another
+grew by twenty pixels every time it was opened.
+
+The height is now re-asserted once the layout has settled, on loading a workflow
+and after a run finishes. TS Group Bypasser is deliberately excluded: its height
+follows the number of groups in the graph, which is its own rule.
+
+### TS Files Downloader — it now knows every loader your ComfyUI has
+
+"Get models from workflow" missed models in `Load Latent Upscale Model`, and it
+was not alone: the scanner matched loaders against a table written by hand, and
+on the maintainer's machine **49 installed node types own a model widget that
+table never heard of** — two of them from ComfyUI itself, reading a whole
+category (`latent_upscale_models`) that was missing from it. A model in such a
+node was reported as "no models found in this workflow".
+
+The map is now derived from the running server. Every loader's dropdown is
+filled from a `models/` folder, so the options themselves say where they came
+from, and the answer is per WIDGET: a loader carrying both a text encoder and a
+checkpoint sends each to its own folder. The download target is the directory
+the files are actually read from, not the registry key — `models/clip` rather
+than a folder named after `clip_gguf`. The old table stays as the fallback for a
+category that has no files on this machine yet. Pressing `R` forgets the answer,
+because that is the gesture of someone who just installed something.
+
+### TS LoRA Loader — every row has a switch now
+
+Turning a LoRA off without deleting it was already possible: you clicked the
+row's name. Nothing said so — the row just faded — so the obvious move was to
+delete the entry and add it back afterwards, losing its strength and its place
+in the order. There is a visible switch on each row now, in the same shape the
+group toggles use. The name still works, for whoever had learned it.
+
+### TS LoRA Loader — `R` finally reaches it
+
+A LoRA dropped into `models/loras` did not show up in the node's search until
+the page was reloaded. ComfyUI refreshes stock dropdowns by walking a node's
+widgets; this node draws its own picker, so the refresh went straight past it.
+It now listens on the same hook ComfyUI offers for exactly this, and reads the
+fresh list out of the refresh itself instead of asking the server again.
+
+---
+
 ## 12.0.0 — 12 Aug 2026
 
 ### TS Super Prompt — the LTX preset now targets LTX 2.5
@@ -25,6 +77,26 @@ Also: camera moves must say where the subject ends up once the move is over
 action instead of a fixed sentence count. Shot lists and scene headers stay
 forbidden — LTX renders `INT. KITCHEN - DAY` as on-screen text rather than
 reading it as a cut.
+
+**A sign is no longer read aloud.** Quoted words that the idea calls a sign, a
+label or a title are written into the shot as something the camera sees, and
+nobody says them — the preset used to invent a person to speak a shop window,
+and sometimes replaced the words while doing it. A title now appears *over* the
+picture rather than hanging in the world on an invented board.
+
+**Quoted text is no longer translated.** Anything you put in `" "`, `« »`, `' '`
+or `( )` — a spoken line, a sign, a title — is copied character for character in
+its own alphabet, and Russian stays in Cyrillic. It used to come back in English
+on the 2B model: the rule sat in the middle of a long instruction, which is
+exactly the part a small model drops. It is now the first line of the preset and
+the last, worded as a mechanical instruction rather than an explanation, and it
+covers text in the frame as well as speech. Sampling was tightened to match
+(`temperature` 0.5 → 0.35): copying is not a task that benefits from invention.
+
+The preset also follows the format LTX ships in its own ComfyUI pack — the
+prompt opens with `Style: …`, verbs are present-progressive, the sound is woven
+through the action instead of collected at the end, and camera movement appears
+only when you asked for it.
 
 The preset name is unchanged, so saved workflows keep working.
 

@@ -2,7 +2,7 @@
 name = "comfyui-timesaver"
 description = "ComfyUI nodes from [Timesaver](https://github.com/AlexYez/comfyui-timesaver)."
 # ⚠️ Три составляющих: Comfy Registry принимает только SemVer.
-version = "12.0.0"
+version = "12.0.1"
 license = { file = "LICENSE.txt" }
 # Matches CI (.github/workflows/ci.yml) and the Python range ComfyUI itself
 # supports; >=3.12 wrongly blocked pip installs on 3.10/3.11.

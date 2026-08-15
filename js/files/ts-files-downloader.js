@@ -47,10 +47,19 @@ const STYLE_ID = "ts-files-downloader-styles";
 // Extensions that identify a model file rather than an image or a config.
 const MODEL_EXT = /\.(safetensors|ckpt|pt|pth|bin|gguf|onnx|sft|safetensor)$/i;
 
-// Loader node type -> the models/ subfolder its file belongs in. Used when an
-// entry carries a URL but no directory, and to name the folder for models that
-// were found by filename alone. Derived from ComfyUI's own folder registry
-// names, which is exactly what the node's target resolver accepts.
+// Loader node type -> the models/ subfolder its file belongs in.
+//
+// ⚠️ This table is the FALLBACK, not the answer. The answer comes from the
+// running server (`/ts_downloader/loader_folders`), which reads every installed
+// node's dropdown and says which folder it was filled from. A written-down table
+// cannot keep up: on the maintainer's machine 49 installed node types own a
+// model widget this table never heard of, two of them from ComfyUI itself
+// (`LatentUpscaleModelLoader` and its low-VRAM twin, reading a whole category —
+// `latent_upscale_models` — that was missing here). Every custom pack adds more.
+//
+// It stays because the server can only recognise a folder that HAS files: a
+// category empty on this machine has an empty dropdown, and an empty list
+// matches everything. For those, these names are still right.
 const TYPE_TO_FOLDER = {
     CheckpointLoader: "checkpoints",
     CheckpointLoaderSimple: "checkpoints",
@@ -72,6 +81,9 @@ const TYPE_TO_FOLDER = {
     StyleModelLoader: "style_models",
     GLIGENLoader: "gligen",
     UpscaleModelLoader: "upscale_models",
+    LatentUpscaleModelLoader: "latent_upscale_models",
+    LowVRAMLatentUpscaleModelLoader: "latent_upscale_models",
+    AudioEncoderLoader: "audio_encoders",
     PhotoMakerLoader: "photomaker",
     HypernetworkLoader: "hypernetworks",
 };
@@ -481,6 +493,52 @@ function liveWidgetValues(node) {
     return out;
 }
 
+// What the server said about the installed loaders: {node type: {widget: folder}}.
+// Asked for once per session — it describes which nodes are installed, and that
+// does not change between two presses of a button.
+let loaderFolders = null;
+
+async function loadLoaderFolders() {
+    if (loaderFolders) return loaderFolders;
+    try {
+        const response = await api.fetchApi("/ts_downloader/loader_folders");
+        const payload = response.ok ? await response.json() : null;
+        loaderFolders = payload?.types || {};
+    } catch (err) {
+        console.warn("[TS FilesDownloader] loader folders unavailable", err);
+        loaderFolders = {};
+    }
+    return loaderFolders;
+}
+
+/**
+ * The folder a given widget of a given node type reads from.
+ *
+ * The server's answer is per WIDGET, which the table could never be: one node
+ * can hold two of them from different folders (`LTXAVTextEncoderLoader` takes a
+ * text encoder and a checkpoint), and marking both with one folder sent half the
+ * download to the wrong place.
+ *
+ * @param {object|null} map the `/ts_downloader/loader_folders` answer
+ * @param {string} type node type
+ * @param {string} [widget] widget name; omitted for older graphs, which store
+ *   widget values positionally and cannot say which widget a value came from.
+ */
+function folderFor(map, type, widget) {
+    const widgets = map?.[type];
+    if (widgets) {
+        if (widget && widgets[widget]) return widgets[widget];
+        if (!widget) {
+            // No name to go on: usable only while the node has ONE answer.
+            // Guessing between two folders would file a model under the wrong
+            // one, and a wrong folder is worse than none — none is reported.
+            const distinct = new Set(Object.values(widgets));
+            if (distinct.size === 1) return [...distinct][0];
+        }
+    }
+    return TYPE_TO_FOLDER[type];
+}
+
 /**
  * Every model filename the workflow ACTUALLY uses, with the folder it belongs
  * in when that can be resolved.
@@ -491,8 +549,12 @@ function liveWidgetValues(node) {
  *     subgraph's links to the loader that consumes it (that is where the folder
  *     comes from);
  *   - any other node's widget that names a model file, so custom loaders count.
+ *
+ * @param {object} serialised the serialised graph
+ * @param {object} [loaderMap] `/ts_downloader/loader_folders`; without it only
+ *   the static table answers, which is what the offline tests exercise.
  */
-export function visibleModelValues(serialised) {
+export function visibleModelValues(serialised, loaderMap = null) {
     const definitions = new Map(
         (serialised.definitions?.subgraphs || []).map((def) => [String(def.id), def]),
     );
@@ -513,7 +575,10 @@ export function visibleModelValues(serialised) {
                 for (const link of definition.links || []) {
                     // -10 is the subgraph's input node: slot -> the node it feeds.
                     if (String(link.origin_id) !== "-10") continue;
-                    targetBySlot.set(Number(link.origin_slot), Number(link.target_id));
+                    targetBySlot.set(Number(link.origin_slot), {
+                        id: Number(link.target_id),
+                        slot: Number(link.target_slot),
+                    });
                 }
                 const entries = positional
                     ? inputs.map((input, index) => [String(input.name), values[`#${index}`]])
@@ -521,14 +586,25 @@ export function visibleModelValues(serialised) {
                 for (const [name, value] of entries) {
                     if (typeof value !== "string" || !MODEL_EXT.test(value)) continue;
                     const slot = inputs.findIndex((input) => String(input.name) === name);
-                    const consumer = slot >= 0 ? nodeById.get(targetBySlot.get(slot)) : null;
-                    found.push({ value, folder: consumer ? TYPE_TO_FOLDER[consumer.type] : undefined });
+                    const wire = slot >= 0 ? targetBySlot.get(slot) : null;
+                    const consumer = wire ? nodeById.get(wire.id) : null;
+                    // Which input of the consumer this promoted widget feeds —
+                    // that is the widget whose folder the file belongs to.
+                    const consumed = consumer?.inputs?.[wire?.slot]?.widget?.name;
+                    found.push({
+                        value,
+                        folder: consumer
+                            ? folderFor(loaderMap, consumer.type, consumed)
+                            : undefined,
+                    });
                 }
                 continue;
             }
-            const folder = TYPE_TO_FOLDER[node.type];
-            for (const value of Object.values(liveWidgetValues(node))) {
-                if (MODEL_EXT.test(value)) found.push({ value, folder });
+            for (const [name, value] of Object.entries(liveWidgetValues(node))) {
+                if (!MODEL_EXT.test(value)) continue;
+                // `#0`-style keys are positions in an old graph, not names.
+                const widget = name.startsWith("#") ? undefined : name;
+                found.push({ value, folder: folderFor(loaderMap, node.type, widget) });
             }
         }
         for (const sub of container.definitions?.subgraphs || []) walk(sub);
@@ -542,7 +618,7 @@ export function visibleModelValues(serialised) {
  * Walk the current workflow and merge the three sources into one map keyed by
  * filename. Returns entries shaped {name, url, directory, sources:Set}.
  */
-export function scanWorkflow(graph) {
+export function scanWorkflow(graph, loaderMap = null) {
     let serialised;
     try {
         serialised = graph.serialize();
@@ -607,7 +683,7 @@ export function scanWorkflow(graph) {
     //    really looks: it carries the subfolder the user organised the model
     //    into, and the template metadata above knows nothing about it.
     //    Downloading to the metadata's bare folder leaves the file invisible.
-    const visible = visibleModelValues(serialised);
+    const visible = visibleModelValues(serialised, loaderMap);
     for (const { value, folder } of visible) {
         if (!folder) continue;
         const { base, sub } = splitRelativePath(value);
@@ -1091,10 +1167,17 @@ function attachButton(node) {
             console.warn(`[TS FilesDownloader] ${FILE_LIST_WIDGET} widget not found`);
             return;
         }
-        const entries = scanWorkflow(app.graph);
-        // The machine's layout is asked for before the report is built: it
-        // decides which spelling of the folder the download is offered in.
-        const machine = machineSpellings(await loadMachineFolders());
+        // Both questions are asked of the server before the graph is read: which
+        // installed node reads which folder, and how this machine spells its
+        // folders. The two answers are independent, so they are asked together.
+        const [loaderMap, folders] = await Promise.all([
+            loadLoaderFolders(),
+            loadMachineFolders(),
+        ]);
+        const entries = scanWorkflow(app.graph, loaderMap);
+        // The machine's layout decides which spelling of the folder the download
+        // is offered in.
+        const machine = machineSpellings(folders);
         const buckets = classify(entries, widget.value, machine);
         if (!buckets.add.length && !buckets.present.length && !buckets.noLink.length) {
             toast("info", t.empty);
@@ -1127,5 +1210,13 @@ app.registerExtension({
             }
             return result;
         };
+    },
+
+    // Both answers describe what is installed, and "R" is exactly the gesture of
+    // someone who just installed something. Kept for the session otherwise: they
+    // do not change between two presses of the button.
+    refreshComboInNodes() {
+        loaderFolders = null;
+        machineFolders = null;
     },
 });
