@@ -4,13 +4,13 @@
 
 # 🚀 Timesaver Nodes for ComfyUI
 
-**A friendly toolkit of 64 production-ready nodes that take the boring busywork out of your ComfyUI graphs.**
+**A friendly toolkit of 73 production-ready nodes that take the boring busywork out of your ComfyUI graphs.**
 
-> 13 of them belong to TS Image Studio — its own node plus the markers and backends it drives — and are not written up separately below; the reference covers the other 51.
+> 11 of them belong to TS Image Studio — its own node plus the markers and backends it drives — and are not written up separately below; the reference covers the other 60.
 
 Resize, color-grade, key, denoise, transcribe, translate, prompt-build, manage models — without leaving the canvas.
 
-[![Version](https://img.shields.io/badge/version-12.0.1-blue.svg)](pyproject.toml)
+[![Version](https://img.shields.io/badge/version-12.1.0-blue.svg)](pyproject.toml)
 [![ComfyUI](https://img.shields.io/badge/ComfyUI-V3%20API-orange.svg)](https://github.com/comfyanonymous/ComfyUI)
 [![Python](https://img.shields.io/badge/python-3.10+-green.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-see%20LICENSE.txt-lightgrey.svg)](LICENSE.txt)
@@ -29,6 +29,7 @@ Whether you build pipelines for image generation, video, audio, or just want to 
 |---|---|---|---|
 | 🖼️ | **[Image](#image)** | 29 | Resize, color, masks, keyer, tiling, 360°, Lama cleanup, Smart Inpaint, BiRefNet bg removal, ViTMatte, SAM3 picker |
 | 🎬 | **[Video](#video)** | 9 | Frame interpolation, RTX/spandrel upscale, depth, animation preview |
+| 🌈 | **[HDR / EXR](#hdr)** | 7 | Native LTX 2.5 HDR: EXR in, ACEScct working space, float32 decode, scene-linear master |
 | 🎵 | **[Audio](#audio)** | 6 | Whisper transcription, Silero TTS, Demucs stem split, audio cropping |
 | 🤖 | **[LLM](#llm)** | 2 | Qwen 3 VL multimodal chat, Super Prompt with voice input |
 | 📝 | **[Text & Prompts](#text)** | 4 | Prompt builder, batch loader, style picker, Russian stress marks |
@@ -37,7 +38,7 @@ Whether you build pipelines for image generation, video, audio, or just want to 
 | 🛠️ | **[Utils](#utils)** | 5 | Workflow group bypass panel, custom sliders, math, smart type-aware switch |
 | 🎨 | **[Conditioning](#conditioning)** | 1 | Multi-reference image conditioning |
 
-> All 64 nodes use the **ComfyUI V3 API** (`comfy_api.v0_0_2.IO` — a pinned namespace, not a stable one: the adapter itself declares `STABLE = False`. Pinning keeps the pack off the moving `latest` alias; it does not promise the API will not change).
+> All 73 nodes use the **ComfyUI V3 API** (`comfy_api.v0_0_2.IO` — a pinned namespace, not a stable one: the adapter itself declares `STABLE = False`. Pinning keeps the pack off the moving `latest` alias; it does not promise the API will not change).
 >
 > **Plus extra samplers & schedulers** added straight into the native KSampler / KSamplerAdvanced / BasicScheduler dropdowns (no node to wire — they just appear after install): sampler **`res_2s`** (2nd-order exponential RK / "RES"), schedulers **`bong_tangent`** (two-stage arctangent sigma curve) and **`beta57`** (`beta` α=0.5/β=0.7). Algorithms reimplemented clean-room from [RES4LYF](https://github.com/ClownsharkBatwing/RES4LYF)'s public math (no code copied).
 
@@ -51,6 +52,7 @@ Whether you build pipelines for image generation, video, audio, or just want to 
 - [Node Reference](#-node-reference)
   - [🖼️ Image](#image)
   - [🎬 Video](#video)
+  - [🌈 HDR / EXR](#hdr)
   - [🎵 Audio](#audio)
   - [🤖 LLM](#llm)
   - [📝 Text & Prompts](#text)
@@ -96,7 +98,7 @@ A few nodes need extra packages — they fail gracefully and tell you what's mis
 |---|---|---|
 | TS Cube ↔ Equirectangular | `py360convert` | (bundled in core) |
 | TS Qwen 3 VL int4/int8 | `bitsandbytes` (no Apple Silicon wheel) | `pip install -e .[llm-quant]` |
-| TS Music Stems | `demucs`, `geomloss`, `pykeops` | `pip install -e .[audio-stems]` |
+| TS Music Stems | none for the RoFormer engines; `demucs` only for the legacy `htdemucs*` options | `pip install -e .[audio-stems]` |
 | TS Silero TTS / Stress | `silero`, `silero-stress` | `pip install -e .[audio-silero]` |
 | TS RTX Upscaler | `nvvfx` (NVIDIA RTX only) | install manually |
 | TS Video Upscale With Model | `spandrel` | install manually |
@@ -393,7 +395,7 @@ Reads a video into frames, audio and a compact `video_info` bundle — and lets 
 
 **The sound track is drawn under the filmstrip** whenever the file has audio — a beat or a spoken word is far easier to hit by the wave than by the picture — and the player follows the handle you drag, so the exact frame that will become the first or the last one is on screen while you are still choosing it.
 
-`frame_rate` resamples by real timestamps, so a variable-frame-rate source comes out evenly spaced. Size is set as `longer_side`/`shorter_side` rather than width and height, so one graph fits landscape and portrait footage alike; either may be `0` to derive it from the other. `divisible_by` rounds down to what video models want, the scaling filter defaults to `area` (footage is almost always scaled down, and averaging beats interpolation there), and `max_frames` is the memory guard — an oversized request explains itself instead of running the machine out of RAM.
+`frame_rate` resamples by real timestamps, so a variable-frame-rate source comes out evenly spaced. Size is set as `longer_side`/`shorter_side` rather than width and height, so one graph fits landscape and portrait footage alike; either may be `0` to derive it from the other. `divisible_by` rounds down to what video models want, the scaling filter defaults to `area` (footage is almost always scaled down, and averaging beats interpolation there), and `max_frames` is the memory guard. The ceiling for the frames comes from the machine (60% of its RAM, never below 8 GB; `TS_VIDEO_MAX_BYTES` overrides it), so a 13-second 4K clip loads on a 64 GB box instead of being turned down. When the frames genuinely will not fit, `when_too_large` = `use disk` puts them in a memory-mapped file in the ComfyUI temp folder: what comes out is an ordinary IMAGE and the allocation cannot fail, at the price of disk traffic (measured: 31.9 GB in 92 s against 51 s in RAM).
 
 Footage arrives by **drag and drop** — from the file manager, from the Artius browser, or from another node's preview — by the button, by paste, or as a path to a file anywhere on the ComfyUI machine.
 
@@ -420,7 +422,9 @@ Writes frames to a video file and plays the result in the node. Format and quali
 
 The player remembers whether you turned sound on. ProRes is not playable in a browser, so the node writes a small H.264 proxy next to it just for the preview (`preview: off` skips that). Hardware encoding is available but never chosen for you: it is much faster and noticeably worse at the same file size.
 
-**Use when:** you want the finished clip on disk, in a format an editor will actually accept.
+**An EXR sequence** is the fourth format: one scene-linear float32 (or 16-bit half) file per frame, in its own folder, written from the `hdr_image` socket without touching the range. That socket exists because the ordinary `images` input is clamped to 0..1 long before the saver sees it. There is no compression option — this encoder does not offer one. The sequence carries no audio; a small H.264 proxy is written in the same pass so the node still has something to play.
+
+**Use when:** you want the finished clip on disk, in a format an editor will actually accept — or the HDR master as frames a compositor will accept.
 
 ---
 
@@ -454,10 +458,63 @@ Hardware-accelerated upscale via NVIDIA RTX Video Super Resolution (`nvvfx`). Fo
 #### TS Video Depth
 <img src="doc/screenshots/ts_video_depth.png" alt="TS Video Depth" width="450" />
 
-Depth-Anything-based per-frame depth estimation, optimised for video (temporal consistency). v9.4 brought a full GPU-pipeline overhaul: SDPA attention, TPDF dithering on output, sub-chunk processing for long clips, and a numerically-equivalent DPT tail — same outputs, dramatically faster on RTX cards.
+Depth map for a sequence, using **Video Depth Anything** over a sliding window
+of frames so the result does not swim from one frame to the next.
 
-**Use when:** building depth-aware ControlNet pipelines, parallax effects, or 3D reprojection.
+Anything that fits inside one window is now run as a single window of exactly
+its own length, instead of being padded out with copies of the last frame —
+an input the model has never seen in training.
 
+`flicker_suppression` blends in a temporal **median** of the depth, which drops
+single-frame pops without smearing real movement the way an average would.
+`flicker_radius` sets how many frames it looks at. `window_length` and
+`window_overlap` expose the sliding window itself — leave them alone unless you
+are trading VRAM for consistency.
+
+Weights are fp16 safetensors, downloaded on first use: half the download, and
+they load in hundredths of a second rather than a full one. Measured against
+pure fp32 the depth differs by 0.02% of its range, which is nothing. The older
+`.pth` files stay selectable so existing workflows keep working.
+
+**Use when:** driving a depth ControlNet on a clip, building a parallax or 2.5D
+move, masking by distance over time.
+
+For a still, reach for **TS Image Depth** below — same family of models, but
+the one that was actually trained on single pictures.
+
+---
+
+#### TS Image Depth
+<img src="doc/screenshots/ts_image_depth.png" alt="TS Image Depth" width="450" />
+
+Depth map for a still, or for a batch of pictures that have nothing to do with
+each other. Runs **Depth Anything V2 Large** on every picture on its own.
+
+Why it is a separate node rather than a switch on the video one: the video model
+has no way to look at a single picture except as 32 duplicated frames, and that
+flattens the depth range — measured on a portrait, the face and hair blow out to
+flat white and the structure is gone. It also forces the short side to 518 px, so
+a 1600 px photo went into the model at 784x518 and came back visibly soft.
+
+The pipeline is the reference one, on purpose and with nothing added: trim the
+sides to a multiple of 14, run the model, normalize **each picture on its own**
+min/max, resize back bilinearly. No denoise, no dither, no guided upscale — those
+were built for video, and on a still the guided filter put a halo on contours.
+Measured against the reference implementation, the map differs by **0.36%**,
+which is under one 8-bit level, at identical detail.
+
+`max_res` is the only control that matters: the longest side the picture is
+processed at, snapped down to a multiple of 14. `-1` — the default — is native
+resolution, so nothing is resampled at all. Lower it to trade sharpness for
+speed and VRAM; on out-of-memory the node retries at half the size, logging each
+step.
+
+Weights are fp16 safetensors, downloaded on first use. Only safetensors are
+offered in the list, but a workflow that still names an old `.pth` keeps
+working — the file is simply no longer suggested.
+
+**Use when:** a depth ControlNet on a single image, a 2.5D still, relighting or
+masking by distance, or feeding a 3D reconstruction.
 ---
 
 #### TS LTX First/Last Frame
@@ -466,6 +523,176 @@ Depth-Anything-based per-frame depth estimation, optimised for video (temporal c
 Apply LTX-Video keyframe conditioning for the first and (optionally) last frame in one node — equivalent to chaining two `LTXVAddGuide` nodes, with cleaner UX.
 
 **Use when:** you have specific start/end frames and want LTX to interpolate between them.
+
+---
+
+<a id="hdr"></a>
+### 🌈 HDR / EXR (7 nodes)
+
+The native HDR path of LTX 2.5, as a set of nodes. It is **off by default and costs
+nothing while it is off**: with the switch down, no EXR is read, no float32 VAE is
+loaded, and the graph behaves exactly as it did before these nodes existed.
+
+**What this is not:** it does not invent HDR out of an SDR clip. It preserves the HDR
+that came in — from EXR guide frames, through the model, out to an EXR master.
+
+A wired example with notes on the canvas: [`example_workflows/08_ltx25_native_hdr.json`](example_workflows/08_ltx25_native_hdr.json). It is the HDR half only — drop your own two-stage LTX graph around it, as the notes explain.
+
+Why the ordinary nodes cannot do it: `Load Image` flattens anything above 1.0 to 1.0
+without saying so, and `LTXVPreprocess` pushes the frame through an H.264 round-trip
+and 8-bit bytes (`(image * 255.0).byte()` in the core source). Both are fine for SDR
+and fatal for HDR, so the HDR branch bypasses them entirely.
+
+---
+
+#### TS LTX HDR Settings
+
+One switch for the whole path. Everything else reads this node, so a single checkbox
+changes the mode of the entire graph instead of five settings that must agree.
+
+`input_color_space` says what the EXR files already are — `ACESCG`, `SRGB_LINEAR` or
+`ACESCCT`, the same three the official `--hdr` flag takes. The preview controls live
+here too, next to the switch, which is the point: exposure and tonemap belong to what
+you look at, never to what gets written.
+
+`hdr_mode` picks which of the two HDR technologies this graph uses, and they are
+genuinely different, not two shades of one:
+
+- **preserve HDR from EXR (ACEScct)** — the native LTX 2.5 path. The range came in
+  from an EXR and the job is not to lose it. Working curve ACEScct, code 1.0 = linear
+  **222.86**, and the output converts AP1 → Rec.709.
+- **expand HDR from SDR (LogC3 IC-LoRA)** — the HDR IC-LoRA. There was no range on
+  the way in; the model grows it out of ordinary SDR. Working curve LogC3, code 1.0 =
+  linear **55.08**, and ⚠️ **the primaries are left alone** — the model already emits
+  the right ones, so applying the ACES matrix here would shift the colour. Our inverse
+  curve matches the official `LTXVHDRDecodePostprocess` to within 1e-6, measured over
+  501 points.
+
+In expand mode the guide is an ordinary SDR image and no EXR is read at all: you wire
+the IC-LoRA into the model yourself, the same way the official 2.3 workflow does. The
+LoRA is validated on LTX 2.3; support for 2.5 is officially in development.
+
+**Use when:** always, if you use any of the other nodes here.
+
+---
+
+#### TS LTX Load HDR EXR
+
+Reads an EXR as linear float32 — no normalisation, no upper clamp. Reports the range
+and, in particular, **what share of the frame is above 1.0**. If that is zero, the
+highlights were already lost upstream and the rest of the path has nothing to preserve.
+
+Three backends: **OpenImageIO** (what the official pipeline uses, rarely installed),
+**PyAV** (ships with ComfyUI, needs no setup — the default in practice) and **OpenCV**
+(only reads EXR when `OPENCV_IO_ENABLE_OPENEXR=1` was set *before* ComfyUI started;
+setting it later does nothing, because the reader registers at import).
+
+Half-float files — what almost everyone actually renders — work too. That needed the
+frame's raw planes to be read by hand: PyAV cannot convert `gbrpf16le` to an array at
+all, and any format conversion goes through swscale, which clamps float data to
+`[0, 1]`. Measured: a 4-channel EXR holding 4.0, read the convenient way, comes back
+as 1.0.
+
+**Use when:** the guide frames for your shot are renders, not screenshots.
+
+---
+
+#### TS LTX HDR Guide
+
+One node per guide frame — first, last — that both picks the branch and prepares it.
+Off, the SDR image passes through untouched; on, two guides are built from the EXR.
+
+**The half-resolution guide is built from the original, not by shrinking the full one.**
+The official two-stage pipeline rebuilds image conditioning for each resolution, and
+that is not the same thing: averaging belongs in linear light, not in log codes.
+
+The lazy inputs are the reason the switch is free. With HDR off, ComfyUI never walks
+into the EXR branch; with it on, the `LTXVPreprocess` chain is never computed. A broken
+EXR path cannot break an SDR run.
+
+Strict validation catches stage sizes that do not match either legal wiring — the same
+size (no latent upscaler) or exactly double (with the x2 upscaler).
+
+A run guided by an **ordinary JPG or PNG** is supported too, through the
+`image_guide` input — for when you generate video from a picture and still want a
+float32 scene-linear master out. Be clear-eyed about what that gives you: an 8-bit
+picture holds nothing above 1.0, and no curve invents what was never captured.
+Recovering highlights from an SDR still is SDR→HDR expansion, a different model
+technology, and this is not it.
+
+What you do get is worth having anyway. The gamma is removed properly — feeding
+sRGB codes in as if they were linear light is off by up to **2.3 stops** in the
+shadows (measured: 0.131 of the ACEScct code range) — the master stays float32
+scene-linear with no banding and no baked-in gamma, and the working range keeps
+its headroom: SDR white sits at ACEScct code **0.555**, so **45% of the range,
+7.8 stops, is left above it** for the model to generate into. Whether it actually
+does is an empirical question — that is what TS LTX HDR Stats is for.
+
+To use it, turn HDR on and bypass the EXR loader: the guide falls back to
+`image_guide` on its own, no extra switch.
+
+**Use when:** feeding first/last frames into a two-stage LTX graph.
+
+---
+
+#### TS LTX Final Latent Selector
+
+Picks the first- or second-stage latent **before** the decode, instead of decoding both
+and throwing one away. The inputs are lazy, so switching the upscaler off stops costing
+sampler time, not just decoder time — and one decode downstream means one place where
+the HDR conversion happens.
+
+**Use when:** your graph has a two-stage switch. It is worth wiring even without HDR.
+
+---
+
+#### TS LTX HDR VAE
+
+The same VAE file at an explicit precision. The stock `Load VAE` does not ask: model
+management picks bf16, which is plenty for a picture and not enough for a master —
+the quantisation step in the shadows and the top stops is exactly where HDR lives.
+
+Everything else stays on the VAE you already had: guide encoding for both stages, the
+latent upscaler, ordinary SDR decode. Wire this one **only** into the decoder's
+`hdr_vae` input — that input is lazy, which is what keeps a second copy of a video VAE
+out of memory while HDR is off.
+
+**Use when:** HDR is on. Otherwise leave it unwired.
+
+---
+
+#### TS LTX HDR Decode
+
+The single final decode, with two outputs that must never be confused:
+
+- `preview_sdr` — what you look at: tonemapped, exposure applied, sRGB encoded.
+- `hdr_linear` — what you save: scene-linear Rec.709 float32, no tonemap, no gamma,
+  **no upper clamp**. No preview setting touches it.
+
+While HDR is off the master slot returns an `ExecutionBlocker`, so a connected EXR
+saver does not run at all — no stub file, no black frames, nothing.
+
+The decode itself comes out as an ACEScct working signal in `[0, 1]` — which is why
+ComfyUI's standard `(x + 1) / 2` clamp on the LTX VAE costs nothing here. The range
+reappears on the inverse curve, after the decoder.
+
+**Use when:** replacing the pair of VAEDecode nodes at the end of a two-stage graph.
+
+---
+
+#### TS LTX HDR Stats
+
+Lost HDR looks completely normal. The picture is the same, the file was written, no
+errors — there is simply nothing above 1.0 in it, and that is discovered in the edit,
+when someone tries to pull the sky back.
+
+This node answers "is the range still there?" with numbers: percentiles, share of
+samples above 1.0, dynamic range in stops, negatives, NaN/Inf. It also warns when the
+highlights are pressed against the ACEScct working ceiling — code 1.0 corresponds to a
+linear luminance of about **222.86**, roughly 7.8 stops over white, and anything
+brighter was flattened on the way into the model.
+
+**Use when:** the first time you run a shot, and any time an EXR looks suspiciously tame.
 
 ---
 
@@ -513,9 +740,40 @@ Russian text-to-speech via Silero TTS v5_3. Five speakers (aidar, baya, kseniya,
 #### TS Music Stems
 <img src="doc/screenshots/ts_music_stems.png" alt="TS Music Stems" width="450" />
 
-Demucs-powered music source separation. Splits any audio into four AUDIO outputs: `vocal`, `bass`, `drums`, `others`. Three model options (`htdemucs`, `htdemucs_ft`, `hdemucs_mmi`), TTA shifts and overlap for higher quality.
+Splits music into stems, with the engine chosen by `model_name`.
 
-**Use when:** isolating vocals for remixing, extracting karaoke instrumentals, or feeding cleaner stems into another model.
+**BS-RoFormer SW** is the default and gives six: `vocal`, `bass`, `drums`,
+`guitar`, `piano`, and `others` for everything left over. **Mel-Band RoFormer**
+gives only vocals and instrumental — and is the better choice when that is all
+you want, because a specialist spends its whole capacity on the one boundary
+that matters instead of splitting it six ways. Both are transformers and both
+are a clear step up from what came before. **Demucs** (`htdemucs`,
+`htdemucs_ft`, `hdemucs_mmi`) is still selectable so that workflows saved
+before this change keep producing exactly what they always produced.
+
+**The stems add back up to the mix.** Mask separation does not do that on its
+own — the error is easy to hear in a null test. So one stem is not taken from
+the model at all: it is the mix minus everything else, which makes the set
+exact by construction. Measured on real music: `vocal + instrumental` nulls
+against the source at 161 dB, and the six stems sum to it at 144 dB, which is
+the floating-point floor rather than a modelling error.
+
+**Outputs a model cannot produce are blocked, not silenced.** Ask Mel-Band for
+drums and that branch of the graph simply does not run. A silent stem would
+look like a broken model and cost you an afternoon.
+
+`precision` picks fp16 or fp32 for the RoFormer engines. fp16 runs about twice as
+fast on half the VRAM, and its error against fp32 was measured at -61 dBFS or
+below on real music — under the noise floor of the recording. bfloat16 is not
+offered: these models build their mask through `view_as_complex`, which does not
+accept it. `shifts` and `jobs` apply to Demucs only.
+
+The weights download once on first use, into `models/roformer/`. If you already
+have the Mel-Band checkpoint from another pack it is found where it lies rather
+than fetched again.
+
+**Use when:** isolating vocals for remixing, extracting karaoke instrumentals,
+or feeding cleaner stems into another model.
 
 ---
 
@@ -546,6 +804,10 @@ Multimodal Qwen 3 VL (image + video + text) running locally. Built-in model pick
 <img src="doc/screenshots/ts_super_prompt.png" alt="TS Super Prompt" width="450" />
 
 Prompt enhancement node with a built-in **voice button** — speak your idea, Whisper transcribes it (with cinematography-aware grammar fixes), then a small Qwen3 model expands it into a rich prompt. Optional image input for image-conditioned prompting. Two modes: fast turbo or high-quality. Internals split (v9.5) into `nodes/llm/super_prompt/` (`_helpers`, `_voice`, `_qwen` over the shared Qwen engine) so the prompt-enhancement path stays in sync with TS Qwen 3 VL V3.
+
+**The model is never downloaded silently.** If it is not on the machine yet, pressing the enhance button first opens a dialog: which model, exactly how large (the real repository size, asked of the Hugging Face API without fetching a byte) and which folder it will land in. *Not now*, Escape, or a click outside all mean no, and nothing is downloaded. Agreeing is remembered for the session, so it asks once rather than on every press.
+
+**And the library is checked first.** Before any download the node asks the hub what architecture the model is and compares it with what the installed `transformers` knows. If it cannot load it, the run stops immediately with the model type, the installed version and the command that fixes it — instead of spending minutes and gigabytes to reach the same conclusion. The check asks the library what it supports rather than comparing version strings, so a build from git or a partial upgrade is judged on what it can actually do. The default model is a Qwen3.5 and needs `transformers` **5.2.0** or newer.
 
 **Two reference images.** Drop an image straight onto the node — from the Artius browser, from the desktop, or from another node's preview. One image is a reference; drop a second and the two become the **first and last frame** of the shot, which the model is told explicitly. The second picker appears once the first is taken. The thumbnails carry a **1** and a **2** so you can see which frame is which; drag one onto the other to swap them. Remove the first of a pair and the second takes its place.
 
@@ -582,12 +844,86 @@ That wording matters more than it looks. `with a Russian accent` asks for an Eng
 
 Build, randomise and manage prompts at scale.
 
+#### TS Angle Select
+<img src="doc/screenshots/ts_angle_select.png" alt="TS Angle Select" width="450" />
+
+Point a camera at the subject and get the prompt that asks a model for exactly
+that view. The node shows a small 3D preview — the subject, the orbit around it
+and the camera on that orbit — and under it three controls: **rotation**,
+**height** and **zoom**. Move a control and the preview shows where the camera
+went.
+
+The preview is only that: a preview. Setting three values by dragging one canvas
+turned out to be fiddly, so each value has its own slider, and nothing in the
+widget changes size with its value — the node never shifts under the cursor
+while a slider is being dragged.
+
+**The wording belongs to the model, not to the node.** With the bundled
+**Qwen Multi-Angle** preset the output is the trigger phrase the
+Multiple-Angles LoRA was trained on — `<sks> back view elevated shot close-up`
+and nothing else. It reads like a fragment because it is one: the LoRA learned
+these exact words next to the upstream node that emits them, and prettier
+English breaks the conditioning. The `<sks>` token has to be there.
+
+**Presets are plain JSON**, one file per model in `nodes/text/angle_presets`.
+A preset says what template to fill and which phrase belongs to each camera
+position, so supporting a new model is a new file rather than a code change. A
+preset missing a phrase is skipped with a line in the log — half a vocabulary
+would quietly produce a prompt with a hole in it.
+
+**Eight rotations, four heights, three framings.** Those are the buckets the
+model was trained on; there is nothing in between, because a phrase for it does
+not exist.
+
+Three.js ships with the pack and loads **only when this node appears** — it is
+deliberately kept out of the web folder, because ComfyUI imports every script in
+there on page load and nobody should pay for a 3D library they never use.
+
+**Use when:** re-shooting the same subject from another angle with Qwen-Image-Edit
+and the Multiple-Angles LoRA, or building a turnaround by stepping through the
+eight rotations.
+---
+
 #### TS Prompt Builder
 <img src="doc/screenshots/ts_prompt_builder.png" alt="TS Prompt Builder" width="450" />
 
-Composable prompt builder. Edit your prompt as a list of toggle-able blocks (light, camera-angle, lens, film, face, …) backed by `.txt` files in `nodes/prompts/`. Drag handles to reorder, click to enable/disable, and the seed picks one random line from each enabled block. Persists block order/state across sessions.
+Builds a prompt out of **wildcard packs**. A pack is just a folder in
+`nodes/prompts/` holding `.txt` wildcards plus a **semantic map**, and the map is the
+whole point: without one, picking a random line from twenty lists gives you a winter
+street in a swimsuit, a close-up with a full-body pose, and two incompatible scenes at
+once.
 
-**Use when:** running batches with controlled prompt variation — every block is a category, every line is a flavour.
+The map says what each wildcard *is* — its role, where it belongs in the phrase, what it
+excludes, what it goes well with — and the node assembles by that instead of by luck.
+Eight steps, taken from the packs' own `algorithm` section: profile or your own toggles,
+then the people-in-frame policy, mutual exclusions, incompatible pairs, optional
+companions, an affinity pass, one line per surviving wildcard, and finally the phrase in
+role order.
+
+**Any packs combine, in any combination.** Turn several on and the roles interleave into
+one sentence — all the identity first, then clothing, then the act, then place and camera
+— rather than one pack's output glued onto another's. Wildcards are namespaced by pack, so
+two `face.txt` never collide, and where two packs both offer a face, a light or a pose,
+exactly one survives: a draw weighted by each pack's `mix.priority`, so a mix of five is a
+genuine blend and not the loudest pack talking over the rest.
+
+**The scene holds together.** Place lives in the text of the lines, not in the links
+between files, so semantics alone could not stop a prompt from putting a pool, a rainstorm
+and a kitchen in one sentence — measured at 22% of assemblies. The node now picks the
+place first and then reads every other line against it, dropping the ones that argue about
+where or when we are. Same measurement afterwards: 3%, and what is left are metaphors
+rather than mistakes.
+
+Drop a folder in by hand and press **Reload** — no ComfyUI restart. The node shows the
+wildcards grouped by role, dims the ones that will collapse to a single pick at run time,
+lets you pin one so it survives a collision, and previews the assembled prompt live using
+the very same code the run will use. A second output reports what the semantic map threw
+out and why.
+
+`seed = 0` gives a new prompt every run; anything above 0 is reproducible.
+
+**Use when:** running batches with controlled variation — every wildcard is a category,
+every line a flavour, and the semantic map keeps the combination coherent.
 
 ---
 
@@ -709,6 +1045,30 @@ Bypassed groups survive a save without any help from this node: the state lives 
 
 ---
 
+#### Tidy up — one command, no node
+
+Right-click on the canvas (or on any node) → **Tidy up** → **Tidy layout**. Whatever is selected — or the whole graph, when nothing is — gets arranged: every node shrinks to the size its own content asks for, and the lot is laid out in columns that follow the wiring, left to right, snapped to the grid. Both entries are in the command palette too, so you can bind keys to them.
+
+The column a node lands in is its distance from the start of the flow, so a loader is always left of the sampler that reads it, and a node with one input lines up with what feeds it. Inside a column the order is chosen to keep the links from crossing, starting from the order you already had — the command tidies your arrangement rather than replacing it with someone else's. The whole thing stays where the schema was: the top-left corner does not move, so you are not left hunting for your graph afterwards.
+
+**Groups are laid out from the inside out.** The nodes of a group are arranged within it, the frame is then fitted to them, and the group takes part in the outer layout as a single block — an organised workflow stays organised. **Pinned nodes are never moved**: pinning is how you say "this one stays", and the command respects it.
+
+**Wires that cut through nodes can be routed around them.** The second entry, **Tidy layout + route the wires**, lays the graph out and then, for every wire whose straight line would cross somebody else's node, drops link dots that take it into the corridor between columns, along a free lane, and back — one lane for the whole detour, and any dot that earns nothing is dropped again. Wires that already have dots are left to their owner, and wires running against the flow are left alone. Run it twice and nothing changes.
+
+Each wire is routed knowing about the ones already routed, and the lane it takes is chosen by what it costs: **lying on top of another wire is all but forbidden** — two lines reading as one is what makes a schema unreadable, and you cannot even tell how many wires are there. Crossing costs far less, a longer detour least of all. That is a deliberate trade: a crossing is visible and understandable, an overlap is not. Wires leaving the same socket get no exemption either. A wire is rerouted not only when it cuts a node but also when it comes to rest on another wire, and the whole set is then routed a second time, each wire lifted and laid again now that it knows where all the others ended up.
+
+Measured on a real 32-node workflow: the layout alone left 68 places where a wire runs through a node and 94 wire crossings; routing brings that to **0 cuts, 0 overlaps and 88 crossings**. The same graph as its author had arranged it by hand: 40 cuts, 84 crossings. The crossings that remain come from the order of the nodes in their columns rather than from the wires — laying out and routing together, so that the order is chosen with the wires in mind, is the next step and is not done yet.
+
+**Or pack it as tiles.** The third entry, **Pack as tiles**, is the other request: not "show me the flow" but "get rid of the empty space". Every node in a column is given the same width, so they read as tiles rather than a ragged staircase, and a column now holds **several consecutive layers of the graph** rather than one — a column per layer turns a workflow into a ribbon nobody's monitor can show. The height of the columns is chosen so the whole thing lands near **16:9**, and so that no column ends up noticeably emptier than its neighbours. Nodes of the same type stay together, and each column is ordered by how soon a node's result is needed — so the node the flow actually starts from is top-left, and the last one is bottom-right. (Barycentres alone could not do that: a loader whose output is only needed at the very end has no opinion about the column next to it, and used to float to the top.) **The wires are not touched at all** in this mode: no aligning, no routing.
+
+Measured on a real 32-node workflow: 17 columns and 5540×1308 become **5 columns and 1760×1128** — the area actually filled by nodes goes from 17% to 76%, and the shape from 4.2:1 to 1.6:1, which fits on a screen.
+
+**The dots on your links are straightened too.** ComfyUI's link reroutes — the small round points you drop onto a wire — are spread evenly along the straight line between the socket they leave and the socket they enter, so a wire that ran as a dogleg through a point you tossed somewhere becomes a straight run. A point shared by several links settles between them. A wire whose straight line would cross a node is left bent — a detour that exists for a reason is not undone. Nothing is created and nothing is deleted: the graph you get back is the one you had. **Align link dots only** is the second entry in the submenu, for when the nodes are already where you want them.
+
+Works in both node renderers. That is not a given: measured on the same graph, Nodes 2.0 gives a node a different size than Nodes 1.0 (`SaveImage` 58 px against 70) and refuses to shrink some nodes at all while `node.size` claims otherwise — so the command asks the canvas what it actually drew before deciding where anything goes.
+
+---
+
 #### TS LoRA Loader
 <img src="doc/screenshots/ts_lora_loader.png" alt="TS LoRA Loader" width="450" />
 
@@ -802,7 +1162,7 @@ Add up to three reference images as `reference_latents` into the conditioning st
 | TS Silero Stress | `models/silero-stress/` |
 | TS Qwen 3 VL | `models/LLM/` |
 | TS Super Prompt | `models/LLM/` |
-| TS Music Stems | demucs default cache |
+| TS Music Stems | `models/roformer/`; demucs default cache for the legacy engine |
 
 You can override these with `extra_model_paths.yaml` — Timesaver respects ComfyUI's path resolution.
 
@@ -816,7 +1176,7 @@ You can override these with `extra_model_paths.yaml` — Timesaver respects Comf
 On a clean load the pack now says one line and nothing else:
 
 ```
-[TS Timesaver] All 64 nodes loaded successfully.
+[TS Timesaver] All 73 nodes loaded successfully.
 ```
 
 The ComfyUI console is shared by every pack you have installed, and two screens
@@ -912,12 +1272,31 @@ Timesaver freezes node ids and inputs across versions on purpose. If something b
 
 ---
 
+### Quiet console on Windows
+
+ComfyUI on Windows fills its console with this, in bursts of three to six a second whenever a websocket closes — after a job, on every page reload:
+
+```
+[ERROR] Exception in callback _ProactorBasePipeTransport._call_connection_lost(None)
+ConnectionResetError: [WinError 10054] An existing connection was forcibly closed by the remote host
+```
+
+Measured on a live install: 402 of 1865 log lines — 22% of everything the console said. It is a CPython bug, not a ComfyUI one: `asyncio/proactor_events.py` calls `self._sock.shutdown(...)` inside a `finally` with nothing to catch a socket the client already dropped. [python/cpython#83191](https://github.com/python/cpython/issues/83191) has been open since 2020, and updating Python does not help — the code is still unguarded in `main`.
+
+**It is also not only noise.** The exception escapes *before* `self._sock.close()`, so the socket stays open until the garbage collector gets to it.
+
+The pack wraps that one method and finishes the cleanup the exception interrupted — for six socket-teardown error codes and nothing else. An unexpected code is re-raised on purpose: the same method also runs your protocol's `connection_lost`, and swallowing that would hide real failures. Measured over eight page reloads and two jobs: **9 tracebacks before, 0 after**. Turn it off with `TS_DISABLE_PROACTOR_GUARD=1`.
+
+What the pack does **not** do is switch the event loop to `WindowsSelectorEventLoopPolicy`, which is the advice in most search results: that loop cannot run subprocesses on Windows and caps out at 512 sockets. Silence is not worth real breakage.
+
+---
+
 ## 🗂️ Repo Layout
 
 ```text
 comfyui-timesaver/
 ├─ ts_pasted_media_fix.py  # the pack's one patch to ComfyUI itself
-├─ nodes/                  # 68 modules: 64 nodes + 4 that register none
+├─ nodes/                  # 77 modules: 73 nodes + 4 that register none
 │                          #   (sampler + scheduler injectors, shared routes,
 │                          #    one backward-compat re-export shim)
 ├─ js/                     # frontend extensions for DOM-widget nodes

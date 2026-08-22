@@ -48,7 +48,10 @@ def _frames_from_tensor(images) -> Iterator:
     count = int(images.shape[0])
     for index in range(count):
         frame = images[index]
-        array = frame.detach().cpu().numpy() if hasattr(frame, "detach") else np.asarray(frame)
+        # ⚠️ Приводим к float32 ЯВНО: превью HDR-декодера приходит в float16, а
+        # у него шаг возле 255 равен 0.25 — округление до байта поехало бы.
+        array = (frame.detach().float().cpu().numpy() if hasattr(frame, "detach")
+                 else np.asarray(frame, dtype=np.float32))
         array = np.clip(array, 0.0, 1.0)
         yield np.ascontiguousarray((array * 255.0 + 0.5).astype(np.uint8))
 
@@ -349,6 +352,126 @@ def downscale_frames(frames: Iterable, max_width: int = 1280) -> Iterator:
         new_h -= new_h % 2
         image = Image.fromarray(array).resize((new_w, max(2, new_h)), Image.BILINEAR)
         yield np.ascontiguousarray(np.asarray(image))
+
+
+# ────────────────────────── секвенция EXR ──────────────────────────────
+#
+# Кадры HDR-мастера — не картинки в привычном смысле: значения в них уходят
+# далеко за единицу, и весь смысл именно в этом. Поэтому здесь не переиспользуется
+# ни `_frames_from_tensor` (он режет в байты), ни `write_video` (у секвенции нет
+# контейнера). Запись EXR живёт в `video/hdr/_exr_io.py` — единственном месте
+# пака, которое знает этот формат; направление зависимости всегда одно:
+# `video/media` импортирует из `video/hdr`, обратно никогда.
+
+def _linear_frames(images) -> Iterator:
+    """Тензор ``[B,H,W,3]`` → кадры torch ``[H,W,3]`` float32, без зажима.
+
+    Генератором: ролик 129×1920×1088 в float32 весит 3 ГиБ, и второй его копии
+    в памяти быть не должно.
+    """
+    import numpy as np
+    import torch
+
+    for index in range(int(images.shape[0])):
+        frame = images[index]
+        if hasattr(frame, "detach"):
+            yield frame.detach().to(torch.float32)
+        else:
+            yield torch.from_numpy(np.asarray(frame, dtype=np.float32))
+
+
+def _uint8_to_linear(array):
+    """Кадр uint8 из видеофайла → float32 ``[0, 1]``."""
+    import torch
+
+    return torch.from_numpy(array.astype("float32") / 255.0)
+
+
+def exr_sequence_pass(
+    frames: Iterable,
+    *,
+    folder: Path,
+    stem: str,
+    half: bool = False,
+    tonemap: str = "reinhard_luma",
+    exposure_ev: float = 0.0,
+    result: dict,
+    on_frame=None,
+) -> Iterator:
+    """Записать секвенцию EXR и попутно отдать кадры для превью.
+
+    Генератор: на каждый кадр пишется файл ``<stem>.<номер>.exr`` и отдаётся
+    тот же кадр, приведённый к экрану. Один проход по источнику — а он может
+    быть потоком из файла, который второй раз не перемотать.
+
+    Args:
+        frames: кадры ``[H,W,3]`` — torch float32 (линейный свет) или numpy
+            uint8 (когда пересохраняется обычное видео).
+        folder: куда класть файлы; создаётся при необходимости.
+        stem: основа имени файла.
+        half: писать 16-битными числами.
+        tonemap: оператор для превью; на сами EXR не влияет.
+        exposure_ev: экспозиция превью; на сами EXR не влияет.
+        result: словарь, который заполняется по ходу записи.
+        on_frame: обратный вызов для полосы выполнения.
+
+    Yields:
+        Кадры ``[H,W,3]`` uint8 для превью.
+    """
+    import numpy as np
+
+    from ...video.hdr._exr_io import write_exr
+    from ...video.hdr._tonemap import make_sdr_preview
+
+    folder.mkdir(parents=True, exist_ok=True)
+    written = 0
+    total_bytes = 0
+    width = height = 0
+
+    for array in frames:
+        frame = _uint8_to_linear(array) if isinstance(array, np.ndarray) else array
+        if height == 0:
+            height, width = int(frame.shape[0]), int(frame.shape[1])
+        written += 1
+        total_bytes += write_exr(folder / f"{stem}.{written:06d}.exr", frame, half=half)
+
+        preview = make_sdr_preview(frame.unsqueeze(0), exposure_ev=exposure_ev,
+                                   operator=tonemap, output_dtype=frame.dtype)
+        yield np.ascontiguousarray(
+            (np.clip(preview[0].cpu().numpy(), 0.0, 1.0) * 255.0 + 0.5).astype(np.uint8))
+
+        if on_frame is not None:
+            on_frame(written)
+
+    if written == 0:
+        raise RuntimeError(f"{LOG_PREFIX} Nothing to save: no frames were produced.")
+
+    result.update({
+        "frames": written,
+        "width": width,
+        "height": height,
+        "size_bytes": total_bytes,
+        "codec": "exr",
+        "has_audio": False,
+        "browser_playable": False,
+    })
+    logger.info("%s wrote %d EXR frames (%s) to %s", LOG_PREFIX, written,
+                "16-bit half" if half else "32-bit float", safe_log_path(folder))
+
+
+def output_sequence_path(prefix: str) -> tuple[Path, str, str]:
+    """Папка под секвенцию: ``<output>/<подпапка>/<имя>/<имя>.000001.exr``.
+
+    Отдельная папка на прогон — иначе тысяча файлов ложится вперемешку с
+    чужими, и разобрать, где чья секвенция, потом невозможно.
+
+    Returns:
+        ``(папка, основа имени, подпапка относительно output)``.
+    """
+    target, _, subfolder = output_path(prefix, "exr")
+    stem = target.stem
+    folder = target.parent / stem
+    return folder, stem, f"{subfolder}/{stem}" if subfolder else stem
 
 
 def output_path(prefix: str, extension: str) -> tuple[Path, str, str]:

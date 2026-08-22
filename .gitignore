@@ -70,3 +70,10 @@ comfyui-pack-testing-guide.md
 # `git ls-files`, а .comfyignore в паке нет с v9.14) и попал в чекаут, который
 # читает сканер безопасности реестра.
 /archive/
+
+# ⚠️ Токен HuggingFace владельца пака. НИКОГДА не в репозиторий.
+# Лежал незакрытым: git видел его как untracked, то есть `git add -A` увёл бы
+# секрет в коммит и дальше на GitHub.
+.huggingface
+.huggingface.*
+*.hf_token

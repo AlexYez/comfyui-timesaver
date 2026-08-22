@@ -96,6 +96,12 @@ _MODEL_SIZES_B: dict[str, float] = {
 # напрямую — проверено на установленной сборке: классы
 # `Qwen3VLForConditionalGeneration` и `AutoModelForImageTextToText` есть в
 # самом пакете. Значит для них исполнение чужого кода не нужно вовсе.
+# ⚠️ Проверено по тегам репозитория transformers: архитектура `qwen3_5`
+# впервые появилась в 5.2.0 (в 5.1.0 её ещё нет). Номер нужен только для
+# СОВЕТА пользователю — решение принимается по тому, знает ли установленная
+# библиотека тип модели, а не по сравнению версий.
+_MIN_TRANSFORMERS_FOR_QWEN35 = "5.2.0"
+
 _REMOTE_CODE_ENV = "TS_QWEN_ALLOW_REMOTE_CODE"
 
 
@@ -1184,12 +1190,160 @@ class QwenEngine:
         """
         return os.path.join(models_dir, self._cache_dir_name(model_id))
 
+    # ------------------------------------------------------------------
+    # Готовность модели: что уже есть, что придётся качать, потянет ли
+    # установленный transformers эту архитектуру.
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def transformers_version() -> str:
+        try:
+            import transformers
+
+            return str(getattr(transformers, "__version__", "unknown"))
+        except Exception:                   # noqa: BLE001
+            return "not installed"
+
+    @staticmethod
+    def _known_model_types() -> set[str]:
+        """Архитектуры, которые понимает УСТАНОВЛЕННЫЙ transformers.
+
+        ⚠️ Спрашиваем саму библиотеку, а не сверяем номера версий. Номер врёт:
+        сборка из git, форк, частичный апгрейд — всё это ломает сравнение, а
+        этот список либо содержит нужный тип, либо нет.
+        """
+        try:
+            from transformers.models.auto.configuration_auto import CONFIG_MAPPING_NAMES
+
+            return set(CONFIG_MAPPING_NAMES)
+        except Exception:                   # noqa: BLE001 - старая раскладка модулей
+            return set()
+
+    def _model_type_of_local(self, local_dir: str) -> str:
+        path = os.path.join(local_dir, "config.json")
+        if not os.path.exists(path):
+            return ""
+        try:
+            with open(path, encoding="utf-8") as handle:
+                return str(json.load(handle).get("model_type") or "")
+        except Exception:                   # noqa: BLE001
+            return ""
+
+    def _remote_facts(self, model_id: str, hf_token: str, hf_endpoint: str) -> tuple[str, int]:
+        """Тип модели и её точный размер С ХАБА — без единого скачанного байта.
+
+        ⚠️ Ради этого всё и делается: пользователь качал 13 файлов, тратил
+        минуту и гигабайты, и только потом узнавал, что его transformers не
+        знает `qwen3_5` (жалоба из присланного лога). `model_info` отвечает и
+        то, и другое одним запросом к API.
+
+        Возвращает ("", 0), если узнать не удалось: нет сети, приватный
+        репозиторий, старый `huggingface_hub`. Молчание здесь безопасно —
+        дальше просто не будет ни отказа, ни точной цифры.
+        """
+        try:
+            from huggingface_hub import HfApi
+        except ImportError:                 # pragma: no cover
+            return "", 0
+        endpoints = [e.strip() for e in (hf_endpoint or "").split(",") if e.strip()]
+        endpoints = endpoints or ["https://huggingface.co"]
+        endpoint = endpoints[0]
+        if not endpoint.startswith(("http://", "https://")):
+            endpoint = "https://" + endpoint
+        from .._hf_download import is_official_hf_origin
+
+        token = (hf_token or "").strip() or None
+        if token and not is_official_hf_origin(endpoint):
+            token = None
+        try:
+            info = HfApi(endpoint=endpoint, token=token).model_info(
+                model_id, files_metadata=True)
+        except Exception:                   # noqa: BLE001 - справка не должна ронять прогон
+            return "", 0
+        config = getattr(info, "config", None) or {}
+        model_type = str(config.get("model_type") or "") if isinstance(config, dict) else ""
+        size = sum(int(getattr(f, "size", 0) or 0) for f in (getattr(info, "siblings", None) or []))
+        return model_type, size
+
+    def _refuse_unknown_architecture(self, model_id: str, model_type: str) -> None:
+        """Отказ ДО скачивания: библиотека этой архитектуры не знает."""
+        raise RuntimeError(
+            f"{self._log_prefix} '{model_id}' is a '{model_type}' model, and the "
+            f"installed transformers ({self.transformers_version()}) does not know that "
+            f"architecture, so loading it cannot work."
+            f"{chr(10)}Update the library in the SAME Python that runs ComfyUI:"
+            f"{chr(10)}    python -m pip install --upgrade transformers>="
+            f"{_MIN_TRANSFORMERS_FOR_QWEN35}"
+            f"{chr(10)}(Qwen3.5 needs transformers {_MIN_TRANSFORMERS_FOR_QWEN35} or newer: "
+            f"that is where the 'qwen3_5' architecture first shipped.)"
+        )
+
+    def _check_architecture(self, model_id: str, model_type: str) -> None:
+        """Отказать, если библиотека этой архитектуры точно не знает.
+
+        ⚠️ Молчим в двух случаях: тип выяснить не удалось (нет сети, старый
+        формат конфига) и список архитектур получить не удалось. Отказ по
+        догадке хуже, чем попытка загрузки: загрузчик всё равно скажет своё.
+        """
+        known = self._known_model_types()
+        if not model_type or not known:
+            return
+        if model_type not in known:
+            self._refuse_unknown_architecture(model_id, model_type)
+
+    def model_readiness(
+        self,
+        model_id: str,
+        hf_token: str = "",
+        hf_endpoint: str = "",
+        *,
+        probe_remote: bool = False,
+    ) -> dict:
+        """Что известно о модели ДО того, как что-либо качать.
+
+        Возвращает словарь для интерфейса и для сообщений об ошибке: лежит ли
+        модель на диске, куда её положат, сколько она весит и потянет ли её
+        установленный transformers.
+        """
+        info: dict = {
+            "model_id": model_id,
+            "present": False,
+            "local_dir": "",
+            "size_gb": round(self.model_size_b(model_id) * 2.0, 2),  # прикидка, пока не спросили хаб
+            "size_exact": False,
+            "model_type": "",
+            "supported": None,
+            "transformers_version": self.transformers_version(),
+        }
+        if self._looks_like_local_path(model_id):
+            info["local_dir"] = model_id
+            info["present"] = os.path.isdir(model_id)
+        else:
+            local_dir = self._resolve_cache_dir(model_id, os.path.join(folder_paths.models_dir, "LLM"))
+            info["local_dir"] = local_dir
+            info["present"] = self.check_model_integrity(local_dir)
+        if info["present"]:
+            info["model_type"] = self._model_type_of_local(info["local_dir"])
+        elif probe_remote and not self._looks_like_local_path(model_id):
+            model_type, size_bytes = self._remote_facts(model_id, hf_token, hf_endpoint)
+            info["model_type"] = model_type
+            if size_bytes > 0:
+                # Точный размер репозитория лучше прикидки по числу параметров:
+                # человеку показывают, сколько на самом деле уедет по сети.
+                info["size_gb"] = round(size_bytes / 1024 ** 3, 2)
+                info["size_exact"] = True
+        known = self._known_model_types()
+        if info["model_type"] and known:
+            info["supported"] = info["model_type"] in known
+        return info
+
     def ensure_model_available(
         self,
         model_id: str,
         offline_mode: bool,
         hf_token: str,
         hf_endpoint: str,
+        allow_download: bool = True,
     ) -> str:
         # ⚠️ Подсказка у `custom_model_id` обещает «or a full local path», и
         # обещание надо держать: раньше от такого пути брался последний
@@ -1199,6 +1353,7 @@ class QwenEngine:
             if os.path.isdir(model_id):
                 self._logger.info("%s Using the local model directory: %s",
                                   self._log_prefix, model_id)
+                self._check_architecture(model_id, self._model_type_of_local(model_id))
                 return model_id
             raise FileNotFoundError(
                 f"{self._log_prefix} '{model_id}' looks like a local path but there is "
@@ -1221,12 +1376,34 @@ class QwenEngine:
         if offline_mode:
             if not self.check_model_integrity(local_dir):
                 raise FileNotFoundError(f"Offline mode: model not found or incomplete at {local_dir}.")
+            self._check_architecture(model_id, self._model_type_of_local(local_dir))
             return local_dir
 
         if not self.check_model_integrity(local_dir):
+            # ⚠️ Сначала спрашиваем ХАБ, что это за архитектура — это килобайт
+            # config.json. Раньше пользователь качал 13 файлов и лишь потом
+            # узнавал, что его transformers не знает `qwen3_5` (жалоба из лога).
+            model_type, size_bytes = self._remote_facts(model_id, hf_token, hf_endpoint)
+            self._check_architecture(model_id, model_type)
+            size_gb = (size_bytes / 1024 ** 3) if size_bytes > 0 else self.model_size_b(model_id) * 2.0
+            if not allow_download:
+                raise RuntimeError(
+                    f"{self._log_prefix} '{model_id}' is not on disk, and downloading is "
+                    f"switched off. It would take about {size_gb:.1f} GB and land in "
+                    f"{local_dir}. Allow the download to go ahead, or point the node at a "
+                    f"model you already have."
+                )
+            # Скачивание — самое долгое и самое неожиданное, что делает нода.
+            # Говорим об этом заранее, вслух и с цифрами.
+            self._logger.warning(
+                "%s '%s' is not on disk. Downloading about %.1f GB from Hugging Face into %s. "
+                "This runs once; the model stays there for later runs.",
+                self._log_prefix, model_id, size_gb, local_dir,
+            )
             self._download_with_mirrors(model_id, local_dir, hf_token, hf_endpoint)
             if not self.check_model_integrity(local_dir):
                 raise RuntimeError("Model download completed but integrity check failed.")
+        self._check_architecture(model_id, self._model_type_of_local(local_dir))
         # Паспорт пишется ПОСЛЕ успеха — и на уже лежавшую модель тоже: так
         # папки, скачанные прежними версиями пака, постепенно обзаводятся им
         # без единой перекачки.

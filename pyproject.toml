@@ -2,7 +2,7 @@
 name = "comfyui-timesaver"
 description = "ComfyUI nodes from [Timesaver](https://github.com/AlexYez/comfyui-timesaver)."
 # ⚠️ Три составляющих: Comfy Registry принимает только SemVer.
-version = "12.0.1"
+version = "12.1.0"
 license = { file = "LICENSE.txt" }
 # Matches CI (.github/workflows/ci.yml) and the Python range ComfyUI itself
 # supports; >=3.12 wrongly blocked pip installs on 3.10/3.11.
@@ -12,7 +12,8 @@ requires-python = ">=3.10"
 # ImportError` belong in [project.optional-dependencies] below, not here.
 dependencies = [
     "huggingface_hub>=0.20.0",
-    "transformers>=4.57.0",
+    # 5.2.0 — первая версия, знающая архитектуру `qwen3_5` (TS Super Prompt).
+    "transformers>=5.2.0",
     "accelerate>=0.21.0",
     "imageio>=2.20.0",
     "imageio-ffmpeg>=0.4.0",
@@ -27,6 +28,10 @@ dependencies = [
     # ломающих изменений в используемых API пока не было.
     "comfyui-frontend-package>=1.48.0",
     "srt>=3.5.0",
+    # TS Music Stems runs BS-RoFormer / Mel-Band RoFormer by default and the
+    # vendored architectures import these two. Pure Python, no build step.
+    "einops>=0.7.0",
+    "rotary-embedding-torch>=0.5.0",
     # Native OpenAI Whisper — the unified engine (nodes/_whisper_engine.py) used
     # by both TS Whisper and TS Super Prompt voice. Small package; pulls tiktoken
     # (already core) plus a couple of light native deps.
@@ -47,9 +52,12 @@ dependencies = [
 # int4 / int8 precision options to appear in the dropdown.
 llm-quant = ["bitsandbytes>=0.40.0"]
 
-# Demucs source separation (TS_Music_Stems). geomloss / pykeops compile from
-# C++ source and frequently fail on Windows portable builds, so they are
-# opt-in. `pip install comfyui-timesaver[audio-stems]` to enable.
+# The OLDER Demucs engine in TS_Music_Stems. The node no longer needs it: its
+# default engines are the vendored RoFormers, whose dependencies (einops,
+# rotary-embedding-torch) are core. This extra only brings back the htdemucs*
+# options for workflows saved before the RoFormer engines existed. geomloss /
+# pykeops compile from C++ source and frequently fail on Windows portable
+# builds, so they stay opt-in.
 audio-stems = [
     "demucs",
     "geomloss",

@@ -417,14 +417,18 @@ def _collect_critical_missing_roots() -> set[str]:
 
 
 def _apply_core_patches() -> None:
-    """The pack's ONE patch to ComfyUI itself.
+    """Заплатки на чужой код: ядро ComfyUI и стандартная библиотека.
 
-    Core's Load Image advertises only the files at the root of `input`, so an
-    image ComfyUI pasted into `input/pasted` is reported missing after every
-    reload. Idempotent: calling it twice is harmless.
+    Каждая в своём `try` — пак, который не смог что-то залатать, обязан всё
+    равно загрузить свои ноды.
 
-    Wrapped in its own guard — a pack that cannot patch core must still load
-    its nodes.
+    1. Load Image в ядре показывает только файлы в корне `input`, поэтому
+       картинка, вставленная ComfyUI в `input/pasted`, после каждой перезагрузки
+       объявляется отсутствующей.
+    2. asyncio на Windows роняет ConnectionResetError при закрытии websocket'а
+       (баг CPython, не ComfyUI) — 12% строк лога и сокет, закрытый с задержкой.
+
+    Обе идемпотентны: повторный вызов безвреден.
     """
     try:
         from .ts_pasted_media_fix import apply_patch
@@ -433,6 +437,15 @@ def _apply_core_patches() -> None:
     except Exception as error:  # pragma: no cover - defensive
         logging.getLogger(__name__).warning(
             "[TS PastedMediaFix] Not installed: %s", error,
+        )
+
+    try:
+        from .compat.proactor_guard import install as _install_proactor_guard
+
+        _install_proactor_guard()
+    except Exception as error:  # pragma: no cover - defensive
+        logging.getLogger(__name__).warning(
+            "[TS ProactorGuard] Not installed: %s", error,
         )
 
 

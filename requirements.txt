@@ -3,10 +3,22 @@
 # [project.optional-dependencies]. Install via:
 #   pip install -r requirements.txt
 #   pip install bitsandbytes        # for TS_Qwen3_VL_V3 int4/int8
-#   pip install demucs geomloss pykeops  # for TS_Music_Stems
+#   pip install demucs geomloss pykeops  # for the older Demucs engine in TS_Music_Stems
 #   pip install silero silero-stress  # Russian TTS / stress marks
 huggingface_hub>=0.20.0
-transformers>=4.57.0
+# TS Music Stems runs BS-RoFormer and Mel-Band RoFormer as its default engines,
+# and the vendored architectures need these two. Small, pure-Python, no build
+# step — core rather than optional, because without them the node's default
+# model does not load at all.
+einops>=0.7.0
+rotary-embedding-torch>=0.5.0
+# ⚠️ 5.2.0, а не 4.x. Модель по умолчанию у TS Super Prompt — Qwen3.5, а её
+# архитектуру (`qwen3_5`) transformers впервые понимает начиная с 5.2.0
+# (проверено по тегам репозитория: в 5.1.0 её ещё нет). На более старой
+# библиотеке нода скачивала гигабайты и лишь потом падала «Transformers does
+# not recognize this architecture» — реальная жалоба пользователя. Теперь она
+# ещё и проверяет это ДО скачивания, но floor обязан говорить правду.
+transformers>=5.2.0
 accelerate>=0.21.0
 srt>=3.5.0
 # Native OpenAI Whisper — unified engine for TS Whisper + TS Super Prompt voice.

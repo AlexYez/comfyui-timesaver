@@ -21,6 +21,7 @@ from pathlib import Path
 
 from comfy_api.v0_0_2 import IO
 
+from ..hdr._schema import HdrImageIO
 from ._common import LOG_PREFIX, safe_log_path
 from ._formats import DEFAULT_FORMAT
 
@@ -117,7 +118,20 @@ class TS_VideoSaver(IO.ComfyNode):
                                 default="422 HQ",
                                 tooltip=(
                                     "Editing codec profile. Proxy and LT are light, "
-                                    "422 HQ is the usual choice, 4444 is the heaviest."
+                                    "422 HQ is the usual choice, 4444 and 4444 XQ are "
+                                    "the heaviest and carry 4:4:4 colour plus alpha."
+                                ),
+                            ),
+                        ]),
+                        IO.DynamicCombo.Option("EXR sequence", [
+                            IO.Combo.Input(
+                                "exr_depth",
+                                options=["32-bit float", "16-bit half"],
+                                default="32-bit float",
+                                tooltip=(
+                                    "Half files are about half the size and still hold "
+                                    "the full range; float is exact. Neither is "
+                                    "compressed — this encoder offers no compression."
                                 ),
                             ),
                         ]),
@@ -162,6 +176,19 @@ class TS_VideoSaver(IO.ComfyNode):
                         "when the saved format is not playable in a browser."
                     ),
                 ),
+                # ⚠️ ПОСЛЕДНИМ В СХЕМЕ, и это не вкусовщина: порядок входов —
+                # часть контракта сохранённого workflow (§4 CLAUDE.md).
+                # Дописать в конец безопасно, вставить в середину — нет.
+                HdrImageIO.Input(
+                    "hdr_image",
+                    optional=True,
+                    tooltip=(
+                        "Scene-linear master from TS LTX HDR Decode. Used by the EXR "
+                        "sequence format, which writes it without touching the range. "
+                        "Ordinary IMAGE inputs are clamped to 0..1 before they get "
+                        "here, which is why the master needs its own socket."
+                    ),
+                ),
             ],
             outputs=[
                 IO.Video.Output(display_name="video", tooltip="The saved file, as a VIDEO reference."),
@@ -181,6 +208,7 @@ class TS_VideoSaver(IO.ComfyNode):
         encoder: str = "software",
         save_metadata: bool = True,
         preview: str = "auto",
+        hdr_image=None,
     ) -> IO.NodeOutput:
         from ._encode import output_path, write_video
         from ._formats import get_format
@@ -193,6 +221,14 @@ class TS_VideoSaver(IO.ComfyNode):
         profile = str(choice.get("profile") or "")
         ten_bit = bool(choice.get("ten_bit"))
         fmt = get_format(format_key)
+
+        if fmt.sequence:
+            return cls._save_sequence(
+                images=images, hdr_image=hdr_image, video=video, audio=audio,
+                fps=float(fps), filename_prefix=filename_prefix,
+                half=str(choice.get("exr_depth") or "") == "16-bit half",
+                preview=preview,
+            )
 
         frames, frame_count = cls._source_frames(images, video, float(fps))
         if frames is None:
@@ -259,6 +295,104 @@ class TS_VideoSaver(IO.ComfyNode):
         )
 
     # ──────────────────────────────────────────────────────────────────────
+    @classmethod
+    def _save_sequence(cls, *, images, hdr_image, video, audio, fps: float,
+                       filename_prefix: str, half: bool, preview: str) -> IO.NodeOutput:
+        """Записать секвенцию EXR: каждый кадр отдельным файлом, в свою папку.
+
+        Мастер берётся из ``hdr_image``, если он подключён: только там значения
+        приходят нетронутыми. Обычный ``images`` тоже принимается — так можно
+        положить в EXR и обычную картинку, — но выше единицы там уже ничего нет.
+
+        EXR и маленькое превью пишутся за ОДИН проход по кадрам: источником
+        может быть поток из файла, который второй раз не перемотать.
+        """
+        from ._decode import iter_frames
+        from ._encode import (_linear_frames, downscale_frames, exr_sequence_pass,
+                              output_sequence_path, write_proxy)
+
+        source, frame_count = cls._sequence_source(images, hdr_image, video, fps)
+        if source is None:
+            raise RuntimeError(
+                f"{LOG_PREFIX} Nothing to save: connect hdr_image, images or a video.")
+        if audio is not None:
+            logger.warning("%s An EXR sequence carries no audio track; the audio input "
+                           "is used for the preview only.", LOG_PREFIX)
+
+        folder, stem, subfolder = output_sequence_path(filename_prefix)
+        wants_proxy = preview != "off"
+        progress = cls._progress(frame_count, with_proxy=wants_proxy)
+
+        result: dict = {}
+        preview_frames = exr_sequence_pass(
+            source, folder=folder, stem=stem, half=half, result=result, on_frame=progress)
+
+        proxy = None
+        if wants_proxy:
+            try:
+                import folder_paths
+
+                temp = Path(folder_paths.get_temp_directory())
+                temp.mkdir(parents=True, exist_ok=True)
+                name = f"ts_video_preview_{os.getpid()}_{stem}.mp4"
+                info = write_proxy(downscale_frames(preview_frames, _PROXY_MAX_WIDTH),
+                                   path=temp / name, fps=fps, audio=audio,
+                                   frame_count=frame_count, on_frame=progress)
+                proxy = {"filename": name, "subfolder": "", "type": "temp",
+                         "format": "video/mp4",
+                         "width": info["width"], "height": info["height"]}
+            except Exception as error:      # noqa: BLE001 - превью не стоит прогона
+                logger.warning("%s could not build a preview: %s", LOG_PREFIX, error)
+        if proxy is None:
+            # Превью не нужно или не получилось — но кадры всё равно обязаны
+            # быть записаны, а генератор без потребителя не выполнится.
+            for _ in preview_frames:
+                pass
+
+        payload = {
+            "filename": (proxy or {}).get("filename", ""),
+            "subfolder": (proxy or {}).get("subfolder", ""),
+            "type": (proxy or {}).get("type", "output"),
+            "format": (proxy or {}).get("format", "image/exr"),
+            "width": result.get("width", 0),
+            "height": result.get("height", 0),
+            "frames": result.get("frames", 0),
+            "fps": float(fps),
+            "size_bytes": result.get("size_bytes", 0),
+            "format_key": "EXR sequence",
+            "codec": "exr",
+            "has_audio": False,
+            "is_proxy": proxy is not None,
+            "saved_filename": f"{stem}.%06d.exr",
+            "saved_subfolder": subfolder,
+            "saved_type": "output",
+            "saved_path": str(folder),
+        }
+        logger.info("%s saved %d EXR frames to %s", LOG_PREFIX,
+                    result.get("frames", 0), safe_log_path(folder))
+        # У секвенции нет одного файла, поэтому выход VIDEO пуст: отдать сюда
+        # маленькое превью значило бы выдать его за результат.
+        return IO.NodeOutput(None, str(folder), ui={PREVIEW_UI_KEY: [payload]})
+
+    @classmethod
+    def _sequence_source(cls, images, hdr_image, video, fps: float):
+        """Откуда брать кадры для EXR. Мастер важнее обычной картинки."""
+        from ._decode import iter_frames
+        from ._encode import _linear_frames
+
+        tensor = getattr(hdr_image, "tensor", None)
+        if tensor is None and images is not None:
+            tensor = images
+        if tensor is not None and getattr(tensor, "shape", None) is not None \
+                and int(tensor.shape[0]) > 0:
+            return _linear_frames(tensor), int(tensor.shape[0])
+
+        if video is not None:
+            frames, count = cls._source_frames(None, video, fps)
+            if frames is not None:
+                return frames, count
+        return None, 0
+
     @classmethod
     def _source_frames(cls, images, video, fps: float):
         """Откуда брать кадры: из тензора или потоком из файла.

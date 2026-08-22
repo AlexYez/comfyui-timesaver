@@ -72,6 +72,10 @@ class Format:
     supports_metadata: bool = True
     codec_tag: str | None = None
     external_lib: bool = False
+    # Секвенция кадров, а не контейнер: каждый кадр — отдельный файл, звука нет,
+    # ``container`` не используется. Проверять такой формат надо кодировщиком
+    # картинки, а не открытием контейнера.
+    sequence: bool = False
 
 
 _H264_QUALITIES = (
@@ -160,6 +164,16 @@ _PRORES_PIX = MappingProxyType({
 })
 
 
+# Глубина записи EXR. Сжатия здесь нет и не будет: список опций у EXR-кодека
+# ffmpeg пуст, а `compression` он прямо отвергает (замерено). Половинная
+# точность диапазон сохраняет — 100.0 остаётся сотней, — но квантует: шаг в
+# районе сотни около 0.06.
+_EXR_DEPTHS = (
+    Quality("32-bit float", "32-bit float"),
+    Quality("16-bit half", "16-bit half"),
+)
+
+
 FORMATS: tuple[Format, ...] = (
     Format(
         key="H.264 / MP4",
@@ -219,6 +233,23 @@ FORMATS: tuple[Format, ...] = (
         profiles=_PRORES_PROFILES,
         profile_pix_fmt=_PRORES_PIX,
         browser_playable=False,
+    ),
+    Format(
+        key="EXR sequence",
+        # Контейнера нет: каждый кадр пишется отдельным файлом в свою папку.
+        container="",
+        extension="exr",
+        codec="exr",
+        pix_fmt="gbrpf32le",
+        label="EXR",
+        hint="Scene-linear HDR frames",
+        # У секвенции нет дорожки звука. Подключённый звук не теряется молча —
+        # сохранятель об этом предупреждает.
+        audio_codec=None,
+        supports_metadata=False,
+        browser_playable=False,
+        sequence=True,
+        qualities=_EXR_DEPTHS,
     ),
 )
 
@@ -290,6 +321,36 @@ def probe_encoder(
     return ok
 
 
+def probe_image_codec(codec: str, pix_fmt: str) -> bool:
+    """Открывается ли кодировщик ОДИНОЧНОЙ картинки (без контейнера).
+
+    Для секвенции ``probe_encoder`` не годится: он открывает контейнер, а у
+    секвенции его нет. Здесь кодируется один настоящий кадр напрямую через
+    ``CodecContext`` — тем же путём, которым потом идёт запись.
+    """
+    key = ("image", codec, pix_fmt)
+    cached = _probe_cache.get(key)
+    if cached is not None:
+        return cached
+
+    ok = False
+    try:
+        import av
+
+        context = av.CodecContext.create(codec, "w")
+        context.width = context.height = _PROBE_SIZE
+        context.pix_fmt = pix_fmt
+        frame = av.VideoFrame(_PROBE_SIZE, _PROBE_SIZE, pix_fmt)
+        for _ in list(context.encode(frame)) + list(context.encode(None)):
+            pass
+        ok = True
+    except Exception as error:              # noqa: BLE001 - недоступность это норма
+        logger.debug("%s image codec %s/%s unavailable: %s", LOG_PREFIX, codec, pix_fmt, error)
+
+    _probe_cache[key] = ok
+    return ok
+
+
 def pick_hardware_codec(fmt: Format, quality: Quality) -> tuple[str, Mapping[str, str]] | None:
     """Выбрать доступный аппаратный кодировщик — по порядку предпочтения.
 
@@ -325,12 +386,15 @@ def catalog(*, check_hardware: bool = False) -> dict:
             "supports_audio": bool(fmt.audio_codec),
             "supports_alpha": bool(fmt.alpha_pix_fmt),
             "supports_metadata": fmt.supports_metadata,
+            "sequence": fmt.sequence,
             # ⚠️ Пробуем С НАСТРОЙКАМИ первого качества, а не голым кодеком:
             # x265 без `log-level` вываливает в консоль ComfyUI два десятка
             # строк про свою сборку при каждой пробе.
-            "available": probe_encoder(
-                fmt.codec, fmt.pix_fmt,
-                fmt.qualities[0].options if fmt.qualities else None, fmt.container),
+            "available": (
+                probe_image_codec(fmt.codec, fmt.pix_fmt) if fmt.sequence
+                else probe_encoder(
+                    fmt.codec, fmt.pix_fmt,
+                    fmt.qualities[0].options if fmt.qualities else None, fmt.container)),
             "qualities": [{"key": q.key, "label": q.label} for q in fmt.qualities],
             "profiles": list(fmt.profiles),
             "hardware": [],

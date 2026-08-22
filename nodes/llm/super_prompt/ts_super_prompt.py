@@ -45,6 +45,7 @@ from ._helpers import (
     ACTIVE_MODEL,
     AI_ROUTE_BASE,
     ALLOWED_AUDIO_SUFFIXES,
+    BIGGER_MODEL_ID,
     DEFAULT_MODEL_ID,
     DEFAULT_PRESET,
     DEVICE,
@@ -55,6 +56,8 @@ from ._helpers import (
     MODELS_WITHOUT_TRANSLATE,
     SOURCE_LANGUAGE,
     SUPER_PROMPT_ENHANCE_ON_EXECUTE,
+    SUPER_PROMPT_HF_ENDPOINT,
+    SUPER_PROMPT_HF_TOKEN,
     TRANSLATE_TO_ENGLISH,
     VOICE_LOG_PREFIX,
     VOICE_MODEL_CACHE,
@@ -418,6 +421,36 @@ async def status_endpoint(request: web.Request) -> web.StreamResponse:
 # ---------------------------------------------------------------------------
 # Prompt-enhancement HTTP route
 # ---------------------------------------------------------------------------
+
+
+@register_get(f"{AI_ROUTE_BASE}/model_status")
+async def model_status_endpoint(request: web.Request) -> web.StreamResponse:
+    """Что известно о модели ДО того, как что-либо качать.
+
+    ⚠️ Заведено по жалобе: «напрягает непрозрачность скачивания нодой своей
+    зашитой версии VLM». Интерфейс спрашивает этот маршрут перед первым
+    запуском и, если модели нет, показывает, что именно и куда будет скачано.
+    Запрос ничего не качает: у лежащей модели тип читается из config.json на
+    диске, у отсутствующей — тот же файл берётся с хаба, это килобайт.
+    """
+    bigger = str(request.query.get("bigger_model", "")).lower() in ("1", "true", "yes")
+    model_id = BIGGER_MODEL_ID if bigger else DEFAULT_MODEL_ID
+    try:
+        from .._qwen_engine import QwenEngine
+
+        engine = QwenEngine(log_prefix=LOG_PREFIX)
+        info = await asyncio.to_thread(
+            engine.model_readiness,
+            model_id,
+            str(SUPER_PROMPT_HF_TOKEN or ""),
+            str(SUPER_PROMPT_HF_ENDPOINT or ""),
+            probe_remote=True,
+        )
+        info["ok"] = True
+        return web.json_response(info)
+    except Exception as exc:                # noqa: BLE001 - справка не должна ронять UI
+        LOGGER.warning("%s model_status failed: %s", LOG_PREFIX, exc)
+        return web.json_response({"ok": False, "error": str(exc)}, status=200)
 
 
 @register_post("/ts_super_prompt/cancel")

@@ -64,6 +64,10 @@ const STYLE_TEXT = `
    of the Vue node wrappers are positioned), so it floated over the node title
    and the whole canvas. Transparent background lets the node's own surface and
    title bar show; the inner controls carry their own colours. */
+.ts-sp-ask__panel{max-width:520px;display:flex;flex-direction:column;gap:12px;padding:18px 20px}
+.ts-sp-ask__title{font-size:15px;font-weight:600}
+.ts-sp-ask__body{font-size:13px;line-height:1.5;opacity:.9;white-space:pre-wrap}
+.ts-sp-ask__row{display:flex;justify-content:flex-end;gap:8px;margin-top:4px}
 .ts-sp{position:relative;width:100%;height:100%;min-height:0;display:flex;flex-direction:column;gap:4px;padding:4px;
     color:var(--ts-text);font-family:var(--ts-font);font-size:var(--ts-fs-sm);line-height:1.3;box-sizing:border-box;}
 .ts-sp.is-drag-over{outline:2px dashed var(--ts-accent-line);outline-offset:-3px;border-radius:6px}
@@ -276,6 +280,17 @@ const STRINGS = {
         preparingAudio: "Preparing audio...",
         noPromptOrImage: "No prompt text or image",
         startingAi: "Starting AI prompt...",
+        dlTitle: "Download the language model?",
+        dlBody: (model, size, where) =>
+            `${model} is not on this machine yet. Running the enhancer downloads it — `
+            + `about ${size} GB — into ${where}. It happens once; after that it loads from disk.`,
+        dlYes: "Download and continue",
+        dlNo: "Not now",
+        dlDeclined: "Download declined — the model stays absent",
+        dlTooOld: (type, version) =>
+            `This model needs a newer transformers: it is a "${type}" architecture and the `
+            + `installed version (${version}) does not know it. Update it in the same Python `
+            + `that runs ComfyUI: python -m pip install --upgrade transformers`,
         enhanceFailed: "enhance failed",
         imageSuffix: " (image)",
         emptyAiResult: "Empty AI result",
@@ -353,6 +368,17 @@ const STRINGS = {
         preparingAudio: "Подготовка аудио...",
         noPromptOrImage: "Нет текста промпта или изображения",
         startingAi: "Запуск AI промпта...",
+        dlTitle: "Скачать языковую модель?",
+        dlBody: (model, size, where) =>
+            `${model} на этой машине ещё нет. Запуск улучшения скачает её — около ${size} ГБ — `
+            + `в ${where}. Это разовая операция: дальше модель берётся с диска.`,
+        dlYes: "Скачать и продолжить",
+        dlNo: "Не сейчас",
+        dlDeclined: "Скачивание отклонено — модели по-прежнему нет",
+        dlTooOld: (type, version) =>
+            `Модели нужна более свежая transformers: это архитектура «${type}», а `
+            + `установленная версия (${version}) её не знает. Обновите библиотеку в том же `
+            + `Python, где работает ComfyUI: python -m pip install --upgrade transformers`,
         enhanceFailed: "сбой улучшения",
         imageSuffix: " (изображение)",
         emptyAiResult: "Пустой результат AI",
@@ -463,6 +489,61 @@ async function fetchJson(url, options) {
         throw new Error(data.error || response.statusText || `HTTP ${response.status}`);
     }
     return data;
+}
+
+/** Спросить «да/нет» поверх интерфейса. Разрешается только через кнопку. */
+function askConfirmation(doc, { title, body, yes, no }) {
+    return new Promise((resolve) => {
+        const overlay = doc.createElement("div");
+        overlay.className = `${TS_UI_CLASS} ts-ui-modal ts-ui-modal--center ts-sp-ask`;
+
+        const panel = doc.createElement("div");
+        panel.className = "ts-ui-panel ts-sp-ask__panel";
+
+        const head = doc.createElement("div");
+        head.className = "ts-sp-ask__title";
+        head.textContent = title;
+
+        const text = doc.createElement("div");
+        text.className = "ts-sp-ask__body";
+        text.textContent = body;
+
+        const row = doc.createElement("div");
+        row.className = "ts-sp-ask__row";
+
+        const decline = doc.createElement("button");
+        decline.type = "button";
+        decline.className = "ts-ui-btn";
+        decline.textContent = no;
+
+        const accept = doc.createElement("button");
+        accept.type = "button";
+        accept.className = "ts-ui-btn ts-ui-btn--primary";
+        accept.textContent = yes;
+
+        const close = (answer) => {
+            doc.removeEventListener("keydown", onKey, true);
+            overlay.remove();
+            resolve(answer);
+        };
+        // ⚠️ Escape и клик мимо панели значат «нет». Молчаливое согласие на
+        // многогигабайтную закачку — ровно то, на что жаловались.
+        const onKey = (event) => {
+            if (event.key === "Escape") { event.stopPropagation(); close(false); }
+        };
+        decline.addEventListener("click", () => close(false));
+        accept.addEventListener("click", () => close(true));
+        overlay.addEventListener("mousedown", (event) => {
+            if (event.target === overlay) close(false);
+        });
+        doc.addEventListener("keydown", onKey, true);
+
+        row.append(decline, accept);
+        panel.append(head, text, row);
+        overlay.append(panel);
+        (doc.body || doc.documentElement).append(overlay);
+        accept.focus();
+    });
 }
 
 function createAudioRecorder(stream, mimeType) {
@@ -1392,6 +1473,43 @@ function setupSuperPrompt(node) {
         };
     }
 
+    // Модели, на скачивание которых человек уже согласился в этой сессии:
+    // спрашивать один раз, а не перед каждым нажатием.
+    const downloadsAllowed = new Set();
+
+    async function confirmModelDownload(bigger) {
+        let info = null;
+        try {
+            info = await fetchJson(
+                `${AI_ROUTE_BASE}/model_status?bigger_model=${bigger ? "1" : "0"}`);
+        } catch {
+            // Справка не доехала — это не повод не дать человеку работать.
+            return true;
+        }
+        if (!info?.ok) return true;
+        if (info.supported === false) {
+            setStatus(L.dlTooOld(info.model_type || "?", info.transformers_version || "?"),
+                      "error", STATUS_RESET_DELAY_MS * 3);
+            return false;
+        }
+        if (info.present) return true;
+        if (downloadsAllowed.has(info.model_id)) return true;
+
+        const doc = node?.graph?.canvas?.canvas?.ownerDocument || document;
+        const agreed = await askConfirmation(doc, {
+            title: L.dlTitle,
+            body: L.dlBody(info.model_id, info.size_gb ?? "?", info.local_dir || "models/LLM"),
+            yes: L.dlYes,
+            no: L.dlNo,
+        });
+        if (!agreed) {
+            setStatus(L.dlDeclined, "info", STATUS_RESET_DELAY_MS);
+            return false;
+        }
+        downloadsAllowed.add(info.model_id);
+        return true;
+    }
+
     async function enhancePrompt() {
         if (state.isVoiceBusy || state.isAiBusy || state.isRecording || socketBusy) return;
         syncTextFromUi();
@@ -1420,6 +1538,10 @@ function setupSuperPrompt(node) {
             setStatus(L.noPromptOrImage, "info", STATUS_RESET_DELAY_MS);
             return;
         }
+        // ⚠️ Спрашиваем ДО запуска, а не в процессе. Жалоба была именно на
+        // непрозрачность: нода молча уходила качать несколько гигабайт.
+        if (!(await confirmModelDownload(payload.bigger_model))) return;
+
         state.isAiBusy = true;
         state.activeAiOperationId = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`;
         showBusy(true);

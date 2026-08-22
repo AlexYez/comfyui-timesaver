@@ -299,6 +299,12 @@
         "type": "Mask"
       },
       {
+        "display_name": "crop_data",
+        "index": 2,
+        "name": "crop_data",
+        "type": "_CropData"
+      },
+      {
         "display_name": "width",
         "index": 3,
         "name": "width",
@@ -376,6 +382,11 @@
         "index": 1,
         "name": "cropped_images",
         "type": "Image"
+      },
+      {
+        "index": 2,
+        "name": "crop_data",
+        "type": "_CropData"
       },
       {
         "index": 3,
@@ -755,6 +766,57 @@
       },
       "timestamps": {
         "default": "segment"
+      }
+    }
+  },
+  "TS_AngleSelect": {
+    "api": "v3",
+    "category": "TS/Text",
+    "class_name": "TS_AngleSelect",
+    "display_name": "TS Angle Select",
+    "inputs": [
+      {
+        "index": 0,
+        "name": "preset",
+        "type": "Combo"
+      },
+      {
+        "index": 1,
+        "name": "azimuth",
+        "type": "Int"
+      },
+      {
+        "index": 2,
+        "name": "height",
+        "type": "Combo"
+      },
+      {
+        "index": 3,
+        "name": "framing",
+        "type": "Combo"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "prompt",
+        "index": 0,
+        "name": "prompt",
+        "type": "String"
+      }
+    ],
+    "python_file": "nodes/text/ts_angle_select.py",
+    "widgets": {
+      "azimuth": {
+        "default": 0,
+        "max": 315,
+        "min": 0,
+        "step": 45
+      },
+      "framing": {
+        "default": "medium"
+      },
+      "height": {
+        "default": "eye-level"
       }
     }
   },
@@ -1923,6 +1985,65 @@
     ],
     "python_file": "nodes/image/ts_image_batch_to_list.py"
   },
+  "TS_ImageDepth": {
+    "api": "v3",
+    "category": "TS/Image/Depth",
+    "class_name": "TS_ImageDepth",
+    "display_name": "TS Image Depth",
+    "inputs": [
+      {
+        "index": 0,
+        "name": "images",
+        "type": "Image"
+      },
+      {
+        "index": 1,
+        "name": "model_filename",
+        "type": "Combo"
+      },
+      {
+        "index": 2,
+        "name": "max_res",
+        "type": "Int"
+      },
+      {
+        "index": 3,
+        "name": "precision",
+        "type": "Combo"
+      },
+      {
+        "index": 4,
+        "name": "colormap",
+        "type": "Combo"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "image",
+        "index": 0,
+        "name": "image",
+        "type": "Image"
+      }
+    ],
+    "python_file": "nodes/image/ts_image_depth.py",
+    "widgets": {
+      "colormap": {
+        "default": "gray"
+      },
+      "max_res": {
+        "default": -1,
+        "max": 8192,
+        "min": -1,
+        "step": 14
+      },
+      "model_filename": {
+        "default": "depth_anything_v2_vitl_fp16.safetensors"
+      },
+      "precision": {
+        "default": "fp16"
+      }
+    }
+  },
   "TS_ImageListToImageBatch": {
     "api": "v3",
     "category": "TS/Image/Batch",
@@ -2174,6 +2295,11 @@
         "index": 0,
         "name": "images",
         "type": "Image"
+      },
+      {
+        "index": 1,
+        "name": "tile_data",
+        "type": "_TileInfo"
       }
     ],
     "outputs": [
@@ -2224,6 +2350,12 @@
         "index": 0,
         "name": "tiles",
         "type": "Image"
+      },
+      {
+        "display_name": "tile_data",
+        "index": 1,
+        "name": "tile_data",
+        "type": "_TileInfo"
       }
     ],
     "python_file": "nodes/image/ts_image_tile_splitter.py",
@@ -2281,6 +2413,501 @@
         "max": 2147483647,
         "min": -2147483648,
         "step": 8
+      }
+    }
+  },
+  "TS_LTXFinalLatentSelector": {
+    "api": "v3",
+    "category": null,
+    "class_name": "TS_LTXFinalLatentSelector",
+    "display_name": "TS LTX Final Latent Selector",
+    "inputs": [
+      {
+        "index": 0,
+        "name": "use_stage2",
+        "type": "Boolean"
+      },
+      {
+        "index": 1,
+        "name": "stage1_latent",
+        "optional": true,
+        "type": "Latent"
+      },
+      {
+        "index": 2,
+        "name": "stage2_latent",
+        "optional": true,
+        "type": "Latent"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "latent",
+        "index": 0,
+        "name": "latent",
+        "type": "Latent"
+      }
+    ],
+    "python_file": "nodes/video/hdr/ts_ltx_final_latent_selector.py",
+    "widgets": {
+      "use_stage2": {
+        "default": true
+      }
+    }
+  },
+  "TS_LTXHDRDecode": {
+    "api": "v3",
+    "category": null,
+    "class_name": "TS_LTXHDRDecode",
+    "display_name": "TS LTX HDR Decode",
+    "inputs": [
+      {
+        "index": 0,
+        "name": "samples",
+        "type": "Latent"
+      },
+      {
+        "index": 1,
+        "name": "config",
+        "type": "HdrConfigIO"
+      },
+      {
+        "index": 2,
+        "name": "sdr_vae",
+        "optional": true,
+        "type": "Vae"
+      },
+      {
+        "index": 3,
+        "name": "hdr_vae",
+        "optional": true,
+        "type": "Vae"
+      },
+      {
+        "index": 4,
+        "name": "tiled",
+        "type": "Boolean"
+      },
+      {
+        "advanced": true,
+        "index": 5,
+        "name": "tile_size",
+        "type": "Int"
+      },
+      {
+        "advanced": true,
+        "index": 6,
+        "name": "overlap",
+        "type": "Int"
+      },
+      {
+        "advanced": true,
+        "index": 7,
+        "name": "temporal_size",
+        "type": "Int"
+      },
+      {
+        "advanced": true,
+        "index": 8,
+        "name": "temporal_overlap",
+        "type": "Int"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "preview_sdr",
+        "index": 0,
+        "name": "preview_sdr",
+        "type": "Image"
+      },
+      {
+        "display_name": "hdr_linear",
+        "index": 1,
+        "name": "hdr_linear",
+        "type": "HdrImageIO"
+      },
+      {
+        "display_name": "info",
+        "index": 2,
+        "name": "info",
+        "type": "String"
+      }
+    ],
+    "python_file": "nodes/video/hdr/ts_ltx_hdr_decode.py",
+    "widgets": {
+      "overlap": {
+        "default": 64,
+        "max": 4096,
+        "min": 0,
+        "step": 32
+      },
+      "temporal_overlap": {
+        "default": 32,
+        "max": 4096,
+        "min": 4,
+        "step": 4
+      },
+      "temporal_size": {
+        "default": 128,
+        "max": 4096,
+        "min": 8,
+        "step": 4
+      },
+      "tile_size": {
+        "default": 512,
+        "max": 4096,
+        "min": 64,
+        "step": 32
+      },
+      "tiled": {
+        "default": true
+      }
+    }
+  },
+  "TS_LTXHDRGuide": {
+    "api": "v3",
+    "category": null,
+    "class_name": "TS_LTXHDRGuide",
+    "display_name": "TS LTX HDR Guide",
+    "inputs": [
+      {
+        "index": 0,
+        "name": "config",
+        "type": "HdrConfigIO"
+      },
+      {
+        "index": 1,
+        "name": "stage1_width",
+        "type": "Int"
+      },
+      {
+        "index": 2,
+        "name": "stage1_height",
+        "type": "Int"
+      },
+      {
+        "index": 3,
+        "name": "stage2_width",
+        "type": "Int"
+      },
+      {
+        "index": 4,
+        "name": "stage2_height",
+        "type": "Int"
+      },
+      {
+        "index": 5,
+        "name": "sdr_image",
+        "optional": true,
+        "type": "Image"
+      },
+      {
+        "index": 6,
+        "name": "hdr_linear",
+        "optional": true,
+        "type": "HdrImageIO"
+      },
+      {
+        "advanced": true,
+        "index": 7,
+        "name": "fit_mode",
+        "type": "Combo"
+      },
+      {
+        "advanced": true,
+        "index": 8,
+        "name": "interpolation",
+        "type": "Combo"
+      },
+      {
+        "index": 9,
+        "name": "image_guide",
+        "optional": true,
+        "type": "Image"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "stage1",
+        "index": 0,
+        "name": "stage1",
+        "type": "Image"
+      },
+      {
+        "display_name": "stage2",
+        "index": 1,
+        "name": "stage2",
+        "type": "Image"
+      },
+      {
+        "display_name": "info",
+        "index": 2,
+        "name": "info",
+        "type": "String"
+      }
+    ],
+    "python_file": "nodes/video/hdr/ts_ltx_hdr_guide.py",
+    "widgets": {
+      "fit_mode": {
+        "default": "center_crop"
+      },
+      "interpolation": {
+        "default": "area"
+      },
+      "stage1_height": {
+        "default": 544,
+        "max": 16384,
+        "min": 32,
+        "step": 32
+      },
+      "stage1_width": {
+        "default": 960,
+        "max": 16384,
+        "min": 32,
+        "step": 32
+      },
+      "stage2_height": {
+        "default": 1088,
+        "max": 16384,
+        "min": 32,
+        "step": 32
+      },
+      "stage2_width": {
+        "default": 1920,
+        "max": 16384,
+        "min": 32,
+        "step": 32
+      }
+    }
+  },
+  "TS_LTXHDRLoadEXR": {
+    "api": "v3",
+    "category": null,
+    "class_name": "TS_LTXHDRLoadEXR",
+    "display_name": "TS LTX Load HDR EXR",
+    "inputs": [
+      {
+        "index": 0,
+        "name": "exr_file",
+        "type": "Combo"
+      },
+      {
+        "index": 1,
+        "name": "path_override",
+        "type": "String"
+      },
+      {
+        "advanced": true,
+        "index": 2,
+        "name": "backend",
+        "type": "Combo"
+      },
+      {
+        "index": 3,
+        "name": "config",
+        "optional": true,
+        "type": "HdrConfigIO"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "hdr_linear",
+        "index": 0,
+        "name": "hdr_linear",
+        "type": "HdrImageIO"
+      },
+      {
+        "display_name": "info",
+        "index": 1,
+        "name": "info",
+        "type": "String"
+      }
+    ],
+    "python_file": "nodes/video/hdr/ts_ltx_hdr_load_exr.py",
+    "widgets": {
+      "backend": {
+        "default": "auto"
+      },
+      "path_override": {
+        "default": ""
+      }
+    }
+  },
+  "TS_LTXHDRSettings": {
+    "api": "v3",
+    "category": null,
+    "class_name": "TS_LTXHDRSettings",
+    "display_name": "TS LTX HDR Settings",
+    "inputs": [
+      {
+        "index": 0,
+        "name": "enabled",
+        "type": "Boolean"
+      },
+      {
+        "index": 1,
+        "name": "input_color_space",
+        "type": "Combo"
+      },
+      {
+        "index": 2,
+        "name": "output_color_space",
+        "type": "Combo"
+      },
+      {
+        "index": 3,
+        "name": "strict_validation",
+        "type": "Boolean"
+      },
+      {
+        "index": 4,
+        "name": "preview_exposure_ev",
+        "type": "Float"
+      },
+      {
+        "index": 5,
+        "name": "preview_tonemap",
+        "type": "Combo"
+      },
+      {
+        "advanced": true,
+        "index": 6,
+        "name": "preview_dtype",
+        "type": "Combo"
+      },
+      {
+        "index": 7,
+        "name": "hdr_mode",
+        "type": "Combo"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "config",
+        "index": 0,
+        "name": "config",
+        "type": "HdrConfigIO"
+      },
+      {
+        "display_name": "enabled",
+        "index": 1,
+        "name": "enabled",
+        "type": "Boolean"
+      }
+    ],
+    "python_file": "nodes/video/hdr/ts_ltx_hdr_settings.py",
+    "widgets": {
+      "enabled": {
+        "default": false
+      },
+      "input_color_space": {
+        "default": "ACESCG"
+      },
+      "output_color_space": {
+        "default": "REC709_LINEAR"
+      },
+      "preview_dtype": {
+        "default": "FP16"
+      },
+      "preview_exposure_ev": {
+        "default": 0.0,
+        "max": 16.0,
+        "min": -16.0,
+        "step": 0.1
+      },
+      "preview_tonemap": {
+        "default": "reinhard_luma"
+      },
+      "strict_validation": {
+        "default": true
+      }
+    }
+  },
+  "TS_LTXHDRStats": {
+    "api": "v3",
+    "category": null,
+    "class_name": "TS_LTXHDRStats",
+    "display_name": "TS LTX HDR Stats",
+    "inputs": [
+      {
+        "index": 0,
+        "name": "hdr_linear",
+        "type": "HdrImageIO"
+      },
+      {
+        "index": 1,
+        "name": "config",
+        "optional": true,
+        "type": "HdrConfigIO"
+      },
+      {
+        "index": 2,
+        "name": "raise_on_problem",
+        "type": "Boolean"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "report",
+        "index": 0,
+        "name": "report",
+        "type": "String"
+      },
+      {
+        "display_name": "looks_ok",
+        "index": 1,
+        "name": "looks_ok",
+        "type": "Boolean"
+      },
+      {
+        "display_name": "max",
+        "index": 2,
+        "name": "max",
+        "type": "Float"
+      }
+    ],
+    "python_file": "nodes/video/hdr/ts_ltx_hdr_stats.py",
+    "widgets": {
+      "raise_on_problem": {
+        "default": false
+      }
+    }
+  },
+  "TS_LTXHDRVAE": {
+    "api": "v3",
+    "category": null,
+    "class_name": "TS_LTXHDRVAE",
+    "display_name": "TS LTX HDR VAE",
+    "inputs": [
+      {
+        "index": 0,
+        "name": "vae_name",
+        "type": "Combo"
+      },
+      {
+        "index": 1,
+        "name": "precision",
+        "type": "Combo"
+      },
+      {
+        "index": 2,
+        "name": "config",
+        "optional": true,
+        "type": "HdrConfigIO"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "vae",
+        "index": 0,
+        "name": "vae",
+        "type": "Vae"
+      }
+    ],
+    "python_file": "nodes/video/hdr/ts_ltx_hdr_vae.py",
+    "widgets": {
+      "precision": {
+        "default": "float32"
       }
     }
   },
@@ -3035,6 +3662,12 @@
         "index": 5,
         "name": "jobs",
         "type": "Int"
+      },
+      {
+        "index": 6,
+        "name": "precision",
+        "optional": true,
+        "type": "Combo"
       }
     ],
     "outputs": [
@@ -3067,9 +3700,21 @@
         "index": 4,
         "name": "instrumental",
         "type": "Audio"
+      },
+      {
+        "display_name": "guitar",
+        "index": 5,
+        "name": "guitar",
+        "type": "Audio"
+      },
+      {
+        "display_name": "piano",
+        "index": 6,
+        "name": "piano",
+        "type": "Audio"
       }
     ],
-    "python_file": "nodes/audio/ts_music_stems.py",
+    "python_file": "nodes/audio/music_stems/ts_music_stems.py",
     "widgets": {
       "device": {
         "default": "auto"
@@ -3079,13 +3724,13 @@
         "max": 16,
         "min": 0
       },
-      "model_name": {
-        "default": "htdemucs_ft"
-      },
       "overlap": {
         "default": 0.5,
         "max": 0.9,
         "min": 0.0
+      },
+      "precision": {
+        "default": "fp16"
       },
       "shifts": {
         "default": 2,
@@ -3907,6 +4552,12 @@
         "type": "Mask"
       },
       {
+        "display_name": "plan",
+        "index": 3,
+        "name": "plan",
+        "type": "PLAN_TYPE"
+      },
+      {
         "display_name": "source",
         "index": 4,
         "name": "source",
@@ -3962,6 +4613,11 @@
         "index": 1,
         "name": "patch",
         "type": "Image"
+      },
+      {
+        "index": 2,
+        "name": "plan",
+        "type": "PLAN_TYPE"
       }
     ],
     "outputs": [
@@ -4421,6 +5077,14 @@
         "type": "Float"
       }
     ],
+    "outputs": [
+      {
+        "display_name": "sampler",
+        "index": 0,
+        "name": "sampler",
+        "type": ""
+      }
+    ],
     "python_file": "nodes/image/ts_universal_inpaint.py",
     "widgets": {
       "resample_strength": {
@@ -4510,6 +5174,30 @@
         "name": "edge_aware_upscale",
         "optional": true,
         "type": "Boolean"
+      },
+      {
+        "index": 13,
+        "name": "flicker_suppression",
+        "optional": true,
+        "type": "Float"
+      },
+      {
+        "index": 14,
+        "name": "flicker_radius",
+        "optional": true,
+        "type": "Int"
+      },
+      {
+        "index": 15,
+        "name": "window_length",
+        "optional": true,
+        "type": "Int"
+      },
+      {
+        "index": 16,
+        "name": "window_overlap",
+        "optional": true,
+        "type": "Int"
       }
     ],
     "outputs": [
@@ -4543,6 +5231,17 @@
       "edge_aware_upscale": {
         "default": true
       },
+      "flicker_radius": {
+        "default": 1,
+        "max": 8,
+        "min": 1
+      },
+      "flicker_suppression": {
+        "default": 0.0,
+        "max": 1.0,
+        "min": 0.0,
+        "step": 0.05
+      },
       "input_size": {
         "default": 518,
         "max": 4096,
@@ -4556,7 +5255,7 @@
         "step": 1
       },
       "model_filename": {
-        "default": "video_depth_anything_vitl.pth"
+        "default": "video_depth_anything_vitl_fp16.safetensors"
       },
       "normalization_mode": {
         "default": "percentile"
@@ -4566,6 +5265,16 @@
       },
       "upscale_algorithm": {
         "default": "Lanczos4"
+      },
+      "window_length": {
+        "default": 32,
+        "max": 32,
+        "min": 8
+      },
+      "window_overlap": {
+        "default": 10,
+        "max": 24,
+        "min": 2
       }
     }
   },
@@ -4726,6 +5435,13 @@
         "index": 9,
         "name": "resize_filter",
         "type": "Combo"
+      },
+      {
+        "advanced": true,
+        "index": 10,
+        "name": "when_too_large",
+        "optional": true,
+        "type": "Combo"
       }
     ],
     "outputs": [
@@ -4740,6 +5456,12 @@
         "index": 1,
         "name": "audio",
         "type": "Audio"
+      },
+      {
+        "display_name": "video_info",
+        "index": 2,
+        "name": "video_info",
+        "type": "VIDEO_INFO_TYPE"
       },
       {
         "display_name": "video",
@@ -4800,6 +5522,9 @@
         "max": 1000000.0,
         "min": 0.0,
         "step": 0.001
+      },
+      "when_too_large": {
+        "default": "stop"
       }
     }
   },
@@ -4859,6 +5584,12 @@
         "index": 8,
         "name": "preview",
         "type": "Combo"
+      },
+      {
+        "index": 9,
+        "name": "hdr_image",
+        "optional": true,
+        "type": "HdrImageIO"
       }
     ],
     "outputs": [

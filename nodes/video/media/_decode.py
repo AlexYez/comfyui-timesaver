@@ -16,6 +16,8 @@ from __future__ import annotations
 import logging
 import math
 import os
+import pathlib
+import tempfile
 from dataclasses import dataclass, field
 from fractions import Fraction
 from typing import Callable, Iterator
@@ -25,10 +27,14 @@ from ._probe import MediaInfo, estimate_bytes, human_bytes, probe_cached
 
 logger = logging.getLogger("comfyui_timesaver.ts_video.decode")
 
-# Потолок памяти под кадры. Не константа ради константы: без него часовой
-# 4K-ролик просто уводит машину в своп. Переопределяется переменной окружения.
-_DEFAULT_MAX_BYTES = 8 * 1024 ** 3
+# Потолок памяти под кадры. Нужен: без него часовой 4K-ролик просто уводит
+# машину в своп. Но ЧИСЛОМ его задавать нельзя — 8 ГиБ на машине с 64 ГБ ОЗУ
+# отказывали 13-секундному 4K-ролику, которому хватало памяти с запасом
+# (реальная жалоба). Потолок считается от того, сколько ОЗУ у машины на самом
+# деле; переменная окружения по-прежнему главнее всего.
 _MAX_BYTES_ENV = "TS_VIDEO_MAX_BYTES"
+_FALLBACK_MAX_BYTES = 8 * 1024 ** 3     # если про машину узнать не удалось
+_TOTAL_RAM_SHARE = 0.6                  # доля ОЗУ, которую готовы отдать кадрам
 
 # Ниже этого порога перемотка не окупается: seek садится на ключевой кадр
 # раньше цели (замерено — на 0.77–0.9 с), и проще прочитать с начала.
@@ -71,6 +77,7 @@ class DecodeRequest:
     resize_filter: str = "area"
     want_audio: bool = True
     want_alpha: bool = False
+    allow_disk: bool = False                # кадры не влезли в ОЗУ — держать на диске
 
 
 @dataclass
@@ -248,7 +255,36 @@ def _planar_to_hwc(frame, channels: int):
     return _frame_to_array(frame, channels)
 
 
+def _total_ram() -> int:
+    """Сколько ОЗУ у машины, или 0, если узнать не вышло."""
+    try:
+        import psutil
+    except ImportError:                     # pragma: no cover - psutil есть в ComfyUI
+        return 0
+    try:
+        return int(psutil.virtual_memory().total)
+    except Exception:                       # noqa: BLE001 - счётчик не должен ронять декод
+        return 0
+
+
+def _available_ram() -> int:
+    """Сколько ОЗУ свободно ПРЯМО СЕЙЧАС, или 0. Только для предупреждения.
+
+    ⚠️ Отказывать по этому числу нельзя: оно пляшет от того, какие модели
+    сейчас держит ComfyUI, и один и тот же граф то проходил бы, то нет.
+    """
+    try:
+        import psutil
+    except ImportError:                     # pragma: no cover
+        return 0
+    try:
+        return int(psutil.virtual_memory().available)
+    except Exception:                       # noqa: BLE001
+        return 0
+
+
 def _max_bytes() -> int:
+    """Потолок под кадры: переменная окружения → доля ОЗУ → запасное число."""
     raw = os.environ.get(_MAX_BYTES_ENV, "")
     try:
         value = int(raw)
@@ -256,7 +292,63 @@ def _max_bytes() -> int:
             return value
     except (TypeError, ValueError):
         pass
-    return _DEFAULT_MAX_BYTES
+    total = _total_ram()
+    if total > 0:
+        # Запасное число — именно нижняя граница, а не альтернатива: на машине
+        # с 8 ГБ доля дала бы 4.8 ГиБ, то есть отказ там, где раньше работало.
+        return max(_FALLBACK_MAX_BYTES, int(total * _TOTAL_RAM_SHARE))
+    return _FALLBACK_MAX_BYTES
+
+
+# Куда кладём кадры, когда их не удержать в ОЗУ. Файл живёт в temp-папке
+# ComfyUI: она чистится при старте, так что забытый кусок не копится вечно.
+_DISK_PREFIX = "ts_video_frames_"
+
+
+def _disk_dir() -> pathlib.Path:
+    try:
+        import folder_paths
+
+        base = pathlib.Path(folder_paths.get_temp_directory())
+    except Exception:                       # noqa: BLE001 - вне ComfyUI берём системную
+        base = pathlib.Path(tempfile.gettempdir())
+    base.mkdir(parents=True, exist_ok=True)
+    return base
+
+
+def _sweep_disk_frames(directory: pathlib.Path) -> None:
+    """Убрать куски от прошлых прогонов.
+
+    ⚠️ Файл, который ещё отображён в память, Windows удалить не даст — и это
+    правильно: значит, тензор из него кто-то держит. Такой просто пропускаем.
+    """
+    for stale in directory.glob(f"{_DISK_PREFIX}*.bin"):
+        try:
+            stale.unlink()
+        except OSError:
+            continue
+
+
+def _allocate_frames(shape: tuple[int, ...], on_disk: bool, tag: str):
+    """Тензор под кадры: обычный в ОЗУ или отображённый на файл.
+
+    Отображённый — это НЕ «другой тип данных»: наружу уходит самый обычный
+    float32-тензор нужной формы, просто страницы за ним лежат на диске и
+    подтягиваются по мере обращения. Замерено: 19.8 ГБ выделяется за 0.00 с и
+    занимает в ОЗУ ровно столько, сколько кадров тронули.
+    """
+    import torch
+
+    numel = 1
+    for dim in shape:
+        numel *= int(dim)
+    if not on_disk:
+        return torch.empty(shape, dtype=torch.float32)
+    directory = _disk_dir()
+    _sweep_disk_frames(directory)
+    path = directory / f"{_DISK_PREFIX}{tag}_{os.getpid()}.bin"
+    flat = torch.from_file(str(path), shared=True, size=numel, dtype=torch.float32)
+    return flat.view(shape)
 
 
 def _window(media: MediaInfo, req: DecodeRequest) -> tuple[float, float]:
@@ -324,15 +416,47 @@ def decode(req: DecodeRequest, *, progress: bool = True) -> DecodeResult:
 
     needed = estimate_bytes(estimated, size[0], size[1], channels)
     ceiling = _max_bytes()
+    on_disk = False
     if needed > ceiling:
-        raise RuntimeError(
-            f"{LOG_PREFIX} This clip needs about {human_bytes(needed)} of RAM "
-            f"({estimated} frames of {size[0]}x{size[1]}). Trim the range on the timeline, "
-            f"set width/height, or set max_frames."
+        if not req.allow_disk:
+            raise RuntimeError(
+                f"{LOG_PREFIX} This clip needs about {human_bytes(needed)} of RAM "
+                f"({estimated} frames of {size[0]}x{size[1]}), more than the "
+                f"{human_bytes(ceiling)} ceiling. Trim the range on the timeline, set "
+                f"width/height, or set max_frames; switch 'when_too_large' to "
+                f"'use disk' to keep the frames on disk instead; or raise "
+                f"{_MAX_BYTES_ENV} if you know the machine can take it."
+            )
+        on_disk = True
+        logger.info(
+            "%s Clip needs %s, over the %s ceiling — keeping the frames on disk.",
+            LOG_PREFIX, human_bytes(needed), human_bytes(ceiling),
         )
 
-    images = torch.empty((estimated, size[1], size[0], 3), dtype=torch.float32)
-    alpha = torch.empty((estimated, size[1], size[0]), dtype=torch.float32) if channels == 4 else None
+    # ⚠️ Предупреждаем, но НЕ отказываем: свободная память пляшет от того, что
+    # сейчас держит ComfyUI, и отказ по ней сделал бы один и тот же граф то
+    # проходящим, то нет. Своп медленный, но это выбор пользователя.
+    available = _available_ram()
+    if 0 < available < needed:
+        logger.warning(
+            "%s Clip needs %s but only %s is free right now; the system will page. "
+            "Lower width/height or max_frames if it crawls.",
+            LOG_PREFIX, human_bytes(needed), human_bytes(available),
+        )
+
+    try:
+        images = _allocate_frames((estimated, size[1], size[0], 3), on_disk, "rgb")
+        alpha = (_allocate_frames((estimated, size[1], size[0]), on_disk, "alpha")
+                 if channels == 4 else None)
+    except (MemoryError, RuntimeError, OSError) as exc:
+        # ⚠️ Настоящий отказ выделения обязан читаться так же, как и наш
+        # предварительный: иначе пользователь получает голое MemoryError без
+        # единой подсказки, что с этим делать.
+        raise RuntimeError(
+            f"{LOG_PREFIX} Could not reserve {human_bytes(needed)} for "
+            f"{estimated} frames of {size[0]}x{size[1]}. Trim the range on the timeline, "
+            f"set width/height, set max_frames, or switch 'when_too_large' to 'use disk'."
+        ) from exc
 
     pbar = None
     interrupt = None

@@ -213,8 +213,14 @@ class VideoDepthAnything(nn.Module):
         fp32: bool = False,
         pbar=None,
         interrupt_cb=None,
+        infer_len: int | None = None,
+        overlap: int | None = None,
     ) -> torch.Tensor:
         """Run inference on a pre-resized, pre-normalised torch tensor.
+
+        ``infer_len`` / ``overlap`` override the module defaults (32 / 10).
+        A clip no longer than one window is processed as a single window of
+        exactly its own length — no padding with repeated frames.
 
         Args:
             frames: (N, 3, H_in, W_in) float, already resized to model input and
@@ -245,14 +251,34 @@ class VideoDepthAnything(nn.Module):
         org_video_len = int(frames.shape[0])
         H_in, W_in = int(frames.shape[2]), int(frames.shape[3])
 
-        frame_step = INFER_LEN - OVERLAP
-        append_frame_len = (frame_step - (org_video_len % frame_step)) % frame_step + (INFER_LEN - frame_step)
-        # Pad by repeating the last frame so every sliding window has INFER_LEN
-        # frames. The pad block uses `expand` (a view, no copy) before `cat`.
-        last_frame = frames[-1:].clone()
-        pad = last_frame.expand(append_frame_len, -1, -1, -1)
-        padded = torch.cat([frames, pad], dim=0)
-        del last_frame, pad
+        infer_len = int(infer_len or INFER_LEN)
+        overlap = int(OVERLAP if overlap is None else overlap)
+        overlap = max(0, min(overlap, infer_len - 1))
+        frame_step = infer_len - overlap
+        keyframes = [k for k in KEYFRAMES if k < infer_len][:overlap]
+
+        # ⚠️ Дорожка короче одного окна считается ОДНИМ окном ровно на свою
+        # длину, а не добивается копиями последнего кадра до 32. Модель
+        # работает при любом T (проверено), а дубли последнего кадра — вход,
+        # которого в обучении не было: они сплющивают диапазон глубины. Для
+        # ОДНОГО кадра это разница между 32 прогонами модели и одним.
+        #
+        # ⚠️ Для длинных дорожек шаг остаётся РАВНОМЕРНЫМ, а хвост по-прежнему
+        # добивается повтором. Сдвинуть последнее окно назад (как было бы
+        # честнее) нельзя, не переписав `_align_chunks`: тот считает, что все
+        # окна идут через один и тот же шаг, и на неравном разъезжается.
+        single_window = org_video_len <= infer_len
+        if single_window:
+            padded = frames
+        else:
+            append_frame_len = ((frame_step - (org_video_len % frame_step)) % frame_step
+                                + (infer_len - frame_step))
+            # Pad by repeating the last frame so every sliding window has infer_len
+            # frames. The pad block uses `expand` (a view, no copy) before `cat`.
+            last_frame = frames[-1:].clone()
+            pad = last_frame.expand(append_frame_len, -1, -1, -1)
+            padded = torch.cat([frames, pad], dim=0)
+            del last_frame, pad
 
         # Collect per-frame depths chunk-by-chunk. Match the legacy semantics
         # exactly: ALL INFER_LEN frames of each sliding window land in
@@ -262,13 +288,14 @@ class VideoDepthAnything(nn.Module):
         # an IndexError downstream.
         depth_list: list[np.ndarray] = []
         pre_input = None
-        for frame_id in tqdm(range(0, org_video_len, frame_step)):
+        window_starts = [0] if single_window else list(range(0, org_video_len, frame_step))
+        for frame_id in tqdm(window_starts):
             if interrupt_cb is not None:
                 interrupt_cb()
 
-            cur_input = padded[frame_id:frame_id + INFER_LEN].unsqueeze(0).to(device, non_blocking=True)
-            if pre_input is not None:
-                cur_input[:, :OVERLAP, ...] = pre_input[:, KEYFRAMES, ...]
+            cur_input = padded[frame_id:frame_id + infer_len].unsqueeze(0).to(device, non_blocking=True)
+            if pre_input is not None and keyframes:
+                cur_input[:, :len(keyframes), ...] = pre_input[:, keyframes, ...]
 
             with torch.no_grad():
                 with torch.autocast(device_type=device_type, enabled=(not fp32)):
@@ -293,7 +320,9 @@ class VideoDepthAnything(nn.Module):
         if device.type == "cuda":
             torch.cuda.empty_cache()
 
-        aligned = _align_chunks(depth_list)
+        # Одно окно — сшивать нечего, выравнивание нужно только между окнами.
+        aligned = depth_list if single_window else _align_chunks(
+            depth_list, infer_len=infer_len, overlap=overlap, keyframes=keyframes)
         out = np.stack(aligned[:org_video_len], axis=0)
         return torch.from_numpy(out)
 
@@ -359,20 +388,27 @@ class VideoDepthAnything(nn.Module):
         return np.stack(aligned[:org_video_len], axis=0)
 
 
-def _align_chunks(depth_list):
-    """Scale-and-shift align overlapping INFER_LEN windows.
+def _align_chunks(depth_list, infer_len=None, overlap=None, keyframes=None):
+    """Scale-and-shift align overlapping windows.
 
     Extracted from `infer_video_depth` so both the legacy numpy path and the
     new torch path share one alignment routine.
+
+    ⚠️ Рассчитано на РАВНОМЕРНЫЙ шаг окон: смещение считается от границы
+    ``infer_len``. Неравномерный шаг (например, сдвинутое назад последнее окно)
+    здесь разъедется — сначала пришлось бы переписать саму эту функцию.
     """
+    infer_len = int(infer_len or INFER_LEN)
+    overlap = int(OVERLAP if overlap is None else overlap)
+    interp_len = min(INTERP_LEN, max(0, overlap - 1))
     depth_list_aligned = []
     ref_align = []
-    align_len = OVERLAP - INTERP_LEN
-    kf_align_list = KEYFRAMES[:align_len]
+    align_len = max(1, overlap - interp_len)
+    kf_align_list = list(keyframes if keyframes is not None else KEYFRAMES)[:align_len]
 
-    for frame_id in range(0, len(depth_list), INFER_LEN):
+    for frame_id in range(0, len(depth_list), infer_len):
         if len(depth_list_aligned) == 0:
-            depth_list_aligned += depth_list[:INFER_LEN]
+            depth_list_aligned += depth_list[:infer_len]
             for kf_id in kf_align_list:
                 ref_align.append(depth_list[frame_id + kf_id])
         else:
@@ -385,14 +421,15 @@ def _align_chunks(depth_list):
                 np.concatenate(np.ones_like(ref_align) == 1),
             )
 
-            pre_depth_list = depth_list_aligned[-INTERP_LEN:]
-            post_depth_list = depth_list[frame_id + align_len:frame_id + OVERLAP]
+            pre_depth_list = depth_list_aligned[-interp_len:] if interp_len else []
+            post_depth_list = depth_list[frame_id + align_len:frame_id + overlap]
             for i in range(len(post_depth_list)):
                 post_depth_list[i] = post_depth_list[i] * scale + shift
                 post_depth_list[i][post_depth_list[i] < 0] = 0
-            depth_list_aligned[-INTERP_LEN:] = get_interpolate_frames(pre_depth_list, post_depth_list)
+            if interp_len:
+                depth_list_aligned[-interp_len:] = get_interpolate_frames(pre_depth_list, post_depth_list)
 
-            for i in range(OVERLAP, INFER_LEN):
+            for i in range(overlap, infer_len):
                 new_depth = depth_list[frame_id + i] * scale + shift
                 new_depth[new_depth < 0] = 0
                 depth_list_aligned.append(new_depth)

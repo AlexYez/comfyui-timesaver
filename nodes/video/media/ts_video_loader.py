@@ -166,6 +166,34 @@ class TS_VideoLoader(IO.ComfyNode):
                         "edges sharp, neighbor is for pixel art."
                     ),
                 ),
+                # ⚠️ Дописан В КОНЕЦ и optional: widgets_values позиционный, а
+                # граф в API-формате, сохранённый до этого входа, его не несёт.
+                IO.Combo.Input(
+                    "when_too_large",
+                    options=["stop", "use disk"],
+                    default="stop",
+                    optional=True,
+                    advanced=True,
+                    tooltip=(
+                        "What to do when the frames will not fit in RAM. The ceiling is "
+                        "60% of the machine's memory (at least 8 GB), or whatever "
+                        "TS_VIDEO_MAX_BYTES says.\n"
+                        "• stop (default) — refuse with a message naming the size, so "
+                        "nothing quietly starts paging.\n"
+                        "• use disk — put the frames in a memory-mapped file in the "
+                        "ComfyUI temp folder. What comes out is an ordinary IMAGE "
+                        "tensor, and the allocation cannot fail outright however big "
+                        "the clip is.\n"
+                        "Be honest about the cost: decoding writes every frame once, so "
+                        "memory still climbs towards the full size while it runs "
+                        "(measured: a 31.9 GB clip took 92 s on disk against 51 s in "
+                        "RAM). What you gain is that those pages are backed by a real "
+                        "file, so the system can drop them instead of failing, and "
+                        "downstream only the frames a node touches are read back. Make "
+                        "sure the temp drive has room; the file goes away when the run "
+                        "releases the tensor, and leftovers are swept on the next decode."
+                    ),
+                ),
             ],
             outputs=[
                 IO.Image.Output(
@@ -248,6 +276,7 @@ class TS_VideoLoader(IO.ComfyNode):
         divisible_by: int = 1,
         frame_step: int = 1,
         resize_filter: str = "area",
+        when_too_large: str = "stop",
     ) -> IO.NodeOutput:
         from ._decode import DecodeRequest, decode
 
@@ -266,6 +295,8 @@ class TS_VideoLoader(IO.ComfyNode):
             divisible_by=int(divisible_by),
             frame_step=int(frame_step),
             resize_filter=str(resize_filter),
+            # Необязательный вход из старого графа приходит None, а не пропуском.
+            allow_disk=(when_too_large or "stop") == "use disk",
         ))
 
         media = result.media

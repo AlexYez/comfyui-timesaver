@@ -1,0 +1,29 @@
+{
+  "name": "Qwen Multi-Angle",
+  "order": 10,
+  "model": "Qwen-Image-Edit 2511 + Multiple-Angles LoRA",
+  "notes": "The LoRA was trained on the terse vocabulary the upstream ComfyUI-qwenmultiangle node emits: '<sks> {horizontal} {vertical} {framing}'. This is a TRIGGER PHRASE, not free-form English — rewriting the words breaks the conditioning, and the '<sks>' token must stay. All four vertical bands of that node are here (<-15 / <15 / <45 / >=45 degrees); a port that kept only three lost 'elevated shot'.",
+  "template": "{trigger} {horizontal} {height} {framing}",
+  "trigger": "<sks>",
+  "horizontal": {
+    "0": "front view",
+    "45": "front-right quarter view",
+    "90": "right side view",
+    "135": "back-right quarter view",
+    "180": "back view",
+    "225": "back-left quarter view",
+    "270": "left side view",
+    "315": "front-left quarter view"
+  },
+  "height": {
+    "low": "low-angle shot",
+    "eye-level": "eye-level shot",
+    "elevated": "elevated shot",
+    "high": "high-angle shot"
+  },
+  "framing": {
+    "wide": "wide shot",
+    "medium": "medium shot",
+    "close-up": "close-up"
+  }
+}
