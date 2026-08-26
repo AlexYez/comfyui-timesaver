@@ -10,7 +10,7 @@
 
 Resize, color-grade, key, denoise, transcribe, translate, prompt-build, manage models — without leaving the canvas.
 
-[![Version](https://img.shields.io/badge/version-12.1.0-blue.svg)](pyproject.toml)
+[![Version](https://img.shields.io/badge/version-12.2.0-blue.svg)](pyproject.toml)
 [![ComfyUI](https://img.shields.io/badge/ComfyUI-V3%20API-orange.svg)](https://github.com/comfyanonymous/ComfyUI)
 [![Python](https://img.shields.io/badge/python-3.10+-green.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-see%20LICENSE.txt-lightgrey.svg)](LICENSE.txt)
@@ -787,9 +787,71 @@ Turns any `AUDIO` clip into a stylized SoundCloud-style waveform image at the re
 ---
 
 <a id="llm"></a>
-### 🤖 LLM (2 nodes)
+### 🤖 LLM (3 nodes)
 
 Multimodal LLM-powered prompt enhancement and image understanding.
+
+#### TS Super Prompt RT
+
+The same node, on a different engine: **Gemma 4 through Google's LiteRT-LM**,
+the on-device runtime behind AI Edge. Measured on an RTX 3080 Ti Laptop against
+the transformers path, same machine, same prompt:
+
+| | TS Super Prompt RT (Gemma 4 E4B) | TS Super Prompt (Qwen3.5-4B, bf16) |
+|---|---|---|
+| speed | **43 tok/s** | 20 tok/s |
+| VRAM | **~1.7 GB** | 8.5 GB |
+| unload | 0.9 s | 3.4 s |
+
+Twice the speed at a fifth of the memory — and the same model that writes the
+prompt also **hears the recording**, so this node needs no Whisper at all. One
+switch, `high_quality`, chooses between **E2B** (2.4 GB, quicker) and **E4B**
+(3.4 GB, better) — for both jobs at once, because it is one model doing both.
+
+**The model leaves the card when the work is done, and that is not an
+optimisation.** LiteRT runs on WebGPU rather than CUDA, and ComfyUI's memory
+manager cannot see a single byte of it: `torch.cuda.mem_get_info` reported the
+same free memory whether Gemma was resident or not, while `nvidia-smi` moved by
+3.5 GB. So a resident model is memory ComfyUI believes it still has, and the
+sampler that follows plans accordingly. Unloading costs about a second and a
+reload about five, which is why `keep_loaded` is off by default and its tooltip
+says plainly what turning it on costs you.
+
+**The context is 4096 tokens** — the artefact's limit, not Gemma's. Every preset
+in the pack fits, checked with a test, and a prompt that would not fit is
+refused with a readable message *before* three gigabytes are read from disk
+rather than being silently truncated.
+
+**Speech is transcribed in 30-second segments** and stitched, with the overlap
+removed. Thirty seconds is measured, not chosen: shorter cuts returned the same
+amount of text but stuttered at the seams. A segment that comes back
+suspiciously thin for its length is retried once — the model occasionally
+decides one tidy sentence is a whole transcript.
+
+**One switch, two jobs.** The toolbar puts what you *do* on the left — record,
+attach, Enhance, pick a preset — and the two settings that apply to everything on
+the right: **HQ** (E2B or E4B, for the prompt *and* the transcription, since it is
+one model doing both) and a **memory chip** that keeps the model on the card
+between runs. Turning the chip off releases the card immediately rather than at
+the end of the next run.
+
+**Only one thing talks to the engine at a time.** LiteRT holds a single engine
+per process, and unloading it while it is writing takes the whole ComfyUI
+process down with an access violation — measured, not theorised, when a second
+model was loaded from another tab mid-generation. So every request queues, and a
+waiting one says so in the progress panel instead of looking frozen.
+
+Models are pulled from `litert-community` (Apache-2.0, no token needed) into
+`models/LLM/litert` on first use. The runtime itself is not in
+`requirements.txt` and installs separately:
+
+```
+python -m pip install litert-lm==0.16.1
+```
+
+> **Windows and macOS only.** LiteRT-LM publishes no Linux wheels. On Linux the
+> node loads and explains itself instead of failing obscurely — use TS Super
+> Prompt, which runs on transformers everywhere.
 
 #### TS Qwen 3
 <img src="doc/screenshots/ts_qwen3_vl.png" alt="TS Qwen 3 VL V3" width="450" />
@@ -816,6 +878,14 @@ Prompt enhancement node with a built-in **voice button** — speak your idea, Wh
 **The Enhance button sees the input too.** The value on a wire does not exist until something computes it, so the button computes it — but only the branch that feeds this input. The nodes that branch depends on are pulled out of the graph into a prompt of their own and run; nothing else in the workflow is in that prompt, so no sampler and no save fires along with it. Two loaders joined into a batch, a resize, a crop — all of it works, and none of it needs a run of the whole workflow first. Nothing is remembered between presses on purpose: swap the file behind a loader and the graph reads exactly the same, so a remembered result would quietly enhance the picture you replaced. ComfyUI does the caching one level down, by what the nodes actually read. If the branch produces no image, the node says so instead of quietly enhancing the text alone.
 
 **On-screen text is not translated.** Anything in quotes is what should appear in the picture — a sign, a title, a lyric. It is copied through unchanged, in its original language, while everything else is translated to English. An obliging translation used to turn a Russian shop sign into an English one nobody asked for.
+
+**Audio presets: music and sound effects.** `Audio Prompt Enhance Minimax` writes a caption for **MiniMax Music 3** in the official format — exactly three headings (`Global Metadata` → `Vocal Details` → `Arrangement`) and roughly 250–450 words. The voice is always stated, since leaving it out is what makes a track drift instrumental; an exact BPM or key appears only if you asked for one; lyrics never enter the caption at all, because they go in the node's own lyrics field. **A picture works as a mood board**: a summer street does not come back as a description of the photograph but as the music that would score it, with the scene itself becoming the `Application Scenarios & Imagery` line.
+
+`Audio Prompt Enhance Stable Audio SFX` writes for **Stable Audio 3**, aimed at sound effects and solo instruments. The prompt opens with the dataset tag the model was trained on — `TrackType: SFX` or `TrackType: Instrument`, plus `Format: Duo` for a pair — without which an effect drifts into music and a solo guitar arrives with a full band. An effect is described by three things: the source, the action, and the recording. It carries no verses and no choruses, because it is one event rather than a song.
+
+`Audio Prompt Enhance ACE-Step` writes the **Style** field for ACE-Step 1.5 XL — one line of comma-separated descriptors, which the official guide calls the single most important input. It covers the nine dimensions the guide lists (genre, mood, tempo feel, concrete instruments, the voice, timbre, production, era, a structure hint) and leaves the model's **separate fields alone**: no invented BPM, key, time signature or duration, because each has its own box and a number in the caption only argues with it. Contradictions are resolved the way the guide does — a primary genre with a secondary influence, or a change written as evolution in time. Lyrics stay out entirely; they belong in the lyrics field with their own structure tags.
+
+> **Renamed.** This preset used to be called `Music Prompt Enhance`. Old workflows keep working: the old name is aliased to the new one, so the same preset is chosen and the widget simply shows the new label.
 
 **The video presets and `Image Prompt Enhance`** are written for a small model (Qwen 2B/4B): short numbered steps, an explicit output format, one example — and whatever matters most is put at the beginning and repeated at the end, because that is the part of a long instruction a 2B model actually keeps. There is a preset per target model rather than one for all of them: `Video Prompt Enhance LTX` for LTX-2.5, `Video Prompt Enhance H3` and `… H3 Reference` for MiniMax H3.
 

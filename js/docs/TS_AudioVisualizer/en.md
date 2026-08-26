@@ -6,7 +6,7 @@ Turns any `AUDIO` clip into a stylized SoundCloud-style waveform image at the re
 
 
 <a id="llm"></a>
-### 🤖 LLM (2 nodes)
+### 🤖 LLM (3 nodes)
 
 Multimodal LLM-powered prompt enhancement and image understanding.
 

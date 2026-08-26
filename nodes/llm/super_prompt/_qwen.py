@@ -63,6 +63,8 @@ from ._helpers import (
     LOGGER,
     MODEL_LOCK,
     PROMPT_TARGETS,
+    resolve_preset_alias,
+    target_for_preset,
     SUPER_PROMPT_ATTENTION_MODE,
     SUPER_PROMPT_CUSTOM_SYSTEM_PROMPT,
     SUPER_PROMPT_DOWNLOAD_SIZE_ESTIMATES,
@@ -334,7 +336,7 @@ def default_preset(options: list[str]) -> str:
 
 def _resolve_preset(system_preset: str, custom_system_prompt: str | None) -> tuple[str, dict[str, Any]]:
     presets, _keys = _load_presets()
-    preset_name = str(system_preset or "").strip()
+    preset_name = resolve_preset_alias(system_preset)
 
     if preset_name == CUSTOM_PRESET:
         prompt = str(custom_system_prompt or "").strip()
@@ -416,6 +418,27 @@ def _frame_label(index: int, total: int) -> str:
     return f"FRAME {index + 1} of {total}:"
 
 
+def _quoted_text_rule(prompt_target: str) -> str:
+    """Что делать со словами в кавычках — зависит от носителя.
+
+    Картинка и видео рисуют их на экране. Музыка их ПОЁТ, но не из этого
+    промпта: слова вводятся в собственное поле ноды, а описание стиля обязано
+    остаться описанием стиля.
+    """
+    if str(prompt_target or "").strip().lower() == "music":
+        return (
+            "- EXCEPTION: words inside quotes are lyrics. They belong to the "
+            "node's own lyrics field, not to this prompt: describe how they are "
+            "SUNG - the voice, the delivery, where the line falls - and never "
+            "write the words themselves.\n"
+        )
+    return (
+        "- EXCEPTION: text inside quotes is on-screen text. Copy it exactly, "
+        "character for character, in its original language, quotes included. "
+        "Never translate what is quoted.\n"
+    )
+
+
 def _build_messages(
     system_prompt: str,
     text: str,
@@ -442,6 +465,18 @@ def _build_messages(
             f"{len(pil_images)} images are attached, in order from the first "
             "frame of the shot to the last. Describe the change across them.\n"
         )
+    elif pil_images and prompt_target == "music":
+        # ⚠️ Для звука картинка — НАСТРОЕНИЕ, а не предмет. Прежняя строка прямо
+        # просила описать изображение и стояла в пользовательском ходе, то есть
+        # ближе системного промпта: музыкальный пресет послушно выдавал
+        # фотоописание («photorealistic texture, shallow depth of field»), и
+        # никакие правки самого пресета это не перебивали.
+        image_note = ("One reference image is attached. It is a mood board for the "
+                      "SOUND: hear what this scene would sound like. Every descriptor "
+                      "you write must be a musical term - a genre, an instrument, a "
+                      "tempo, a timbre, a production style or a mood. If a descriptor "
+                      "would also fit under a photograph, drop it and write the sound "
+                      "it stands for instead.\n")
     elif pil_images:
         image_note = "One reference image is attached. Describe what is in it.\n"
     else:
@@ -455,9 +490,12 @@ def _build_messages(
         # Text in quotes is text the generator will draw on screen — a sign,
         # a title, a lyric. An obliging translation turns a Russian shop sign
         # into an English one the person never asked for.
-        "- EXCEPTION: text inside quotes is on-screen text. Copy it exactly, "
-        "character for character, in its original language, quotes included. "
-        "Never translate what is quoted.\n"
+        #
+        # ⚠️ Для звука это правило не просто неточно, а вредно: слова песни
+        # вводятся в ОТДЕЛЬНОЕ поле ноды, а описание музыки слов содержать не
+        # должно. Пока правило называло кавычки «текстом на экране», оно
+        # спорило с пресетом, и модель разрешала спор как придётся.
+        f"{_quoted_text_rule(prompt_target)}"
         "- Keep the user's core meaning, named subjects, and constraints.\n"
         "- Return only the final prompt, with no preface, no analysis, and no markdown.\n"
         "- Do not use thinking mode. Do not output chain-of-thought or hidden reasoning.\n\n"
@@ -799,7 +837,7 @@ def _generate_with_qwen(
             messages = _build_messages(
                 system_prompt,
                 text,
-                SUPER_PROMPT_TARGET,
+                target_for_preset(system_preset),
                 image,
                 int(SUPER_PROMPT_MAX_IMAGE_SIZE),
             )

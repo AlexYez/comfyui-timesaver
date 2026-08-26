@@ -2,7 +2,7 @@
 name = "comfyui-timesaver"
 description = "ComfyUI nodes from [Timesaver](https://github.com/AlexYez/comfyui-timesaver)."
 # ⚠️ Три составляющих: Comfy Registry принимает только SemVer.
-version = "12.1.0"
+version = "12.2.0"
 license = { file = "LICENSE.txt" }
 # Matches CI (.github/workflows/ci.yml) and the Python range ComfyUI itself
 # supports; >=3.12 wrongly blocked pip installs on 3.10/3.11.
@@ -77,6 +77,17 @@ audio-silero = [
     "silero",
     "silero-stress",
 ]
+
+# TS Super Prompt RT: Gemma 4 on Google's LiteRT-LM runtime.
+#
+# ⚠️ Windows and macOS only — LiteRT-LM publishes no Linux wheels (checked
+# against every manylinux tag at 0.16.1). Version is pinned, not floored: the
+# API moved between releases (`create_conversation` changed signature), and one
+# adapter in the pack speaks to exactly this one.
+#
+# ⚠️ Deliberately NOT part of `all`: on Linux it would make `pip install .[all]`
+# fail outright for the sake of a single node that already explains itself.
+litert = ["litert-lm==0.16.1"]
 
 # Convenience meta-extra: install everything optional in one go.
 all = [

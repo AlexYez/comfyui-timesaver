@@ -5,6 +5,12 @@
 #   pip install bitsandbytes        # for TS_Qwen3_VL_V3 int4/int8
 #   pip install demucs geomloss pykeops  # for the older Demucs engine in TS_Music_Stems
 #   pip install silero silero-stress  # Russian TTS / stress marks
+#   pip install litert-lm==0.16.1     # for TS Super Prompt RT (Gemma 4 on LiteRT)
+#
+# ⚠️ litert-lm СОЗНАТЕЛЬНО не в списке ниже и не в extra `all`: колёс под
+# Linux у него нет ни под один manylinux-тег, и обязательная строка здесь
+# ломала бы установку всего пака на каждой линуксовой сборке ComfyUI.
+# Нода без него грузится и объясняет, чего не хватает.
 huggingface_hub>=0.20.0
 # TS Music Stems runs BS-RoFormer and Mel-Band RoFormer as its default engines,
 # and the vendored architectures need these two. Small, pure-Python, no build

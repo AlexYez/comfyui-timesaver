@@ -5055,6 +5055,85 @@
       }
     }
   },
+  "TS_SuperPromptRT": {
+    "api": "v3",
+    "category": "TS/LLM",
+    "class_name": "TS_SuperPromptRT",
+    "display_name": "TS Super Prompt RT",
+    "inputs": [
+      {
+        "index": 0,
+        "multiline": true,
+        "name": "text",
+        "type": "String"
+      },
+      {
+        "index": 1,
+        "name": "high_quality",
+        "type": "Boolean"
+      },
+      {
+        "index": 2,
+        "name": "system_preset",
+        "type": "Combo"
+      },
+      {
+        "index": 3,
+        "name": "attached_image",
+        "socketless": true,
+        "type": "String"
+      },
+      {
+        "index": 4,
+        "name": "attached_image_2",
+        "socketless": true,
+        "type": "String"
+      },
+      {
+        "index": 5,
+        "name": "keep_loaded",
+        "type": "Boolean"
+      },
+      {
+        "index": 6,
+        "name": "images",
+        "optional": true,
+        "type": "Image"
+      },
+      {
+        "index": 7,
+        "name": "audio",
+        "optional": true,
+        "type": "Audio"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "text",
+        "index": 0,
+        "name": "text",
+        "type": "String"
+      }
+    ],
+    "python_file": "nodes/llm/super_prompt_rt/ts_super_prompt_rt.py",
+    "widgets": {
+      "attached_image": {
+        "default": ""
+      },
+      "attached_image_2": {
+        "default": ""
+      },
+      "high_quality": {
+        "default": false
+      },
+      "keep_loaded": {
+        "default": false
+      },
+      "text": {
+        "default": ""
+      }
+    }
+  },
   "TS_UniversalInpaintSampler": {
     "api": "v3",
     "category": "TS/Image/Retouch",

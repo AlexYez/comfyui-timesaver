@@ -216,6 +216,39 @@ ALLOWED_AUDIO_SUFFIXES = {".aac", ".aiff", ".flac", ".m4a", ".mp3", ".mp4", ".og
 
 PROMPT_TARGETS = ("auto", "image", "video", "music")
 
+# ⚠️ Пресеты, которые делают ЗВУК, а не картинку. Разница не косметическая:
+# при вложенной картинке пользовательский ход получает подсказку «реши, картинка
+# это или видео» и «опиши, что на ней», и обе стоят БЛИЖЕ системного промпта.
+# Замерено: музыкальный пресет с картинкой из-за них выдавал промпт для
+# генератора изображений — «photorealistic texture, shallow depth of field» —
+# вместо музыкального описания, и никакие правки самого пресета это не
+# перебивали.
+AUDIO_PRESETS = (
+    "Audio Prompt Enhance ACE-Step",
+    "Audio Prompt Enhance Minimax",
+    "Audio Prompt Enhance Stable Audio SFX",
+)
+
+
+# ⚠️ Переименования пресетов. Имя лежит ЗНАЧЕНИЕМ ВИДЖЕТА в сохранённых графах,
+# и `_resolve_preset` на незнакомое имя не падает — он молча берёт пресет по
+# умолчанию. То есть без этой таблицы старый граф продолжил бы работать, но
+# выдавал бы совсем другой промпт, и понять почему было бы неоткуда.
+PRESET_ALIASES = {
+    "Music Prompt Enhance": "Audio Prompt Enhance ACE-Step",
+}
+
+
+def resolve_preset_alias(preset: str) -> str:
+    """Имя пресета с учётом переименований."""
+    name = str(preset or "").strip()
+    return PRESET_ALIASES.get(name, name)
+
+
+def target_for_preset(preset: str) -> str:
+    """Какой носитель просит этот пресет: звук или «как получится»."""
+    return "music" if resolve_preset_alias(preset) in AUDIO_PRESETS else SUPER_PROMPT_TARGET
+
 # Hard cap on /ts_super_prompt/enhance text length. Anything bigger is almost
 # certainly a misuse or DoS attempt — Qwen3.5 has a much smaller context budget
 # in practice and 8 KiB is well above any reasonable creative prompt.

@@ -9,6 +9,106 @@ broken here, in writing, with a way back.
 
 ---
 
+## 12.2.0
+
+### TS Super Prompt RT — the same work, on Google's on-device runtime
+
+A new node beside TS Super Prompt, running **Gemma 4 through LiteRT-LM**
+instead of transformers. Measured on the same machine and the same prompt:
+**43 tok/s at ~1.7 GB of VRAM**, against 20 tok/s at 8.5 GB for the Qwen path.
+The same model also transcribes speech, so there is no Whisper in this node at
+all — one `high_quality` switch picks E2B or E4B for both jobs, because it is
+one model doing both.
+
+**It gives the card back when it is done.** LiteRT computes on WebGPU, not CUDA,
+and ComfyUI cannot see that memory: `torch.cuda.mem_get_info` reads the same
+whether Gemma is resident or not. A model left loaded is therefore memory
+ComfyUI still believes it has. Unloading takes about a second, so it is the
+default; `keep_loaded` turns it off and says what that costs.
+
+Requires a separate install — `python -m pip install litert-lm==0.16.1` — and
+**works on Windows and macOS only**, because LiteRT-LM publishes no Linux
+wheels. On Linux the node loads and explains that instead of failing obscurely.
+Models come from `litert-community` (Apache-2.0, no token) into
+`models/LLM/litert` on first use.
+
+Nothing about the existing TS Super Prompt changed.
+
+### `Music Prompt Enhance` is now `Audio Prompt Enhance ACE-Step`
+
+Same preset, new name and a new prompt written for **ACE-Step 1.5 XL**. It
+produces the model's **Style** field: one line of comma-separated descriptors
+covering the nine dimensions the official guide lists, with the separate fields
+left alone — no invented BPM, key, time signature or duration, since each has a
+box of its own and a number in the caption only argues with it.
+
+**Old workflows keep working.** The former name is aliased to the new one, so a
+graph saved with `Music Prompt Enhance` selects exactly this preset; the widget
+shows the new label after you open and re-save it. Without that alias the node
+would have fallen back to its default preset without a word — a working graph
+quietly writing a different kind of prompt.
+
+### Two new presets for audio: MiniMax Music 3 and Stable Audio 3
+
+`Audio Prompt Enhance Minimax` turns an idea — in Russian if you like — into a
+caption in MiniMax Music 3's own format: three headings, the labelled lines each
+one wants, and the 250–450 words the official guide asks for. It also takes a
+**picture** and writes the music that would score it, which is what the
+`Application Scenarios & Imagery` line was made for.
+
+`Audio Prompt Enhance Stable Audio SFX` writes for Stable Audio 3, for sound
+effects and solo instruments. It opens with the dataset tag the model expects —
+`TrackType: SFX` or `TrackType: Instrument` — then names the source, the action
+and the recording, and never wanders into verses and choruses.
+
+**A bug the new presets uncovered:** with a picture attached, every preset was
+told, in the user turn, to "infer whether image or video generation is more
+appropriate" and to "describe what is in it" — a leftover from when the node
+only wrote picture prompts. Those two lines sit closer to the model than the
+system prompt, so a music preset given a photograph returned an image prompt,
+lens and depth of field included. The medium now follows the preset, and for an
+audio preset a picture is announced as a mood board for the sound. Measured on
+the same photo: 91 words of photo description became a 350-word music caption.
+Quoted words are handled by medium too — drawn on screen for picture and video,
+sung for music, and kept out of the caption where the model expects them in its
+own lyrics field.
+
+### The video presets stopped inventing dialogue
+
+Give TS Super Prompt a picture and no words at all, and it used to hand back a
+prompt in which people speak: MiniMax H3 got two riders described as talking in
+warm and bright voices, LTX got an outright invented Russian line. Both models
+make sound in the same pass as the picture, so an invented line becomes real
+speech in the result.
+
+The cause was not one bug but two. The H3 presets only ever said what to do **if**
+the idea contains words in quotes — what to do when it contains none was written
+nowhere, so the model filled the gap itself. The LTX preset did carry that rule,
+but buried in the middle while every one of its examples contained speech, and a
+2B model follows an example far more readily than a rule.
+
+All three presets now state the prohibition in as many words and carry an
+example in which nobody speaks. Measured across three seeds on the same picture:
+no invented speech in any of them, and a quoted line still arrives verbatim
+inside its `<d>` block.
+
+**Reference mode takes its labels from your text.** You write `<Picture 1>`,
+`<Video 1>`, `<Audio 1>` in the prompt field yourself, so the preset now copies
+exactly those instead of guessing — it used to announce an `<Audio 1>` nobody
+had attached, sending the model looking for a voice that did not exist. Its
+answer also had room to finish: six fields did not fit in the old token budget
+and were being cut off in the fifth.
+
+Known limits, measured rather than assumed: with a picture *and* a spoken line,
+the small model still borrows scenery from the preset's worked example, and it
+sometimes omits the camera move on a still with no action. Six different prompt
+rewrites were tried against three seeds each; none removed these without making
+something else worse, and the bigger model does not fix them either. They are
+cosmetic — the prompt is valid and the line is correct — and are better solved
+by a stronger model than by more instructions.
+
+---
+
 ## 12.1.0 — 22 Aug 2026
 
 ### New node: TS Angle Select
