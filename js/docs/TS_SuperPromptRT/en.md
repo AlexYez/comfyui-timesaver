@@ -48,8 +48,27 @@ process down with an access violation — measured, not theorised, when a second
 model was loaded from another tab mid-generation. So every request queues, and a
 waiting one says so in the progress panel instead of looking frozen.
 
-Models are pulled from `litert-community` (Apache-2.0, no token needed) into
-`models/LLM/litert` on first use. The runtime itself is not in
+**A forgotten Stop button no longer costs you a quarter of an hour.** The
+microphone stops itself after three minutes, counting down out loud for the last
+fifteen seconds, and says afterwards why it stopped — including when the
+recording turned out to be silence, which is what a forgotten microphone usually
+records. A recording that reaches the server another way is cut at five minutes
+with a line in the log.
+
+Three minutes is not a model limit. Google's documentation puts **one audio clip
+at 30 seconds**, at 25 tokens per second, and the node already respects that by
+transcribing in 30-second segments — measured to lose nothing: the same minute of
+speech gave 141 words in two segments against 140 in a single oversized pass.
+This runtime does not enforce the 30 s itself (85 s went through here, and only
+at 90 s did it stop with `4688 >= 4096`), which is exactly why the boundary is
+kept deliberately rather than by accident.
+
+Models are pulled from
+[`hfmaster/Gemma-4-RT`](https://huggingface.co/hfmaster/Gemma-4-RT) into
+`models/LLM/litert` on first use — public, no token needed. These are the
+**abliterated** builds of Gemma 4 E2B and E4B: the same weights and the same
+speed, with the refusal behaviour trained out, which matters for a node whose
+whole job is writing prompts. The runtime itself is not in
 `requirements.txt` and installs separately:
 
 ```

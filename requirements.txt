@@ -7,6 +7,11 @@
 #   pip install silero silero-stress  # Russian TTS / stress marks
 #   pip install litert-lm==0.16.1     # for TS Super Prompt RT (Gemma 4 on LiteRT)
 #
+# TS RTX Upscaler needs NVIDIA's own package index — the copy on PyPI is a
+# 2.7 KB stub that fails to build, while the real wheel (792 MB of VFX SDK,
+# TensorRT and NPP libraries) lives only here:
+#   pip install nvidia-vfx==0.1.0.1 --no-build-isolation --index-url https://pypi.nvidia.com
+#
 # ⚠️ litert-lm СОЗНАТЕЛЬНО не в списке ниже и не в extra `all`: колёс под
 # Linux у него нет ни под один manylinux-тег, и обязательная строка здесь
 # ломала бы установку всего пака на каждой линуксовой сборке ComfyUI.

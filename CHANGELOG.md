@@ -9,6 +9,64 @@ broken here, in writing, with a way back.
 
 ---
 
+## 12.2.1
+
+### TS Super Prompt RT switches to the abliterated Gemma 4 builds
+
+The catalogue now points at
+[`hfmaster/Gemma-4-RT`](https://huggingface.co/hfmaster/Gemma-4-RT) — the
+**abliterated** E2B and E4B artefacts — instead of the stock `litert-community`
+ones. Same sizes (2.41 GB and 3.41 GB), same speed, but without the refusal
+behaviour, which matters for a node whose only job is writing prompts.
+
+All fifteen presets and voice transcription were re-run on both new models
+before the switch: 15/15 on each, transcription unchanged.
+
+**Existing installs will download the new files on first use.** The old ones are
+not deleted and not needed; they can be removed from `models/LLM/litert` by hand.
+
+
+
+### TS Super Prompt RT: a forgotten Stop button is no longer expensive
+
+The microphone stops itself after three minutes, counts down for the last
+fifteen seconds and afterwards says why it stopped — including when the
+recording was silence, which is what a forgotten microphone usually captures. A
+recording arriving at the route by another path is cut at five minutes.
+
+Three minutes is not a model limit: Google documents **30 seconds per audio
+clip** at 25 tokens/s, and the node already transcribes in 30-second segments.
+That boundary is now held on purpose rather than by luck — this runtime accepted
+85 s here and only refused at 90 s with `4688 >= 4096`, and segmenting costs
+nothing in completeness (141 words in two segments against 140 in one oversized
+pass over the same minute).
+
+### TS RTX Upscaler keeps its engine between runs
+
+The NVIDIA VSR engine used to be built from scratch on every run of the node.
+Measured on an RTX 3080 Ti, that cost ~730 ms — on eight frames to 1080p, 93% of
+the node's entire work. It is now created once and merely reconfigured: changing
+the output size on a live engine costs 6 ms, changing quality costs nothing.
+**Repeat runs are 6.8× faster** (0.93 s → 0.14 s); long clips, where the engine
+was already amortised, are unchanged.
+
+The engine holds 162 MB, and unlike the LiteRT runtime that memory IS visible to
+ComfyUI, so keeping it hides nothing from the sampler. Frame processing is
+serialised behind a lock — the engine is one per process, and two graphs calling
+into it at once would race inside native code.
+
+Nothing about the node's inputs, outputs or results changed.
+
+### Installing `nvidia-vfx` is documented at last
+
+The package on PyPI is a 2.7 KB stub that fails to build; the real wheel lives
+only on NVIDIA's index. The command is now in the README, in `requirements.txt`
+and in the `rtx-upscaler` extra:
+
+```
+pip install nvidia-vfx==0.1.0.1 --no-build-isolation --index-url https://pypi.nvidia.com
+```
+
 ## 12.2.0
 
 ### TS Super Prompt RT — the same work, on Google's on-device runtime

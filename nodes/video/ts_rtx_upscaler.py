@@ -1,4 +1,5 @@
 import logging
+import threading
 from enum import Enum
 
 import comfy.model_management as model_management
@@ -12,6 +13,51 @@ nvvfx = TSDependencyManager.import_optional("nvvfx")
 
 logger = logging.getLogger("comfyui_timesaver.ts_rtx_upscaler")
 LOG_PREFIX = "[TS RTX Upscaler]"
+
+
+class _SuperResState:
+    """Один живой движок VSR на процесс (§5 — состояние на уровне модуля).
+
+    ⚠️ Заводится ради времени, и цифры того стоят. Замерено на RTX 3080 Ti:
+
+        создать движок заново      ~730 мс
+        сменить размер на живом       6 мс
+        сменить качество              0 мс (перезагрузка не нужна вовсе)
+        те же параметры            0.01 мс
+
+    Раньше объект создавался внутри ``with`` на КАЖДЫЙ запуск ноды, и на
+    коротких отрезках это была почти вся её работа: 8 кадров до 1080p — 0.06 с
+    самой обработки против 0.77 с на создание, то есть 93% времени уходило на
+    подготовку. Теперь движок переживает вызов и лишь донастраивается.
+
+    Держать его безопасно: замерено, что он занимает 162 МБ и — в отличие от
+    LiteRT в TS Super Prompt RT — эта память ВИДНА torch (14.83 -> 14.67 ГБ по
+    ``mem_get_info``), значит менеджер памяти ComfyUI её учитывает.
+
+    Замок — не перестраховка: движок один, и параллельный ``run()`` по нему из
+    двух графов означает гонку в нативном коде.
+    """
+
+    def __init__(self) -> None:
+        self.engine = None
+        self.lock = threading.RLock()
+
+
+_state = _SuperResState()
+
+
+def release_super_res() -> bool:
+    """Закрыть кэшированный движок. True, если что-то освободили."""
+    with _state.lock:
+        engine, _state.engine = _state.engine, None
+        if engine is None:
+            return False
+        try:
+            engine.close()
+        except Exception as exc:  # noqa: BLE001 - закрытие не должно падать
+            logger.debug("%s Could not close the VSR engine: %s", LOG_PREFIX, exc)
+        logger.info("%s VSR engine released.", LOG_PREFIX)
+        return True
 
 
 class TS_UpscaleType(str, Enum):
@@ -217,15 +263,37 @@ class TS_RTX_Upscaler(IO.ComfyNode):
 
         raise RuntimeError("[TS RTX Upscaler] No supported quality levels found in nvidia-vfx.")
 
+    @staticmethod
+    def _acquire_super_res(quality_level, output_width, output_height):
+        """Готовый к работе движок — новый только если своего ещё нет.
+
+        Перезагрузка идёт ТОЛЬКО когда об этом говорит сам движок
+        (``needs_reload``): смена качества её не требует вовсе, смена размера
+        стоит 6 мс против 730 мс на создание нового объекта.
+        """
+        engine = _state.engine
+        if engine is None:
+            engine = nvvfx.VideoSuperRes(quality_level)
+            _state.engine = engine
+            logger.info("%s VSR engine created (first use in this session).", LOG_PREFIX)
+
+        engine.quality = quality_level
+        engine.output_width = output_width
+        engine.output_height = output_height
+        if engine.needs_reload or not engine.is_loaded:
+            engine.load()
+        return engine
+
     @classmethod
     def _run_nvvfx_upscale(cls, images_rgb, output_width, output_height, quality_level, batch_size):
         device = model_management.get_torch_device()
         upscaled_batches = []
 
-        with nvvfx.VideoSuperRes(quality_level) as super_res:
-            super_res.output_width = output_width
-            super_res.output_height = output_height
-            super_res.load()
+        # ⚠️ Замок держит ВЕСЬ проход по кадрам, а не только настройку: движок
+        # в процессе один, и второй граф, дёрнувший `run()` посреди чужого
+        # прохода, получил бы гонку в нативном коде.
+        with _state.lock:
+            super_res = cls._acquire_super_res(quality_level, output_width, output_height)
 
             for start in range(0, images_rgb.shape[0], batch_size):
                 batch = images_rgb[start:start + batch_size]

@@ -61,13 +61,13 @@ MODEL_FOLDER_NAME = "litert"
 
 CATALOGUE: dict[str, dict[str, Any]] = {
     "Gemma 4 E2B (2.4 GB)": {
-        "repo_id": "litert-community/gemma-4-E2B-it-litert-lm",
-        "filename": "gemma-4-E2B-it.litertlm",
+        "repo_id": "hfmaster/Gemma-4-RT",
+        "filename": "gemma-4-E2B-it-abliterated.litertlm",
         "size_gb": 2.41,
     },
     "Gemma 4 E4B (3.4 GB)": {
-        "repo_id": "litert-community/gemma-4-E4B-it-litert-lm",
-        "filename": "gemma-4-E4B-it.litertlm",
+        "repo_id": "hfmaster/Gemma-4-RT",
+        "filename": "gemma-4-E4B-it-abliterated.litertlm",
         "size_gb": 3.41,
     },
 }
@@ -87,10 +87,22 @@ CONTEXT_TOKENS = 4096
 #: Left for the answer when checking whether a prompt fits.
 _MIN_ANSWER_TOKENS = 256
 
-#: Measured cost of media, used only to warn BEFORE loading a 3 GB model:
-#: audio ran ~28 prompt tokens per second of sound, a 1024px picture ~250.
-_AUDIO_TOKENS_PER_SECOND = 28
+#: Cost of media, used to refuse BEFORE loading a 3 GB model.
+#:
+#: The audio figure is not an estimate: Google's Gemma documentation states 25
+#: tokens per second of sound, and measuring prefill against clip length gave
+#: exactly that — 1688 tokens at 60 s, 1938 at 70 s, 2313 at 85 s, i.e. 25 per
+#: second plus the instruction. The picture figure is measured only.
+_AUDIO_TOKENS_PER_SECOND = 25
 _IMAGE_TOKENS = 250
+
+#: ⚠️ The documented ceiling for ONE audio clip: "Audio supports a maximum
+#: length of 30 seconds". Longer clips are not refused by this runtime — 85 s
+#: still returned a sensible transcript here, and only at 90 s did it stop with
+#: "4688 >= 4096" — but past 30 s the model is outside what it was trained for,
+#: and nothing guarantees it keeps hearing the whole clip. So the voice helper
+#: segments at this boundary rather than leaning on what happens to work.
+AUDIO_CLIP_SECONDS = 30.0
 
 #: Rough characters-per-token for English/Russian mixed prompt text. Only used
 #: for the pre-flight estimate; the real count comes from the runtime.

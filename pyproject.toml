@@ -2,7 +2,7 @@
 name = "comfyui-timesaver"
 description = "ComfyUI nodes from [Timesaver](https://github.com/AlexYez/comfyui-timesaver)."
 # ⚠️ Три составляющих: Comfy Registry принимает только SemVer.
-version = "12.2.0"
+version = "12.2.1"
 license = { file = "LICENSE.txt" }
 # Matches CI (.github/workflows/ci.yml) and the Python range ComfyUI itself
 # supports; >=3.12 wrongly blocked pip installs on 3.10/3.11.
@@ -77,6 +77,20 @@ audio-silero = [
     "silero",
     "silero-stress",
 ]
+
+# TS RTX Upscaler: NVIDIA RTX Video Super Resolution.
+#
+# ⚠️ `pip install .[rtx-upscaler]` alone will NOT work, and that is not our
+# doing: the package on PyPI is a 2.7 KB source stub, and the real wheel is
+# published only on NVIDIA's index. The extra exists to pin the version; the
+# index has to be named on the command line:
+#
+#   pip install nvidia-vfx==0.1.0.1 --no-build-isolation --index-url https://pypi.nvidia.com
+#
+# Wheels: cp310/cp311 and a cp312-abi3 covering newer Pythons, Windows and
+# Linux x86_64. It carries its own VFX SDK, TensorRT and NPP libraries (792 MB),
+# so no separate NVIDIA SDK install is needed. Needs an RTX card at run time.
+rtx-upscaler = ["nvidia-vfx==0.1.0.1"]
 
 # TS Super Prompt RT: Gemma 4 on Google's LiteRT-LM runtime.
 #

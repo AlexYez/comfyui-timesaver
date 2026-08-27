@@ -24,14 +24,32 @@ from typing import Any, Callable
 logger = logging.getLogger("comfyui_timesaver.super_prompt_rt.voice")
 LOG_PREFIX = "[TS Super Prompt RT voice]"
 
-#: One pass covers this many seconds of sound. 30 s ≈ 840 prompt tokens, which
-#: leaves the window comfortable even with the instruction and a long answer.
+#: One pass covers this many seconds of sound — and the number is not ours to
+#: choose freely. Google's Gemma documentation is explicit: "Audio supports a
+#: maximum length of 30 seconds", at 25 tokens per second.
 #:
-#: ⚠️ Measured against 20 s and 12 s on the same minute of speech: all three
-#: returned the same amount of text (98/100/104 words), but the shorter cuts
-#: stuttered at the seams — "можете выбрать вот, можете выбрать вот". Longer
-#: segments mean fewer seams, so 30 s wins on quality, not on speed.
+#: ⚠️ This runtime does NOT enforce it. Measured: 85 s went through and returned
+#: a sensible transcript that carried on past the 30-second mark, and only at
+#: 90 s did it stop with "Input token ids are too long: 4688 >= 4096". That is a
+#: temptation to resist — past 30 s the clip is outside what the audio encoder
+#: was trained on, and "it did not error" is not the same as "it heard all of
+#: it". We segment at the documented boundary.
+#:
+#: Segmenting costs nothing in completeness: the same 60 seconds gave 141 words
+#: in two segments against 140 words in a single oversized pass. Shorter cuts
+#: are worse — at 20 s and 12 s the text stutters at the seams ("можете выбрать
+#: вот, можете выбрать вот"), because every seam is a chance to repeat.
 SEGMENT_SECONDS = 30.0
+
+#: Hard ceiling on how much sound one call will transcribe.
+#:
+#: ⚠️ Not a model limit — segmentation handles length, and a 70-second recording
+#: was verified end to end. This is the backstop for a recording nobody meant to
+#: make: the node's own UI stops the microphone at three minutes, but a request
+#: can arrive from a graph, a script, or a browser tab that froze mid-recording,
+#: and an hour of audio would sit there transcribing for a quarter of an hour.
+#: Anything longer is cut here, and the caller is told it was.
+MAX_TRANSCRIBE_SECONDS = 300.0
 
 #: A transcript this thin for its length suggests the model stopped early rather
 #: than the speaker being quiet. Measured over five 30-second stretches of the
@@ -107,6 +125,20 @@ def transcribe(
     total = audio_duration(audio)
     if total <= 0:
         return ""
+
+    if total > MAX_TRANSCRIBE_SECONDS:
+        logger.warning(
+            "%s Recording is %.0f s long; transcribing the first %.0f s only.",
+            LOG_PREFIX, total, MAX_TRANSCRIBE_SECONDS,
+        )
+        audio = _slice_audio(audio, 0.0, MAX_TRANSCRIBE_SECONDS)
+        total = MAX_TRANSCRIBE_SECONDS
+        if progress is not None:
+            progress(
+                f"Recording longer than {int(MAX_TRANSCRIBE_SECONDS / 60)} min — "
+                "transcribing the beginning",
+                5.0,
+            )
 
     starts: list[float] = [0.0]
     if total > SEGMENT_SECONDS:

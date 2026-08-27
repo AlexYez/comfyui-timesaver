@@ -100,7 +100,7 @@ A few nodes need extra packages — they fail gracefully and tell you what's mis
 | TS Qwen 3 VL int4/int8 | `bitsandbytes` (no Apple Silicon wheel) | `pip install -e .[llm-quant]` |
 | TS Music Stems | none for the RoFormer engines; `demucs` only for the legacy `htdemucs*` options | `pip install -e .[audio-stems]` |
 | TS Silero TTS / Stress | `silero`, `silero-stress` | `pip install -e .[audio-silero]` |
-| TS RTX Upscaler | `nvvfx` (NVIDIA RTX only) | install manually |
+| TS RTX Upscaler | `nvidia-vfx` (NVIDIA RTX only) | `--index-url https://pypi.nvidia.com` |
 | TS Video Upscale With Model | `spandrel` | install manually |
 
 > Want everything in one go? `pip install -e .[all]`
@@ -449,7 +449,29 @@ Smooth frame interpolation using RIFE / FILM models. Boost a 12 fps animation to
 #### TS RTX Upscaler
 <img src="doc/screenshots/ts_rtx_upscaler.png" alt="TS RTX Upscaler" width="450" />
 
-Hardware-accelerated upscale via NVIDIA RTX Video Super Resolution (`nvvfx`). Four quality levels (LOW/MEDIUM/HIGH/ULTRA), batched processing. **Requires an RTX GPU.**
+Hardware-accelerated upscale via NVIDIA RTX Video Super Resolution (`nvvfx`).
+Four quality levels (LOW/MEDIUM/HIGH/ULTRA), batched processing. **Requires an
+RTX GPU.**
+
+**Installing it needs NVIDIA's own index** — the package on PyPI is a 2.7 KB
+stub that fails to build, and the real wheel (792 MB, carrying its own VFX SDK,
+TensorRT and NPP libraries — no separate NVIDIA SDK needed) is published only
+here:
+
+```
+pip install nvidia-vfx==0.1.0.1 --no-build-isolation --index-url https://pypi.nvidia.com
+```
+
+**The engine is now kept alive between runs.** Measured on an RTX 3080 Ti:
+creating it costs ~730 ms, changing the output size on a live one costs 6 ms,
+and changing quality costs nothing at all. It used to be created per run, which
+on eight frames to 1080p was 93% of the node's entire work. Repeat runs are now
+**6.8× faster** (0.93 s → 0.14 s). The engine holds 162 MB, and that memory is
+visible to ComfyUI's memory manager, so keeping it costs nothing you cannot see.
+
+For reference, the upscale itself runs at **131 frames/s** to 1080p and **28
+frames/s** to 4K, and the frames never leave the GPU between the two — so a
+faster frame source would not make it quicker.
 
 **Use when:** you have an RTX card and want speed-of-light upscaling for video.
 
@@ -841,8 +863,27 @@ process down with an access violation — measured, not theorised, when a second
 model was loaded from another tab mid-generation. So every request queues, and a
 waiting one says so in the progress panel instead of looking frozen.
 
-Models are pulled from `litert-community` (Apache-2.0, no token needed) into
-`models/LLM/litert` on first use. The runtime itself is not in
+**A forgotten Stop button no longer costs you a quarter of an hour.** The
+microphone stops itself after three minutes, counting down out loud for the last
+fifteen seconds, and says afterwards why it stopped — including when the
+recording turned out to be silence, which is what a forgotten microphone usually
+records. A recording that reaches the server another way is cut at five minutes
+with a line in the log.
+
+Three minutes is not a model limit. Google's documentation puts **one audio clip
+at 30 seconds**, at 25 tokens per second, and the node already respects that by
+transcribing in 30-second segments — measured to lose nothing: the same minute of
+speech gave 141 words in two segments against 140 in a single oversized pass.
+This runtime does not enforce the 30 s itself (85 s went through here, and only
+at 90 s did it stop with `4688 >= 4096`), which is exactly why the boundary is
+kept deliberately rather than by accident.
+
+Models are pulled from
+[`hfmaster/Gemma-4-RT`](https://huggingface.co/hfmaster/Gemma-4-RT) into
+`models/LLM/litert` on first use — public, no token needed. These are the
+**abliterated** builds of Gemma 4 E2B and E4B: the same weights and the same
+speed, with the refusal behaviour trained out, which matters for a node whose
+whole job is writing prompts. The runtime itself is not in
 `requirements.txt` and installs separately:
 
 ```

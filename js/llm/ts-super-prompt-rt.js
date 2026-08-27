@@ -48,6 +48,19 @@ const IMAGE_SLOTS = [ATTACHED_IMAGE_WIDGET, ATTACHED_IMAGE_2_WIDGET];
 const DEFAULT_MODEL = "Gemma 4 E2B (2.4 GB)";
 const HIGH_QUALITY_MODEL = "Gemma 4 E4B (3.4 GB)";
 const AUDIO_BITS_PER_SECOND = 128_000;
+
+// ⚠️ Потолок длительности записи. Не ограничение модели: расшифровка режется
+// на куски по 30 с и склеивается, и 70-секундная запись проверена целиком.
+// Это защита от забытой кнопки Stop — микрофон, оставленный включённым на час,
+// даёт файл, который потом четверть часа расшифровывается.
+//
+// 180 с выбраны по замеру скорости: расшифровка идёт примерно вчетверо быстрее
+// реального времени (60 с звука -> 15 с работы), то есть три минуты речи
+// обойдутся примерно в 45 с ожидания — предел терпения, а не предел техники.
+const MAX_RECORDING_SECONDS = 180;
+
+// За сколько до конца предупредить, что запись вот-вот остановится сама.
+const RECORDING_WARN_SECONDS = 15;
 const PROGRESS_CLEAR_DELAY_MS = 900;
 const STATUS_RESET_DELAY_MS = 2400;
 
@@ -289,6 +302,10 @@ const STRINGS = {
         micUnsupported: "Microphone unsupported",
         openingMic: "Opening microphone...",
         recording: "Recording...",
+        recordingTimer: (elapsed, left) => `Recording... ${elapsed}${left <= 15 ? ` — stops itself in ${left} s` : ""}`,
+        minutesShort: "min",
+        secondsShort: "s",
+        recordingCapped: (limit) => `Recording stopped itself after ${limit} — transcribed what was captured.`,
         micError: (message) => `Mic error: ${message}`,
         noAudio: "No audio captured",
         waitingModel: "Waiting for voice model...",
@@ -378,6 +395,10 @@ const STRINGS = {
         micUnsupported: "Микрофон не поддерживается",
         openingMic: "Открытие микрофона...",
         recording: "Запись...",
+        recordingTimer: (elapsed, left) => `Запись... ${elapsed}${left <= 15 ? ` — сама остановится через ${left} с` : ""}`,
+        minutesShort: "мин",
+        secondsShort: "с",
+        recordingCapped: (limit) => `Запись остановилась сама через ${limit} — расшифровано то, что успело записаться.`,
         micError: (message) => `Ошибка микрофона: ${message}`,
         noAudio: "Звук не записан",
         waitingModel: "Ожидание голосовой модели...",
@@ -830,11 +851,14 @@ function setupSuperPrompt(node) {
     let mediaStream = null;
     let chunks = [];
     let statusResetTimer = 0;
+    let recordingTimer = 0;
+    let recordingStartedAt = 0;
     let progressClearTimer = 0;
 
     const state = {
         activeModelName: DEFAULT_MODEL,
         isRecording: false,
+        recordingWasCapped: false,
         isVoiceBusy: false,        // transcription step (after stop)
         isModelLoading: false,     // background preload triggered by record click
         modelReadyPromise: null,   // awaited in onstop so transcribe waits for the model
@@ -1339,10 +1363,25 @@ function setupSuperPrompt(node) {
             });
             state.isVoiceBusy = false;
             if (!insertRecognizedText(data.text)) {
-                setStatus(L.noSpeech, "info", STATUS_RESET_DELAY_MS);
+                // ⚠️ И здесь тоже. Забытый микрофон чаще всего пишет тишину, и
+                // «речь не распознана» без объяснения выглядит поломкой, а не
+                // следствием того, что запись оборвали по времени.
+                setStatus(
+                    state.recordingWasCapped
+                        ? L.recordingCapped(formatLimit(MAX_RECORDING_SECONDS))
+                        : L.noSpeech,
+                    "info",
+                    state.recordingWasCapped ? STATUS_RESET_DELAY_MS * 2 : STATUS_RESET_DELAY_MS,
+                );
                 setProgress({ active: false });
             } else {
-                setStatus(L.speechInserted, "info", STATUS_RESET_DELAY_MS);
+                setStatus(
+                    state.recordingWasCapped
+                        ? L.recordingCapped(formatLimit(MAX_RECORDING_SECONDS))
+                        : L.speechInserted,
+                    "info",
+                    state.recordingWasCapped ? STATUS_RESET_DELAY_MS * 2 : STATUS_RESET_DELAY_MS,
+                );
                 setProgress({ percent: 100, active: false });
             }
         } catch (error) {
@@ -1417,7 +1456,7 @@ function setupSuperPrompt(node) {
             };
             mediaRecorder.start();
             state.isRecording = true;
-            setStatus(L.recording);
+            startRecordingClock();
             setProgress({ active: true, indeterminate: true });
             refreshRecordButton();
             refreshAiButton();
@@ -1430,11 +1469,55 @@ function setupSuperPrompt(node) {
         }
     }
 
+    function formatLimit(seconds) {
+        // «0 min» — это то, что выдаёт округление на малых значениях, а такой
+        // предел ставят при проверке. Секунды честнее.
+        return seconds >= 60
+            ? `${Math.round(seconds / 60)} ${L.minutesShort}`
+            : `${Math.round(seconds)} ${L.secondsShort}`;
+    }
+
+    function formatClock(seconds) {
+        const whole = Math.max(0, Math.floor(seconds));
+        return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, "0")}`;
+    }
+
+    function startRecordingClock() {
+        state.recordingWasCapped = false;
+        recordingStartedAt = Date.now();
+        clearInterval(recordingTimer);
+        const tick = () => {
+            if (!state.isRecording) return;
+            const elapsed = (Date.now() - recordingStartedAt) / 1000;
+            const left = Math.ceil(MAX_RECORDING_SECONDS - elapsed);
+            if (left <= 0) {
+                // ⚠️ Останавливаем САМИ и говорим об этом. Молча оборвать запись
+                // — значит отдать человеку огрызок его мысли без объяснения.
+                stopRecordingClock();
+                // ⚠️ Сообщение НЕ здесь. Замерено в браузере: сразу за
+                // остановкой идёт «Recognizing speech…», и объяснение
+                // затирается быстрее, чем его успевают прочесть. Поэтому
+                // ставим флаг и говорим, когда текст уже на месте.
+                state.recordingWasCapped = true;
+                stopRecording();
+                return;
+            }
+            setStatus(L.recordingTimer(formatClock(elapsed), left));
+        };
+        tick();
+        recordingTimer = setInterval(tick, 1000);
+    }
+
+    function stopRecordingClock() {
+        clearInterval(recordingTimer);
+        recordingTimer = 0;
+    }
+
     function stopRecording() {
         if (!mediaRecorder || !state.isRecording) return;
+        stopRecordingClock();
         state.isRecording = false;
         state.isVoiceBusy = true;
-        setStatus(L.preparingAudio);
         setProgress({ active: true, indeterminate: true });
         refreshRecordButton();
         try {
@@ -1452,6 +1535,7 @@ function setupSuperPrompt(node) {
         syncActiveVoiceModel();
         if (state.isRecording) {
             stopRecording();
+            setStatus(L.preparingAudio);
             return;
         }
         if (state.isVoiceBusy) return;
@@ -2014,6 +2098,9 @@ function setupSuperPrompt(node) {
         if (disposed) return;
         disposed = true;
         window.clearTimeout(statusResetTimer);
+        // ⚠️ Часы записи — тоже подписка: без этого удалённая нода продолжает
+        // тикать раз в секунду до перезагрузки страницы.
+        window.clearInterval(recordingTimer);
         window.clearTimeout(progressClearTimer);
         api.removeEventListener(`${VOICE_EVENT_PREFIX}.progress`, onVoiceProgress);
         api.removeEventListener(`${VOICE_EVENT_PREFIX}.status`, onVoiceStatus);
