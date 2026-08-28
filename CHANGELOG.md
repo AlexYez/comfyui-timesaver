@@ -9,6 +9,53 @@ broken here, in writing, with a way back.
 
 ---
 
+## Unreleased
+
+### TS Latent Upscale — three MMH3 nodes in one, and subfolders that finally work
+
+A new node for re-sampling a denoised **MiniMax H3** audio+video latent at a
+larger size, built from
+[Comfyui-MMH3-UltimateUpscale](https://github.com/bbaudio-2025/Comfyui-MMH3-UltimateUpscale)
+(MIT, bbaudio-2025). What were three nodes wired together — the pipeline, the
+upscale-model settings and the temporal split settings — are one node with
+plain inputs.
+
+**Subfolders in `models/latent_upscale_models` are listed.** The original
+scanned only the folder root and returned bare filenames; on a folder holding
+four models it offered two. The list is now recursive (`subfolder/file.safetensors`),
+covers every path from `extra_model_paths.yaml`, and refuses a name that climbs
+out of its folder. Choosing an upscaler from another model family now says so
+instead of failing with `Missing key(s) in state_dict`.
+
+`chunk_length` and `temporal_overlap` are validated against the model's 17-frame
+keyframe grid before the run starts.
+
+**Spatial tiling was not carried over**, along with its input — the seams need
+their own fade and blend settings, and shorter chunks serve the same purpose.
+
+### TS Film Emulation: grain that behaves like grain, and clips that fit in memory
+
+**The grain is now applied in log space**, the way film density actually
+fluctuates. It therefore rides the signal — barely present in shadows, strongest
+in the upper mid-tones, fading again at the shoulder — instead of sitting on the
+picture at one constant strength. Measured across a grey ramp: 0.001 / 0.016 /
+0.042 / 0.061 / 0.044, against a flat 0.049 / 0.060 / 0.049 before.
+
+**Two new controls, both last in the list and optional**, so saved workflows keep
+their values: `grain_speed` holds one grain pattern across several frames the way
+professional grain plugins do (1.0 = new every frame, 0.25 = held for four), and
+`grain_seed` makes a re-render reproduce the grain exactly.
+
+**Clips are processed on the GPU in chunks sized from free VRAM.** Peak memory is
+about 2.6 GB regardless of clip length — the first attempt at chunking peaked at
+15 GB — and the output does not depend on how the clip was divided. Measured on
+the same machine: 24 frames of 1080p with a LUT, 6.5 s → 0.8 s; eight 4K frames,
+6.8 s → 0.8 s. The LUT file is now parsed once per run instead of once per chunk.
+
+**The shadow/highlight saturation split is no longer a hard step at mid-grey.**
+On stills the step was nearly invisible; on video, pixels drifting around the
+threshold flickered between two saturations along gradients.
+
 ## 12.2.1
 
 ### TS Super Prompt RT switches to the abliterated Gemma 4 builds

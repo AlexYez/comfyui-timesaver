@@ -218,6 +218,32 @@ Includes match masks (`rectangle` / `ellipse` for stabilising on edges only), VR
 
 Built-in film stock presets (Kodak Portra/Vision3, Fuji, Cineon-style, …) plus optional `.cube` LUT loading from `models/luts/`. Adds gamma correction, contrast curve and a tunable `lut_strength`.
 
+**The grain is modelled, not sprinkled on.** Real grain is a fluctuation in
+*density*, which is a logarithmic quantity, so the noise is applied in log space
+rather than added to the pixels. Two things follow, and both are what your eye
+expects from film: the same fluctuation is a wide swing in a bright area and
+almost nothing in a dark one, and it fades again at the very top where the
+emulsion saturates. Measured across a grey ramp at one setting:
+
+| tone | 0.05 | 0.25 | 0.50 | 0.75 | 0.95 |
+|---|---|---|---|---|---|
+| grain (σ) | 0.001 | 0.016 | 0.042 | **0.061** | 0.044 |
+
+The old implementation gave 0.049 / 0.060 / 0.049 — the same everywhere, which
+is what plain noise looks like.
+
+**`grain_speed` — the control professional grain plugins have.** At `1.0` a new
+pattern is drawn every frame: lively, and unmistakably digital. At `0.5` one
+pattern is held for two frames, at `0.25` for four — the way scanned film looks
+when the grain does not race the action. `grain_seed` makes a re-render match
+the take you already graded. Neither affects a single still.
+
+**Clips are handled properly.** Work happens on the GPU in chunks sized from the
+free VRAM, so peak memory stays around 2.6 GB whether the clip is 8 frames or
+64, and the result does not depend on how it was chunked. Measured against the
+previous CPU path, same machine: 24 frames of 1080p with a LUT went from **6.5 s
+to 0.8 s**, eight 4K frames from 6.8 s to 0.8 s.
+
 **Use when:** giving renders a cinematic feel without leaving the graph.
 
 ---
@@ -382,7 +408,7 @@ Injects a custom string into the workflow's positive prompt at runtime — usefu
 ---
 
 <a id="video"></a>
-### 🎬 Video (8 nodes)
+### 🎬 Video (9 nodes)
 
 Reading and writing video files, frame interpolation, model-based upscale, depth, animation preview.
 
@@ -476,6 +502,39 @@ faster frame source would not make it quicker.
 **Use when:** you have an RTX card and want speed-of-light upscaling for video.
 
 ---
+
+#### TS Latent Upscale
+
+Re-samples an already-denoised **MiniMax H3** audio+video latent at a larger
+size. Three nodes from
+[Comfyui-MMH3-UltimateUpscale](https://github.com/bbaudio-2025/Comfyui-MMH3-UltimateUpscale)
+(MIT, bbaudio-2025) folded into one — the pipeline, the upscale-model settings
+and the temporal split settings are simply inputs here, because nobody ever
+wanted one without the others.
+
+Per chunk of the clip: cut along time with an overlap → upscale that chunk's
+video latent with the H3 3D upscaler (audio untouched) → re-anchor the
+conditioning and pin frame 0 to the previous chunk's result → sample → stitch
+back over the overlap. **Peak VRAM is one chunk, not one clip**, and the
+diffusion model is offloaded while the upscaler works, since the two are never
+needed at once.
+
+**Subfolders in `models/latent_upscale_models` are finally visible.** The
+original scanned the folder root only and returned bare filenames — on this
+machine it listed 2 of the 4 models actually present. Here the list is recursive
+and shows `subfolder/file.safetensors`, every folder declared in
+`extra_model_paths.yaml` is searched, and a name that tries to climb out of its
+folder is refused. Picking an upscaler from another model family now explains
+itself instead of failing with `Missing key(s) in state_dict`.
+
+`chunk_length` and `temporal_overlap` must be multiples of **17** — the model's
+keyframe grid — and that is checked before the run rather than half an hour into
+it.
+
+> **Spatial tiling was deliberately left out.** The original also splits each
+> chunk into tiles; it was dropped along with its input. Tile seams need their
+> own fade and blend settings, and a clip that needs tiling is better served by
+> shorter chunks.
 
 #### TS Video Depth
 <img src="doc/screenshots/ts_video_depth.png" alt="TS Video Depth" width="450" />

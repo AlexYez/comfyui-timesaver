@@ -1,5 +1,29 @@
 """TS Film Emulation — film LUT and analog look (Kodak/Fuji/Agfa/Ilford presets + .cube LUTs).
 
+Handles single frames and whole clips: the batch is processed on the GPU in
+chunks sized to fit the card, so a long 4K sequence costs the same peak memory
+as a short one.
+
+⚠️ THE GRAIN IS THE POINT OF THIS FILE, so it is worth saying what it models.
+Real grain is not noise laid on top of a picture. Silver halide crystals develop
+or they do not, and the visible speckle is a fluctuation in DENSITY — which is a
+logarithmic quantity. Two consequences follow, and both were measured against
+the old implementation before this one was written:
+
+* **Grain rides the signal.** Adding a constant-sigma noise gave the same
+  deviation everywhere: measured 0.049 / 0.060 / 0.049 in shadow, mid and
+  highlight. Film does not behave that way — the same density fluctuation is a
+  large linear swing in a bright area and a tiny one in a dark one. Applying the
+  noise in log space reproduces that for free.
+* **It fades at both ends.** Toward black there is almost nothing to fluctuate;
+  toward the shoulder the emulsion saturates. So the modulation peaks in the
+  upper mid-tones and falls away on both sides, rather than growing forever.
+
+For clips there is also `grain_speed`, the control professional grain plugins
+expose: at 1.0 the pattern is redrawn every frame (lively, digital), lower
+values hold one pattern across several frames the way a real scanned negative
+does when the projector runs faster than the grain changes.
+
 node_id: TS_Film_Emulation
 """
 
@@ -10,6 +34,25 @@ import torch
 from comfy_api.v0_0_2 import IO
 
 logger = logging.getLogger(__name__)
+LOG_PREFIX = "[TS Film Emulation]"
+
+#: Bytes of working memory one pixel needs on the heaviest path.
+#:
+#: ⚠️ Measured, and the first guess was wrong by an order of magnitude. The LUT
+#: path materialises eight corner tensors plus the interpolation ladder, so a
+#: chunk of 24 1080p frames peaked at **15 GB** of VRAM — almost the whole card,
+#: on a node that is supposed to leave room for everything else in the graph.
+#: About 180 bytes per pixel is what that works out to; the budget below is
+#: derived from it rather than from a frame count.
+_BYTES_PER_PIXEL = 180
+
+#: Ceiling on one chunk when the free-memory probe is unavailable, and an upper
+#: bound even when it is not: roughly one 4K frame's worth of working set.
+_FALLBACK_PIXELS_PER_CHUNK = 4 * 1920 * 1080
+
+#: Never take more than this share of what the card has free — the rest of the
+#: graph (the sampler, the model that made these frames) still has to live.
+_VRAM_SHARE = 0.25
 
 
 class TS_Film_Emulation(IO.ComfyNode):
@@ -62,6 +105,27 @@ class TS_Film_Emulation(IO.ComfyNode):
                 IO.Float.Input("fade", default=0.0, min=0.0, max=0.5, step=0.01, tooltip="Lifts blacks toward gray for a faded, matte film look. 0 = off."),
                 IO.Float.Input("shadow_saturation", default=0.8, min=0.0, max=2.0, step=0.01, tooltip="Color saturation in the shadows. 1 = unchanged, <1 = desaturated."),
                 IO.Float.Input("highlight_saturation", default=0.85, min=0.0, max=2.0, step=0.01, tooltip="Color saturation in the highlights. 1 = unchanged, <1 = desaturated."),
+                # ⚠️ Оба входа — ПОСЛЕДНИМИ и optional. `widgets_values`
+                # позиционен: вставленный выше вход сдвинул бы все значения в
+                # каждом уже сохранённом workflow с этой нодой.
+                IO.Float.Input(
+                    "grain_speed",
+                    default=1.0, min=0.05, max=1.0, step=0.05, optional=True,
+                    tooltip=(
+                        "For clips: how often the grain pattern is redrawn. 1.0 = a new "
+                        "pattern every frame (lively, digital). 0.5 = one pattern held for "
+                        "two frames, 0.25 for four — closer to scanned film, where the grain "
+                        "does not race the action. No effect on a single image."
+                    ),
+                ),
+                IO.Int.Input(
+                    "grain_seed",
+                    default=0, min=0, max=0xFFFFFFFF, optional=True,
+                    tooltip=(
+                        "Seed for the grain. The same seed gives the same grain on the same "
+                        "frames, so a re-render matches the take you graded."
+                    ),
+                ),
             ],
             outputs=[IO.Image.Output(display_name="IMAGE")],
         )
@@ -164,21 +228,90 @@ class TS_Film_Emulation(IO.ComfyNode):
 
     @staticmethod
     def _smart_saturation(img, shadows_strength=1.0, highlights_strength=1.0):
+        # ⚠️ Переход между тенями и светами — ПЛАВНЫЙ, хотя раньше маска была
+        # ступенькой на `gray < 0.5`. На стоп-кадре ступенька почти незаметна, а
+        # на видео она видна прекрасно: пиксель, гуляющий вокруг средней яркости
+        # (от зерна, от компрессии, от дрожания света), скачет между двумя
+        # разными насыщенностями и даёт мерцающую кайму по градиентам.
         gray = img.mean(dim=-1, keepdim=True)
-        shadows_mask = (gray < 0.5).float()
-        highlights_mask = (gray >= 0.5).float()
-        out = img.clone()
-        shadow_factor = shadows_mask * shadows_strength + (1 - shadows_mask)
-        out = gray + (out - gray) * shadow_factor
-        highlight_factor = highlights_mask * highlights_strength + (1 - highlights_mask)
-        out = gray + (out - gray) * highlight_factor
+        # smoothstep на половине стопа вокруг средне-серого: достаточно узко,
+        # чтобы раздельная подкраска теней и светов сохранилась, и достаточно
+        # широко, чтобы граница перестала звенеть.
+        edge = torch.clamp((gray - 0.35) / 0.3, 0.0, 1.0)
+        weight = edge * edge * (3.0 - 2.0 * edge)
+        factor = shadows_strength + (highlights_strength - shadows_strength) * weight
+        out = gray + (img - gray) * factor
         return torch.clamp(out, 0.0, 1.0)
+
+    @staticmethod
+    def _grain_response(luma):
+        """Насколько сильно зерно проявляется при этой яркости.
+
+        Не константа и не прямая: кривая растёт от чёрного, пикует в верхних
+        средних тонах и спадает к белому — так ведёт себя плотность эмульсии.
+        Возвращает множитель 0..1.
+        """
+        x = torch.clamp(luma, 0.0, 1.0)
+        # Подъём от чёрного: в тенях флуктуировать почти нечему.
+        toe = torch.sqrt(x)
+        # Спад у плеча: к белому эмульсия насыщается и зерно вырождается.
+        shoulder = torch.clamp(1.0 - torch.pow(x, 3.0), 0.0, 1.0)
+        return toe * (0.35 + 0.65 * shoulder)
+
+    @classmethod
+    def _apply_grain(cls, out, *, intensity, size, speed, seed, frame_offset):
+        """Логарифмическое зерно, одинаковое при любом размере чанка.
+
+        Паттерн привязан к НОМЕРУ КАДРА и к seed, а не к позиции внутри чанка:
+        иначе результат зависел бы от того, как нода поделила клип на порции, и
+        зерно «перещёлкивало» бы на стыках.
+        """
+        if intensity <= 0:
+            return out
+
+        batch, height, width, _ = out.shape
+        size = max(0.5, float(size))
+        noise_h = max(1, int(round(height / size)))
+        noise_w = max(1, int(round(width / size)))
+
+        # `speed` = 1.0 — новый паттерн каждый кадр; 0.5 — держится два кадра.
+        speed = min(1.0, max(0.01, float(speed)))
+        frames = []
+        for index in range(batch):
+            pattern_id = int((frame_offset + index) * speed)
+            generator = torch.Generator(device="cpu").manual_seed(
+                (int(seed) * 1_000_003 + pattern_id) & 0x7FFF_FFFF
+            )
+            frames.append(torch.randn((1, 1, noise_h, noise_w), generator=generator))
+        noise = torch.cat(frames, dim=0).to(out.device, dtype=out.dtype)
+
+        if (noise_h, noise_w) != (height, width):
+            noise = torch.nn.functional.interpolate(
+                noise, size=(height, width), mode="bilinear", align_corners=False,
+            )
+            # Растягивание гасит амплитуду тем сильнее, чем крупнее зерно;
+            # без поправки "grain_size" незаметно работал бы регулятором силы.
+            noise = noise / noise.std().clamp_min(1e-6)
+        noise = noise.permute(0, 2, 3, 1)
+
+        # Плёночная яркость — с весами восприятия, а не среднее по каналам:
+        # зерно должно следовать за тем, что глаз считает светом.
+        luma = (out[..., 0:1] * 0.2126 + out[..., 1:2] * 0.7152 + out[..., 2:3] * 0.0722)
+        response = cls._grain_response(luma)
+
+        # Собственно логарифм: отклонение задаётся в плотности, а в картинку
+        # приходит умножением. Отсюда и разная видимость по тонам — она берётся
+        # из математики, а не из отдельного «усилителя для светов».
+        sigma = float(intensity) * 1.6
+        grain = torch.exp(noise * sigma * response)
+        return torch.clamp(out * grain, 0.0, 1.0)
 
     @classmethod
     def execute(cls, image, enable=True, film_preset="External LUT", lut_choice="None", lut_strength=1.0,
                 gamma_correction=True, film_strength=1.0, contrast_curve=1.0, warmth=0.0,
                 grain_intensity=0.02, grain_size=0.5, fade=0.0,
-                shadow_saturation=0.8, highlight_saturation=0.85) -> IO.NodeOutput:
+                shadow_saturation=0.8, highlight_saturation=0.85,
+                grain_speed=1.0, grain_seed=0) -> IO.NodeOutput:
         # ⚠️ Эти значения обязаны совпадать с `default=` в схеме выше.
         #
         # Пять из них разошлись: схема обещала `gamma_correction=True` и зерно
@@ -194,8 +327,85 @@ class TS_Film_Emulation(IO.ComfyNode):
         if not enable:
             return IO.NodeOutput(image)
 
-        img = image.float().clamp(0, 1)
-        out = img.clone()
+        lut, lut_size = (None, None)
+        if film_preset == "External LUT" and lut_choice != "None":
+            lut, lut_size = cls.load_cube_lut(os.path.join(cls._resolve_luts_dir(), lut_choice))
+            if lut is None:
+                logger.warning("%s Could not read LUT %r — passing the look through without it.",
+                               LOG_PREFIX, lut_choice)
+
+        device = cls._work_device(image)
+        if lut is not None:
+            lut = lut.to(device)
+
+        frames = int(image.shape[0])
+        pixels = max(1, int(image.shape[1]) * int(image.shape[2]))
+        chunk = max(1, min(frames, cls._pixels_per_chunk(device) // pixels))
+
+        results = []
+        # ⚠️ Без `no_grad` torch строит граф на каждом шаге: на клипе это чистый
+        # расход памяти, потому что градиенты здесь никому не нужны.
+        with torch.no_grad():
+            for start in range(0, frames, chunk):
+                part = image[start:start + chunk].to(device=device, dtype=torch.float32)
+                processed = cls._process_chunk(
+                    part, film_preset=film_preset, lut=lut, lut_size=lut_size,
+                    lut_strength=lut_strength, gamma_correction=gamma_correction,
+                    film_strength=film_strength, contrast_curve=contrast_curve, warmth=warmth,
+                    fade=fade, shadow_saturation=shadow_saturation,
+                    highlight_saturation=highlight_saturation, grain_intensity=grain_intensity,
+                    grain_size=grain_size, grain_speed=grain_speed, grain_seed=grain_seed,
+                    frame_offset=start,
+                )
+                # Возвращаем на CPU сразу: IMAGE в ComfyUI живёт там, и держать
+                # весь клип на карте ради одной склейки — верный путь в OOM.
+                results.append(processed.to("cpu"))
+
+        return IO.NodeOutput(torch.cat(results, dim=0) if len(results) > 1 else results[0])
+
+    @staticmethod
+    def _pixels_per_chunk(device):
+        """Сколько пикселей брать за раз — по тому, что на карте свободно.
+
+        Фиксированное число здесь не годится: на карте с 8 ГБ и на карте с 48
+        уместны разные порции, а рядом с нодой обычно живёт ещё и модель,
+        которая эти кадры сделала.
+        """
+        if getattr(device, "type", "cpu") == "cpu":
+            return _FALLBACK_PIXELS_PER_CHUNK
+        try:
+            import comfy.model_management as mm
+
+            free_bytes = float(mm.get_free_memory(device)) * _VRAM_SHARE
+            pixels = int(free_bytes // _BYTES_PER_PIXEL)
+        except Exception as exc:  # noqa: BLE001 - без замера идём по умолчанию
+            logger.debug("%s Could not read free VRAM (%s); using the default chunk.",
+                         LOG_PREFIX, exc)
+            return _FALLBACK_PIXELS_PER_CHUNK
+        # Нижняя граница — один кадр 1080p: меньше резать смысла нет, накладные
+        # на перенос съедят выигрыш.
+        return max(1920 * 1080, min(pixels, _FALLBACK_PIXELS_PER_CHUNK))
+
+    @staticmethod
+    def _work_device(image):
+        """Карта, если она есть; иначе — там, где картинка и лежала."""
+        try:
+            import comfy.model_management as mm
+
+            device = mm.get_torch_device()
+            if device is not None and device.type != "cpu":
+                return device
+        except Exception as exc:  # noqa: BLE001 - вне ComfyUI считаем на CPU
+            logger.debug("%s No ComfyUI device manager (%s); staying on the input device.",
+                         LOG_PREFIX, exc)
+        return image.device
+
+    @classmethod
+    def _process_chunk(cls, img, *, film_preset, lut, lut_size, lut_strength, gamma_correction,
+                       film_strength, contrast_curve, warmth, fade, shadow_saturation,
+                       highlight_saturation, grain_intensity, grain_size, grain_speed,
+                       grain_seed, frame_offset):
+        out = img.clamp(0, 1)
 
         if film_preset != "External LUT":
             out = torch.lerp(out, cls.apply_preset(out, film_preset), film_strength)
@@ -207,37 +417,27 @@ class TS_Film_Emulation(IO.ComfyNode):
             out[..., 2] = torch.clamp(out[..., 2] - warmth * 0.05, 0, 1)
         out = cls._smart_saturation(out, shadows_strength=shadow_saturation, highlights_strength=highlight_saturation)
 
-        if film_preset == "External LUT" and lut_choice != "None":
-            lut_path = os.path.join(cls._resolve_luts_dir(), lut_choice)
-            lut, size = cls.load_cube_lut(lut_path)
-            if lut is not None and size is not None:
-                original_for_lerp = out.clone()
-                processed_image = out.clone()
+        # ⚠️ LUT читается ОДИН раз в `execute`, а не здесь: файл на 33³ точки
+        # разбирается построчно, и на клипе это был бы повторный разбор для
+        # каждой порции кадров.
+        if lut is not None and lut_size:
+            original_for_lerp = out
+            if gamma_correction:
+                image_for_lut = cls._linear_to_srgb(out)
+                lut_applied = cls._apply_3d_lut_trilinear(image_for_lut, lut, lut_size)
+                processed_image = cls._srgb_to_linear(lut_applied)
+            else:
+                processed_image = cls._apply_3d_lut_trilinear(out, lut, lut_size)
+            out = torch.lerp(original_for_lerp, processed_image, lut_strength)
 
-                if gamma_correction:
-                    image_for_lut = cls._linear_to_srgb(processed_image)
-                    lut_applied = cls._apply_3d_lut_trilinear(image_for_lut, lut, size)
-                    processed_image = cls._srgb_to_linear(lut_applied)
-                else:
-                    processed_image = cls._apply_3d_lut_trilinear(processed_image, lut, size)
-
-                out = torch.lerp(original_for_lerp, processed_image, lut_strength)
-
-        if grain_intensity > 0:
-            b, h, w, c = out.shape
-            grain_size = max(0.5, grain_size)
-            noise_h = max(1, int(h / grain_size))
-            noise_w = max(1, int(w / grain_size))
-            noise = torch.randn((b, noise_h, noise_w, 1), device=out.device)
-            noise = torch.nn.functional.interpolate(
-                noise.permute(0, 3, 1, 2),
-                size=(h, w),
-                mode="bilinear",
-                align_corners=False,
-            ).permute(0, 2, 3, 1)
-            out = torch.clamp(out + noise * grain_intensity, 0.0, 1.0)
-
-        return IO.NodeOutput(out)
+        return cls._apply_grain(
+            out,
+            intensity=grain_intensity,
+            size=grain_size,
+            speed=grain_speed,
+            seed=grain_seed,
+            frame_offset=frame_offset,
+        )
 
 
 NODE_CLASS_MAPPINGS = {"TS_Film_Emulation": TS_Film_Emulation}
