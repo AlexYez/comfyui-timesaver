@@ -41,6 +41,33 @@ LOG_PREFIX = "[TS Latent Upscale]"
 #: Keyframe grid of the H3 model: chunk length and overlap have to land on it.
 _FRAME_GRID = 17
 
+#: Второй путь апскейла — без модели вовсе, обычной интерполяцией. Он есть у
+#: автора отдельной нодой (`MMH3 Latent Upscale Params`); здесь это пункт того
+#: же списка, потому что выбор «чем увеличить» один, а не два.
+_INTERPOLATION_CHOICES = {
+    "Interpolation: bilinear (no model)": "bilinear",
+    "Interpolation: bicubic (no model)": "bicubic",
+    "Interpolation: area (no model)": "area",
+    "Interpolation: nearest (no model)": "nearest-exact",
+}
+
+
+def _upscale_options():
+    """Модели из папки плюс безмодельные способы — одним списком."""
+    return list(_INTERPOLATION_CHOICES) + core._scan_models()
+
+
+def _upscale_param(choice, width, height, device, precision):
+    """Настройки апскейла для ядра: по модели или по интерполяции."""
+    width = int(round(int(width) / 32.0)) * 32
+    height = int(round(int(height) / 32.0)) * 32
+    if choice in _INTERPOLATION_CHOICES:
+        return {"method": _INTERPOLATION_CHOICES[choice], "width": width, "height": height}
+    return {
+        "model_name": choice, "width": width, "height": height,
+        "device": device, "precision": precision,
+    }
+
 
 class TS_LatentUpscale(IO.ComfyNode):
     """Chunked latent upscale + re-sample for MiniMax H3 AV latents."""
@@ -82,12 +109,14 @@ class TS_LatentUpscale(IO.ComfyNode):
                 IO.Sigmas.Input("sigmas", tooltip="Sigma schedule used for every chunk."),
                 IO.Combo.Input(
                     "upscale_model",
-                    options=core._scan_models(),
+                    options=_upscale_options(),
                     tooltip=(
-                        "H3 latent upscale checkpoint from models/latent_upscale_models. "
-                        "Subfolders are listed too, as 'subfolder/file.safetensors'. These are "
-                        "the minimax_h3_latent_upscaler_3d weights — an ordinary latent upscale "
-                        "model will not load here."
+                        "How to enlarge each chunk. The H3 latent upscale checkpoints come from "
+                        "models/latent_upscale_models, subfolders included and listed as "
+                        "'subfolder/file.safetensors' — these are the minimax_h3_latent_upscaler_3d "
+                        "weights, and an upscaler for another model family will not load here. "
+                        "The 'Interpolation' entries need no model at all: quicker and lighter, "
+                        "but they invent no detail."
                     ),
                 ),
                 IO.Int.Input(
@@ -108,7 +137,11 @@ class TS_LatentUpscale(IO.ComfyNode):
                     "chunk_length", default=136, min=17, max=100000, step=17,
                     tooltip=(
                         "Pixel frames per chunk at 24 fps, and a multiple of 17 — one keyframe "
-                        "grid step. 136 ≈ 5.7 s, 153 ≈ 6.4 s. Shorter chunks cost less VRAM."
+                        "grid step. 136 ≈ 5.7 s, 153 ≈ 6.4 s. Aim for the longest chunk that "
+                        "keeps peak VRAM just under capacity: the original author's starting "
+                        "points are 34–68 frames on 8 GB, 51–102 on 12 GB, 102–153 on 16 GB and "
+                        "136–170 on 24 GB. Shorter chunks are safer but pay the overlap tax on "
+                        "every seam."
                     ),
                 ),
                 IO.Int.Input(
@@ -129,7 +162,13 @@ class TS_LatentUpscale(IO.ComfyNode):
                 ),
                 IO.Combo.Input(
                     "precision", options=["fp16", "fp32", "bf16"], default="fp16",
-                    tooltip="Precision the upscaler runs at. fp16 is the usual choice; fp32 costs about twice the memory.",
+                    tooltip=(
+                        "Precision the upscaler runs at. fp16 is the usual choice — measured "
+                        "against fp32 on the H3 checkpoint it is also the more accurate of the "
+                        "two half-precision paths (0.38% vs 2.67% deviation), because bf16 trades "
+                        "mantissa bits for a range these weights never use. On a card without "
+                        "native bfloat16 (Turing and older) bf16 falls back to fp16 automatically."
+                    ),
                 ),
                 IO.Combo.Input(
                     "device", options=["cuda", "cpu"], default="cuda",
@@ -192,15 +231,17 @@ class TS_LatentUpscale(IO.ComfyNode):
 
         # Размеры кладутся на сетку 32 — так же, как это делала снятая нода
         # параметров, чтобы поведение не изменилось от переезда.
-        upscale_param = {
-            "model_name": upscale_model,
-            "width": int(round(int(width) / 32.0)) * 32,
-            "height": int(round(int(height) / 32.0)) * 32,
-            "device": device,
-            "precision": precision,
-        }
+        upscale_param = _upscale_param(upscale_model, width, height, device, precision)
 
         conditioning = core.normalize_minimax_refs(conditioning)
+
+        # ⚠️ Требование «размер обязан совпадать с размером кондиционирования»
+        # в оригинале только написано в описании, но нигде не проверяется, и
+        # расхождение всплывает глубоко внутри семплирования. Ключевые кадры
+        # кондиционирования знают свой размер — сверяем с целевым тут же.
+        cls._warn_on_conditioning_size_mismatch(
+            conditioning, upscale_param["width"], upscale_param["height"],
+        )
 
         total_tokens = video.shape[2]
         audio_tokens = audio.shape[-1]
@@ -208,23 +249,54 @@ class TS_LatentUpscale(IO.ComfyNode):
             total_tokens, int(chunk_length), int(temporal_overlap),
         )
 
+        # Цена нарезки, посчитанная заранее: за перекрытие платят лишним счётом,
+        # и человеку полезно видеть, сколько именно он платит. У автора это
+        # (chunk + overlap) / chunk — при 136/17 выходит ×1.13.
+        redundancy = (int(chunk_length) + int(temporal_overlap)) / max(1, int(chunk_length))
+        logger.info(
+            "%s %d chunk(s) of %d frames, overlap %d — redundancy x%.2f",
+            LOG_PREFIX, len(bounds), int(chunk_length), int(temporal_overlap), redundancy,
+        )
+
         acc_v = acc_a = None
         segments = []
 
+        # ⚠️ Апскейл идёт ГРУППАМИ, а не по одному куску.
+        #
+        # Апскейл и семплирование требуют разных моделей, и держать обе на карте
+        # нельзя, поэтому между ними идёт выгрузка. В исходной схеме «апскейл →
+        # семпл» на каждом куске это означало полную перезагрузку многогигабайтной
+        # диффузионной модели СТОЛЬКО РАЗ, сколько кусков в клипе.
+        #
+        # Апскейл от порядка не зависит (в отличие от семплирования, где каждый
+        # кусок якорится за результат предыдущего), поэтому куски апскейлятся
+        # пачками: одна выгрузка на пачку вместо одной на кусок. Размер пачки —
+        # по свободной оперативной памяти, потому что готовые куски ждут там же.
+        group = cls._upscale_group_size(video, bounds, upscale_param)
+        if group > 1:
+            logger.info("%s Upscaling in groups of %d chunk(s).", LOG_PREFIX, group)
+
+        upscaled_cache: dict[int, "object"] = {}
+
         for index, (k0, f0, k1, f1) in enumerate(bounds):
-            chunk_v = video[:, :, k0:k1].contiguous()
             a0, a1 = core.audio_range(f0, f1)
             chunk_a = audio[:, :, :, a0:min(a1, audio_tokens)].contiguous()
 
-            # Пока считает апскейлер, диффузионная модель не нужна — убираем её
-            # с карты, чтобы они не лежали там вдвоём. Следующий семпл вернёт её
-            # сам.
-            if device == "cuda" and hasattr(model, "clone_base_uuid"):
-                comfy.model_management.unload_model_and_clones(
-                    model, unload_additional_models=False,
-                )
-                comfy.model_management.soft_empty_cache()
-            chunk_v, _, _ = core.upscale_latent(chunk_v, upscale_param)
+            if index not in upscaled_cache:
+                # Пока считает апскейлер, диффузионная модель не нужна — убираем
+                # её с карты, чтобы они не лежали там вдвоём. Следующий семпл
+                # вернёт её сам.
+                if device == "cuda" and hasattr(model, "clone_base_uuid"):
+                    comfy.model_management.unload_model_and_clones(
+                        model, unload_additional_models=False,
+                    )
+                    comfy.model_management.soft_empty_cache()
+                for offset in range(index, min(index + group, len(bounds))):
+                    b0, _bf0, b1, _bf1 = bounds[offset]
+                    part = video[:, :, b0:b1].contiguous()
+                    upscaled_cache[offset], _, _ = core.upscale_latent(part, upscale_param)
+
+            chunk_v = upscaled_cache.pop(index)
 
             cond_i = core.reanchor_conditioning(
                 conditioning, f0, f1, (chunk_v.shape[3], chunk_v.shape[4]),
@@ -263,6 +335,61 @@ class TS_LatentUpscale(IO.ComfyNode):
 
         result = {"samples": comfy.nested_tensor.NestedTensor((acc_v, acc_a))}
         return IO.NodeOutput(result, segments)
+
+
+    @staticmethod
+    def _upscale_group_size(video, bounds, upscale_param):
+        """Сколько кусков апскейлить за один заход.
+
+        Готовые куски ждут семплирования в оперативной памяти, поэтому группа
+        считается от неё, а не от числа кусков: на 4K кусок весит около
+        полугигабайта, и «все сразу» на длинном клипе означало бы десятки
+        гигабайт. Берём четверть свободной памяти — остальное нужно самому
+        ComfyUI.
+        """
+        if len(bounds) <= 1:
+            return 1
+        scale_w = int(upscale_param["width"]) / max(1, video.shape[4] * core.VAE_DOWNSAMPLE)
+        scale_h = int(upscale_param["height"]) / max(1, video.shape[3] * core.VAE_DOWNSAMPLE)
+        longest = max((b1 - b0) for b0, _f0, b1, _f1 in bounds)
+        element = video.element_size() or 2
+        bytes_per_chunk = (
+            video.shape[1] * longest
+            * video.shape[3] * scale_h * video.shape[4] * scale_w * element
+        )
+        try:
+            import psutil
+
+            budget = psutil.virtual_memory().available * 0.25
+        except Exception:  # noqa: BLE001 - без psutil идём по одному куску
+            return 1
+        return max(1, min(len(bounds), int(budget // max(1.0, bytes_per_chunk))))
+
+    @staticmethod
+    def _warn_on_conditioning_size_mismatch(conditioning, width, height):
+        """Сказать вслух, если кондиционирование делалось под другой размер.
+
+        Предупреждение, а не отказ: у ключевого кадра может не быть латента, и
+        тогда сверять попросту нечего — а мешать работе из-за неполной проверки
+        неправильно.
+        """
+        expected = (int(height) // core.VAE_DOWNSAMPLE, int(width) // core.VAE_DOWNSAMPLE)
+        for _cond, extra in conditioning or []:
+            for keyframe in (extra or {}).get("keyframes", []) or []:
+                latent = keyframe.get("latent") if isinstance(keyframe, dict) else None
+                if latent is None or getattr(latent, "ndim", 0) != 5:
+                    continue
+                got = (int(latent.shape[3]), int(latent.shape[4]))
+                if got != expected:
+                    logger.warning(
+                        "%s Conditioning keyframes are %dx%d latent (%dx%d pixels) but the "
+                        "target is %dx%d pixels. They will be resized, and if the conditioning "
+                        "was written for a different size the result will drift from it.",
+                        LOG_PREFIX, got[1], got[0],
+                        got[1] * core.VAE_DOWNSAMPLE, got[0] * core.VAE_DOWNSAMPLE,
+                        int(width), int(height),
+                    )
+                    return
 
 
 NODE_CLASS_MAPPINGS = {"TS_LatentUpscale": TS_LatentUpscale}

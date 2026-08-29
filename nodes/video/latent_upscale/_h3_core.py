@@ -692,6 +692,50 @@ def unload_upscale_model(name, device, precision):
         torch.cuda.empty_cache()
 
 
+def bf16_is_native(device):
+    """Настоящая аппаратная поддержка bf16 — без эмуляции.
+
+    ⚠️ `torch.cuda.is_bf16_supported()` СЕЙЧАС ЖЕ отвечает True и там, где bf16
+    эмулируется программно (Turing — вся линейка RTX 2000, compute capability
+    7.5). Считать этот ответ за «умеет» значит выбрать медленный путь и думать,
+    что выбрал быстрый; аппаратный bf16 начинается с Ampere, то есть с 8.0.
+    """
+    if str(getattr(device, "type", device)) == "cpu" or not torch.cuda.is_available():
+        return False
+    try:
+        return bool(torch.cuda.is_bf16_supported(including_emulation=False))
+    except TypeError:
+        # Старые torch не знают этого параметра — спрашиваем железо напрямую.
+        try:
+            return torch.cuda.get_device_capability(device)[0] >= 8
+        except Exception:  # noqa: BLE001 - нет карты/драйвера
+            return False
+
+
+def resolve_precision(precision, device):
+    """Точность, которую ЭТА карта действительно потянет.
+
+    ⚠️ Откат bf16 -> fp16 здесь не компромисс, а по замерам улучшение. На
+    bf16-чекпойнте H3 (345 млн весов) сравнивались все три пути против fp32:
+
+        fp16 -> расхождение 0.384% от размаха, среднее 0.0008, 8.3 с
+        bf16 -> расхождение 2.672% от размаха, среднее 0.0071, 9.3 с
+
+    У bf16 8 бит мантиссы против 11 у fp16, а веса модели лежат в пределах
+    ±4.7 — широкий диапазон bf16 тут не нужен, а точность нужна. Перевод весов
+    из bf16 в fp16 при этом почти ничего не теряет: за нижнюю границу fp16
+    уходят 343 веса из 345 280 216 (0.0001%), за верхнюю — ни одного.
+    """
+    if precision != "bf16" or bf16_is_native(device):
+        return precision
+    logger.warning(
+        "%s This GPU has no native bfloat16 (Turing and older emulate it in "
+        "software), so the upscaler runs in fp16 instead. Measured on the H3 "
+        "checkpoint, fp16 is the more accurate of the two anyway.", LOG_PREFIX,
+    )
+    return "fp16"
+
+
 def _compute_upscale_target(width, height, h_in, w_in):
     """Pixel target W/H + effective scale from EXPLICIT target dimensions.
 
@@ -723,6 +767,9 @@ def upscale_video(video, param):
 
     orig_dtype = video.dtype
     dev = torch.device(device if (device == "cpu" or torch.cuda.is_available()) else "cpu")
+    # ⚠️ Откат bf16 -> fp16 на картах без аппаратной поддержки; подробности и
+    # замеры — в `resolve_precision`.
+    precision = resolve_precision(precision, dev)
     compute_dtype = {"fp32": torch.float32, "fp16": torch.float16, "bf16": torch.bfloat16}[precision]
 
     _, c, t, h_in, w_in = video.shape
@@ -736,7 +783,9 @@ def upscale_video(video, param):
     if str(model_name).startswith('('):
         raise ValueError("Please place H3 upscale model files into the latent_upscale_models directory")
 
-    s = video.to(device=dev, dtype=compute_dtype, copy=True)
+    # `copy=True` тут было лишним: смена устройства и типа и так делает новый
+    # тензор, а на куске 4K это ещё один переезд в сотни мегабайт.
+    s = video.to(device=dev, dtype=compute_dtype)
     model = load_upscale_model(model_name, dev, precision)
     norm_mean, norm_std = _make_norm_tensors(dev, compute_dtype)
 

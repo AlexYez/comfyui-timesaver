@@ -5349,6 +5349,73 @@
       }
     }
   },
+  "TS_VideoCut": {
+    "api": "v3",
+    "category": "TS/Video",
+    "class_name": "TS_VideoCut",
+    "display_name": "TS Video Cut",
+    "inputs": [
+      {
+        "index": 0,
+        "name": "images",
+        "type": "Image"
+      },
+      {
+        "index": 1,
+        "name": "fps",
+        "type": "Float"
+      },
+      {
+        "index": 2,
+        "name": "start_cut",
+        "type": "Int"
+      },
+      {
+        "index": 3,
+        "name": "end_cut",
+        "type": "Int"
+      },
+      {
+        "index": 4,
+        "name": "audio",
+        "optional": true,
+        "type": "Audio"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "images",
+        "index": 0,
+        "name": "images",
+        "type": "Image"
+      },
+      {
+        "display_name": "audio",
+        "index": 1,
+        "name": "audio",
+        "type": "Audio"
+      }
+    ],
+    "python_file": "nodes/video/ts_video_cut.py",
+    "widgets": {
+      "end_cut": {
+        "default": 0,
+        "max": 1000000,
+        "min": 0
+      },
+      "fps": {
+        "default": 24.0,
+        "max": 1000.0,
+        "min": 0.01,
+        "step": 0.001
+      },
+      "start_cut": {
+        "default": 0,
+        "max": 1000000,
+        "min": 0
+      }
+    }
+  },
   "TS_VideoDepthNode": {
     "api": "v3",
     "category": "TS/Video",

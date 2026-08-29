@@ -408,7 +408,7 @@ Injects a custom string into the workflow's positive prompt at runtime — usefu
 ---
 
 <a id="video"></a>
-### 🎬 Video (9 nodes)
+### 🎬 Video (10 nodes)
 
 Reading and writing video files, frame interpolation, model-based upscale, depth, animation preview.
 
@@ -527,6 +527,25 @@ and shows `subfolder/file.safetensors`, every folder declared in
 folder is refused. Picking an upscaler from another model family now explains
 itself instead of failing with `Missing key(s) in state_dict`.
 
+**Precision has a safe fallback, and fp16 is not the poor relation.** Measured
+against fp32 on the H3 checkpoint: fp16 deviates by 0.38% of the range, bf16 by
+2.67% — bf16 spends mantissa bits on a range these weights (±4.7) never use. On
+a card without *native* bfloat16 the node falls back to fp16 by itself, because
+`torch.cuda.is_bf16_supported()` answers `True` even where bf16 is emulated in
+software — the whole Turing line, RTX 2000 and older. Converting bf16 weights to
+fp16 loses almost nothing: 343 of 345,280,216 weights fall below fp16's range,
+and none exceed it.
+
+**Upscaling without a model** is offered in the same list: the `Interpolation:`
+entries resize the latent (bilinear / bicubic / area / nearest) with no
+checkpoint at all — quicker and lighter, though they invent no detail.
+
+**Chunks are upscaled in groups.** Upscaling and sampling need different models
+and cannot share the card, so the diffusion model is offloaded between them.
+Doing that per chunk meant reloading a multi-gigabyte model once per chunk;
+since upscaling does not depend on order, chunks are now upscaled in batches
+sized from free RAM — one offload per batch instead of one per chunk.
+
 `chunk_length` and `temporal_overlap` must be multiples of **17** — the model's
 keyframe grid — and that is checked before the run rather than half an hour into
 it.
@@ -535,6 +554,33 @@ it.
 > chunk into tiles; it was dropped along with its input. Tile seams need their
 > own fade and blend settings, and a clip that needs tiling is better served by
 > shorter chunks.
+
+#### TS Video Cut
+
+Trims frames off the start and the end of a clip **and cuts the audio to match**,
+from one pair of numbers given in frames.
+
+Usually this takes two nodes that know nothing about each other — one slices the
+IMAGE batch, the other the AUDIO — and they have to be told the same boundary in
+two different units. The first fractional frame rate then pulls the sound away
+from the picture. Here **the frame boundary is the master** and the audio
+boundary is derived from it through `fps`, so the two cannot disagree. Measured
+drift between picture and sound after the cut:
+
+| clip | drift |
+|---|---|
+| 100 frames at 24 fps | 0.00 ms |
+| 240 frames at **23.976** | 0.01 ms |
+| 300 frames at **29.97** | 0.00 ms |
+| audio 3 frames longer than the video | 0.00 ms |
+| audio shorter than the video | 0.00 ms |
+
+Audio arriving longer or shorter than the video — routine, since encoders round
+differently — cannot shift the cut: the span is clamped to the audio that exists
+and a mismatch over 50 ms is reported in the log. With no audio connected the
+node outputs silence of exactly the trimmed length, so a downstream saver still
+receives a valid track. Cutting away the whole clip is refused with the numbers
+in the message, rather than handing an empty batch to the next node.
 
 #### TS Video Depth
 <img src="doc/screenshots/ts_video_depth.png" alt="TS Video Depth" width="450" />
@@ -902,6 +948,13 @@ says plainly what turning it on costs you.
 in the pack fits, checked with a test, and a prompt that would not fit is
 refused with a readable message *before* three gigabytes are read from disk
 rather than being silently truncated.
+
+**The transcription prompt is written for Russian speech about software** —
+Russian in Cyrillic, technical terms and product names in Latin script the way
+the industry writes them (`ComfyUI`, `workflow`, `LoRA`, `Stable Diffusion`), and
+direct speech in quotation marks. It also protects names it does not know:
+measured on a real recording, «Artius Diffusion» used to come back as «Artus»
+because the model snapped an unfamiliar name onto a familiar one.
 
 **Speech is transcribed in 30-second segments** and stitched, with the overlap
 removed. Thirty seconds is measured, not chosen: shorter cuts returned the same

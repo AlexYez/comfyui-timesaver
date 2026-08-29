@@ -6,7 +6,7 @@ Injects a custom string into the workflow's positive prompt at runtime — usefu
 
 
 <a id="video"></a>
-### 🎬 Video (9 nodes)
+### 🎬 Video (10 nodes)
 
 Reading and writing video files, frame interpolation, model-based upscale, depth, animation preview.
 

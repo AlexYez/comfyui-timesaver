@@ -29,6 +29,13 @@ in the pack fits, checked with a test, and a prompt that would not fit is
 refused with a readable message *before* three gigabytes are read from disk
 rather than being silently truncated.
 
+**The transcription prompt is written for Russian speech about software** —
+Russian in Cyrillic, technical terms and product names in Latin script the way
+the industry writes them (`ComfyUI`, `workflow`, `LoRA`, `Stable Diffusion`), and
+direct speech in quotation marks. It also protects names it does not know:
+measured on a real recording, «Artius Diffusion» used to come back as «Artus»
+because the model snapped an unfamiliar name onto a familiar one.
+
 **Speech is transcribed in 30-second segments** and stitched, with the overlap
 removed. Thirty seconds is measured, not chosen: shorter cuts returned the same
 amount of text but stuttered at the seams. A segment that comes back

@@ -9,7 +9,60 @@ broken here, in writing, with a way back.
 
 ---
 
-## Unreleased
+## 12.3.0
+
+### TS Video Cut — trim a clip without losing sync
+
+A new node: frames off the start and the end, with the audio cut to match, from
+one pair of numbers in frames. The frame boundary drives the audio boundary
+through `fps`, so a fractional rate (23.976, 29.97) cannot pull the sound away
+from the picture — measured drift after the cut is at most 0.01 ms across rates
+and sample rates.
+
+Audio longer or shorter than the video does not shift the cut; it is clamped to
+what exists, with a warning past 50 ms. With no audio connected the output is
+silence of exactly the trimmed length rather than nothing, and cutting away the
+entire clip is refused with the numbers in the message.
+
+### TS Smart Switch stops computing the branch you did not choose
+
+The two inputs are lazy now. Before, ComfyUI had to evaluate **both** branches
+before calling the node — it cannot know only one value will be used — so a heavy
+VAE Decode on input 1 ran even with the switch on input 2. That hurts because
+ComfyUI caches only the *latest* input configuration: working on the second
+stage evicts the first stage's result, and going back re-runs the decode.
+
+Measured on a live server with one expensive and one cheap branch: **0.30 s with
+the cheap branch selected against 4.42 s with the expensive one** — the unused
+branch is not computed at all. Auto-failover still works: if the selected input
+is missing, the other one is evaluated instead.
+
+### TS Super Prompt RT: a transcription prompt written for Russian
+
+Russian in Cyrillic, technical terms and product names in Latin script
+(`ComfyUI`, `workflow`, `LoRA`, `Stable Diffusion`), direct speech in quotation
+marks, and a rule that protects unfamiliar names — measured on a real recording,
+«Artius Diffusion» used to come back as «Artus».
+
+### TS Latent Upscale: precision fallback, model-free upscaling, grouped upscale
+
+**bf16 falls back to fp16 on cards that only emulate it** — the whole Turing
+line. The trap is that `torch.cuda.is_bf16_supported()` answers `True` there
+anyway, so the check asks for native support explicitly. Measured on the H3
+checkpoint, fp16 is also the *more accurate* half-precision path (0.38% vs 2.67%
+deviation from fp32), and converting bf16 weights loses 343 of 345,280,216.
+
+**Upscaling without any model** is now a choice in the same list —
+`Interpolation: bilinear / bicubic / area / nearest`, the mode the original
+offered as a separate node.
+
+**Chunks are upscaled in groups sized from free RAM**, so the diffusion model is
+offloaded once per group rather than once per chunk.
+
+Also: the target size is checked against the conditioning's keyframes and warns
+on a mismatch instead of failing deep inside sampling; the redundancy cost of the
+chosen chunking is logged; and a redundant tensor copy was removed from the
+upscale path.
 
 ### TS Latent Upscale — three MMH3 nodes in one, and subfolders that finally work
 
