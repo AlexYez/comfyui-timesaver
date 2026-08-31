@@ -85,7 +85,11 @@
       "widgets_values": [
         "0 Lead Vocals.mp3",
         ""
-      ]
+      ],
+      "widgets_values_named": {
+        "source_path": "0 Lead Vocals.mp3",
+        "ts_audio_loader": ""
+      }
     },
     {
       "id": 2,
@@ -463,7 +467,25 @@
         true,
         "transcribed_audio",
         "D:\\AiApps\\ComfyUI\\comfyui\\ComfyUI\\output"
-      ]
+      ],
+      "widgets_values_named": {
+        "model": "large-v3",
+        "task": "transcribe",
+        "source_language": "ru",
+        "timestamps": "segment",
+        "precision": "fp16",
+        "beam_size": 5,
+        "temperature": 0,
+        "temperature_fallbacks": "0.0,0.2,0.4,0.6,0.8,1.0",
+        "condition_on_previous_text": true,
+        "compression_ratio_threshold": 2.4,
+        "logprob_threshold": -1,
+        "no_speech_threshold": 0.6,
+        "initial_prompt": "",
+        "save_srt_file": true,
+        "output_filename_prefix": "transcribed_audio",
+        "output_dir": "D:\\AiApps\\ComfyUI\\comfyui\\ComfyUI\\output"
+      }
     },
     {
       "id": 3,
@@ -518,7 +540,8 @@
       "properties": {
         "Node name for S&R": "PreviewAny"
       },
-      "widgets_values": []
+      "widgets_values": [],
+      "widgets_values_named": {}
     }
   ],
   "links": [

@@ -9,6 +9,199 @@ broken here, in writing, with a way back.
 
 ---
 
+## 12.4.0
+
+### The cursor turns into a hand over a button
+
+Hovering a node's button left the cursor as a crosshair, saying nothing about
+the fact that something happens on click. Classic nodes are drawn ON THE CANVAS,
+so their buttons are not DOM elements and `cursor: pointer` from CSS never
+reaches them — measured on a live canvas: empty canvas `default`, anywhere over
+a node `crosshair`.
+
+Buttons, toggles and dropdowns now show the hand; text fields deliberately do
+not, because a hand over an input promises a click that is not there. The cursor
+is restored to whatever it was on the way out — LiteGraph sets its own while you
+drag a link or resize a node, and those must not be overwritten.
+
+### TS Files Downloader gets a "download now" button
+
+A second button on the node pulls the whole list immediately, without running
+the graph — same engine, same tokens, mirrors and unzip settings. It reports
+`3/10 · 42% · model.safetensors` as it goes, and pressing it again cancels; the
+partial file is kept as `.part`, so the next attempt resumes.
+
+This is what turns `enable` into a mode worth having: switch it off and the node
+does nothing at all when the workflow runs, while the models are still one click
+away when you actually want them. The button ignores `enable` deliberately —
+with the switch off it is the only way left to download.
+
+**The list is readable now.** Each line is `<url> → <folder>`. A long address
+wraps in the field, and a folder pressed against its tail read as part of the
+link; the arrow ends that. A plain space still parses, so older lists and lists
+arriving with someone else's workflow keep working.
+
+### Audio is fitted to the picture that was actually written
+
+Audio shorter than the video has always been padded and longer audio cut — that
+part held up under measurement. What did not: the length was computed from the
+**declared** frame count, and for a video source that number is an estimate
+(`duration * fps`). Measured on a 20-frame disagreement — declared 50, wrote 30
+— the sound came out 0.8 s longer than the picture; the other way round, 0.8 s
+short. The measure now comes off the video that was actually written.
+
+Two more edge cases found while checking:
+
+* **An unusual channel count crashed the save.** PyAV wants the layout to match
+  the row count, so three-channel audio ended the run with "Expected planar
+  array.shape[0] to equal 2 but got 3" — after the clip was already generated.
+  Anything unforeseen is mixed down to stereo with a line in the log.
+* **An empty track wrote a silent one.** A zero-length waveform now means "no
+  audio", instead of being padded into silence the source never had.
+
+### TS Video Saver accepts a video that has no file, and keeps its sound
+
+Feeding the saver a VIDEO built in memory — what Create Video and friends hand
+over — ended in "Nothing to save: connect either images or a video", after the
+run had already spent minutes generating it. The saver only understood a video
+backed by a file: it asked for `get_stream_source()` and gave up without one,
+while `VideoFromComponents` does not have that method at all.
+
+It now falls back to `get_components()`, which every VIDEO must implement. A
+file is still tried first — streaming from disk is what keeps a long clip out
+of memory.
+
+**Sound travels with the video too.** Re-saving a clip used to produce a silent
+file unless you wired the audio yourself. The saver now takes the source's own
+track when the audio input is empty — read straight from the audio packets for a
+file source, so the frames stay streamed. An audio input you connect always
+wins: you chose that track deliberately.
+
+### One control closes a fullscreen editor, not two
+
+TS Video Loader put its own "full screen" button directly under the shared ×
+in the top-right corner — two controls, same action (measured: the button at
+top 49 / right 7, the × at top 6 / right 10). The button travels into the
+overlay with the editor's toolbar, which is why it ended up there.
+
+Hiding it is now the overlay's job, not each node's: `openFullscreenOverlay`
+takes the control that opened it and puts it away for the duration. TS Video
+Saver passes the same thing — its button merely landed somewhere less visible,
+and one mechanism beats two.
+
+### The sound track no longer floods the timeline on uncompressed audio
+
+A `.mov` straight from a camera — H.264 with 24-bit PCM sound — drew white bars
+across the whole timeline instead of a waveform, burying the filmstrip and the
+ruler with it. The video was fine and the browser played the file; the envelope
+was the broken part.
+
+`frame.to_ndarray()` hands back whatever the decoder uses. Compressed codecs
+(opus, aac) decode to floats in 0…1, so this never showed; uncompressed PCM
+arrives as integers, and the measured peaks ran to 1,365,262,336 where the
+timeline expects 1.0. Samples are now scaled by their type's full range, in both
+places peaks are computed — the overview and the zoomed window — and the drawing
+code clamps what it is given as a second line of defence.
+
+⚠️ The probe cache version moved again, so a file you already opened is re-read
+instead of answering with the old numbers.
+
+### TS Video Loader finds the cuts
+
+A button on the transport row walks the file and marks every place the shot
+changes. Double-click a marker and the trim snaps to that shot — from this cut
+to the next, with the last one running to the end. Double-clicking empty space
+still resets the trim.
+
+The threshold was chosen by looking at frames, not by picking a round number.
+On a checked scene eight genuine cuts scored 0.13 to 0.54 while the most
+conspicuous non-cut scored 0.05, so 0.2 — the value the loud group suggested —
+would have silently dropped two real ones. A plain pixel difference cannot
+separate them at all: 0.198 on a real cut against an average of 0.005.
+
+The first press reads the whole file (4.7 s for 78 s of SD); what it measures is
+cached, so pressing again — or moving the threshold — answers at once.
+
+### TS Video Loader opens webm and mkv that carry no duration
+
+A webm downloaded as a stream — from YouTube, or anything written to a pipe —
+has no duration in its container: the field is filled in when a file is closed
+on disk, and that never happened. The probe read the zeros literally and the
+node saw a clip of zero length, so nothing loaded.
+
+Worse, PyAV's `guessed_rate` handed back **1000** for such a file, which is the
+1/1000 time base and not a frame rate at all.
+
+The probe now reads the packet timestamps when the container says nothing:
+0.04 s on a 50 MB VP9 file, against 4.3 s for a full decode that returned
+exactly the same frame count. That file now reads as 78.612 s, 25 fps, 1965
+frames, and loads.
+
+⚠️ Probe results are cached on disk and survive an update, so the cache version
+moved too — a file you already tried is re-read rather than answering with the
+old zeros.
+
+### A batch manager: three nodes, results on disk as they come
+
+**TS Batch Source**, **TS Batch Load Image** and **TS Batch Write** turn a
+folder, a text file or a plain count into a job list and run the graph below
+once per item.
+
+The part that matters: results are written **as each one finishes**. A batch
+that dies at item 90 leaves 89 captions on disk instead of nothing, and
+`start_at` resumes from where it stopped without wiping what is there.
+
+Nothing here is a loop. ComfyUI already runs a node once per element of a list
+input, and each of those runs is independent — which is exactly what a
+captioning model needs: a fresh conversation per picture, not one context that
+grows for a hundred images.
+
+**⚠️ But that list runs breadth-first, and it matters more than it sounds.**
+Measured on a live server: the loader logged items 1, 2, 3 and only then the
+writer logged 1/3, 2/3, 3/3 — ComfyUI finishes every copy of one node before it
+starts the next. So results reach disk only after the model has done all of
+them, and TS Image Prompt Injector, which stamps the current prompt into the
+saved metadata, gets overwritten by the last item before anything is saved:
+every picture ends up carrying the same prompt.
+
+Turn on **`one_per_run`** and set the queue's Batch count to the number of jobs.
+Each run is then a full pass through the graph — generated, stamped, saved,
+previewed — before the next job starts. That is the mode to use whenever you
+want to watch results arrive or need honest per-image metadata.
+
+**Watching it happen.** ComfyUI holds the previews of every iteration and shows
+them in one go after the last one, so a long batch otherwise looks frozen and
+then finishes all at once. Connect an image to TS Batch Write and the current
+result goes through the progress bar instead — item 47 is on screen while it is
+item 47.
+
+Three layouts: one file of blank-line separated blocks (read back by TS Batch
+Prompt Loader); **one line per item**, read back by TS Batch Source itself, which
+turns a file of captions into a file of generation jobs with no conversion in
+between; or one `.txt` per item named after its picture — the layout caption
+datasets expect.
+
+**A seed per item.** A seed widget holds one number for all hundred calls, so a
+hundred iterations of the same task used to come back identical. TS Batch Source
+hands every item its own derived seed — wire it into the model's seed input.
+
+**Three ready-made templates** ship with the pack (Workflow → Browse Templates →
+Timesaver): caption a folder into one file, thirty variations of one prompt, and
+generate images from a file of prompts — the last one wiring TS Image Prompt
+Injector so every saved picture carries its own prompt.
+
+⚠️ The source emits **paths**, not pictures, and TS Batch Load Image reads them
+one at a time. A hundred 4K frames passed along as images would sit in the
+output cache — around 10 GB — before the first caption is written.
+
+### Both Super Prompt buttons stopped repeating themselves
+
+Pressing "AI prompt" a second time returned the **same text**, on both TS Super
+Prompt and TS Super Prompt RT. The frontend never sent a seed, so the server
+fell back to a fixed one; on the RT node the runtime was not given a seed at
+all. Both now generate a fresh seed on every press. A request without one still
+works and stays reproducible, as before.
+
 ## 12.3.0
 
 ### TS Video Cut — trim a clip without losing sync

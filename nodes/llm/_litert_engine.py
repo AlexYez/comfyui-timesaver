@@ -506,6 +506,7 @@ def generate(
     top_p: float = 0.9,
     top_k: int = 64,
     max_new_tokens: int = 512,
+    seed: int | None = None,
     thinking: bool = False,
     backend: str = "GPU",
     mtp: bool = True,
@@ -514,6 +515,9 @@ def generate(
     on_progress: Any = None,
 ) -> dict[str, Any]:
     """One prompt in, one answer out, card clean on the way back.
+
+    ``seed=None`` lets the runtime choose; pass one to make a repeat press
+    sample differently (or to reproduce an answer exactly).
 
     ``keep_loaded=True`` skips the unload — faster on repeated presses, but the
     memory it holds is memory ComfyUI believes it still has (see the module
@@ -543,7 +547,8 @@ def generate(
         return _generate_locked(
             runtime=runtime, model_key=model_key, system_prompt=system_prompt,
             user_text=user_text, images=images, audio=audio, temperature=temperature,
-            top_p=top_p, top_k=top_k, max_new_tokens=max_new_tokens, thinking=thinking,
+            top_p=top_p, top_k=top_k, max_new_tokens=max_new_tokens, seed=seed,
+            thinking=thinking,
             backend=backend, mtp=mtp, keep_loaded=keep_loaded,
             allow_download=allow_download, on_progress=on_progress,
         )
@@ -563,6 +568,7 @@ def _generate_locked(
     top_p: float,
     top_k: int,
     max_new_tokens: int,
+    seed: int | None,
     thinking: bool,
     backend: str,
     mtp: bool,
@@ -580,8 +586,13 @@ def _generate_locked(
         conversation = engine.create_conversation(
             messages=[],
             system_message=(str(system_prompt).strip() or None),
+            # ``seed=None`` leaves the runtime to pick one, which is what a
+            # plain node run wants. A caller with a "generate again" button
+            # sends a fresh seed on every press so the same prompt sampled
+            # twice does not come back word for word.
             sampler_config=runtime.SamplerConfig(
                 temperature=float(temperature), top_k=int(top_k), top_p=float(top_p),
+                seed=(None if seed is None else int(seed)),
             ),
             thinking_config=runtime.ThinkingConfig(
                 enable_thinking=bool(thinking),

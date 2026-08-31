@@ -1612,6 +1612,18 @@ function setupSuperPrompt(node) {
         refreshStatus();
     });
 
+    // Каждое нажатие — свой seed. Без него сервер брал фиксированный, и
+    // повторное нажатие возвращало ТОТ ЖЕ текст: кнопка выглядела сломанной.
+    // 32 бита намеренно: столько переживает JSON без потери точности.
+    function freshSeed() {
+        const buffer = new Uint32Array(1);
+        if (globalThis.crypto?.getRandomValues) {
+            globalThis.crypto.getRandomValues(buffer);
+            return buffer[0];
+        }
+        return Math.floor(Math.random() * 0x100000000);
+    }
+
     function buildAiPayload(frames) {
         const list = (frames && frames.length)
             ? frames
@@ -1627,6 +1639,7 @@ function setupSuperPrompt(node) {
             high_quality: Boolean(getWidgetValue(node, HIGH_QUALITY_WIDGET, false)),
             keep_loaded: Boolean(getWidgetValue(node, KEEP_LOADED_WIDGET, false)),
             operation_id: state.activeAiOperationId,
+            seed: freshSeed(),
         };
     }
 

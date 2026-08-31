@@ -47,13 +47,16 @@
         "max_resolution": 512,
         "mask_padding": 64,
         "feather": 4,
-        "session_id": "ff56cfc6a70843cfb5a109428c29ab50",
+        "session_id": "af841ae140fb40b1810e22c5a494b9b6",
         "working_path": "",
-        "ts_lama_cleanup_session_id": "ff56cfc6a70843cfb5a109428c29ab50"
+        "ts_lama_cleanup_session_id": "af841ae140fb40b1810e22c5a494b9b6"
       },
       "widgets_values": [
         ""
-      ]
+      ],
+      "widgets_values_named": {
+        "ts_lama_cleanup": ""
+      }
     },
     {
       "id": 2,

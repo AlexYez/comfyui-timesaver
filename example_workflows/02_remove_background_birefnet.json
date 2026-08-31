@@ -97,7 +97,11 @@
       "widgets_values": [
         "01-neural-network-brain.png",
         "image"
-      ]
+      ],
+      "widgets_values_named": {
+        "image": "01-neural-network-brain.png",
+        "upload": "image"
+      }
     },
     {
       "id": 2,
@@ -405,7 +409,21 @@
         "auto",
         "median3",
         0.5
-      ]
+      ],
+      "widgets_values_named": {
+        "enable": true,
+        "model": "BiRefNet-HR-matting",
+        "use_custom_resolution": false,
+        "process_resolution": 1024,
+        "mask_blur": 0,
+        "mask_offset": 0,
+        "invert_output": false,
+        "background": "Alpha",
+        "background_color": "#ffffff",
+        "precision": "auto",
+        "temporal_smooth": "median3",
+        "ema_alpha": 0.5
+      }
     },
     {
       "id": 3,

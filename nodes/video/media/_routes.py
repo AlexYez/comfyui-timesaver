@@ -170,6 +170,46 @@ async def ts_video_metadata(request):
     })
 
 
+@_register_get(f"{ROUTE_BASE}/scenes")
+async def ts_video_scenes(request):
+    """Где в файле склейки — по кнопке на таймлайне.
+
+    Первый вызов проходит файл целиком (4,7 с на 78 секундах SD), дальше
+    отвечает из кэша мгновенно: на диске лежит снятая метрика, а порог
+    применяется к ней уже здесь. Поэтому подвинуть порог стоит миллисекунды, а
+    не нового прохода.
+    """
+    if _outside_allowed_roots(request):
+        return web.json_response({"error": OUTSIDE_ROOTS_MESSAGE}, status=403)
+    path = _requested_path(request)
+    if path is None:
+        return web.json_response({"error": "File not found."}, status=404)
+
+    from ._scenes import DEFAULT_MIN_GAP, DEFAULT_THRESHOLD, detect_cuts
+
+    def _number(name: str, fallback: float) -> float:
+        try:
+            return float(request.query.get(name, fallback))
+        except (TypeError, ValueError):
+            return fallback
+
+    threshold = _number("threshold", DEFAULT_THRESHOLD)
+    min_gap = _number("min_gap", DEFAULT_MIN_GAP)
+
+    async with _GATE:
+        async with _lock_for(f"scenes:{path}"):
+            try:
+                result = await asyncio.to_thread(
+                    detect_cuts, path, threshold=threshold, min_gap=min_gap,
+                )
+            except Exception as error:      # noqa: BLE001 - чужой файл может быть любым
+                logger.warning("%s scene scan failed for %s: %s",
+                               LOG_PREFIX, safe_log_path(path), error)
+                return web.json_response({"error": str(error)}, status=422)
+
+    return web.json_response({"schema": 1, **result})
+
+
 @_register_get(f"{ROUTE_BASE}/strip")
 async def ts_video_strip(request):
     """Спрайт миниатюр: одна лента вместо шестнадцати запросов."""

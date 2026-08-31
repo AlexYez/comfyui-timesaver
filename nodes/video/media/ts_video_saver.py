@@ -235,6 +235,15 @@ class TS_VideoSaver(IO.ComfyNode):
             raise RuntimeError(
                 f"{LOG_PREFIX} Nothing to save: connect either images or a video.")
 
+        # ⚠️ Звук у видео СВОЙ, и терять его нельзя: раньше пересохранение
+        # ролика отдавало немой файл, ничего об этом не сказав.
+        #
+        # Приоритет один и тот же в обоих случаях: подключённый вход сильнее.
+        # Человек подставил свою дорожку осознанно — подменять её звуком
+        # источника значит спорить с ним.
+        if audio is None and images is None:
+            audio = cls._video_audio(video)
+
         target, filename, subfolder = output_path(filename_prefix, fmt.extension)
         metadata = cls._metadata() if save_metadata else None
         wants_proxy = preview != "off" and not fmt.browser_playable
@@ -441,7 +450,71 @@ class TS_VideoSaver(IO.ComfyNode):
                             count = int(round(count * fps / source_fps))
                 return iter_frames(source, start=start, end=end, fps=fps), count
 
+            # ⚠️ VIDEO бывает НЕ файловым, и это не редкость: ядровая
+            # `VideoFromComponents` (её отдаёт, например, Create Video) держит
+            # кадры в памяти и `get_stream_source` не имеет ВООБЩЕ. Раньше такой
+            # объект молча доходил до отказа «нечего сохранять» — при честно
+            # подключённом видео и после нескольких минут генерации.
+            frames = cls._video_images(video)
+            if frames is not None:
+                return _frames_from_tensor(frames), int(frames.shape[0])
+
         return None, 0
+
+    @staticmethod
+    def _video_images(video):
+        """Кадры видео, собранного в памяти, или ``None``.
+
+        Спрашиваем ровно то, что обязан уметь любой VIDEO по контракту ядра:
+        ``get_components()``. Путь к файлу пробуется первым, потому что поток с
+        диска не поднимает в память весь клип.
+        """
+        try:
+            components = video.get_components()
+        except Exception:                   # noqa: BLE001 - чужая реализация VIDEO
+            return None
+        images = getattr(components, "images", None)
+        shape = getattr(images, "shape", None)
+        if shape is None or len(shape) < 1 or int(shape[0]) <= 0:
+            return None
+        return images
+
+    @classmethod
+    def _video_audio(cls, video):
+        """Звук самого видео, или ``None``, если его там нет.
+
+        ⚠️ У файлового источника звук читается ОТДЕЛЬНЫМ проходом по
+        аудиопакетам, а не через ``get_components()``: последний материализует
+        весь клип в память, а сейвер ровно затем и гонит картинку потоком,
+        чтобы этого не делать. Окно подрезки учитывается — иначе звук приедет
+        от начала файла и разъедется с картинкой.
+        """
+        if video is None:
+            return None
+
+        source = cls._video_path(video)
+        if source:
+            from ._decode import read_audio
+
+            start, duration = cls._video_window(video)
+            end = (start + duration) if duration > 0 else -1.0
+            try:
+                return read_audio(source, start=start, end=end)
+            except Exception as error:      # noqa: BLE001 - звук не повод ронять сохранение
+                logger.warning("%s Could not read the source audio: %s", LOG_PREFIX, error)
+                return None
+
+        try:
+            components = video.get_components()
+        except Exception:                   # noqa: BLE001 - чужая реализация VIDEO
+            return None
+        audio = getattr(components, "audio", None)
+        if not isinstance(audio, dict):
+            return None
+        waveform = audio.get("waveform")
+        if getattr(waveform, "numel", None) is None or waveform.numel() == 0:
+            return None
+        return audio
 
     @staticmethod
     def _video_path(video) -> str:

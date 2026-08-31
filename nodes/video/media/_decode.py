@@ -721,6 +721,64 @@ def _audio_frame_to_float(frame, np):
     return np.ascontiguousarray(out / scale, dtype=np.float32)
 
 
+def read_audio(path: str, *, start: float = 0.0, end: float = -1.0) -> dict | None:
+    """Только звуковая дорожка файла, без единого декодированного кадра.
+
+    Нужна сейверу: он гонит картинку ПОТОКОМ, чтобы не держать клип в памяти,
+    и полный декод ради звука перечеркнул бы весь смысл. Здесь читаются лишь
+    аудиопакеты — это в разы дешевле видео.
+
+    Returns:
+        ``{"waveform": [1,C,T], "sample_rate": int}`` или ``None``, если
+        дорожки нет, она не декодируется или в ней не оказалось отсчётов.
+    """
+    import numpy as np
+
+    av = _av()
+    try:
+        container = av.open(path)
+    except Exception as error:              # noqa: BLE001 - чужой/битый файл
+        logger.debug("%s Could not open %s for audio: %s",
+                     LOG_PREFIX, safe_log_path(path), error)
+        return None
+
+    chunks = []
+    rate = 0
+    channels = 0
+    with container:
+        stream = _audio_stream(container)
+        if stream is None:
+            return None
+        rate = int(getattr(stream.codec_context, "sample_rate", 0) or 0)
+        channels = int(getattr(stream.codec_context, "channels", 0) or 0)
+        if rate <= 0:
+            return None
+        if start > 0 and stream.time_base:
+            try:
+                container.seek(int(start / stream.time_base), stream=stream)
+            except Exception:               # noqa: BLE001 - перемотка не обязана быть точной
+                pass
+        try:
+            for frame in container.decode(stream):
+                when = float(frame.time or 0.0)
+                if end > 0 and when > end:
+                    break
+                data = _audio_frame_to_float(frame, np)
+                if data.size:
+                    chunks.append((when, data))
+        except Exception as error:          # noqa: BLE001 - битая дорожка не повод падать
+            logger.debug("%s Audio read stopped early on %s: %s",
+                         LOG_PREFIX, safe_log_path(path), error)
+
+    if not chunks:
+        return None
+    payload = _assemble_audio(chunks, rate, channels, start, end)
+    waveform = payload.get("waveform")
+    if waveform is None or waveform.numel() == 0:
+        return None
+    return payload
+
+
 def _assemble_audio(chunks, rate: int, channels: int, start: float, end: float) -> dict:
     """Склеить аудиокадры в тензор ComfyUI ``{"waveform": [1,C,T], "sample_rate": int}``."""
     import numpy as np

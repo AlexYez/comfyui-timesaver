@@ -91,6 +91,17 @@ const TYPE_TO_FOLDER = {
 const STRINGS = {
     en: {
         button: "Get models from workflow",
+        download: "Download the models now",
+        downloadEmpty: "The list is empty — nothing to download.",
+        downloadBusy: "A download is already running.",
+        downloadFailed: "Download failed — see the console.",
+        downloadCancel: "Cancel the download",
+        downloadDone: (ok, failed) => (failed
+            ? `Downloaded ${ok}, failed ${failed}`
+            : `Downloaded ${ok} file${ok === 1 ? "" : "s"}`),
+        downloadCancelled: "Download cancelled — partial files are kept.",
+        downloadProgress: (done, total, percent, name) =>
+            `${done}/${total} · ${percent}%${name ? ` · ${name}` : ""}`,
         title: "Models found in this workflow",
         summary: (add, total) => `${add} to add · ${total} found in total`,
         colAdd: "Will be added",
@@ -133,6 +144,17 @@ const STRINGS = {
     },
     ru: {
         button: "Взять модели из workflow",
+        download: "Скачать модели сейчас",
+        downloadEmpty: "Список пуст — скачивать нечего.",
+        downloadBusy: "Загрузка уже идёт.",
+        downloadFailed: "Загрузка не удалась — смотрите консоль.",
+        downloadCancel: "Отменить загрузку",
+        downloadDone: (ok, failed) => (failed
+            ? `Скачано ${ok}, не удалось ${failed}`
+            : `Скачано файлов: ${ok}`),
+        downloadCancelled: "Загрузка отменена — недокачанное сохранено.",
+        downloadProgress: (done, total, percent, name) =>
+            `${done}/${total} · ${percent}%${name ? ` · ${name}` : ""}`,
         title: "Модели, найденные в этом workflow",
         summary: (add, total) => `${add} к добавлению · всего найдено ${total}`,
         colAdd: "Будут добавлены",
@@ -710,15 +732,34 @@ export function scanWorkflow(graph, loaderMap = null) {
 
 /* --------------------------------------------------------------- file_list IO */
 
+// Разделитель, который ВИДНО. Длинный URL в поле переносится, и папка,
+// стоящая через пробел, читается как хвост адреса — на скриншоте ноды это
+// первое, обо что спотыкается глаз. Пробел остаётся законным: списки, набранные
+// раньше, и чужие списки обязаны читаться дальше. Бэкенд понимает обе формы.
+export const TARGET_ARROW = " → ";
+
+/** Строка списка -> {url, target}. Понимает и стрелку, и старый пробел. */
+function splitLine(line) {
+    const text = String(line || "").trim();
+    for (const marker of [" → ", " -> "]) {
+        const at = text.indexOf(marker);
+        if (at > 0) {
+            return {
+                url: text.slice(0, at).trim(),
+                target: text.slice(at + marker.length).trim(),
+            };
+        }
+    }
+    const parts = text.split(/\s+/);
+    return { url: parts[0] || "", target: parts.slice(1).join(" ") };
+}
+
 function parseFileList(text) {
     return String(text || "")
         .split(/\r?\n/)
         .map((line) => line.trim())
         .filter((line) => line && !line.startsWith("#"))
-        .map((line) => {
-            const parts = line.split(/\s+/);
-            return { url: parts[0] || "", target: parts.slice(1).join(" ") };
-        });
+        .map(splitLine);
 }
 
 /**
@@ -801,18 +842,17 @@ function fixTargets(text, entries) {
     const lines = String(text || "").split(/\r?\n/).map((line) => {
         const trimmed = line.trim();
         if (!trimmed || trimmed.startsWith("#")) return line;
-        const parts = trimmed.split(/\s+/);
-        const url = parts[0];
+        const { url, target: current } = splitLine(trimmed);
         const target = wanted.get(keyOf(fileNameFromUrl(url)));
-        if (!target || sameTarget(parts.slice(1).join(" "), target)) return line;
+        if (!target || sameTarget(current, target)) return line;
         fixed += 1;
-        return `${url} ${target}`;
+        return `${url}${TARGET_ARROW}${target}`;
     });
     return { text: lines.join("\n"), fixed };
 }
 
 export function toLine(entry) {
-    return `${entry.url} ${displayTarget(entry.directory)}`;
+    return `${entry.url}${TARGET_ARROW}${displayTarget(entry.directory)}`;
 }
 
 /**
@@ -1193,6 +1233,122 @@ function attachButton(node) {
     button.serialize = false;
     button.options = { ...(button.options || {}), serialize: false };
     node.__tsFdlButton = button;
+
+    attachDownloadButton(node, t);
+}
+
+/**
+ * «Скачать сейчас» — то же, что делает нода на прогоне графа, но по нажатию.
+ *
+ * Ради этого выключатель `enable` и существует: человек оставляет его
+ * выключенным, чтобы нода молчала при каждом запуске воркфлоу, а модели тянет
+ * этой кнопкой тогда, когда ему нужно. Поэтому маршрут `enable` НЕ читает.
+ */
+function attachDownloadButton(node, t) {
+    if (node.__tsFdlDownload) return;
+
+    const WIDGETS = ["file_list", "skip_existing", "verify_size", "chunk_size_kb",
+                     "hf_token", "hf_domain", "proxy_url", "modelscope_token",
+                     "unzip_after_download", "integrity_mode"];
+
+    let operationId = null;
+    let busy = false;
+
+    const button = node.addWidget("button", t.download, null, async () => {
+        if (busy) {
+            // Повторное нажатие во время загрузки — это «отмена»: отдельная
+            // кнопка ради состояния, живущего секунды, только мешала бы.
+            await api.fetchApi("/ts_downloader/run_cancel", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ operation_id: operationId }),
+            }).catch(() => {});
+            return;
+        }
+
+        const list = String(getWidget(node, FILE_LIST_WIDGET)?.value || "").trim();
+        if (!list) {
+            toast("info", t.downloadEmpty);
+            return;
+        }
+
+        const payload = { operation_id: `ts_dl_${Math.random().toString(36).slice(2, 10)}` };
+        for (const name of WIDGETS) {
+            const widget = getWidget(node, name);
+            if (widget) payload[name] = widget.value;
+        }
+
+        setLabel(t.downloadProgress(0, "?", 0, ""));
+        busy = true;
+        operationId = payload.operation_id;
+        try {
+            const response = await api.fetchApi("/ts_downloader/run", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload),
+            });
+            const answer = await response.json().catch(() => ({}));
+            if (response.status === 409) {
+                toast("info", t.downloadBusy);
+                reset();
+                return;
+            }
+            if (!response.ok || answer?.error) throw new Error(answer?.error || `HTTP ${response.status}`);
+        } catch (error) {
+            console.error("[TS FilesDownloader] download failed", error);
+            toast("error", t.downloadFailed);
+            reset();
+        }
+    });
+
+    button.serialize = false;
+    button.options = { ...(button.options || {}), serialize: false };
+    node.__tsFdlDownload = button;
+
+    function setLabel(text) {
+        button.name = text;
+        node.setDirtyCanvas?.(true, true);
+    }
+
+    function reset() {
+        busy = false;
+        operationId = null;
+        setLabel(t.download);
+    }
+
+    const onProgress = (event) => {
+        const detail = event?.detail || {};
+        if (!operationId || detail.operation_id !== operationId) return;
+
+        if (detail.stage === "error") {
+            toast("error", detail.error || t.downloadFailed);
+            reset();
+            return;
+        }
+        if (detail.stage === "finished") {
+            if (detail.status === "cancelled") toast("info", t.downloadCancelled);
+            else toast("info", t.downloadDone(detail.success || 0, detail.failed || 0));
+            reset();
+            return;
+        }
+
+        const done = Number(detail.files_done || 0);
+        const total = Number(detail.files_total || 0) || 1;
+        const bytes = Number(detail.done_bytes || 0);
+        const size = Number(detail.total_bytes || 0);
+        // Доля всего списка: целые файлы плюс кусок текущего.
+        const share = (done + (size > 0 ? Math.min(1, bytes / size) : 0)) / total;
+        setLabel(t.downloadProgress(Math.min(done + 1, total), total,
+                                    Math.round(share * 100), detail.filename || ""));
+    };
+
+    api.addEventListener("ts_downloader.run_progress", onProgress);
+    // Нода может быть удалена посреди загрузки — подписка не должна её пережить.
+    const onRemoved = node.onRemoved;
+    node.onRemoved = function () {
+        api.removeEventListener("ts_downloader.run_progress", onProgress);
+        return onRemoved?.apply(this, arguments);
+    };
 }
 
 app.registerExtension({

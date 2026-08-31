@@ -313,6 +313,9 @@ export function setupVideoSaver(node) {
         fullscreen = openFullscreenOverlay(root, {
             label: node.title || NODE_TYPE,
             closeTitle: L.close,
+            // Здесь кнопка уезжает вниз и глаза не мозолит, но механизм должен
+            // быть один на все редакторы, а не «где заметили, там и починили».
+            trigger: fullscreenButton,
             onClose: () => { host?.appendChild(root); fullscreen = null; },
         });
     }

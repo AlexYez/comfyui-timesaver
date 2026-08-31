@@ -2,6 +2,12 @@
 
 Multi-file downloader that takes a list of `URL <space> target_path` lines and downloads them sequentially. Auto-replaces HuggingFace mirrors with reachability check across the full mirror list, supports `models/<subdir>` aliases, resumes interrupted downloads, validates archives against zip-slip on auto-unzip, and shows progress (including SHA256 verification). Handy for one-shot pulling all assets a workflow needs.
 
+**Download now, without running the graph.** The second button on the node pulls the whole list straight away — the same engine, the same tokens, mirrors and unzip settings as a normal run. It shows `3/10 · 42% · model.safetensors` while it works, and pressing it again cancels: the partial file stays as `.part` and the next attempt resumes from there.
+
+That button is what makes `enable` useful as a mode. Turn `enable` off and the node stops doing anything when the workflow runs — no checks, no downloads — while you still fetch the models by hand, once, when you actually need them. The button ignores `enable` on purpose: it is the one way left to download.
+
+**The list reads as two things, not one.** Each line is `<url> → <folder>`. The arrow is there to be read: a long address wraps in the field, and a folder pressed against its tail looks like part of the link. A plain space still works, so lists written earlier — and lists arriving with someone else's workflow — keep running.
+
 **Get models from workflow.** The button on the node fills that list for you: it walks the open graph — **including inside subgraphs**, where template loaders normally live — and collects every model it needs. It reads the `{name, url, directory}` metadata ComfyUI stamps onto each loader, cross-checks it against the workflow's Markdown note, and falls back to the loader's own filename when neither carries a link. You get a report first; **Append** adds only what is missing and never rewrites lines you wrote by hand, **Replace list** starts over.
 
 Models you already have are listed too, on purpose: the list travels with the workflow, so whoever you send it to still needs those lines.

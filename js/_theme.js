@@ -164,6 +164,16 @@ function themeCss() {
 .ts-ui-btn:hover:not([disabled]){background:var(--ts-surface-hover);border-color:var(--ts-border-strong)}
 .ts-ui-btn:active:not([disabled]){background:var(--ts-surface-active)}
 .ts-ui-btn[disabled]{opacity:.42;cursor:not-allowed}
+/* ⚠️ display:inline-flex выше перебивает браузерное правило для [hidden], и
+   button.hidden = true кнопку НЕ прятал — она оставалась на месте, молча.
+   Скрытие атрибутом обязано работать: так его ставят во всём паке.
+   !important здесь по делу: раскладка ноды объявляет свой display позже и с
+   той же специфичностью (.ts-vid__bar .ts-ui-btn--icon), и без него атрибут
+   молча проигрывал — замерено, кнопка оставалась видимой.
+   ⚠️⚠️ И никаких обратных кавычек в этом блоке: он весь — шаблонная строка,
+   и пара кавычек в комментарии рвёт её. node --check такое пропускает
+   (кавычек чётное число), а страница падает с Unexpected identifier. */
+.ts-ui-btn[hidden]{display:none !important}
 .ts-ui-btn:focus-visible{outline:2px solid var(--ts-accent);outline-offset:1px}
 .ts-ui-btn--primary{background:var(--ts-accent);border-color:var(--ts-accent-strong);color:var(--ts-accent-contrast)}
 .ts-ui-btn--primary:hover:not([disabled]){background:var(--ts-accent-strong);border-color:var(--ts-accent-strong)}

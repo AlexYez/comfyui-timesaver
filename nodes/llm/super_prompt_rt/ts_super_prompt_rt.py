@@ -71,6 +71,22 @@ _DEFAULT_PRESET = default_preset(preset_options())
 # ---------------------------------------------------------------------------
 # Shared work: one enhance, whatever asked for it
 # ---------------------------------------------------------------------------
+def _seed_from_body(raw: object) -> int | None:
+    """The request's seed, or ``None`` when it carries none worth using.
+
+    A missing, empty or unparsable field means "let the runtime choose" rather
+    than an error: an older frontend that never learned to send one must keep
+    working against a freshly updated server.
+    """
+    if raw is None or str(raw).strip() == "":
+        return None
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return None
+
+
+
 def _enhance(
     *,
     text: str,
@@ -78,6 +94,7 @@ def _enhance(
     model_key: str,
     image_paths: list[Path],
     keep_loaded: bool,
+    seed: int | None = None,
     operation_id: str | None = None,
 ) -> str:
     resolved, system_prompt, gen_params = resolve_preset(preset)
@@ -96,6 +113,7 @@ def _enhance(
         user_text=text,
         images=image_paths,
         keep_loaded=keep_loaded,
+        seed=seed,
         allow_download=True,
         on_progress=lambda stage, percent: send_progress(operation_id, stage, percent),
         **params,
@@ -434,6 +452,10 @@ async def _enhance_route(request):
     preset = str(body.get("system_preset") or _DEFAULT_PRESET)
     model_key = model_for(body.get("high_quality"))
     keep_loaded = bool(body.get("keep_loaded") or False)
+    # The button sends a fresh seed on every press: without one the runtime
+    # answered the same prompt with the same words, and "generate again" was
+    # indistinguishable from a no-op. A body without the field still works.
+    seed = _seed_from_body(body.get("seed"))
     operation_id = str(body.get("operation_id") or uuid.uuid4().hex)
     image_paths = _images_from_widgets(
         str(body.get("attached_image") or ""), str(body.get("attached_image_2") or ""),
@@ -452,6 +474,7 @@ async def _enhance_route(request):
             model_key=model_key,
             image_paths=image_paths,
             keep_loaded=keep_loaded,
+            seed=seed,
             operation_id=operation_id,
         )
     except Exception as exc:  # noqa: BLE001 - reported to the user verbatim

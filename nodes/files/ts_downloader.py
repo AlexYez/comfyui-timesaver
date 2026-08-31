@@ -24,9 +24,11 @@ except ImportError:
 from comfy_api.v0_0_2 import IO
 
 # Registered at import time: hf_search serves the scan report's "no download
-# link" column; jobs serves the studio's fetch/cancel/jobs progress routes.
+# link" column; jobs serves the studio's fetch/cancel/jobs progress routes;
+# run serves the node's own "download now" button.
 from . import (
     _downloader_jobs,  # noqa: F401
+    _downloader_run,  # noqa: F401
     _downloader_search,  # noqa: F401
 )
 
@@ -115,21 +117,50 @@ class _RunProgress:
     _SCALE = 1000
     _MIN_STEP = 0.005  # ~half a percent of one file; the engine throttles too
 
-    def __init__(self, total_files: int) -> None:
+    def __init__(self, total_files: int, sink=None) -> None:
         self._total = max(1, int(total_files))
         self._done = 0
         self._sent = -1.0
         self._bar = ProgressBar(self._total * self._SCALE) if ProgressBar else None
+        # Второй адресат прогресса — для запуска НЕ из графа (кнопка на ноде).
+        # ComfyUI-шная полоса привязана к исполняемой ноде, и вне прогона
+        # показывать ей нечего: сообщать о себе приходится самим.
+        self._sink = sink
+        self._label = ""
+
+    def file_started(self, index: int, label: str) -> None:
+        """Начался очередной файл: индекс с единицы и то, как его называть."""
+        self._label = str(label or "")
+        self._tell(status="running", index=int(index))
 
     def file_done(self) -> None:
         """One more file settled — from disk or from the server, both count."""
         self._done = min(self._total, self._done + 1)
         self._emit(float(self._done), force=True)
+        self._tell(status="running")
 
     def bytes(self, done: int, total: int, phase: str = "download") -> None:
         """Where the file in flight has got to, as a fraction of itself."""
         fraction = (done / total) if total and total > 0 else 0.0
         self._emit(self._done + min(1.0, max(0.0, fraction)))
+        self._tell(status="verifying" if phase == "verify" else "running",
+                   done_bytes=int(done), total_bytes=int(total))
+
+    def finished(self, success: int, failed: int, note: str = "") -> None:
+        """Итог всего списка — последнее, что слышит подписчик."""
+        self._tell(status="done", success=int(success), failed=int(failed), note=str(note))
+
+    def _tell(self, **payload) -> None:
+        if self._sink is None:
+            return
+        payload.setdefault("index", self._done + 1)
+        payload["files_done"] = self._done
+        payload["files_total"] = self._total
+        payload["filename"] = self._label
+        try:
+            self._sink(payload)
+        except Exception:                   # noqa: BLE001 - слушатель не должен ронять загрузку
+            pass
 
     def _emit(self, position: float, force: bool = False) -> None:
         if self._bar is None:
@@ -335,7 +366,7 @@ class TS_DownloadFilesNode(IO.ComfyNode):
                     default="https://www.dropbox.com/sh/example_folder?dl=0 /path/to/models\nhttps://huggingface.co/stabilityai/sdxl-turbo/resolve/main/sd_xl_turbo_1.0_fp16.safetensors /path/to/checkpoints",
                     multiline=True,
                     dynamic_prompts=False,
-                    tooltip="One download per line, formatted as '<url> <target_dir>'. Target may be absolute, a 'models/...' path, or a registered model folder name (checkpoints, loras, vae). Lines starting with # are ignored.",
+                    tooltip="One download per line: '<url> → <folder>'. The arrow is there to be read — a long address wraps, and a folder pressed against its tail looks like part of the link; a plain space still works, so older lists keep running. Target may be absolute, a 'models/...' path, or a registered model folder name (checkpoints, loras, vae). Lines starting with # are ignored.",
                 ),
                 IO.Boolean.Input("skip_existing", default=True, tooltip="Skip a file that already exists in the target folder instead of downloading it again."),
                 IO.Boolean.Input("verify_size", default=True, tooltip="Verify each finished file against the size (or HF SHA256) reported by the server; re-download or resume on mismatch."),
@@ -920,7 +951,17 @@ class TS_DownloadFilesNode(IO.ComfyNode):
             line = line.strip()
             if not line or line.startswith('#'):
                 continue
-            parts = line.split(maxsplit=1)
+            # Стрелка — ЧИТАЕМЫЙ разделитель, и она не украшение: длинный URL
+            # переносится в поле, и папка вплотную к его хвосту выглядит частью
+            # адреса. Пробел как разделитель остаётся: списки, написанные до
+            # этого, обязаны читаться дальше.
+            parts = None
+            for marker in (" → ", " -> "):
+                if marker in line:
+                    parts = [side.strip() for side in line.split(marker, 1)]
+                    break
+            if parts is None:
+                parts = line.split(maxsplit=1)
             if len(parts) != 2:
                 # A bare URL without a target path was previously dropped
                 # with no message at all — the user just saw nothing happen.
@@ -1875,6 +1916,7 @@ class TS_DownloadFilesNode(IO.ComfyNode):
         enable: bool = True,
         integrity_mode: str = "hf_sha256_auto",
         prompt_id: str = "",
+        progress_sink=None,
     ) -> IO.NodeOutput:
         if not enable:
             logger.info("%s Skipped (disabled).", LOG_PREFIX)
@@ -1892,6 +1934,10 @@ class TS_DownloadFilesNode(IO.ComfyNode):
 
         files_to_download = cls._parse_file_list(file_list)
         if not files_to_download:
+            # ⚠️ Ранние выходы тоже обязаны отчитаться: без этого кнопка на ноде
+            # осталась бы крутиться вечно на пустом или недоступном списке.
+            if progress_sink is not None:
+                _RunProgress(1, sink=progress_sink).finished(0, 0, note="empty")
             return IO.NodeOutput()
 
         # Offline detection must fail FAST. The download session retries
@@ -1906,7 +1952,7 @@ class TS_DownloadFilesNode(IO.ComfyNode):
         # single request — previously it probed every url just to discover it
         # had nothing to download.
         # One bar for the whole list, from the first file to the last.
-        progress = _RunProgress(len(files_to_download))
+        progress = _RunProgress(len(files_to_download), sink=progress_sink)
         pending = []
         satisfied = 0
         if skip_existing:
@@ -1942,6 +1988,7 @@ class TS_DownloadFilesNode(IO.ComfyNode):
         with cls._create_session_with_retries(proxy_url, total_retries=0) as probe_session:
             if not cls._check_connectivity_to_targets(files_to_download, probe_session, hf_domain):
                 logger.warning(f"{LOG_PREFIX} All target servers are unreachable. Switching to OFFLINE MODE. Execution finished.")
+                progress.finished(0, 0, note="offline")
                 return IO.NodeOutput()
             active_mirror = cls._select_best_mirror(probe_session, hf_domain)
 
@@ -1953,10 +2000,9 @@ class TS_DownloadFilesNode(IO.ComfyNode):
         with cls._create_session_with_retries(proxy_url) as session:
             for position, file_info in enumerate(files_to_download, 1):
                 guard.raise_if_cancelled()
-                logger.info(
-                    "%s Checking %d/%d: %s", LOG_PREFIX, position, remaining,
-                    os.path.basename(urlparse(file_info['url']).path) or file_info['url'],
-                )
+                shown = os.path.basename(urlparse(file_info['url']).path) or file_info['url']
+                logger.info("%s Checking %d/%d: %s", LOG_PREFIX, position, remaining, shown)
+                progress.file_started(position, shown)
                 if cls._download_single_file(session, file_info['url'], file_info['target_dir'], skip_existing, verify_size, chunk_size_bytes, active_mirror, hf_token, modelscope_token, unzip_after_download, integrity_mode_value, progress_cb=progress.bytes, guard=guard):
                     success += 1
                 else:
@@ -1964,6 +2010,7 @@ class TS_DownloadFilesNode(IO.ComfyNode):
                 progress.file_done()
 
         logger.info("%s Done. Success: %d, Failed: %d", LOG_PREFIX, success, failed)
+        progress.finished(success, failed)
         return IO.NodeOutput()
 
 

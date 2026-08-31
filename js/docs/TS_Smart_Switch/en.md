@@ -4,10 +4,6 @@ Type-aware boolean switch between two `ANY` inputs. Pick a `data_type` (images /
 
 **Use when:** branching a workflow on a flag, or making one input optional with a sensible fallback.
 
-
-<a id="conditioning"></a>
-### 🎨 Conditioning (1 node)
-
 ---
 
 Full node reference: [README](https://github.com/AlexYez/comfyui-timesaver#-node-reference)

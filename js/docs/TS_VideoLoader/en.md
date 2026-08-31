@@ -8,6 +8,12 @@ Reads a video into frames, audio and a compact `video_info` bundle — and lets 
 
 `frame_rate` resamples by real timestamps, so a variable-frame-rate source comes out evenly spaced. Size is set as `longer_side`/`shorter_side` rather than width and height, so one graph fits landscape and portrait footage alike; either may be `0` to derive it from the other. `divisible_by` rounds down to what video models want, the scaling filter defaults to `area` (footage is almost always scaled down, and averaging beats interpolation there), and `max_frames` is the memory guard. The ceiling for the frames comes from the machine (60% of its RAM, never below 8 GB; `TS_VIDEO_MAX_BYTES` overrides it), so a 13-second 4K clip loads on a 64 GB box instead of being turned down. When the frames genuinely will not fit, `when_too_large` = `use disk` puts them in a memory-mapped file in the ComfyUI temp folder: what comes out is an ordinary IMAGE and the allocation cannot fail, at the price of disk traffic (measured: 31.9 GB in 92 s against 51 s in RAM).
 
+**Find the cuts.** The button with the divided filmstrip walks the file and marks every place the shot changes. Double-click a marker and the trim snaps to that shot — from this cut to the next one, with the last shot running to the end of the clip. Double-clicking anywhere else still resets the trim, as before.
+
+The metric is how far apart the brightness histograms of neighbouring frames are, and the threshold behind it was set by looking at frames rather than by picking a round number: on a checked scene eight genuine cuts scored between 0.13 and 0.54, while the most conspicuous non-cut — the same shot, nothing changed — scored 0.05. A plain pixel difference cannot separate the two at all: its highest reading on a real cut was 0.198 against an average of 0.005.
+
+The first press reads the whole file (4.7 s for 78 s of SD; longer for 4K), and what it measures is cached, so pressing again answers at once.
+
 Footage arrives by **drag and drop** — from the file manager, from the Artius browser, or from another node's preview — by the button, by paste, or as a path to a file anywhere on the ComfyUI machine.
 
 > **A path anywhere on the machine — and what happens when the server is not yours alone.** Running ComfyUI the usual way, on `127.0.0.1`, the node and its preview read **any path you give them**: Documents, Desktop, another drive. Nothing is copied into `input`, which is the whole point — that folder grows without end otherwise.

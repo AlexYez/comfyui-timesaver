@@ -1,19 +1,19 @@
 {
   "id": "00000000-0000-0000-0000-000000000000",
   "revision": 0,
-  "last_node_id": 4,
-  "last_link_id": 4,
+  "last_node_id": 9,
+  "last_link_id": 13,
   "nodes": [
     {
       "id": 1,
-      "type": "TS_VideoLoader",
+      "type": "TS_BatchSource",
       "pos": [
         40,
-        80
+        412
       ],
       "size": [
-        700,
-        750
+        270,
+        286
       ],
       "flags": {},
       "order": 0,
@@ -25,117 +25,15 @@
           "color_on": null,
           "dir": null,
           "label": null,
-          "localized_name": "frame_rate",
+          "localized_name": "mode",
           "locked": null,
-          "name": "frame_rate",
-          "nameLocked": null,
-          "removable": null,
-          "shape": null,
-          "type": "FLOAT",
-          "widget": {
-            "name": "frame_rate"
-          },
-          "link": null
-        },
-        {
-          "color_off": null,
-          "color_on": null,
-          "dir": null,
-          "label": null,
-          "localized_name": "max_frames",
-          "locked": null,
-          "name": "max_frames",
-          "nameLocked": null,
-          "removable": null,
-          "shape": null,
-          "type": "INT",
-          "widget": {
-            "name": "max_frames"
-          },
-          "link": null
-        },
-        {
-          "color_off": null,
-          "color_on": null,
-          "dir": null,
-          "label": null,
-          "localized_name": "longer_side",
-          "locked": null,
-          "name": "longer_side",
-          "nameLocked": null,
-          "removable": null,
-          "shape": null,
-          "type": "INT",
-          "widget": {
-            "name": "longer_side"
-          },
-          "link": null
-        },
-        {
-          "color_off": null,
-          "color_on": null,
-          "dir": null,
-          "label": null,
-          "localized_name": "shorter_side",
-          "locked": null,
-          "name": "shorter_side",
-          "nameLocked": null,
-          "removable": null,
-          "shape": null,
-          "type": "INT",
-          "widget": {
-            "name": "shorter_side"
-          },
-          "link": null
-        },
-        {
-          "color_off": null,
-          "color_on": null,
-          "dir": null,
-          "label": null,
-          "localized_name": "divisible_by",
-          "locked": null,
-          "name": "divisible_by",
-          "nameLocked": null,
-          "removable": null,
-          "shape": null,
-          "type": "INT",
-          "widget": {
-            "name": "divisible_by"
-          },
-          "link": null
-        },
-        {
-          "color_off": null,
-          "color_on": null,
-          "dir": null,
-          "label": null,
-          "localized_name": "frame_step",
-          "locked": null,
-          "name": "frame_step",
-          "nameLocked": null,
-          "removable": null,
-          "shape": null,
-          "type": "INT",
-          "widget": {
-            "name": "frame_step"
-          },
-          "link": null
-        },
-        {
-          "color_off": null,
-          "color_on": null,
-          "dir": null,
-          "label": null,
-          "localized_name": "resize_filter",
-          "locked": null,
-          "name": "resize_filter",
+          "name": "mode",
           "nameLocked": null,
           "removable": null,
           "shape": null,
           "type": "COMBO",
           "widget": {
-            "name": "resize_filter"
+            "name": "mode"
           },
           "link": null
         },
@@ -144,15 +42,100 @@
           "color_on": null,
           "dir": null,
           "label": null,
-          "localized_name": "when_too_large",
+          "localized_name": "path",
           "locked": null,
-          "name": "when_too_large",
+          "name": "path",
+          "nameLocked": null,
+          "removable": null,
+          "shape": null,
+          "type": "STRING",
+          "widget": {
+            "name": "path"
+          },
+          "link": null
+        },
+        {
+          "color_off": null,
+          "color_on": null,
+          "dir": null,
+          "label": null,
+          "localized_name": "count",
+          "locked": null,
+          "name": "count",
+          "nameLocked": null,
+          "removable": null,
+          "shape": null,
+          "type": "INT",
+          "widget": {
+            "name": "count"
+          },
+          "link": null
+        },
+        {
+          "color_off": null,
+          "color_on": null,
+          "dir": null,
+          "label": null,
+          "localized_name": "start_at",
+          "locked": null,
+          "name": "start_at",
+          "nameLocked": null,
+          "removable": null,
+          "shape": null,
+          "type": "INT",
+          "widget": {
+            "name": "start_at"
+          },
+          "link": null
+        },
+        {
+          "color_off": null,
+          "color_on": null,
+          "dir": null,
+          "label": null,
+          "localized_name": "limit",
+          "locked": null,
+          "name": "limit",
+          "nameLocked": null,
+          "removable": null,
+          "shape": null,
+          "type": "INT",
+          "widget": {
+            "name": "limit"
+          },
+          "link": null
+        },
+        {
+          "color_off": null,
+          "color_on": null,
+          "dir": null,
+          "label": null,
+          "localized_name": "seed",
+          "locked": null,
+          "name": "seed",
+          "nameLocked": null,
+          "removable": null,
+          "shape": null,
+          "type": "INT",
+          "widget": {
+            "name": "seed"
+          },
+          "link": null
+        },
+        {
+          "color_off": null,
+          "color_on": null,
+          "dir": null,
+          "label": null,
+          "localized_name": "one_per_run",
+          "locked": null,
+          "name": "one_per_run",
           "nameLocked": null,
           "removable": null,
           "shape": 7,
-          "type": "COMBO",
+          "type": "BOOLEAN",
           "widget": {
-            "name": "when_too_large"
+            "name": "one_per_run"
           },
           "link": null
         }
@@ -163,17 +146,18 @@
           "color_on": null,
           "dir": null,
           "label": null,
-          "localized_name": "images",
+          "localized_name": "item",
           "locked": null,
-          "name": "images",
+          "name": "item",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
-          "type": "IMAGE",
+          "shape": 6,
+          "type": "STRING",
           "pos": null,
           "slot_index": null,
           "links": [
-            1
+            5,
+            6
           ]
         },
         {
@@ -181,93 +165,86 @@
           "color_on": null,
           "dir": null,
           "label": null,
-          "localized_name": "audio",
+          "localized_name": "index",
           "locked": null,
-          "name": "audio",
+          "name": "index",
           "nameLocked": null,
           "removable": null,
-          "shape": null,
-          "type": "AUDIO",
-          "pos": null,
-          "slot_index": null,
-          "links": [
-            2
-          ]
-        },
-        {
-          "color_off": null,
-          "color_on": null,
-          "dir": null,
-          "label": null,
-          "localized_name": "video_info",
-          "locked": null,
-          "name": "video_info",
-          "nameLocked": null,
-          "removable": null,
-          "shape": null,
-          "type": "TS_VIDEO_INFO",
-          "pos": null,
-          "slot_index": null,
-          "links": [
-            3
-          ]
-        },
-        {
-          "color_off": null,
-          "color_on": null,
-          "dir": null,
-          "label": null,
-          "localized_name": "video",
-          "locked": null,
-          "name": "video",
-          "nameLocked": null,
-          "removable": null,
-          "shape": null,
-          "type": "VIDEO",
+          "shape": 6,
+          "type": "INT",
           "pos": null,
           "slot_index": null,
           "links": null
+        },
+        {
+          "color_off": null,
+          "color_on": null,
+          "dir": null,
+          "label": null,
+          "localized_name": "total",
+          "locked": null,
+          "name": "total",
+          "nameLocked": null,
+          "removable": null,
+          "shape": null,
+          "type": "INT",
+          "pos": null,
+          "slot_index": null,
+          "links": null
+        },
+        {
+          "color_off": null,
+          "color_on": null,
+          "dir": null,
+          "label": null,
+          "localized_name": "seed",
+          "locked": null,
+          "name": "seed",
+          "nameLocked": null,
+          "removable": null,
+          "shape": 6,
+          "type": "INT",
+          "pos": null,
+          "slot_index": null,
+          "links": [
+            7
+          ]
         }
       ],
       "properties": {
-        "Node name for S&R": "TS_VideoLoader",
-        "source_path": "",
-        "start_seconds": 0,
-        "end_seconds": -1
+        "Node name for S&R": "TS_BatchSource"
       },
       "widgets_values": [
+        "Lines in text file",
+        "C:/path/to/your/prompts.txt",
+        10,
         0,
         0,
         0,
-        0,
-        1,
-        1,
-        "area",
-        "stop",
-        ""
+        "randomize",
+        true
       ],
       "widgets_values_named": {
-        "frame_rate": 0,
-        "max_frames": 0,
-        "longer_side": 0,
-        "shorter_side": 0,
-        "divisible_by": 1,
-        "frame_step": 1,
-        "resize_filter": "area",
-        "when_too_large": "stop",
-        "ts_video_loader": ""
+        "mode": "Lines in text file",
+        "path": "C:/path/to/your/prompts.txt",
+        "count": 10,
+        "start_at": 0,
+        "limit": 0,
+        "seed": 0,
+        "control_after_generate": "randomize",
+        "one_per_run": true
       }
     },
     {
       "id": 2,
-      "type": "TS_VideoInfo",
+      "type": "CheckpointLoaderSimple",
       "pos": [
-        830,
+        40,
         80
       ],
       "size": [
-        218.455078125,
-        266
+        270,
+        98
       ],
       "flags": {},
       "order": 1,
@@ -279,15 +256,17 @@
           "color_on": null,
           "dir": null,
           "label": null,
-          "localized_name": "video_info",
+          "localized_name": "ckpt_name",
           "locked": null,
-          "name": "video_info",
+          "name": "ckpt_name",
           "nameLocked": null,
           "removable": null,
           "shape": null,
-          "type": "TS_VIDEO_INFO,VHS_VIDEOINFO",
-          "pos": null,
-          "link": 3
+          "type": "COMBO",
+          "widget": {
+            "name": "ckpt_name"
+          },
+          "link": null
         }
       ],
       "outputs": [
@@ -296,49 +275,241 @@
           "color_on": null,
           "dir": null,
           "label": null,
-          "localized_name": "fps",
+          "localized_name": "MODEL",
           "locked": null,
-          "name": "fps",
+          "name": "MODEL",
           "nameLocked": null,
           "removable": null,
           "shape": null,
-          "type": "FLOAT",
+          "type": "MODEL",
           "pos": null,
           "slot_index": null,
-          "links": null
+          "links": [
+            1
+          ]
         },
         {
           "color_off": null,
           "color_on": null,
           "dir": null,
           "label": null,
-          "localized_name": "frame_count",
+          "localized_name": "CLIP",
           "locked": null,
-          "name": "frame_count",
+          "name": "CLIP",
           "nameLocked": null,
           "removable": null,
           "shape": null,
-          "type": "INT",
+          "type": "CLIP",
           "pos": null,
           "slot_index": null,
-          "links": null
+          "links": [
+            2,
+            3
+          ]
         },
         {
           "color_off": null,
           "color_on": null,
           "dir": null,
           "label": null,
-          "localized_name": "duration",
+          "localized_name": "VAE",
           "locked": null,
-          "name": "duration",
+          "name": "VAE",
           "nameLocked": null,
           "removable": null,
           "shape": null,
-          "type": "FLOAT",
+          "type": "VAE",
           "pos": null,
           "slot_index": null,
-          "links": null
+          "links": [
+            4
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CheckpointLoaderSimple"
+      },
+      "widgets_values": [
+        "sam3\\sam3.1_multiplex_fp16.safetensors"
+      ],
+      "widgets_values_named": {
+        "ckpt_name": "sam3\\sam3.1_multiplex_fp16.safetensors"
+      }
+    },
+    {
+      "id": 3,
+      "type": "CLIPTextEncode",
+      "pos": [
+        400,
+        80
+      ],
+      "size": [
+        400,
+        200
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "showAdvanced": null,
+      "inputs": [
+        {
+          "color_off": null,
+          "color_on": null,
+          "dir": null,
+          "label": null,
+          "localized_name": "clip",
+          "locked": null,
+          "name": "clip",
+          "nameLocked": null,
+          "removable": null,
+          "shape": null,
+          "type": "CLIP",
+          "pos": null,
+          "link": 2
         },
+        {
+          "color_off": null,
+          "color_on": null,
+          "dir": null,
+          "label": null,
+          "localized_name": "text",
+          "locked": null,
+          "name": "text",
+          "nameLocked": null,
+          "removable": null,
+          "shape": null,
+          "type": "STRING",
+          "widget": {
+            "name": "text"
+          },
+          "link": 5
+        }
+      ],
+      "outputs": [
+        {
+          "color_off": null,
+          "color_on": null,
+          "dir": null,
+          "label": null,
+          "localized_name": "CONDITIONING",
+          "locked": null,
+          "name": "CONDITIONING",
+          "nameLocked": null,
+          "removable": null,
+          "shape": null,
+          "type": "CONDITIONING",
+          "pos": null,
+          "slot_index": null,
+          "links": [
+            8
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CLIPTextEncode"
+      },
+      "widgets_values": [
+        ""
+      ],
+      "widgets_values_named": {
+        "text": ""
+      }
+    },
+    {
+      "id": 4,
+      "type": "CLIPTextEncode",
+      "pos": [
+        400,
+        412
+      ],
+      "size": [
+        400,
+        200
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "showAdvanced": null,
+      "inputs": [
+        {
+          "color_off": null,
+          "color_on": null,
+          "dir": null,
+          "label": null,
+          "localized_name": "clip",
+          "locked": null,
+          "name": "clip",
+          "nameLocked": null,
+          "removable": null,
+          "shape": null,
+          "type": "CLIP",
+          "pos": null,
+          "link": 3
+        },
+        {
+          "color_off": null,
+          "color_on": null,
+          "dir": null,
+          "label": null,
+          "localized_name": "text",
+          "locked": null,
+          "name": "text",
+          "nameLocked": null,
+          "removable": null,
+          "shape": null,
+          "type": "STRING",
+          "widget": {
+            "name": "text"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "color_off": null,
+          "color_on": null,
+          "dir": null,
+          "label": null,
+          "localized_name": "CONDITIONING",
+          "locked": null,
+          "name": "CONDITIONING",
+          "nameLocked": null,
+          "removable": null,
+          "shape": null,
+          "type": "CONDITIONING",
+          "pos": null,
+          "slot_index": null,
+          "links": [
+            9
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "CLIPTextEncode"
+      },
+      "widgets_values": [
+        "blurry, low quality, watermark, text"
+      ],
+      "widgets_values_named": {
+        "text": "blurry, low quality, watermark, text"
+      }
+    },
+    {
+      "id": 5,
+      "type": "EmptyLatentImage",
+      "pos": [
+        400,
+        768
+      ],
+      "size": [
+        270,
+        106
+      ],
+      "flags": {},
+      "order": 4,
+      "mode": 0,
+      "showAdvanced": null,
+      "inputs": [
         {
           "color_off": null,
           "color_on": null,
@@ -351,9 +522,10 @@
           "removable": null,
           "shape": null,
           "type": "INT",
-          "pos": null,
-          "slot_index": null,
-          "links": null
+          "widget": {
+            "name": "width"
+          },
+          "link": null
         },
         {
           "color_off": null,
@@ -367,158 +539,447 @@
           "removable": null,
           "shape": null,
           "type": "INT",
-          "pos": null,
-          "slot_index": null,
-          "links": null
+          "widget": {
+            "name": "height"
+          },
+          "link": null
         },
         {
           "color_off": null,
           "color_on": null,
           "dir": null,
           "label": null,
-          "localized_name": "source_fps",
+          "localized_name": "batch_size",
           "locked": null,
-          "name": "source_fps",
-          "nameLocked": null,
-          "removable": null,
-          "shape": null,
-          "type": "FLOAT",
-          "pos": null,
-          "slot_index": null,
-          "links": null
-        },
-        {
-          "color_off": null,
-          "color_on": null,
-          "dir": null,
-          "label": null,
-          "localized_name": "source_frame_count",
-          "locked": null,
-          "name": "source_frame_count",
+          "name": "batch_size",
           "nameLocked": null,
           "removable": null,
           "shape": null,
           "type": "INT",
-          "pos": null,
-          "slot_index": null,
-          "links": null
-        },
+          "widget": {
+            "name": "batch_size"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
         {
           "color_off": null,
           "color_on": null,
           "dir": null,
           "label": null,
-          "localized_name": "source_duration",
+          "localized_name": "LATENT",
           "locked": null,
-          "name": "source_duration",
+          "name": "LATENT",
           "nameLocked": null,
           "removable": null,
           "shape": null,
-          "type": "FLOAT",
-          "pos": null,
-          "slot_index": null,
-          "links": null
-        },
-        {
-          "color_off": null,
-          "color_on": null,
-          "dir": null,
-          "label": null,
-          "localized_name": "source_width",
-          "locked": null,
-          "name": "source_width",
-          "nameLocked": null,
-          "removable": null,
-          "shape": null,
-          "type": "INT",
-          "pos": null,
-          "slot_index": null,
-          "links": null
-        },
-        {
-          "color_off": null,
-          "color_on": null,
-          "dir": null,
-          "label": null,
-          "localized_name": "source_height",
-          "locked": null,
-          "name": "source_height",
-          "nameLocked": null,
-          "removable": null,
-          "shape": null,
-          "type": "INT",
-          "pos": null,
-          "slot_index": null,
-          "links": null
-        },
-        {
-          "color_off": null,
-          "color_on": null,
-          "dir": null,
-          "label": null,
-          "localized_name": "has_audio",
-          "locked": null,
-          "name": "has_audio",
-          "nameLocked": null,
-          "removable": null,
-          "shape": null,
-          "type": "BOOLEAN",
-          "pos": null,
-          "slot_index": null,
-          "links": null
-        },
-        {
-          "color_off": null,
-          "color_on": null,
-          "dir": null,
-          "label": null,
-          "localized_name": "has_alpha",
-          "locked": null,
-          "name": "has_alpha",
-          "nameLocked": null,
-          "removable": null,
-          "shape": null,
-          "type": "BOOLEAN",
-          "pos": null,
-          "slot_index": null,
-          "links": null
-        },
-        {
-          "color_off": null,
-          "color_on": null,
-          "dir": null,
-          "label": null,
-          "localized_name": "summary",
-          "locked": null,
-          "name": "summary",
-          "nameLocked": null,
-          "removable": null,
-          "shape": null,
-          "type": "STRING",
+          "type": "LATENT",
           "pos": null,
           "slot_index": null,
           "links": [
-            4
+            10
           ]
         }
       ],
       "properties": {
-        "Node name for S&R": "TS_VideoInfo"
+        "Node name for S&R": "EmptyLatentImage"
+      },
+      "widgets_values": [
+        512,
+        512,
+        1
+      ],
+      "widgets_values_named": {
+        "width": 512,
+        "height": 512,
+        "batch_size": 1
       }
     },
     {
-      "id": 3,
-      "type": "TS_VideoSaver",
+      "id": 6,
+      "type": "KSampler",
       "pos": [
-        1138.455078125,
+        890,
         80
       ],
       "size": [
-        420,
-        560
+        270,
+        262
       ],
       "flags": {},
-      "order": 2,
+      "order": 5,
+      "mode": 0,
+      "showAdvanced": null,
+      "inputs": [
+        {
+          "color_off": null,
+          "color_on": null,
+          "dir": null,
+          "label": null,
+          "localized_name": "model",
+          "locked": null,
+          "name": "model",
+          "nameLocked": null,
+          "removable": null,
+          "shape": null,
+          "type": "MODEL",
+          "pos": null,
+          "link": 1
+        },
+        {
+          "color_off": null,
+          "color_on": null,
+          "dir": null,
+          "label": null,
+          "localized_name": "positive",
+          "locked": null,
+          "name": "positive",
+          "nameLocked": null,
+          "removable": null,
+          "shape": null,
+          "type": "CONDITIONING",
+          "pos": null,
+          "link": 8
+        },
+        {
+          "color_off": null,
+          "color_on": null,
+          "dir": null,
+          "label": null,
+          "localized_name": "negative",
+          "locked": null,
+          "name": "negative",
+          "nameLocked": null,
+          "removable": null,
+          "shape": null,
+          "type": "CONDITIONING",
+          "pos": null,
+          "link": 9
+        },
+        {
+          "color_off": null,
+          "color_on": null,
+          "dir": null,
+          "label": null,
+          "localized_name": "latent_image",
+          "locked": null,
+          "name": "latent_image",
+          "nameLocked": null,
+          "removable": null,
+          "shape": null,
+          "type": "LATENT",
+          "pos": null,
+          "link": 10
+        },
+        {
+          "color_off": null,
+          "color_on": null,
+          "dir": null,
+          "label": null,
+          "localized_name": "seed",
+          "locked": null,
+          "name": "seed",
+          "nameLocked": null,
+          "removable": null,
+          "shape": null,
+          "type": "INT",
+          "widget": {
+            "name": "seed"
+          },
+          "link": 7
+        },
+        {
+          "color_off": null,
+          "color_on": null,
+          "dir": null,
+          "label": null,
+          "localized_name": "steps",
+          "locked": null,
+          "name": "steps",
+          "nameLocked": null,
+          "removable": null,
+          "shape": null,
+          "type": "INT",
+          "widget": {
+            "name": "steps"
+          },
+          "link": null
+        },
+        {
+          "color_off": null,
+          "color_on": null,
+          "dir": null,
+          "label": null,
+          "localized_name": "cfg",
+          "locked": null,
+          "name": "cfg",
+          "nameLocked": null,
+          "removable": null,
+          "shape": null,
+          "type": "FLOAT",
+          "widget": {
+            "name": "cfg"
+          },
+          "link": null
+        },
+        {
+          "color_off": null,
+          "color_on": null,
+          "dir": null,
+          "label": null,
+          "localized_name": "sampler_name",
+          "locked": null,
+          "name": "sampler_name",
+          "nameLocked": null,
+          "removable": null,
+          "shape": null,
+          "type": "COMBO",
+          "widget": {
+            "name": "sampler_name"
+          },
+          "link": null
+        },
+        {
+          "color_off": null,
+          "color_on": null,
+          "dir": null,
+          "label": null,
+          "localized_name": "scheduler",
+          "locked": null,
+          "name": "scheduler",
+          "nameLocked": null,
+          "removable": null,
+          "shape": null,
+          "type": "COMBO",
+          "widget": {
+            "name": "scheduler"
+          },
+          "link": null
+        },
+        {
+          "color_off": null,
+          "color_on": null,
+          "dir": null,
+          "label": null,
+          "localized_name": "denoise",
+          "locked": null,
+          "name": "denoise",
+          "nameLocked": null,
+          "removable": null,
+          "shape": null,
+          "type": "FLOAT",
+          "widget": {
+            "name": "denoise"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "color_off": null,
+          "color_on": null,
+          "dir": null,
+          "label": null,
+          "localized_name": "LATENT",
+          "locked": null,
+          "name": "LATENT",
+          "nameLocked": null,
+          "removable": null,
+          "shape": null,
+          "type": "LATENT",
+          "pos": null,
+          "slot_index": null,
+          "links": [
+            11
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "KSampler"
+      },
+      "widgets_values": [
+        0,
+        "randomize",
+        20,
+        8,
+        "euler",
+        "simple",
+        1
+      ],
+      "widgets_values_named": {
+        "seed": 0,
+        "control_after_generate": "randomize",
+        "steps": 20,
+        "cfg": 8,
+        "sampler_name": "euler",
+        "scheduler": "simple",
+        "denoise": 1
+      }
+    },
+    {
+      "id": 7,
+      "type": "VAEDecode",
+      "pos": [
+        1250,
+        80
+      ],
+      "size": [
+        140,
+        46
+      ],
+      "flags": {},
+      "order": 6,
+      "mode": 0,
+      "showAdvanced": null,
+      "inputs": [
+        {
+          "color_off": null,
+          "color_on": null,
+          "dir": null,
+          "label": null,
+          "localized_name": "samples",
+          "locked": null,
+          "name": "samples",
+          "nameLocked": null,
+          "removable": null,
+          "shape": null,
+          "type": "LATENT",
+          "pos": null,
+          "link": 11
+        },
+        {
+          "color_off": null,
+          "color_on": null,
+          "dir": null,
+          "label": null,
+          "localized_name": "vae",
+          "locked": null,
+          "name": "vae",
+          "nameLocked": null,
+          "removable": null,
+          "shape": null,
+          "type": "VAE",
+          "pos": null,
+          "link": 4
+        }
+      ],
+      "outputs": [
+        {
+          "color_off": null,
+          "color_on": null,
+          "dir": null,
+          "label": null,
+          "localized_name": "IMAGE",
+          "locked": null,
+          "name": "IMAGE",
+          "nameLocked": null,
+          "removable": null,
+          "shape": null,
+          "type": "IMAGE",
+          "pos": null,
+          "slot_index": null,
+          "links": [
+            12
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "VAEDecode"
+      }
+    },
+    {
+      "id": 8,
+      "type": "TS_ImagePromptInjector",
+      "pos": [
+        1480,
+        80
+      ],
+      "size": [
+        400,
+        200
+      ],
+      "flags": {},
+      "order": 7,
+      "mode": 0,
+      "showAdvanced": null,
+      "inputs": [
+        {
+          "color_off": null,
+          "color_on": null,
+          "dir": null,
+          "label": null,
+          "localized_name": "image",
+          "locked": null,
+          "name": "image",
+          "nameLocked": null,
+          "removable": null,
+          "shape": null,
+          "type": "IMAGE",
+          "pos": null,
+          "link": 12
+        },
+        {
+          "color_off": null,
+          "color_on": null,
+          "dir": null,
+          "label": null,
+          "localized_name": "prompt",
+          "locked": null,
+          "name": "prompt",
+          "nameLocked": null,
+          "removable": null,
+          "shape": null,
+          "type": "STRING",
+          "widget": {
+            "name": "prompt"
+          },
+          "link": 6
+        }
+      ],
+      "outputs": [
+        {
+          "color_off": null,
+          "color_on": null,
+          "dir": null,
+          "label": null,
+          "localized_name": "image",
+          "locked": null,
+          "name": "image",
+          "nameLocked": null,
+          "removable": null,
+          "shape": null,
+          "type": "IMAGE",
+          "pos": null,
+          "slot_index": null,
+          "links": [
+            13
+          ]
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "TS_ImagePromptInjector"
+      },
+      "widgets_values": [
+        ""
+      ],
+      "widgets_values_named": {
+        "prompt": ""
+      }
+    },
+    {
+      "id": 9,
+      "type": "SaveImage",
+      "pos": [
+        1970,
+        80
+      ],
+      "size": [
+        270,
+        58
+      ],
+      "flags": {},
+      "order": 8,
       "mode": 0,
       "showAdvanced": null,
       "inputs": [
@@ -532,72 +993,10 @@
           "name": "images",
           "nameLocked": null,
           "removable": null,
-          "shape": 7,
+          "shape": null,
           "type": "IMAGE",
           "pos": null,
-          "link": 1
-        },
-        {
-          "color_off": null,
-          "color_on": null,
-          "dir": null,
-          "label": null,
-          "localized_name": "audio",
-          "locked": null,
-          "name": "audio",
-          "nameLocked": null,
-          "removable": null,
-          "shape": 7,
-          "type": "AUDIO",
-          "pos": null,
-          "link": 2
-        },
-        {
-          "color_off": null,
-          "color_on": null,
-          "dir": null,
-          "label": null,
-          "localized_name": "video",
-          "locked": null,
-          "name": "video",
-          "nameLocked": null,
-          "removable": null,
-          "shape": 7,
-          "type": "VIDEO",
-          "pos": null,
-          "link": null
-        },
-        {
-          "color_off": null,
-          "color_on": null,
-          "dir": null,
-          "label": null,
-          "localized_name": "hdr_image",
-          "locked": null,
-          "name": "hdr_image",
-          "nameLocked": null,
-          "removable": null,
-          "shape": 7,
-          "type": "TS_LTX_HDR_IMAGE",
-          "pos": null,
-          "link": null
-        },
-        {
-          "color_off": null,
-          "color_on": null,
-          "dir": null,
-          "label": null,
-          "localized_name": "fps",
-          "locked": null,
-          "name": "fps",
-          "nameLocked": null,
-          "removable": null,
-          "shape": null,
-          "type": "FLOAT",
-          "widget": {
-            "name": "fps"
-          },
-          "link": null
+          "link": 13
         },
         {
           "color_off": null,
@@ -615,91 +1014,6 @@
             "name": "filename_prefix"
           },
           "link": null
-        },
-        {
-          "color_off": null,
-          "color_on": null,
-          "dir": null,
-          "label": null,
-          "localized_name": "format.quality",
-          "locked": null,
-          "name": "format.quality",
-          "nameLocked": null,
-          "removable": null,
-          "shape": null,
-          "type": "COMBO",
-          "widget": {
-            "name": "format.quality"
-          },
-          "link": null
-        },
-        {
-          "color_off": null,
-          "color_on": null,
-          "dir": null,
-          "label": null,
-          "localized_name": "format",
-          "locked": null,
-          "name": "format",
-          "nameLocked": null,
-          "removable": null,
-          "shape": null,
-          "type": "COMFY_DYNAMICCOMBO_V3",
-          "widget": {
-            "name": "format"
-          },
-          "link": null
-        },
-        {
-          "color_off": null,
-          "color_on": null,
-          "dir": null,
-          "label": null,
-          "localized_name": "encoder",
-          "locked": null,
-          "name": "encoder",
-          "nameLocked": null,
-          "removable": null,
-          "shape": null,
-          "type": "COMBO",
-          "widget": {
-            "name": "encoder"
-          },
-          "link": null
-        },
-        {
-          "color_off": null,
-          "color_on": null,
-          "dir": null,
-          "label": null,
-          "localized_name": "save_metadata",
-          "locked": null,
-          "name": "save_metadata",
-          "nameLocked": null,
-          "removable": null,
-          "shape": null,
-          "type": "BOOLEAN",
-          "widget": {
-            "name": "save_metadata"
-          },
-          "link": null
-        },
-        {
-          "color_off": null,
-          "color_on": null,
-          "dir": null,
-          "label": null,
-          "localized_name": "preview",
-          "locked": null,
-          "name": "preview",
-          "nameLocked": null,
-          "removable": null,
-          "shape": null,
-          "type": "COMBO",
-          "widget": {
-            "name": "preview"
-          },
-          "link": null
         }
       ],
       "outputs": [
@@ -708,147 +1022,131 @@
           "color_on": null,
           "dir": null,
           "label": null,
-          "localized_name": "video",
+          "localized_name": "images",
           "locked": null,
-          "name": "video",
+          "name": "images",
           "nameLocked": null,
           "removable": null,
           "shape": null,
-          "type": "VIDEO",
-          "pos": null,
-          "slot_index": null,
-          "links": null
-        },
-        {
-          "color_off": null,
-          "color_on": null,
-          "dir": null,
-          "label": null,
-          "localized_name": "path",
-          "locked": null,
-          "name": "path",
-          "nameLocked": null,
-          "removable": null,
-          "shape": null,
-          "type": "STRING",
+          "type": "IMAGE",
           "pos": null,
           "slot_index": null,
           "links": null
         }
       ],
-      "properties": {
-        "Node name for S&R": "TS_VideoSaver"
-      },
+      "properties": {},
       "widgets_values": [
-        24,
-        "video/TS",
-        "H.264 / MP4",
-        "good",
-        "software",
-        true,
-        "auto",
-        ""
+        "batch/prompt"
       ],
       "widgets_values_named": {
-        "fps": 24,
-        "filename_prefix": "video/TS",
-        "format": "H.264 / MP4",
-        "format.quality": "good",
-        "encoder": "software",
-        "save_metadata": true,
-        "preview": "auto",
-        "ts_video_saver": ""
+        "filename_prefix": "batch/prompt"
       }
-    },
-    {
-      "id": 4,
-      "type": "PreviewAny",
-      "pos": [
-        1648.455078125,
-        80
-      ],
-      "size": [
-        210,
-        122
-      ],
-      "flags": {},
-      "order": 3,
-      "mode": 0,
-      "showAdvanced": null,
-      "inputs": [
-        {
-          "color_off": null,
-          "color_on": null,
-          "dir": null,
-          "label": null,
-          "localized_name": "source",
-          "locked": null,
-          "name": "source",
-          "nameLocked": null,
-          "removable": null,
-          "shape": null,
-          "type": "*",
-          "pos": null,
-          "link": 4
-        }
-      ],
-      "outputs": [
-        {
-          "color_off": null,
-          "color_on": null,
-          "dir": null,
-          "label": null,
-          "localized_name": "STRING",
-          "locked": null,
-          "name": "STRING",
-          "nameLocked": null,
-          "removable": null,
-          "shape": null,
-          "type": "STRING",
-          "pos": null,
-          "slot_index": null,
-          "links": null
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "PreviewAny"
-      },
-      "widgets_values": [],
-      "widgets_values_named": {}
     }
   ],
   "links": [
     [
       1,
+      2,
+      0,
+      6,
+      0,
+      "MODEL"
+    ],
+    [
+      2,
+      2,
+      1,
+      3,
+      0,
+      "CLIP"
+    ],
+    [
+      3,
+      2,
+      1,
+      4,
+      0,
+      "CLIP"
+    ],
+    [
+      4,
+      2,
+      2,
+      7,
+      1,
+      "VAE"
+    ],
+    [
+      5,
       1,
       0,
       3,
+      1,
+      "STRING"
+    ],
+    [
+      6,
+      1,
+      0,
+      8,
+      1,
+      "STRING"
+    ],
+    [
+      7,
+      1,
+      3,
+      6,
+      4,
+      "INT"
+    ],
+    [
+      8,
+      3,
+      0,
+      6,
+      1,
+      "CONDITIONING"
+    ],
+    [
+      9,
+      4,
+      0,
+      6,
+      2,
+      "CONDITIONING"
+    ],
+    [
+      10,
+      5,
+      0,
+      6,
+      3,
+      "LATENT"
+    ],
+    [
+      11,
+      6,
+      0,
+      7,
+      0,
+      "LATENT"
+    ],
+    [
+      12,
+      7,
+      0,
+      8,
       0,
       "IMAGE"
     ],
     [
-      2,
-      1,
-      1,
-      3,
-      1,
-      "AUDIO"
-    ],
-    [
-      3,
-      1,
-      2,
-      2,
+      13,
+      8,
       0,
-      "TS_VIDEO_INFO"
-    ],
-    [
-      4,
-      2,
-      12,
-      4,
+      9,
       0,
-      "STRING"
+      "IMAGE"
     ]
   ],
   "floatingLinks": null,

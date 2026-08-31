@@ -1304,6 +1304,45 @@
       }
     }
   },
+  "TS_BatchLoadImage": {
+    "api": "v3",
+    "category": "TS/Image/Batch",
+    "class_name": "TS_BatchLoadImage",
+    "display_name": "TS Batch Load Image",
+    "inputs": [
+      {
+        "index": 0,
+        "name": "path",
+        "type": "String"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "image",
+        "index": 0,
+        "name": "image",
+        "type": "Image"
+      },
+      {
+        "display_name": "mask",
+        "index": 1,
+        "name": "mask",
+        "type": "Mask"
+      },
+      {
+        "display_name": "name",
+        "index": 2,
+        "name": "name",
+        "type": "String"
+      }
+    ],
+    "python_file": "nodes/image/ts_batch_load_image.py",
+    "widgets": {
+      "path": {
+        "default": ""
+      }
+    }
+  },
   "TS_BatchPromptLoader": {
     "api": "v3",
     "category": "TS/Text",
@@ -1336,6 +1375,200 @@
     "widgets": {
       "text": {
         "default": "Prompt 1: cat\n\nPrompt 2: dog\n\nPrompt 3: bird"
+      }
+    }
+  },
+  "TS_BatchSource": {
+    "api": "v3",
+    "category": "TS/Utils",
+    "class_name": "TS_BatchSource",
+    "display_name": "TS Batch Source",
+    "inputs": [
+      {
+        "index": 0,
+        "name": "mode",
+        "type": "Combo"
+      },
+      {
+        "index": 1,
+        "name": "path",
+        "type": "String"
+      },
+      {
+        "index": 2,
+        "name": "count",
+        "type": "Int"
+      },
+      {
+        "index": 3,
+        "name": "start_at",
+        "type": "Int"
+      },
+      {
+        "index": 4,
+        "name": "limit",
+        "type": "Int"
+      },
+      {
+        "index": 5,
+        "name": "seed",
+        "type": "Int"
+      },
+      {
+        "index": 6,
+        "name": "one_per_run",
+        "optional": true,
+        "type": "Boolean"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "item",
+        "index": 0,
+        "is_output_list": true,
+        "name": "item",
+        "type": "String"
+      },
+      {
+        "display_name": "index",
+        "index": 1,
+        "is_output_list": true,
+        "name": "index",
+        "type": "Int"
+      },
+      {
+        "display_name": "total",
+        "index": 2,
+        "name": "total",
+        "type": "Int"
+      },
+      {
+        "display_name": "seed",
+        "index": 3,
+        "is_output_list": true,
+        "name": "seed",
+        "type": "Int"
+      }
+    ],
+    "python_file": "nodes/utils/ts_batch_source.py",
+    "widgets": {
+      "count": {
+        "default": 10,
+        "max": 10000,
+        "min": 1
+      },
+      "limit": {
+        "default": 0,
+        "max": 1000000,
+        "min": 0
+      },
+      "mode": {
+        "default": "Images in folder"
+      },
+      "one_per_run": {
+        "default": false
+      },
+      "path": {
+        "default": ""
+      },
+      "seed": {
+        "default": 0,
+        "max": 4294967295,
+        "min": 0
+      },
+      "start_at": {
+        "default": 0,
+        "max": 1000000,
+        "min": 0
+      }
+    }
+  },
+  "TS_BatchWrite": {
+    "api": "v3",
+    "category": "TS/Files",
+    "class_name": "TS_BatchWrite",
+    "display_name": "TS Batch Write",
+    "inputs": [
+      {
+        "force_input": true,
+        "index": 0,
+        "multiline": true,
+        "name": "text",
+        "type": "String"
+      },
+      {
+        "index": 1,
+        "name": "index",
+        "type": "Int"
+      },
+      {
+        "index": 2,
+        "name": "total",
+        "type": "Int"
+      },
+      {
+        "index": 3,
+        "name": "mode",
+        "type": "Combo"
+      },
+      {
+        "index": 4,
+        "name": "output_path",
+        "type": "String"
+      },
+      {
+        "index": 5,
+        "name": "name",
+        "optional": true,
+        "type": "String"
+      },
+      {
+        "index": 6,
+        "name": "prefix_with_name",
+        "optional": true,
+        "type": "Boolean"
+      },
+      {
+        "index": 7,
+        "name": "image",
+        "optional": true,
+        "type": "Image"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "text",
+        "index": 0,
+        "name": "text",
+        "type": "String"
+      }
+    ],
+    "python_file": "nodes/files/ts_batch_write.py",
+    "widgets": {
+      "index": {
+        "default": 0,
+        "max": 1000000,
+        "min": 0
+      },
+      "mode": {
+        "default": "One file, blocks"
+      },
+      "name": {
+        "default": ""
+      },
+      "output_path": {
+        "default": ""
+      },
+      "prefix_with_name": {
+        "default": false
+      },
+      "text": {
+        "default": ""
+      },
+      "total": {
+        "default": 1,
+        "max": 1000000,
+        "min": 1
       }
     }
   },

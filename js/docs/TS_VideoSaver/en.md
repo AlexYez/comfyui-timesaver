@@ -8,6 +8,8 @@ The player remembers whether you turned sound on. ProRes is not playable in a br
 
 **An EXR sequence** is the fourth format: one scene-linear float32 (or 16-bit half) file per frame, in its own folder, written from the `hdr_image` socket without touching the range. That socket exists because the ordinary `images` input is clamped to 0..1 long before the saver sees it. There is no compression option — this encoder does not offer one. The sequence carries no audio; a small H.264 proxy is written in the same pass so the node still has something to play.
 
+**A video input works two ways.** A clip backed by a file streams from disk, so re-saving an hour-long take never builds a tensor. A video assembled in memory — what Create Video and similar nodes produce — is read from its components instead. Either way its **own sound track comes along**: connect the audio input only when you want to replace it, because a connected input always wins.
+
 **Use when:** you want the finished clip on disk, in a format an editor will actually accept — or the HDR master as frames a compositor will accept.
 
 ---

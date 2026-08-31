@@ -97,7 +97,11 @@
       "widgets_values": [
         "01-neural-network-brain.png",
         "image"
-      ]
+      ],
+      "widgets_values_named": {
+        "image": "01-neural-network-brain.png",
+        "upload": "image"
+      }
     },
     {
       "id": 2,
@@ -245,7 +249,13 @@
         1024,
         128,
         0.1
-      ]
+      ],
+      "widgets_values_named": {
+        "tile_width": 1024,
+        "tile_height": 1024,
+        "overlap": 128,
+        "feather": 0.1
+      }
     },
     {
       "id": 3,
@@ -256,7 +266,7 @@
       ],
       "size": [
         274.58984375,
-        346
+        394
       ],
       "flags": {},
       "order": 2,
@@ -498,6 +508,40 @@
             "name": "highlight_saturation"
           },
           "link": null
+        },
+        {
+          "color_off": null,
+          "color_on": null,
+          "dir": null,
+          "label": null,
+          "localized_name": "grain_speed",
+          "locked": null,
+          "name": "grain_speed",
+          "nameLocked": null,
+          "removable": null,
+          "shape": 7,
+          "type": "FLOAT",
+          "widget": {
+            "name": "grain_speed"
+          },
+          "link": null
+        },
+        {
+          "color_off": null,
+          "color_on": null,
+          "dir": null,
+          "label": null,
+          "localized_name": "grain_seed",
+          "locked": null,
+          "name": "grain_seed",
+          "nameLocked": null,
+          "removable": null,
+          "shape": 7,
+          "type": "INT",
+          "widget": {
+            "name": "grain_seed"
+          },
+          "link": null
         }
       ],
       "outputs": [
@@ -536,8 +580,27 @@
         0.5,
         0,
         0.8,
-        0.85
-      ]
+        0.85,
+        1,
+        0
+      ],
+      "widgets_values_named": {
+        "enable": true,
+        "film_preset": "External LUT",
+        "lut_choice": "None",
+        "lut_strength": 1,
+        "gamma_correction": true,
+        "film_strength": 1,
+        "contrast_curve": 1,
+        "warmth": 0,
+        "grain_intensity": 0.02,
+        "grain_size": 0.5,
+        "fade": 0,
+        "shadow_saturation": 0.8,
+        "highlight_saturation": 0.85,
+        "grain_speed": 1,
+        "grain_seed": 0
+      }
     },
     {
       "id": 4,

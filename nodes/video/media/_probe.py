@@ -151,6 +151,29 @@ def _probe_faststart(path: str) -> bool:
     return mdat < 0 or moov < mdat
 
 
+def _unit_samples(samples, np):
+    """Сэмплы в долях единицы, какой бы формат ни отдал декодер.
+
+    ⚠️ Без этого несжатый звук заливал дорожку белым. Сжатые кодеки (opus, aac)
+    декодируются во float 0…1, и на них всё сходилось само; но `pcm_s24le` из
+    камерного `.mov` приходит ЦЕЛЫМИ, и замер на живом файле дал пики до
+    1 365 262 336 вместо единицы — таймлайн честно рисовал зашкал во всю высоту.
+
+    Беззнаковые форматы (u8) считаются от середины диапазона, а не от нуля:
+    тишина у них лежит на 128, и деление «как есть» дало бы ровную половинную
+    амплитуду вместо тишины.
+    """
+    kind = samples.dtype.kind
+    if kind == "f":
+        return samples
+    info = np.iinfo(samples.dtype)
+    if kind == "u":
+        middle = (float(info.max) + 1.0) / 2.0
+        return (samples.astype(np.float32) - middle) / middle
+    # Знаковые: делим на модуль минимума (32768 для int16), он и есть полная шкала.
+    return samples.astype(np.float32) / float(-info.min)
+
+
 def _read_peaks(container, audio_stream, duration: float, bins: int) -> tuple[float, ...]:
     """Огибающая звука для таймлайна: ``bins`` значений 0..1.
 
@@ -169,7 +192,7 @@ def _read_peaks(container, audio_stream, duration: float, bins: int) -> tuple[fl
             samples = frame.to_ndarray()
             if samples.size == 0:
                 continue
-            level = float(np.abs(samples).max())
+            level = float(np.abs(_unit_samples(samples, np)).max())
             start = frame.time if frame.time is not None else 0.0
             index = int(start / seconds_per_bin) if seconds_per_bin > 0 else 0
             if 0 <= index < bins and level > peaks[index]:
@@ -227,6 +250,31 @@ def probe(path: str, *, want_peaks: bool = True) -> MediaInfo:
 
         frame_count = int(stream.frames or 0)
         estimated = False
+
+        # ⚠️ Streamed webm/mkv carries none of this. Measured on a 50 MB VP9
+        # file: average_rate None, stream.duration None, container.duration
+        # None, frames 0 — and `guessed_rate` handed back 1000, which is the
+        # 1/1000 time base, not a frame rate. Believing it made the node see a
+        # zero-length clip, so nothing loaded at all.
+        #
+        # Reading the packet timestamps settles all three at once and costs
+        # 0.04 s on that file (a full decode costs 4.3 s and returned exactly
+        # the same 1965 frames, so the packet count is trustworthy here).
+        if duration <= 0 or frame_count <= 0 or stream.average_rate is None:
+            scanned_frames, span = _scan_timeline(path)
+            if scanned_frames > 1 and span > 0:
+                scanned_rate = _tidy_rate(Fraction(scanned_frames - 1) / Fraction(span))
+                if duration <= 0:
+                    # The last timestamp is where the final frame STARTS; the
+                    # clip lasts one more frame beyond it.
+                    duration = span + float(1 / scanned_rate)
+                if frame_count <= 0:
+                    frame_count = scanned_frames
+                    estimated = True
+                if stream.average_rate is None or fps <= 0:
+                    rate = scanned_rate
+                    fps = float(rate)
+
         if frame_count <= 0 and fps > 0 and duration > 0:
             frame_count = int(round(duration * fps))
             estimated = True
@@ -356,14 +404,22 @@ def probe_cached(path: str, *, want_peaks: bool = True) -> MediaInfo:
     return info
 
 
+# ⚠️ Поднимать при КАЖДОЙ правке разбора, иначе исправление не дойдёт до уже
+# пробованных файлов: запись на диске переживает обновление пака и вернёт те же
+# неверные числа. Версия 2 — починка контейнеров без длительности (webm/mkv, у
+# которых нули читались как пустой клип); версия 3 — нормировка пиков звука
+# (несжатый PCM приходит целыми и заливал дорожку белым).
+_CACHE_SCHEMA = 3
+
+
 def _payload_from_info(info: MediaInfo) -> dict:
     payload = asdict(info)
-    payload["cache_schema"] = 1
+    payload["cache_schema"] = _CACHE_SCHEMA
     return payload
 
 
 def _info_from_payload(payload: dict) -> MediaInfo | None:
-    if payload.get("cache_schema") != 1:
+    if payload.get("cache_schema") != _CACHE_SCHEMA:
         return None
     data = dict(payload)
     data.pop("cache_schema", None)
@@ -411,7 +467,9 @@ def peaks_window(path: str, start: float, end: float, bins: int) -> list[float]:
             if samples.size == 0:
                 continue
             index = min(bins - 1, int((when - start) / span * bins))
-            level = float(np.abs(samples).max())
+            # Та же нормировка, что и в обзорной огибающей: без неё окно с
+            # несжатым звуком заливало дорожку ровно так же, только при зуме.
+            level = float(np.abs(_unit_samples(samples, np)).max())
             if level > values[index]:
                 values[index] = level
 
@@ -497,6 +555,69 @@ def _join_sprite(frames: list, height: int, cells: int) -> bytes:
     buffer = io.BytesIO()
     sheet.save(buffer, format="JPEG", quality=78, optimize=True)
     return buffer.getvalue()
+
+
+# Частоты, к которым имеет смысл притягивать посчитанную: расхождение с ними
+# берётся из квантования меток, а не из настоящей частоты кадров.
+_STANDARD_RATES = (
+    Fraction(24000, 1001), Fraction(24, 1), Fraction(25, 1),
+    Fraction(30000, 1001), Fraction(30, 1), Fraction(48, 1),
+    Fraction(50, 1), Fraction(60000, 1001), Fraction(60, 1),
+)
+_RATE_TOLERANCE = 0.002   # 0.2%
+
+
+def _tidy_rate(rate: Fraction) -> Fraction:
+    """Посчитанная частота, притянутая к стандартной, если она рядом.
+
+    ⚠️ Считать по МЕДИАННОМУ интервалу нельзя — проверено на живом файле: при
+    временной базе 1/1000 интервалы 25 кадров/с чередуются между 40 и 44 мс, и
+    медиана дала 22,7 вместо 25. Общий счёт делить на общий пролёт — верно.
+    """
+    value = float(rate)
+    if value <= 0:
+        return rate
+    for candidate in _STANDARD_RATES:
+        if abs(value - float(candidate)) <= float(candidate) * _RATE_TOLERANCE:
+            return candidate
+    return rate
+
+
+def _scan_timeline(path: str) -> tuple[int, float]:
+    """Сколько видеопакетов в файле и сколько секунд до последнего из них.
+
+    Только чтение, без декодирования: контейнеру без длительности этого хватает,
+    а платить полным декодом за каждый такой файл нельзя.
+
+    Отдельное открытие файла — намеренно: проход съедает контейнер до конца, и
+    вызывающему пришлось бы перематывать его перед чтением аудиопиков.
+    """
+    av = _av()
+    first: int | None = None
+    last: int | None = None
+    packets = 0
+    try:
+        with av.open(path) as container:
+            streams = container.streams.video
+            if not streams:
+                return 0, 0.0
+            stream = streams[0]
+            time_base = float(stream.time_base) if stream.time_base else 0.0
+            for packet in container.demux(stream):
+                if packet.pts is None:
+                    continue
+                packets += 1
+                if first is None or packet.pts < first:
+                    first = packet.pts
+                if last is None or packet.pts > last:
+                    last = packet.pts
+    except Exception as error:  # noqa: BLE001 - оценка, а не обязательство
+        logger.debug("%s Timeline scan failed for %s: %s",
+                     LOG_PREFIX, safe_log_path(path), error)
+        return 0, 0.0
+    if first is None or last is None or time_base <= 0:
+        return packets, 0.0
+    return packets, max(0.0, (last - first) * time_base)
 
 
 def frame_count_exact(path: str) -> int:

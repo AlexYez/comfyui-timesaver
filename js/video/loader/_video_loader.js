@@ -58,6 +58,11 @@ export const STRINGS_LOADER = {
         zoomIn: "Zoom in",
         fit: "Fit the whole clip (F)",
         zoomSelection: "Zoom to the selection (Z)",
+        cuts: "Find the cuts — then double-click a marker to select that shot",
+        cutsScanning: "Looking for cuts…",
+        cutsFound: (n) => (n === 1 ? "1 cut found" : `${n} cuts found`),
+        cutsNone: "No cuts found — the whole clip looks like one shot.",
+        cutsFailed: "Could not look for cuts.",
         wave: "Show the sound track",
         fullscreen: "Open the trimmer full screen",
         fullscreenLabel: "Video trimming",
@@ -91,6 +96,17 @@ export const STRINGS_LOADER = {
         zoomIn: "Приблизить",
         fit: "Показать весь ролик (F)",
         zoomSelection: "Приблизить к выделению (Z)",
+        cuts: "Найти склейки — потом двойной клик по маркеру выделит этот план",
+        cutsScanning: "Ищу склейки…",
+        cutsFound: (n) => {
+            const tail = n % 10;
+            const teen = n % 100;
+            if (tail === 1 && teen !== 11) return `${n} склейка`;
+            if (tail >= 2 && tail <= 4 && (teen < 12 || teen > 14)) return `${n} склейки`;
+            return `${n} склеек`;
+        },
+        cutsNone: "Склеек не нашлось — похоже, весь ролик снят одним планом.",
+        cutsFailed: "Не удалось найти склейки.",
         wave: "Показывать звуковую дорожку",
         fullscreen: "Открыть подрезку на весь экран",
         fullscreenLabel: "Подрезка видео",
@@ -250,6 +266,34 @@ export function setupVideoLoader(node) {
     });
     const resetButton = button("resetTrim", L.reset, () => editor.setRange(0, -1));
 
+    // ⚠️ Первый проход по файлу идёт целиком (4,7 с на 78 секундах SD, дольше
+    // на длинном 4K), поэтому кнопка блокируется и говорит, что занята. Ответы
+    // кэшируются на сервере, так что повторное нажатие возвращается сразу.
+    let cutsBusy = false;
+    const cutsButton = button("cuts", L.cuts, async () => {
+        const path = editor.state.path;
+        if (!path || cutsBusy) return;
+        cutsBusy = true;
+        cutsButton.disabled = true;
+        cutsButton.classList.add("is-active");
+        updateStatus(L.cutsScanning);
+        try {
+            const response = await api.fetchApi(
+                `${ROUTE}/scenes?filepath=${encodeURIComponent(path)}`);
+            if (!response.ok) throw new Error(String(response.status));
+            const payload = await response.json();
+            const found = editor.setCuts(payload?.cuts);
+            updateStatus(found ? L.cutsFound(found) : L.cutsNone);
+        } catch (error) {
+            console.warn("[TS Video Loader] cut search failed", error);
+            updateStatus(L.cutsFailed, true);
+        } finally {
+            cutsBusy = false;
+            cutsButton.disabled = false;
+            cutsButton.classList.remove("is-active");
+        }
+    });
+
     const timeLabel = document.createElement("span");
     timeLabel.className = "ts-vid__time";
 
@@ -260,9 +304,9 @@ export function setupVideoLoader(node) {
     const transportSpacer = document.createElement("div");
     transportSpacer.className = "ts-vid__spacer";
 
-    transport.append(playButton, loopButton, muteButton, resetButton, timeLabel,
-                     transportSpacer, waveToggle, zoomOut, zoomIn, fitButton,
-                     zoomSelection);
+    transport.append(playButton, loopButton, muteButton, resetButton, cutsButton,
+                     timeLabel, transportSpacer, waveToggle, zoomOut, zoomIn,
+                     fitButton, zoomSelection);
 
     // ── статус ───────────────────────────────────────────────────────────── #
     const status = document.createElement("div");
@@ -386,6 +430,9 @@ export function setupVideoLoader(node) {
     function applySource(path) {
         editor.state.path = path;
         setWidgetValue(node, INPUT_PATH, path);
+        // Маркеры принадлежали прежнему ролику: оставить их — значит показать
+        // склейки не того файла на тех же секундах.
+        editor.setCuts([]);
         editor.setRange(0, -1);
         editor.viewport.fit();
         fetchMetadata(path);
@@ -542,6 +589,9 @@ export function setupVideoLoader(node) {
             label: L.fullscreenLabel,
             closeTitle: L.close,
             closeOnBackdrop: false,
+            // Кнопка едет в оверлей вместе с панелью и встаёт ровно под общим
+            // крестиком. Прячет её сам оверлей — одинаково для всех редакторов.
+            trigger: fullscreenButton,
             onKey: (event, { typing = false } = {}) => { if (!typing) dispatchKey(event); },
             onOpen: () => {
                 editor.timeline.style.height = "200px";

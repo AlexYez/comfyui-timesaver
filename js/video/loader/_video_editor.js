@@ -32,6 +32,12 @@ const LANE_RULER = 16;
 // украшение: слишком тонкая читается хуже, чем не рисуется вовсе.
 const LANE_WAVE = 40;
 
+// Мишень маркера склейки: линия шириной в пиксель непопадаема, поэтому у неё
+// есть язычок сверху, и допуск при попадании считается в ПИКСЕЛЯХ — на разном
+// масштабе таймлайна одна и та же секунда занимает разную ширину.
+const CUT_TAB = 4;
+const CUT_HIT_PX = 7;
+
 export function createVideoEditor({ api, route, strings, onRangeChange, onViewportChange }) {
     const L = strings;
 
@@ -87,6 +93,9 @@ export function createVideoEditor({ api, route, strings, onRangeChange, onViewpo
         looping: true,
         showWave: true,
         ready: false,
+        // Секунды найденных склеек, по возрастанию. Пустой список — значит
+        // искали и не нашли либо ещё не искали; для отрисовки это одно и то же.
+        cuts: [],
     };
 
     const viewport = createTimeViewport({
@@ -302,7 +311,12 @@ export function createVideoEditor({ api, route, strings, onRangeChange, onViewpo
         ctx.fillStyle = colors.muted;
 
         for (let x = 0; x < width; x += 1) {
-            const level = peaks.sample(viewport.xToSeconds(x, width), state.duration);
+            // ⚠️ Уровень зажимается в 0…1, хотя приходить должен уже таким.
+            // Замерено на файле с несжатым звуком: пики приезжали целыми
+            // сэмплами (до 1,3 млрд), и столбик заливал весь таймлайн — ленту
+            // кадров вместе со шкалой. Причину чинит сервер, но рисование не
+            // имеет права вылезать за свою дорожку ни при каких числах.
+            const level = clamp(peaks.sample(viewport.xToSeconds(x, width), state.duration), 0, 1);
             const half = Math.max(0.5, (level * lanes.wave) / 2);
             ctx.fillRect(x, middle - half, 1, half * 2);
         }
@@ -329,6 +343,8 @@ export function createVideoEditor({ api, route, strings, onRangeChange, onViewpo
         if (leftX > 0) ctx.fillRect(0, 0, leftX, height);
         if (rightX < width) ctx.fillRect(rightX, 0, width - rightX, height);
 
+        drawCuts(ctx, width, height, colors);
+
         ctx.strokeStyle = colors.accent;
         ctx.lineWidth = 2;
         for (const x of [leftX, rightX]) {
@@ -352,6 +368,65 @@ export function createVideoEditor({ api, route, strings, onRangeChange, onViewpo
         }
 
         updateThumb();
+    }
+
+    /**
+     * Маркеры склеек: тонкая линия во всю высоту и язычок сверху.
+     *
+     * Рисуются ПЕРВЫМИ в слое, чтобы ручки выделения оставались поверх: ручка
+     * важнее, и перекрывать её маркером нельзя. Язычок нужен как мишень —
+     * попасть в линию шириной в пиксель двойным кликом невозможно.
+     */
+    function drawCuts(ctx, width, height, colors) {
+        const cuts = state.cuts;
+        if (!cuts?.length) return;
+        ctx.save();
+        for (const seconds of cuts) {
+            const x = viewport.secondsToX(seconds, width);
+            if (x < -2 || x > width + 2) continue;
+            // Литерал намеренно: маркер лежит поверх кадров пользователя и
+            // обязан читаться на любой картинке, как и затемнение выше.
+            ctx.fillStyle = "rgba(255,255,255,0.55)";
+            ctx.fillRect(Math.round(x), LANE_RULER, 1, height - LANE_RULER);
+            ctx.fillStyle = colors.text;
+            ctx.beginPath();
+            ctx.moveTo(x - CUT_TAB, LANE_RULER);
+            ctx.lineTo(x + CUT_TAB, LANE_RULER);
+            ctx.lineTo(x, LANE_RULER + CUT_TAB * 1.6);
+            ctx.closePath();
+            ctx.fill();
+        }
+        ctx.restore();
+    }
+
+    /** Склейка под указателем, или null. Допуск — в пикселях, не в секундах. */
+    function cutAt(seconds) {
+        const cuts = state.cuts;
+        if (!cuts?.length) return null;
+        const tolerance = secondsPerPixel() * CUT_HIT_PX;
+        let best = null;
+        let bestDistance = Infinity;
+        for (const cut of cuts) {
+            const distance = Math.abs(cut - seconds);
+            if (distance <= tolerance && distance < bestDistance) {
+                best = cut;
+                bestDistance = distance;
+            }
+        }
+        return best;
+    }
+
+    /**
+     * Выделить план, начинающийся этой склейкой: от неё до следующей.
+     *
+     * Последний план заканчивается концом ролика, а это ``-1`` — «до конца»,
+     * а не длительность: подрезка так и хранится, и подставленная длительность
+     * превратила бы «весь остаток» в жёсткое число.
+     */
+    function selectSceneAt(cut) {
+        const next = (state.cuts || []).find((value) => value > cut + 0.001);
+        setRange(cut, next === undefined ? -1 : next);
+        return true;
     }
 
     function updateThumb() {
@@ -429,14 +504,28 @@ export function createVideoEditor({ api, route, strings, onRangeChange, onViewpo
     };
     timeline.addEventListener("pointerup", endGesture);
     timeline.addEventListener("pointercancel", endGesture);
-    timeline.addEventListener("dblclick", () => setRange(0, -1));
+    // ⚠️ Двойной клик по пустому месту по-прежнему СБРАСЫВАЕТ подрезку — так
+    // было до склеек, и отнимать это нельзя. Маркер лишь перехватывает клик,
+    // попавший в него.
+    timeline.addEventListener("dblclick", (event) => {
+        const cut = cutAt(pointerSeconds(event));
+        if (cut !== null) {
+            selectSceneAt(cut);
+            return;
+        }
+        setRange(0, -1);
+    });
 
     function updateCursor(seconds) {
         const { left, right } = bounds();
         const handle = hitTestHandle(seconds, {
             left, right, secondsPerPixel: secondsPerPixel(),
         });
-        timeline.style.cursor = handle ? HANDLE_CURSOR : "crosshair";
+        if (handle) {
+            timeline.style.cursor = HANDLE_CURSOR;
+            return;
+        }
+        timeline.style.cursor = cutAt(seconds) !== null ? "pointer" : "crosshair";
     }
 
     /**
@@ -517,6 +606,17 @@ export function createVideoEditor({ api, route, strings, onRangeChange, onViewpo
         scheduleDraw,
         bounds,
         setRange,
+        setCuts(list) {
+            const cleaned = (Array.isArray(list) ? list : [])
+                .map(Number)
+                .filter((value) => Number.isFinite(value) && value >= 0)
+                .sort((a, b) => a - b);
+            state.cuts = cleaned;
+            scheduleDraw(NEED_OVERLAY);
+            return cleaned.length;
+        },
+        cutAt,
+        selectSceneAt,
         pointerSeconds,
         laneGeometry,
         NEED_BASE,

@@ -4,7 +4,7 @@
 
 # 🚀 Timesaver Nodes for ComfyUI
 
-**A friendly toolkit of 73 production-ready nodes that take the boring busywork out of your ComfyUI graphs.**
+**A friendly toolkit of 76 production-ready nodes that take the boring busywork out of your ComfyUI graphs.**
 
 > 11 of them belong to TS Image Studio — its own node plus the markers and backends it drives — and are not written up separately below; the reference covers the other 60.
 
@@ -27,18 +27,18 @@ Whether you build pipelines for image generation, video, audio, or just want to 
 
 |  | Category | Count | Highlights |
 |---|---|---|---|
-| 🖼️ | **[Image](#image)** | 29 | Resize, color, masks, keyer, tiling, 360°, Lama cleanup, Smart Inpaint, BiRefNet bg removal, ViTMatte, SAM3 picker |
+| 🖼️ | **[Image](#image)** | 30 | Resize, color, masks, keyer, tiling, 360°, Lama cleanup, Smart Inpaint, BiRefNet bg removal, ViTMatte, SAM3 picker |
 | 🎬 | **[Video](#video)** | 9 | Frame interpolation, RTX/spandrel upscale, depth, animation preview |
 | 🌈 | **[HDR / EXR](#hdr)** | 7 | Native LTX 2.5 HDR: EXR in, ACEScct working space, float32 decode, scene-linear master |
 | 🎵 | **[Audio](#audio)** | 6 | Whisper transcription, Silero TTS, Demucs stem split, audio cropping |
 | 🤖 | **[LLM](#llm)** | 2 | Qwen 3 VL multimodal chat, Super Prompt with voice input |
 | 📝 | **[Text & Prompts](#text)** | 4 | Prompt builder, batch loader, style picker, Russian stress marks |
 | 🎨 | **[Ideogram](#ideogram)** | 1 | Visual JSON-prompt designer for Ideogram 4 — text/object blocks, WYSIWYG node preview, per-area colours, layout/style/design presets, width/height output, RU/EN, import/export |
-| 📁 | **[Files & Models](#files)** | 8 | Model scanner, FP8 converter, file path loader, EDL→YouTube chapters |
-| 🛠️ | **[Utils](#utils)** | 5 | Workflow group bypass panel, custom sliders, math, smart type-aware switch |
+| 📁 | **[Files & Models](#files)** | 9 | Model scanner, FP8 converter, file path loader, EDL→YouTube chapters |
+| 🛠️ | **[Utils](#utils)** | 6 | Workflow group bypass panel, custom sliders, math, smart type-aware switch |
 | 🎨 | **[Conditioning](#conditioning)** | 1 | Multi-reference image conditioning |
 
-> All 73 nodes use the **ComfyUI V3 API** (`comfy_api.v0_0_2.IO` — a pinned namespace, not a stable one: the adapter itself declares `STABLE = False`. Pinning keeps the pack off the moving `latest` alias; it does not promise the API will not change).
+> All 76 nodes use the **ComfyUI V3 API** (`comfy_api.v0_0_2.IO` — a pinned namespace, not a stable one: the adapter itself declares `STABLE = False`. Pinning keeps the pack off the moving `latest` alias; it does not promise the API will not change).
 >
 > **Plus extra samplers & schedulers** added straight into the native KSampler / KSamplerAdvanced / BasicScheduler dropdowns (no node to wire — they just appear after install): sampler **`res_2s`** (2nd-order exponential RK / "RES"), schedulers **`bong_tangent`** (two-stage arctangent sigma curve) and **`beta57`** (`beta` α=0.5/β=0.7). Algorithms reimplemented clean-room from [RES4LYF](https://github.com/ClownsharkBatwing/RES4LYF)'s public math (no code copied).
 
@@ -177,7 +177,7 @@ Every node below shows the actual look in ComfyUI (English UI). Click any image 
 ---
 
 <a id="image"></a>
-### 🖼️ Image (20 nodes)
+### 🖼️ Image (21 nodes)
 
 Everything that touches pixels: resize, color, masks, background removal, keying, tiling, panoramas, and inpainting.
 
@@ -407,6 +407,14 @@ Injects a custom string into the workflow's positive prompt at runtime — usefu
 
 ---
 
+#### TS Batch Load Image
+
+Reads one image from a file path — the companion to TS Batch Source, which hands out paths rather than pictures. Outputs the image, its alpha as a mask, and the file name without its extension (wire that into TS Batch Write and the caption lands beside its picture).
+
+**Use when:** walking a folder with TS Batch Source. For a single ad-hoc file the standard loaders are simpler.
+
+---
+
 <a id="video"></a>
 ### 🎬 Video (10 nodes)
 
@@ -422,6 +430,12 @@ Reads a video into frames, audio and a compact `video_info` bundle — and lets 
 **The sound track is drawn under the filmstrip** whenever the file has audio — a beat or a spoken word is far easier to hit by the wave than by the picture — and the player follows the handle you drag, so the exact frame that will become the first or the last one is on screen while you are still choosing it.
 
 `frame_rate` resamples by real timestamps, so a variable-frame-rate source comes out evenly spaced. Size is set as `longer_side`/`shorter_side` rather than width and height, so one graph fits landscape and portrait footage alike; either may be `0` to derive it from the other. `divisible_by` rounds down to what video models want, the scaling filter defaults to `area` (footage is almost always scaled down, and averaging beats interpolation there), and `max_frames` is the memory guard. The ceiling for the frames comes from the machine (60% of its RAM, never below 8 GB; `TS_VIDEO_MAX_BYTES` overrides it), so a 13-second 4K clip loads on a 64 GB box instead of being turned down. When the frames genuinely will not fit, `when_too_large` = `use disk` puts them in a memory-mapped file in the ComfyUI temp folder: what comes out is an ordinary IMAGE and the allocation cannot fail, at the price of disk traffic (measured: 31.9 GB in 92 s against 51 s in RAM).
+
+**Find the cuts.** The button with the divided filmstrip walks the file and marks every place the shot changes. Double-click a marker and the trim snaps to that shot — from this cut to the next one, with the last shot running to the end of the clip. Double-clicking anywhere else still resets the trim, as before.
+
+The metric is how far apart the brightness histograms of neighbouring frames are, and the threshold behind it was set by looking at frames rather than by picking a round number: on a checked scene eight genuine cuts scored between 0.13 and 0.54, while the most conspicuous non-cut — the same shot, nothing changed — scored 0.05. A plain pixel difference cannot separate the two at all: its highest reading on a real cut was 0.198 against an average of 0.005.
+
+The first press reads the whole file (4.7 s for 78 s of SD; longer for 4K), and what it measures is cached, so pressing again answers at once.
 
 Footage arrives by **drag and drop** — from the file manager, from the Artius browser, or from another node's preview — by the button, by paste, or as a path to a file anywhere on the ComfyUI machine.
 
@@ -449,6 +463,8 @@ Writes frames to a video file and plays the result in the node. Format and quali
 The player remembers whether you turned sound on. ProRes is not playable in a browser, so the node writes a small H.264 proxy next to it just for the preview (`preview: off` skips that). Hardware encoding is available but never chosen for you: it is much faster and noticeably worse at the same file size.
 
 **An EXR sequence** is the fourth format: one scene-linear float32 (or 16-bit half) file per frame, in its own folder, written from the `hdr_image` socket without touching the range. That socket exists because the ordinary `images` input is clamped to 0..1 long before the saver sees it. There is no compression option — this encoder does not offer one. The sequence carries no audio; a small H.264 proxy is written in the same pass so the node still has something to play.
+
+**A video input works two ways.** A clip backed by a file streams from disk, so re-saving an hour-long take never builds a tensor. A video assembled in memory — what Create Video and similar nodes produce — is read from its components instead. Either way its **own sound track comes along**: connect the audio input only when you want to replace it, because a connected input always wins.
 
 **Use when:** you want the finished clip on disk, in a format an editor will actually accept — or the HDR master as frames a compositor will accept.
 
@@ -1210,7 +1226,7 @@ Visual JSON-prompt designer for Ideogram 4. Open a full-screen editor, drag and 
 ---
 
 <a id="files"></a>
-### 📁 Files & Models (2 nodes)
+### 📁 Files & Models (3 nodes)
 
 Tools for managing model files, downloads, EDLs, and inspecting weights.
 
@@ -1218,6 +1234,12 @@ Tools for managing model files, downloads, EDLs, and inspecting weights.
 <img src="doc/screenshots/ts_downloader.png" alt="TS Files Downloader" width="450" />
 
 Multi-file downloader that takes a list of `URL <space> target_path` lines and downloads them sequentially. Auto-replaces HuggingFace mirrors with reachability check across the full mirror list, supports `models/<subdir>` aliases, resumes interrupted downloads, validates archives against zip-slip on auto-unzip, and shows progress (including SHA256 verification). Handy for one-shot pulling all assets a workflow needs.
+
+**Download now, without running the graph.** The second button on the node pulls the whole list straight away — the same engine, the same tokens, mirrors and unzip settings as a normal run. It shows `3/10 · 42% · model.safetensors` while it works, and pressing it again cancels: the partial file stays as `.part` and the next attempt resumes from there.
+
+That button is what makes `enable` useful as a mode. Turn `enable` off and the node stops doing anything when the workflow runs — no checks, no downloads — while you still fetch the models by hand, once, when you actually need them. The button ignores `enable` on purpose: it is the one way left to download.
+
+**The list reads as two things, not one.** Each line is `<url> → <folder>`. The arrow is there to be read: a long address wraps in the field, and a folder pressed against its tail looks like part of the link. A plain space still works, so lists written earlier — and lists arriving with someone else's workflow — keep running.
 
 **Get models from workflow.** The button on the node fills that list for you: it walks the open graph — **including inside subgraphs**, where template loaders normally live — and collects every model it needs. It reads the `{name, url, directory}` metadata ComfyUI stamps onto each loader, cross-checks it against the workflow's Markdown note, and falls back to the loader's own filename when neither carries a link. You get a report first; **Append** adds only what is missing and never rewrites lines you wrote by hand, **Replace list** starts over.
 
@@ -1246,8 +1268,22 @@ Convert a DaVinci Resolve EDL (Edit Decision List) export into a YouTube-friendl
 
 ---
 
+#### TS Batch Write
+
+Writes each batch result the moment it is ready, instead of holding everything until the run ends. A batch that dies at item 90 leaves 89 results on disk rather than nothing.
+
+**Three layouts, and the middle one closes a loop.** `One file, blocks` separates results with a blank line (read back by TS Batch Prompt Loader). `One file, one line per item` collapses each result to a single line — read back by TS Batch Source in `Lines in text file` mode, which is how a file of captions becomes a file of generation jobs without any conversion. `One .txt per item` names the file after its picture, the layout caption datasets expect.
+
+**Watching it happen.** ComfyUI collects the UI previews of every iteration and sends them in a single event after the last one, so a hundred pictures otherwise appear all at once, at the end. Connect `image` here and the current result is pushed through the **progress bar** instead — you see item 47 while it is item 47.
+
+`index 0` starts the file fresh, so a new run never silently continues the previous one's file; any other index appends, which is what makes a resumed run add to what is already there.
+
+**Use when:** any long batch whose results you want on disk — and in front of you — before it finishes.
+
+---
+
 <a id="utils"></a>
-### 🛠️ Utils (6 nodes)
+### 🛠️ Utils (7 nodes)
 
 Tiny helpers that make the graph less cluttered.
 
@@ -1342,6 +1378,30 @@ Two-input integer math: `+`, `-`, `*`, `/`, `//`, `%`, `**`, `min`, `max`. Divis
 Type-aware boolean switch between two `ANY` inputs. Pick a `data_type` (images / video / audio / mask / string / int / float) so the node validates that the inputs match it. **Auto-failover**: if the selected input is missing, falls back to the other one — great for optional branches.
 
 **Use when:** branching a workflow on a flag, or making one input optional with a sensible fallback.
+
+---
+
+#### TS Batch Source
+
+Turns a folder, a text file or a plain count into a **job list**. Everything wired below this node runs once per item — that is ComfyUI's own batch engine: a list input makes the whole branch execute N times, and each run is independent of the others.
+
+That independence is the point. A captioning model gets a fresh conversation per picture instead of one context that keeps growing for a hundred images.
+
+Modes: `Images in folder` (natural order, so `img2` comes before `img10`), `Lines in text file`, `Count only`. Outputs: `item` (path / line / number), `index`, `total`, `seed`.
+
+**Why there is a seed output.** A seed *widget* on the model node holds one number for all hundred calls, so a hundred iterations of the same task come back identical. This output gives every item its own derived seed — reproducible from the base value, different from its neighbours.
+
+**Resuming.** `start_at` skips the finished part and keeps the original numbering, so TS Batch Write appends to the existing file instead of starting it over. `limit` caps the run.
+
+⚠️ **It emits paths, not pictures** — deliberately. A hundred 4K frames passed along as images would sit in the output cache (roughly 10 GB) before the first caption is written. TS Batch Load Image reads them one at a time, so the peak stays at a single frame.
+
+**⚠️ `one_per_run` — read this before a long batch.** With the list, ComfyUI finishes **every copy of one node before it starts the next** (measured on a live server: the loader logged items 1, 2, 3 and only then the writer logged 1/3, 2/3, 3/3). Two consequences: results reach disk only after the model has done every item, and a node that stamps per-item metadata — TS Image Prompt Injector — is overwritten by the last item before the save nodes run, so every picture ends up with the same prompt.
+
+Switch `one_per_run` on and set ComfyUI's **Batch count** to the number of jobs. Each queued run is then a full pass through the graph: the picture is generated, stamped and saved before the next job starts. Slightly slower, and the only correct choice when you want to watch results arrive or need honest per-image metadata.
+
+**Typical chain:** TS Batch Source → TS Batch Load Image → TS Qwen 3 VL → TS Batch Write.
+
+**Use when:** captioning a folder into a dataset, or generating N unique prompts one fresh iteration at a time.
 
 ---
 

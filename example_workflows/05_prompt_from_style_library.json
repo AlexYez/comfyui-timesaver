@@ -79,7 +79,10 @@
       },
       "widgets_values": [
         "Prompt 1: cat\n\nPrompt 2: dog\n\nPrompt 3: bird"
-      ]
+      ],
+      "widgets_values_named": {
+        "text": "Prompt 1: cat\n\nPrompt 2: dog\n\nPrompt 3: bird"
+      }
     },
     {
       "id": 2,
@@ -123,7 +126,10 @@
       },
       "widgets_values": [
         ""
-      ]
+      ],
+      "widgets_values_named": {
+        "ts_style_selector": ""
+      }
     },
     {
       "id": 3,
@@ -220,7 +226,12 @@
         "",
         "",
         ""
-      ]
+      ],
+      "widgets_values_named": {
+        "string_a": "",
+        "string_b": "",
+        "delimiter": ""
+      }
     },
     {
       "id": 4,
@@ -275,7 +286,8 @@
       "properties": {
         "Node name for S&R": "PreviewAny"
       },
-      "widgets_values": []
+      "widgets_values": [],
+      "widgets_values_named": {}
     }
   ],
   "links": [

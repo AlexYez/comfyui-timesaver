@@ -1455,6 +1455,18 @@ function setupSuperPrompt(node) {
         refreshAiHqToggle();
     });
 
+    // Каждое нажатие — свой seed. Без него сервер брал фиксированный, и
+    // повторное нажатие возвращало ТОТ ЖЕ текст: кнопка выглядела сломанной.
+    // 32 бита намеренно: столько переживает JSON без потери точности.
+    function freshSeed() {
+        const buffer = new Uint32Array(1);
+        if (globalThis.crypto?.getRandomValues) {
+            globalThis.crypto.getRandomValues(buffer);
+            return buffer[0];
+        }
+        return Math.floor(Math.random() * 0x100000000);
+    }
+
     function buildAiPayload(frames) {
         const list = (frames && frames.length)
             ? frames
@@ -1470,6 +1482,7 @@ function setupSuperPrompt(node) {
             // Сервер, не знающий о ней, поле просто игнорирует.
             bigger_model: Boolean(getWidgetValue(node, BIGGER_MODEL_WIDGET, false)),
             operation_id: state.activeAiOperationId,
+            seed: freshSeed(),
         };
     }
 

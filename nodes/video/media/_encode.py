@@ -86,6 +86,25 @@ def _prepare_audio(audio: Mapping | None, frame_count: int, fps: float):
         array = array.reshape(1, -1)
     array = np.ascontiguousarray(array.astype(np.float32))
 
+    # Пустая дорожка — это ОТСУТСТВИЕ звука, а не тишина: дополнив её нулями,
+    # мы вшили бы в файл немую дорожку, которой в источнике не было.
+    if array.shape[1] == 0:
+        return None, 0
+
+    # ⚠️ Раскладка канала должна СОВПАДАТЬ с числом строк, иначе PyAV роняет всю
+    # запись: "Expected planar array.shape[0] to equal 2 but got 3" — проверено
+    # на трёхканальном звуке. Число каналов приходит из чужого AUDIO, поэтому
+    # непредусмотренное сводится к стерео, а не обрушивает сохранение готового
+    # ролика.
+    channels = int(array.shape[0])
+    if channels not in _CHANNEL_LAYOUTS:
+        logger.warning("%s Unusual channel count (%d); mixing down to stereo.",
+                       LOG_PREFIX, channels)
+        if channels > 2:
+            array = np.ascontiguousarray(array[:2])
+        else:
+            array = np.ascontiguousarray(np.repeat(array[:1], 2, axis=0))
+
     wanted = int(round(frame_count / fps * rate))
     if array.shape[1] < wanted:
         pad = np.zeros((array.shape[0], wanted - array.shape[1]), dtype=np.float32)
@@ -244,8 +263,23 @@ def write_video(
             raise RuntimeError(f"{LOG_PREFIX} Nothing to save: no frames were produced.")
 
         if audio_stream is not None and samples is not None:
+            # ⚠️ Длина звука подгоняется под ФАКТИЧЕСКИ записанные кадры, а не
+            # под заявленные. `frame_count` для видео-источника — это оценка
+            # (`duration * fps`), и совпадать с реальностью она не обязана:
+            # у VFR, у контейнера без длительности, просто на округлении.
+            #
+            # Замерено на расхождении в 20 кадров: заявили 50, записали 30 —
+            # звук выходил на 0,8 с ДЛИННЕЕ картинки; заявили 30, записали 50 —
+            # на 0,8 с короче. Оба случая выглядят как брак, и оба лечатся тем,
+            # что мерка берётся с уже написанного видео.
+            wanted = int(round(written / float(fps) * sample_rate)) if fps > 0 else samples.shape[1]
+            if samples.shape[1] < wanted:
+                import numpy as np
+
+                pad = np.zeros((samples.shape[0], wanted - samples.shape[1]), dtype=np.float32)
+                samples = np.concatenate([samples, pad], axis=1)
             audio_cursor = _push_audio(container, audio_stream, samples,
-                                       audio_cursor, samples.shape[1], sample_rate)
+                                       audio_cursor, min(wanted, samples.shape[1]), sample_rate)
             for packet in audio_stream.encode(None):
                 container.mux(packet)
 

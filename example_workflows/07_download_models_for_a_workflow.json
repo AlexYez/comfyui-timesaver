@@ -224,7 +224,20 @@
         false,
         true,
         "hf_sha256_auto"
-      ]
+      ],
+      "widgets_values_named": {
+        "file_list": "https://www.dropbox.com/sh/example_folder?dl=0 /path/to/models\nhttps://huggingface.co/stabilityai/sdxl-turbo/resolve/main/sd_xl_turbo_1.0_fp16.safetensors /path/to/checkpoints",
+        "skip_existing": true,
+        "verify_size": true,
+        "chunk_size_kb": 4096,
+        "hf_token": "",
+        "hf_domain": "huggingface.co, hf-mirror.com",
+        "proxy_url": "",
+        "modelscope_token": "",
+        "unzip_after_download": false,
+        "enable": true,
+        "integrity_mode": "hf_sha256_auto"
+      }
     }
   ],
   "links": [],

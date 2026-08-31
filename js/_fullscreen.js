@@ -113,6 +113,12 @@ const CLOSE_ICON_SVG =
  * @param {string} [options.extraClass] Extra class on the overlay root.
  * @param {boolean} [options.showClose=true] Render the unified top-right × close
  *   button. Turn off only if the editor supplies its own equivalent control.
+ * @param {HTMLElement} [options.trigger] The control that opened the overlay. If
+ *   it travels INTO the overlay with `content` — a button living in the editor's
+ *   own toolbar — it is hidden while the overlay is open and restored on close.
+ *   ⚠️ Otherwise it sits next to the shared ×, doing exactly the same thing: in
+ *   TS Video Loader the two ended up one under the other in the top-right
+ *   corner (measured: trigger at top 49 / right 7, × at top 6 / right 10).
  * @param {string} [options.closeTitle] Tooltip / aria-label for the close button
  *   (localise via the caller; defaults to "Close (Esc)").
  * @returns {FullscreenHandle}
@@ -121,6 +127,7 @@ export function openFullscreenOverlay(content, options = {}) {
     const {
         onClose, onOpen, onKey, closeOnBackdrop = false, extraClass = "",
         showClose = true, closeTitle = "Close (Esc)", label = "", center = false,
+        trigger = null,
     } = options;
     const doc = content?.ownerDocument || document;
     let open = true;
@@ -338,6 +345,7 @@ export function openFullscreenOverlay(content, options = {}) {
         // Detach content (keep it alive for reopen), then drop the overlay.
         content.remove();
         modal.remove();
+        if (trigger) trigger.hidden = false;
         try { onClose?.(); } catch (err) { console.warn("[TS Fullscreen] onClose failed", err); }
     }
 
@@ -351,6 +359,9 @@ export function openFullscreenOverlay(content, options = {}) {
     doc.defaultView?.addEventListener("keydown", onKeyDown, true);
     doc.body.appendChild(modal);
     parkFocus();
+    // Кнопка-открывашка, уехавшая внутрь оверлея, дублирует общий крестик.
+    if (trigger) trigger.hidden = true;
+
     try { onOpen?.(); } catch (err) { console.warn("[TS Fullscreen] onOpen failed", err); }
 
     return { close, isOpen: () => open, modal, parkFocus };
