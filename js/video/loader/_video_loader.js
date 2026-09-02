@@ -14,6 +14,7 @@ import { api } from "/scripts/api.js";
 import { TS_UI_CLASS, pickLocaleStrings } from "../../_theme.js";
 import { addResizableDomWidget, getWidget, hideWidget } from "../../_dom_widget.js";
 import { openFullscreenOverlay } from "../../_fullscreen.js";
+import { guardPlayback } from "../../_media/_playback_guard.js";
 import { hotkeysAllowed, isTypingTarget } from "../../_keys.js";
 import { makeDropZone } from "../../_studio/_dnd.js";
 import { icon, setIcon } from "../../_media/_icons.js";
@@ -643,14 +644,19 @@ export function setupVideoLoader(node) {
 
     // Невидимая нода не должна крутить видео и тянуть миниатюры: десять
     // загрузчиков в одном workflow иначе декодируют десять роликов разом.
-    const visibility = new IntersectionObserver(([entry]) => {
-        if (!entry.isIntersecting) {
-            editor.playback.pause();
+    //
+    // ⚠️ Наблюдатель здесь БЫЛ свой, и он же оказался единственным в паке: у
+    // сейвера и превью такого не было вовсе. Теперь это общий сторож — он же
+    // снимает воспроизведение на время прогона графа, потому что видео в
+    // браузере декодирует та же карта, на которой идёт генерация.
+    const unguard = guardPlayback({
+        media: editor.video,
+        watch: editor.element,
+        onHidden: () => {
             editor.strip.abortAll();
             abortActiveUpload();
-        }
+        },
     });
-    visibility.observe(editor.element);
 
     /**
      * Перечитать состояние из ноды.
@@ -708,7 +714,7 @@ export function setupVideoLoader(node) {
         fullscreen?.close();
         document.removeEventListener("keydown", onKeyDown, true);
         observer.disconnect();
-        visibility.disconnect();
+        unguard();
         editor.dispose();
     };
 

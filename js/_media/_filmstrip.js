@@ -17,8 +17,20 @@ export const TILE_COLS = 16;
 /** Ширина миниатюры по умолчанию, если форма кадра ещё неизвестна. */
 const TARGET_PX = 96;
 
-/** Сколько лент держим в памяти. Больше — незачем, меньше — начинает мигать. */
-const CACHE_LIMIT = 96;
+// ⚠️ Бюджет кэша задан в МЕГАБАЙТАХ, а не в штуках, и это разница по существу.
+// Раньше стоял предел «96 лент», и он ничего не говорил о цене: замерено на
+// живых спрайтах нашего же бэкенда — при высоте дорожки 48 px одна лента весит
+// 0,2 МБ в видеопамяти, а при 200 px уже 3,3 МБ. То есть один и тот же предел
+// означал то 18 МБ, то 313 МБ, и в полноэкранном режиме кэш незаметно отъедал
+// у ComfyUI треть гигабайта видеопамяти той самой карты, на которой идёт
+// генерация. `ImageBitmap` — это текстуры, а не байты в куче.
+const CACHE_BUDGET_BYTES = 64 * 1024 * 1024;
+
+/** Во что обходится лента: RGBA-текстура во весь спрайт. */
+const bitmapBytes = (bitmap) => (bitmap?.width || 0) * (bitmap?.height || 0) * 4;
+
+/** Потолок по числу лент — страховка от вырожденно мелких спрайтов. */
+const CACHE_LIMIT = 256;
 
 /**
  * Ступень приближения для такого окна.
@@ -65,15 +77,20 @@ export function createStripSource({ api, route, getPath, getHeight, onReady }) {
 
     const key = (step, index, height) => `${step}:${index}:${height}`;
 
+    // Сумма считается на лету, а не пересчётом по всему кэшу на каждой вставке.
+    let cacheBytes = 0;
+
     const evict = () => {
-        while (cache.size > CACHE_LIMIT) {
+        while (cache.size > 0 && (cacheBytes > CACHE_BUDGET_BYTES || cache.size > CACHE_LIMIT)) {
             const oldest = cache.keys().next().value;
             const entry = cache.get(oldest);
             cache.delete(oldest);
+            cacheBytes -= entry?.bytes || 0;
             // ⚠️ close() обязателен: сотня незакрытых ImageBitmap держит
             // десятки мегабайт видеопамяти и сборщик до них не доберётся.
             entry?.bitmap?.close?.();
         }
+        if (cacheBytes < 0) cacheBytes = 0;
     };
 
     async function fetchSprite(step, index, height, signal) {
@@ -98,7 +115,9 @@ export function createStripSource({ api, route, getPath, getHeight, onReady }) {
         inFlight.set(id, controller);
         try {
             const entry = await fetchSprite(step, index, height, controller.signal);
+            entry.bytes = bitmapBytes(entry.bitmap);
             cache.set(id, entry);
+            cacheBytes += entry.bytes;
             evict();
             onReady?.();
         } catch (error) {
@@ -197,6 +216,7 @@ export function createStripSource({ api, route, getPath, getHeight, onReady }) {
             this.abortAll();
             for (const entry of cache.values()) entry.bitmap?.close?.();
             cache.clear();
+            cacheBytes = 0;
             overview?.bitmap?.close?.();
             overview = null;
             overviewToken += 1;

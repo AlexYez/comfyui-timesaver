@@ -8,6 +8,7 @@ import { api } from "/scripts/api.js";
 
 import { TS_UI_CLASS, ensureThemeStyles, getThemeColors, pickLocaleStrings } from "../../_theme.js";
 import { hideWidget as sharedHideWidget } from "../../_dom_widget.js";
+import { guardPlayback } from "../../_media/_playback_guard.js";
 import { drawPeakBars } from "../../_media/_wave.js";
 
 export const LOADER_NODE_NAME = "TS_AudioLoader";
@@ -1358,6 +1359,13 @@ export function setupAudioLoader(node) {
         syncWidgets();
         fetchMetadata(state.sourcePath);
     }, 300) : null;
+    // ⚠️ Звук дешевле картинки, но у этой ноды есть и ВИДЕО-элемент (файл со
+    // звуковой дорожкой открывается как видео), а он декодируется видеокартой —
+    // той же, на которой считает ComfyUI. Сторож снимает воспроизведение на
+    // время прогона и когда ноду не видно.
+    const unguardAudio = guardPlayback({ media: audioEl, watch: container });
+    const unguardVideo = guardPlayback({ media: videoEl, watch: container });
+
     node._tsAudioLoaderCleanup = () => {
         resizeObserver.disconnect();
         if (sourceWidgetPoll) window.clearInterval(sourceWidgetPoll);
@@ -1366,7 +1374,10 @@ export function setupAudioLoader(node) {
         [audioEl, videoEl].forEach((media) => { media.pause(); media.removeAttribute("src"); media.load(); });
         if (mediaRecorder && state.isRecording) { try { mediaRecorder.stop(); } catch {} }
         if (mediaStream) { mediaStream.getTracks().forEach((track) => track.stop()); mediaStream = null; }
+        unguardAudio();
+        unguardVideo();
     };
+
     // Without this hook a deleted node leaks its poll interval, RAF loop,
     // ResizeObserver, object URLs and — worst — the live microphone stream.
     // The original onRemoved is captured once so repeated setup calls don't

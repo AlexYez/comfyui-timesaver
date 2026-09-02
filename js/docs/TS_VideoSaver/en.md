@@ -10,6 +10,8 @@ The player remembers whether you turned sound on. ProRes is not playable in a br
 
 **A video input works two ways.** A clip backed by a file streams from disk, so re-saving an hour-long take never builds a tensor. A video assembled in memory — what Create Video and similar nodes produce — is read from its components instead. Either way its **own sound track comes along**: connect the audio input only when you want to replace it, because a connected input always wins.
 
+**Playback never competes with a run.** Video in the node is decoded by the same graphics card ComfyUI computes on, so every media node here pauses itself the moment a run starts — and again when the node scrolls off screen or the tab goes to the background. Nothing resumes on its own; that call is yours. The saved clip plays once rather than looping forever, and the repeat button is where it always was.
+
 **Use when:** you want the finished clip on disk, in a format an editor will actually accept — or the HDR master as frames a compositor will accept.
 
 ---

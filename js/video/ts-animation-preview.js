@@ -2,6 +2,7 @@ import { app } from "/scripts/app.js";
 import { api } from "/scripts/api.js";
 
 import { TS_UI_CLASS, ensureThemeStyles, pickLocaleStrings } from "../_theme.js";
+import { guardPlayback } from "../_media/_playback_guard.js";
 
 // --- Constants & Identity ---
 const EXTENSION_ID = "ts.animationpreview";
@@ -493,10 +494,17 @@ function setupAnimationPreview(node) {
         node.properties.ts_animation_preview = payload;
     };
 
+    // ⚠️ Зациклённый ролик тут по назначению — это превью анимации. Но пока он
+    // крутится, декодер браузера занимает ТУ ЖЕ карту, на которой считает
+    // ComfyUI, поэтому сторож снимает его на время прогона и когда ноду не
+    // видно. Возобновлять — дело человека.
+    const unguard = guardPlayback({ media: video, watch: container });
+
     // Teardown on node deletion: without this the looping <video> kept
     // decoding (CPU + memory) for as long as the tab lived.
     node._tsAnimPreviewCleanup = () => {
         try {
+            unguard();
             video.pause();
             video.removeAttribute("src");
             video.load();

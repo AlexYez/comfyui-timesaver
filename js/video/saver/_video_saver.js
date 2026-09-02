@@ -13,6 +13,7 @@ import { TS_UI_CLASS, pickLocaleStrings } from "../../_theme.js";
 import { addResizableDomWidget, getWidget } from "../../_dom_widget.js";
 import { openFullscreenOverlay } from "../../_fullscreen.js";
 import { createPlayback } from "../../_media/_playback.js";
+import { guardPlayback } from "../../_media/_playback_guard.js";
 import { icon, setIcon } from "../../_media/_icons.js";
 import { formatBytes, formatDuration } from "../../_media/_ruler.js";
 import { ensureVideoStyles } from "../loader/_video_styles.js";
@@ -224,7 +225,14 @@ export function setupVideoSaver(node) {
         payload: null,
         muted: preference?.muted !== false,
         volume: Number.isFinite(preference?.volume) ? preference.volume : 1,
-        loop: true,
+        // ⚠️ Раньше здесь было `true`, и результат крутился по кругу, пока
+        // открыта вкладка. Видео в браузере декодирует ТА ЖЕ карта, на которой
+        // считает ComfyUI, поэтому бесконечный цикл отнимал её у следующей
+        // генерации — на это и жаловались. Теперь ролик проигрывается один раз:
+        // результат виден в движении, а карта освобождается. Кнопка повтора на
+        // месте, и сохранённые графы своё значение сохраняют — оно лежит в
+        // properties и читается ниже.
+        loop: false,
     };
 
     function updateTime() {
@@ -357,8 +365,13 @@ export function setupVideoSaver(node) {
         if (saved) applyPayload(saved);
     };
 
+    // Сторож ставит ролик на паузу на время прогона и когда нода ушла за край
+    // экрана. Возобновлять он ничего не будет — это решение человека.
+    const unguard = guardPlayback({ media: video, watch: root });
+
     const previousRemoved = node.onRemoved;
     node.onRemoved = function tsVideoSaverRemoved(...args) {
+        unguard();
         fullscreen?.close();
         playback.dispose();
         video.pause();
