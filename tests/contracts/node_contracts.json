@@ -1723,6 +1723,135 @@
       }
     }
   },
+  "TS_DLSSUpscaler": {
+    "api": "v3",
+    "category": "TS/Video",
+    "class_name": "TS_DLSSUpscaler",
+    "display_name": "TS DLSS Upscaler",
+    "inputs": [
+      {
+        "index": 0,
+        "name": "images",
+        "type": "Image"
+      },
+      {
+        "index": 1,
+        "name": "upscaling_factor",
+        "type": "Combo"
+      },
+      {
+        "index": 2,
+        "name": "dlss_model_preset",
+        "type": "Combo"
+      },
+      {
+        "index": 3,
+        "name": "nr_style",
+        "type": "Combo"
+      },
+      {
+        "index": 4,
+        "name": "nr_intensity",
+        "type": "Float"
+      },
+      {
+        "index": 5,
+        "name": "local_tone_strength",
+        "type": "Float"
+      },
+      {
+        "index": 6,
+        "name": "local_structure_strength",
+        "type": "Float"
+      },
+      {
+        "index": 7,
+        "name": "skin_structure_strength",
+        "type": "Float"
+      },
+      {
+        "index": 8,
+        "name": "automatic_mask",
+        "type": "Boolean"
+      },
+      {
+        "index": 9,
+        "name": "temporal",
+        "type": "Boolean"
+      },
+      {
+        "index": 10,
+        "name": "source_curve",
+        "type": "Combo"
+      },
+      {
+        "index": 11,
+        "name": "dither",
+        "type": "Boolean"
+      },
+      {
+        "index": 12,
+        "name": "download_if_missing",
+        "type": "Boolean"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "images",
+        "index": 0,
+        "name": "images",
+        "type": "Image"
+      }
+    ],
+    "python_file": "nodes/video/dlss/ts_dlss_upscaler.py",
+    "widgets": {
+      "automatic_mask": {
+        "default": true
+      },
+      "dither": {
+        "default": true
+      },
+      "dlss_model_preset": {
+        "default": "M"
+      },
+      "download_if_missing": {
+        "default": true
+      },
+      "local_structure_strength": {
+        "default": 1.0,
+        "max": 2.0,
+        "min": 0.0,
+        "step": 0.01
+      },
+      "local_tone_strength": {
+        "default": 1.0,
+        "max": 2.0,
+        "min": 0.0,
+        "step": 0.01
+      },
+      "nr_intensity": {
+        "default": 1.0,
+        "max": 1.0,
+        "min": 0.0,
+        "step": 0.01
+      },
+      "nr_style": {
+        "default": "Default"
+      },
+      "skin_structure_strength": {
+        "default": 2.0,
+        "max": 2.0,
+        "min": -1.0,
+        "step": 0.01
+      },
+      "temporal": {
+        "default": true
+      },
+      "upscaling_factor": {
+        "default": "2× (Performance)"
+      }
+    }
+  },
   "TS_Film_Emulation": {
     "api": "v3",
     "category": "TS/Image/Color",

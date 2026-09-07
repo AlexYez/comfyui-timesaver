@@ -416,7 +416,7 @@ Reads one image from a file path — the companion to TS Batch Source, which han
 ---
 
 <a id="video"></a>
-### 🎬 Video (10 nodes)
+### 🎬 Video (11 nodes)
 
 Reading and writing video files, frame interpolation, model-based upscale, depth, animation preview.
 
@@ -518,6 +518,30 @@ frames/s** to 4K, and the frames never leave the GPU between the two — so a
 faster frame source would not make it quicker.
 
 **Use when:** you have an RTX card and want speed-of-light upscaling for video.
+
+---
+
+#### TS DLSS Upscaler
+
+Upscale a picture — or a whole video batch — with **NVIDIA DLSS 5 Neural Rendering**: the same feature games use, running here on your frames. `IMAGE` in, `IMAGE` out, so a single still and a batch of decoded video frames both go straight in.
+
+**It brings its own runtime.** On the first run the node downloads the NVIDIA/ReShade files it needs (~481 MB, once) into `models/DLSS` and lays them out the way the runtime expects — the download has a progress bar, and so does the processing that follows. Nothing is bundled with the pack: those binaries are NVIDIA's and RenoDX's, and their licence texts are saved next to them. A file deleted later is fetched again on the next run; `download_if_missing` turns the fetching off if you would rather place them by hand.
+
+**Five modes, and 1× is not a no-op.** `2× (Performance)` is the default; `1.5×`, `1.724×` and `3×` change how much is invented. `1× (DLAA)` does not resize at all — the network re-renders the picture at its own size, which is the cleanest thing this feature does to footage that is already big enough. The output is capped at 7680×4320, and asking for more names the largest factor that fits instead of failing vaguely.
+
+**Temporal, which is where the quality comes from.** For a batch of consecutive frames the node estimates motion vectors (DIS optical flow) and hands them over, so DLSS carries detail from frame to frame instead of treating each one as a still; a hard cut resets that history rather than smearing across it. **Switch `temporal` off for a batch of unrelated pictures** — otherwise each one drags the previous one's detail behind it.
+
+**The 8-bit pipe is handled, not ignored.** The worker takes 8-bit RGBA, and a ComfyUI IMAGE is float. Rounding straight down turns smooth gradients into steps *before* the network sees them, and the network then sharpens the steps; `dither` (on by default) spends those bits as blue noise instead. `source_curve` is for pictures that are not display-referred SDR — log footage, PQ/HLG, a linear EXR render: they are converted to SDR before the network and converted back after, by the same curve, so the node changes the size and not the colour. Leave it at SDR for ordinary graph output.
+
+**It says whether DLSS really ran.** After the batch the node reads the runtime's own log: when neural rendering silently fell back to a plain resize (an old driver, usually), that is a warning in the console rather than a picture that merely looks disappointing.
+
+**Windows and an NVIDIA RTX card only.** The work is done by NVIDIA's signed D3D12 runtime and there is no other implementation of it; RTX 40/50 are official, RTX 30 works on the experimental path and wants a current driver. Anywhere else the node says so instead of failing obscurely.
+
+> **Licensing (read before the first run).** This pack **hosts and redistributes none of the runtime**, and it is **not affiliated with or endorsed by NVIDIA, ReShade, RenoDX or the upstream project**. What the node downloads on your behalf is a third-party release, and the pieces inside it belong to other people: `nvngx_dlssnr.dll` and `nvngx_dlss.dll` are NVIDIA's, proprietary, under the [NVIDIA RTX SDKs License](https://github.com/NVIDIA/DLSS/blob/main/LICENSE.txt); `dxgi.dll` is ReShade (BSD-3-Clause); `renodx-dlss5.addon64` is the RenoDX add-on under its own terms; `nvngx.dll` is the upstream project's own worker. Their licence texts are written into `models/DLSS` next to the binaries and are meant to stay there.
+>
+> The `download_if_missing` switch **is your agreement to fetch those components** — the node prints the whole notice, with the source URL and every licence, in the log before it touches the network. **Install only components you are authorised to use, from sources their licences permit.** Turn the switch off and the node downloads nothing: place the files under `models/DLSS/host/` and `models/DLSS/dlss/` yourself.
+
+**Use when:** upscaling footage or stills and you have an RTX card — especially video, where the temporal path beats a still-image upscaler run frame by frame.
 
 ---
 
@@ -1243,6 +1267,10 @@ That button is what makes `enable` useful as a mode. Turn `enable` off and the n
 
 **The list reads as two things, not one.** Each line is `<url> → <folder>`. The arrow is there to be read: a long address wraps in the field, and a folder pressed against its tail looks like part of the link. A plain space still works, so lists written earlier — and lists arriving with someone else's workflow — keep running.
 
+**Every model says where it stands.** A dot in front of each line: green — the file is on disk, red — it is not, amber — a `.part` is waiting to be resumed, grey — nothing is known yet (no folder given, or the check has not run). The check reads the disk only, never the network, and runs when the node is drawn, when the list changes, and when a download ends. While a model is being fetched its own line carries a progress bar, so a list of ten answers "has *this* one arrived?" without counting.
+
+**Settings live behind a button.** Mirrors, tokens, proxy, chunk size, integrity mode and `enable` are all in one panel inside the node, opened by **Settings** and closed by **Done**. The node itself stays what it is for: the list, and the two buttons under it. Nothing about the inputs changed — the same eleven, in the same order, with the same defaults; a workflow saved earlier opens with its values in place.
+
 **Get models from workflow.** The button on the node fills that list for you: it walks the open graph — **including inside subgraphs**, where template loaders normally live — and collects every model it needs. It reads the `{name, url, directory}` metadata ComfyUI stamps onto each loader, cross-checks it against the workflow's Markdown note, and falls back to the loader's own filename when neither carries a link. You get a report first; **Append** adds only what is missing and never rewrites lines you wrote by hand, **Replace list** starts over.
 
 Models you already have are listed too, on purpose: the list travels with the workflow, so whoever you send it to still needs those lines.
@@ -1251,7 +1279,7 @@ Models you already have are listed too, on purpose: the list travels with the wo
 
 The folder it proposes is the one your models of that category are **already in**. ComfyUI reads two directories per category — `clip` and `text_encoders`, `unet` and `diffusion_models` — and both are real; if your encoders live in `clip`, that is where the download is aimed, not at the empty folder next to it. A line you wrote in the list yourself is never rewritten.
 
-**Cancelling the run stops everything.** ComfyUI's cancel button ends the file in flight *and* every file still queued after it. A partial file is kept as `.part`, so the next run resumes from where it stopped instead of starting over. Progress is one bar for the whole list, from the first model to the last.
+**Cancelling the run stops everything.** ComfyUI's cancel button ends the file in flight *and* every file still queued after it. A partial file is kept as `.part`, so the next run resumes from where it stopped instead of starting over. Progress shows twice: one bar for the whole list, and a small one on the line of the model in flight.
 
 **The rest of the workflow waits.** This node brings in the models the graph has nothing to load without, so it holds the run until the last file has landed rather than handing the graph back while the bytes are still arriving.
 

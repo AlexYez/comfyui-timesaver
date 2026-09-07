@@ -6,7 +6,7 @@ Reads one image from a file path — the companion to TS Batch Source, which han
 
 
 <a id="video"></a>
-### 🎬 Video (10 nodes)
+### 🎬 Video (11 nodes)
 
 Reading and writing video files, frame interpolation, model-based upscale, depth, animation preview.
 

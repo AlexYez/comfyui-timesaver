@@ -8,6 +8,10 @@ That button is what makes `enable` useful as a mode. Turn `enable` off and the n
 
 **The list reads as two things, not one.** Each line is `<url> → <folder>`. The arrow is there to be read: a long address wraps in the field, and a folder pressed against its tail looks like part of the link. A plain space still works, so lists written earlier — and lists arriving with someone else's workflow — keep running.
 
+**Every model says where it stands.** A dot in front of each line: green — the file is on disk, red — it is not, amber — a `.part` is waiting to be resumed, grey — nothing is known yet (no folder given, or the check has not run). The check reads the disk only, never the network, and runs when the node is drawn, when the list changes, and when a download ends. While a model is being fetched its own line carries a progress bar, so a list of ten answers "has *this* one arrived?" without counting.
+
+**Settings live behind a button.** Mirrors, tokens, proxy, chunk size, integrity mode and `enable` are all in one panel inside the node, opened by **Settings** and closed by **Done**. The node itself stays what it is for: the list, and the two buttons under it. Nothing about the inputs changed — the same eleven, in the same order, with the same defaults; a workflow saved earlier opens with its values in place.
+
 **Get models from workflow.** The button on the node fills that list for you: it walks the open graph — **including inside subgraphs**, where template loaders normally live — and collects every model it needs. It reads the `{name, url, directory}` metadata ComfyUI stamps onto each loader, cross-checks it against the workflow's Markdown note, and falls back to the loader's own filename when neither carries a link. You get a report first; **Append** adds only what is missing and never rewrites lines you wrote by hand, **Replace list** starts over.
 
 Models you already have are listed too, on purpose: the list travels with the workflow, so whoever you send it to still needs those lines.
@@ -16,7 +20,7 @@ Models you already have are listed too, on purpose: the list travels with the wo
 
 The folder it proposes is the one your models of that category are **already in**. ComfyUI reads two directories per category — `clip` and `text_encoders`, `unet` and `diffusion_models` — and both are real; if your encoders live in `clip`, that is where the download is aimed, not at the empty folder next to it. A line you wrote in the list yourself is never rewritten.
 
-**Cancelling the run stops everything.** ComfyUI's cancel button ends the file in flight *and* every file still queued after it. A partial file is kept as `.part`, so the next run resumes from where it stopped instead of starting over. Progress is one bar for the whole list, from the first model to the last.
+**Cancelling the run stops everything.** ComfyUI's cancel button ends the file in flight *and* every file still queued after it. A partial file is kept as `.part`, so the next run resumes from where it stopped instead of starting over. Progress shows twice: one bar for the whole list, and a small one on the line of the model in flight.
 
 **The rest of the workflow waits.** This node brings in the models the graph has nothing to load without, so it holds the run until the last file has landed rather than handing the graph back while the bytes are still arriving.
 

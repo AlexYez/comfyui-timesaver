@@ -39,8 +39,13 @@ import { api } from "/scripts/api.js";
 
 import { TS_UI_CLASS, ensureThemeStyles, pickLocaleStrings } from "../_theme.js";
 import { openFullscreenOverlay } from "../_fullscreen.js";
+import { addResizableDomWidget, hideWidget, getWidget as getAnyWidget } from "../_dom_widget.js";
+import { createListEditor } from "./_downloader_list.js";
+import { createSettingsPanel } from "./_downloader_settings.js";
 
 const NODE_TYPE = "TS Files Downloader";
+/** Адрес событий, идущих от прогона графа, а не от кнопки на ноде. */
+const GRAPH_RUN = "graph";
 const FILE_LIST_WIDGET = "file_list";
 const STYLE_ID = "ts-files-downloader-styles";
 
@@ -91,7 +96,30 @@ const TYPE_TO_FOLDER = {
 const STRINGS = {
     en: {
         button: "Get models from workflow",
+        buttonHint: "Walk the open graph, subgraphs included, and list every model it needs",
+        listSettings: "Settings",
+        listSettingsHint: "Mirrors, tokens, proxy, integrity checks — everything you rarely touch",
+        listRefresh: "Check",
+        listRefreshHint: "Look on disk again — nothing is downloaded and nothing is asked of the network",
+        listAsText: "Edit as text",
+        listAsRows: "Back to the list",
+        listModeHint: "Text mode is for pasting or rewriting the whole list at once",
+        listEmpty: "No models yet. Press \u00abGet models from workflow\u00bb, or switch to text and paste your own list.",
+        listPlaceholder: "https://\u2026/model.safetensors \u2192 models/checkpoints",
+        listNoFolder: "no folder",
+        listRemove: "Remove from the list",
+        listComment: "A note — nothing is downloaded from this line",
+        listCountEmpty: "The list is empty",
+        listCount: (total, ready) => `${total} model${total === 1 ? "" : "s"} \u00b7 ${ready} on disk`,
+        listStatus: {
+            ready: "Downloaded",
+            partial: "Partly downloaded \u2014 the next run resumes it",
+            missing: "Not downloaded yet",
+            unknown: "Cannot tell: check the address and the folder",
+            skip: "A note",
+        },
         download: "Download the models now",
+        downloadHint: "Fetch the whole list right now; press again to cancel",
         downloadEmpty: "The list is empty — nothing to download.",
         downloadBusy: "A download is already running.",
         downloadFailed: "Download failed — see the console.",
@@ -144,7 +172,37 @@ const STRINGS = {
     },
     ru: {
         button: "Взять модели из workflow",
+        buttonHint: "Обойти открытый граф, включая сабграфы, и собрать все нужные модели",
+        listSettings: "Настройки",
+        listSettingsHint: "Зеркала, токены, прокси, проверка целостности — всё, что трогают редко",
+        listRefresh: "Проверить",
+        listRefreshHint: "Посмотреть на диске заново — ничего не качается и сеть не спрашивается",
+        listAsText: "Править текстом",
+        listAsRows: "Вернуться к списку",
+        listModeHint: "Текстовый режим — чтобы вставить или переписать весь список разом",
+        listEmpty: "Моделей пока нет. Нажмите «Взять модели из workflow» или переключитесь на текст и вставьте свой список.",
+        listPlaceholder: "https://…/model.safetensors → models/checkpoints",
+        listNoFolder: "папка не указана",
+        listRemove: "Убрать из списка",
+        listComment: "Заметка — по этой строке ничего не качается",
+        listCountEmpty: "Список пуст",
+        listCount: (total, ready) => {
+            const tail = total % 10;
+            const teen = total % 100;
+            let word = "моделей";
+            if (tail === 1 && teen !== 11) word = "модель";
+            else if (tail >= 2 && tail <= 4 && (teen < 12 || teen > 14)) word = "модели";
+            return `${total} ${word} · ${ready} на диске`;
+        },
+        listStatus: {
+            ready: "Скачана",
+            partial: "Скачана частично — следующий запуск продолжит",
+            missing: "Ещё не скачана",
+            unknown: "Непонятно: проверьте адрес и папку",
+            skip: "Заметка",
+        },
         download: "Скачать модели сейчас",
+        downloadHint: "Скачать весь список прямо сейчас; повторное нажатие — отмена",
         downloadEmpty: "Список пуст — скачивать нечего.",
         downloadBusy: "Загрузка уже идёт.",
         downloadFailed: "Загрузка не удалась — смотрите консоль.",
@@ -881,6 +939,11 @@ function writeFileList(node, widget, text) {
     } catch (err) {
         console.warn("[TS FilesDownloader] file_list callback failed", err);
     }
+    // ⚠️ Список рисуется по ЗНАЧЕНИЮ виджета, но о чужой записи в него никто
+    // его не извещает. Без этой строки после «Взять модели из workflow» →
+    // «Дополнить»/«Заменить» модели появлялись только после ручного
+    // переключения в текстовый режим и обратно (жалоба пользователя).
+    node.__tsFdlList?.reload();
     node.graph?.setDirtyCanvas?.(true, true);
 }
 
@@ -1194,7 +1257,9 @@ function toast(severity, detail) {
 /* ------------------------------------------------------------------ extension */
 
 function getWidget(node, name) {
-    return (node.widgets || []).find((w) => w.name === name) || null;
+    // ⚠️ Служебные виджеты убраны из `node.widgets` (см. mountActions), поэтому
+    // искать только там больше нельзя: общий хелпер знает и про тайник.
+    return getAnyWidget(node, name);
 }
 
 function attachButton(node) {
@@ -1235,6 +1300,154 @@ function attachButton(node) {
     node.__tsFdlButton = button;
 
     attachDownloadButton(node, t);
+    attachListEditor(node, t);
+}
+
+/**
+ * Список моделей вместо голого текстового поля.
+ *
+ * ⚠️ Значение остаётся ТЕМ ЖЕ текстом в том же виджете `file_list`: здесь
+ * только вид. Схема ноды не меняется, `widgets_values` не сдвигается, и
+ * воркфлоу, сохранённый год назад, открывается как открывался.
+ */
+function attachListEditor(node, t) {
+    if (node.__tsFdlList) return;
+    const widget = getWidget(node, FILE_LIST_WIDGET);
+    if (!widget) return;
+
+    const editor = createListEditor({
+        getValue: () => String(widget.value ?? ""),
+        setValue: (text) => {
+            widget.value = text;
+            if (typeof widget.callback === "function") widget.callback(text);
+            node.setDirtyCanvas?.(true, true);
+        },
+        strings: t,
+        fetchStatus: async (fileList) => {
+            const response = await api.fetchApi("/ts_downloader/status", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ file_list: fileList }),
+            });
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            return response.json();
+        },
+    });
+
+    // ⚠️ Виджет УБИРАЕТСЯ из `node.widgets`, а не прячется типом.
+    //
+    // Замерено на живом сервере, в Nodes 2.0: тело ноды — сетка с одной строкой
+    // на каждый элемент `node.widgets`, и спрятанный виджет строку не
+    // освобождает. У ноды высотой 620 списку доставалось 333, а 219 пикселей
+    // сверху оставались пустотой — ровно строка этого текстового поля.
+    //
+    // Совместимость держит общий хелпер (js/_dom_widget.js): значение уходит в
+    // `node.properties`, возвращается в промпт на очереди и раскладывается по
+    // именам из старого позиционного `widgets_values`. Проверено на настоящем
+    // старом графе — тест test_an_old_workflow_keeps_its_list.
+    hideWidget(node, FILE_LIST_WIDGET);
+
+    addResizableDomWidget(node, editor.element, {
+        name: "ts_downloader_list",
+        minWidth: 320,
+        minHeight: 190,
+        defaultHeight: 300,
+        // ⚠️ Над нашим виджетом стоят ещё десять обычных: без этой поправки он
+        // просит всю высоту ноды и вылезает за её край (§12.5.1).
+        // Над нашим виджетом остаются только заголовок ноды и скрытые поля,
+        // поэтому запас невелик — но и без него виджет просит всю высоту.
+        chromeHeight: 40,
+    });
+
+    node.__tsFdlList = editor;
+    mountActions(node, editor, t);
+    editor.refresh();
+}
+
+/**
+ * Свой интерфейс ноды: список, действия под ним и собственная панель настроек.
+ *
+ * ⚠️ Штатные виджеты УБИРАЮТСЯ из `node.widgets`, а не прячутся типом. Замерено
+ * на живом сервере: в Nodes 2.0 тело ноды — сетка с одной строкой на каждый
+ * элемент `node.widgets`, и спрятанный виджет строку НЕ освобождает: нода
+ * высотой 620 отдавала списку 186, всё остальное было пустотой сверху. А сама
+ * кнопка «Настройки» в том режиме не показывала спрятанное обратно вовсе.
+ *
+ * Значения убранных виджетов живут в `node.properties` и возвращаются в промпт
+ * общим хелпером (js/_dom_widget.js), а старый воркфлоу разбирается там же по
+ * именам. `file_list` ИСКЛЮЧЕНИЕ и остаётся на месте: это главное содержимое
+ * ноды, и в старых графах оно лежит в `widgets_values` позиционно.
+ */
+function mountActions(node, editor, t) {
+    const SETTINGS = ["skip_existing", "verify_size", "chunk_size_kb", "hf_token",
+                      "hf_domain", "proxy_url", "modelscope_token",
+                      "unzip_after_download", "enable", "integrity_mode"];
+
+    // ⚠️ Виджет берём ССЫЛКОЙ, а не поиском по имени: имя кнопки — это её
+    // надпись, она локализована и меняется по ходу загрузки. Поиск по
+    // английской строке ничего не находил, и штатная «Download Models» торчала
+    // сверху ноды вторым экземпляром.
+    const proxy = (source, label, hint, primary = false) => {
+        if (!source) return null;
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = `ts-ui-btn${primary ? " ts-ui-btn--primary" : ""}`;
+        button.textContent = label;
+        button.title = hint;
+        button.addEventListener("click", () => source.callback?.());
+        // Сама кнопка-виджет уходит из ноды: она не сериализуется, так что
+        // сохранённые значения от этого не сдвигаются.
+        const at = (node.widgets || []).indexOf(source);
+        if (at >= 0) node.widgets.splice(at, 1);
+        // Надпись меняет сам загрузчик, показывая ход дела.
+        const observer = setInterval(() => {
+            if (button.textContent !== source.name) button.textContent = source.name;
+        }, 300);
+        button._tsStop = () => clearInterval(observer);
+        return button;
+    };
+
+    const scan = proxy(node.__tsFdlButton, t.button, t.buttonHint);
+    const download = proxy(node.__tsFdlDownload, t.download, t.downloadHint, true);
+
+    // Остальные виджеты убираем ПОСЛЕ кнопок: так в снимке порядка, который
+    // делает hideWidget, оказываются ровно сериализуемые поля схемы в её
+    // порядке — именно по нему читаются старые воркфлоу.
+    for (const name of SETTINGS) hideWidget(node, name);
+
+    const panel = createSettingsPanel(node);
+    editor.element.appendChild(panel.element);
+    node.__tsFdlSettings = panel;
+
+    const settings = document.createElement("button");
+    settings.type = "button";
+    settings.className = "ts-ui-btn ts-fdl-settings";
+    settings.textContent = t.listSettings;
+    settings.title = t.listSettingsHint;
+    settings.addEventListener("click", () => {
+        panel.toggle();
+        settings.classList.toggle("is-active", panel.isOpen());
+        node.setDirtyCanvas?.(true, true);
+    });
+
+    for (const button of [scan, download, settings]) {
+        if (button) editor.actions.appendChild(button);
+    }
+
+    const previousRemoved = node.onRemoved;
+    node.onRemoved = function tsFdlActionsRemoved(...args) {
+        scan?._tsStop?.();
+        download?._tsStop?.();
+        return previousRemoved?.apply(this, args);
+    };
+
+    // Значения приезжают из воркфлоу после сборки панели — перечитываем.
+    const previousConfigure = node.onConfigure;
+    node.onConfigure = function tsFdlSettingsConfigure(...args) {
+        const result = previousConfigure?.apply(this, args);
+        panel.sync();
+        return result;
+    };
 }
 
 /**
@@ -1318,6 +1531,21 @@ function attachDownloadButton(node, t) {
 
     const onProgress = (event) => {
         const detail = event?.detail || {};
+        // Прогон графа шлёт те же события со своим адресом. Кнопку он не
+        // трогает — её никто не нажимал, — но полосы напротив моделей оживить
+        // обязан: человек смотрит на ноду, а не в консоль.
+        if (detail.operation_id === GRAPH_RUN) {
+            if (detail.stage === "finished") node.__tsFdlList?.finishProgress();
+            else {
+                node.__tsFdlList?.showProgress({
+                    filename: detail.filename || "",
+                    doneBytes: Number(detail.done_bytes || 0),
+                    totalBytes: Number(detail.total_bytes || 0),
+                });
+            }
+            return;
+        }
+
         if (!operationId || detail.operation_id !== operationId) return;
 
         if (detail.stage === "error") {
@@ -1328,6 +1556,9 @@ function attachDownloadButton(node, t) {
         if (detail.stage === "finished") {
             if (detail.status === "cancelled") toast("info", t.downloadCancelled);
             else toast("info", t.downloadDone(detail.success || 0, detail.failed || 0));
+            // Полосы гаснут, а статусы перечитываются с диска: теперь зелёная
+            // точка появляется у того, что действительно докачалось.
+            node.__tsFdlList?.finishProgress();
             reset();
             return;
         }
@@ -1340,6 +1571,13 @@ function attachDownloadButton(node, t) {
         const share = (done + (size > 0 ? Math.min(1, bytes / size) : 0)) / total;
         setLabel(t.downloadProgress(Math.min(done + 1, total), total,
                                     Math.round(share * 100), detail.filename || ""));
+        // Та же цифра — но напротив своей модели: на списке из десяти штук
+        // общий процент не отвечает на вопрос «а эта уже скачалась?».
+        node.__tsFdlList?.showProgress({
+            filename: detail.filename || "",
+            doneBytes: bytes,
+            totalBytes: size,
+        });
     };
 
     api.addEventListener("ts_downloader.run_progress", onProgress);

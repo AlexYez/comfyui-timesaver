@@ -30,6 +30,7 @@ from . import (
     _downloader_jobs,  # noqa: F401
     _downloader_run,  # noqa: F401
     _downloader_search,  # noqa: F401
+    _downloader_status,  # noqa: F401
 )
 
 logger = logging.getLogger("comfyui_timesaver.ts_downloader")
@@ -117,11 +118,17 @@ class _RunProgress:
     _SCALE = 1000
     _MIN_STEP = 0.005  # ~half a percent of one file; the engine throttles too
 
-    def __init__(self, total_files: int, sink=None) -> None:
+    def __init__(self, total_files: int, sink=None, prompt_id: str = "") -> None:
         self._total = max(1, int(total_files))
         self._done = 0
         self._sent = -1.0
-        self._bar = ProgressBar(self._total * self._SCALE) if ProgressBar else None
+        # ⚠️ Полоса заводится ТОЛЬКО внутри прогона графа. Вне его она не просто
+        # бесполезна — она падает: см. _core_progress_usable().
+        self._bar = (
+            ProgressBar(self._total * self._SCALE)
+            if ProgressBar and _core_progress_usable(prompt_id)
+            else None
+        )
         # Второй адресат прогресса — для запуска НЕ из графа (кнопка на ноде).
         # ComfyUI-шная полоса привязана к исполняемой ноде, и вне прогона
         # показывать ей нечего: сообщать о себе приходится самим.
@@ -168,7 +175,40 @@ class _RunProgress:
         if not force and position - self._sent < self._MIN_STEP:
             return
         self._sent = position
-        self._bar.update_absolute(int(position * self._SCALE), self._total * self._SCALE)
+        try:
+            self._bar.update_absolute(int(position * self._SCALE), self._total * self._SCALE)
+        except Exception as exc:            # noqa: BLE001 - см. ниже
+            # ⚠️ Это интерфейс. Он не имеет права оборвать скачивание модели на
+            # десять гигабайт, что бы ни поменялось в ядре: сообщаем один раз и
+            # дальше идём без полосы.
+            logger.debug("%s The core progress bar refused an update (%s); "
+                         "continuing without it.", LOG_PREFIX, exc)
+            self._bar = None
+
+
+def _core_progress_usable(prompt_id: str = "") -> bool:
+    """Есть ли сейчас у штатной полосы ComfyUI к чему прицепиться.
+
+    ⚠️ Вне прогона графа — НЕТ, и это не эстетика, а падение. Хук
+    ``hijack_progress`` (ComfyUI ``main.py``) при отсутствии контекста берёт
+    ``server_instance.last_prompt_id``, а этот атрибут появляется только когда
+    очередь начала выполнять первый граф. Нажатие кнопки на ноде графа не
+    запускает — и в свежей сессии первое же обновление полосы роняло загрузку:
+    ``'PromptServer' object has no attribute 'last_prompt_id'`` (замерено на
+    жалобе пользователя).
+
+    Подменять атрибуты сервера, как это делает TS SAM Media Loader, здесь не
+    нужно: у кнопки есть свой канал прогресса — событие ``run_progress``, из
+    которого живут и надпись на кнопке, и полосы напротив моделей.
+    """
+    if prompt_id:
+        return True
+    try:
+        import server  # noqa: PLC0415 - его нет вне ComfyUI
+
+        return hasattr(server.PromptServer.instance, "last_prompt_id")
+    except Exception:                       # noqa: BLE001 - нет сервера, нет полосы
+        return False
 
 
 class _RunGuard:
@@ -1889,7 +1929,29 @@ class TS_DownloadFilesNode(IO.ComfyNode):
             enable,
             integrity_mode,
             cls._current_prompt_id(),
+            cls._graph_progress_sink(),
         )
+
+    @staticmethod
+    def _graph_progress_sink():
+        """Send the same progress events the node's own button sends.
+
+        Without this the per-model bars only ever moved for a hand-pressed
+        download: the events come from the button's route, and execute() went
+        straight past it. The run is addressed as ``graph`` so the button, which
+        listens for its own operation id, stays out of it.
+        """
+        try:
+            from ._downloader_run import _emit
+        except Exception:                   # noqa: BLE001 - routes may be down
+            return None
+
+        def sink(payload: dict) -> None:
+            stage = "finished" if payload.get("status") == "done" else "progress"
+            _emit({**payload, "operation_id": "graph", "stage": stage},
+                  force=stage == "finished")
+
+        return sink
 
     @staticmethod
     def _current_prompt_id() -> str:
@@ -1937,7 +1999,8 @@ class TS_DownloadFilesNode(IO.ComfyNode):
             # ⚠️ Ранние выходы тоже обязаны отчитаться: без этого кнопка на ноде
             # осталась бы крутиться вечно на пустом или недоступном списке.
             if progress_sink is not None:
-                _RunProgress(1, sink=progress_sink).finished(0, 0, note="empty")
+                _RunProgress(1, sink=progress_sink, prompt_id=prompt_id).finished(
+                    0, 0, note="empty")
             return IO.NodeOutput()
 
         # Offline detection must fail FAST. The download session retries
@@ -1952,7 +2015,8 @@ class TS_DownloadFilesNode(IO.ComfyNode):
         # single request — previously it probed every url just to discover it
         # had nothing to download.
         # One bar for the whole list, from the first file to the last.
-        progress = _RunProgress(len(files_to_download), sink=progress_sink)
+        progress = _RunProgress(len(files_to_download), sink=progress_sink,
+                                prompt_id=prompt_id)
         pending = []
         satisfied = 0
         if skip_existing:
@@ -1976,6 +2040,12 @@ class TS_DownloadFilesNode(IO.ComfyNode):
 
         if not pending:
             logger.info("%s Done. Nothing to fetch: every file is already in place.", LOG_PREFIX)
+            # ⚠️ Отчитаться ОБЯЗАТЕЛЬНО, и именно здесь была дыра: всё
+            # скачано заранее — самый быстрый и самый частый исход, а кнопка
+            # оставалась висеть на 0 %. Промежуточные события тут не спасают:
+            # три файла засчитываются за микросекунды и целиком уходят в троттлинг,
+            # а вот завершающее шлётся всегда (force).
+            progress.finished(satisfied, 0, note="already-present")
             return IO.NodeOutput()
         # Say how much is left and why the node is about to sit there: every one
         # of these costs a round trip to the server before a single byte moves.
