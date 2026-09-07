@@ -58,7 +58,9 @@ import comfy.sd
 import comfy.utils
 import folder_paths
 import latent_preview
-from comfy_api.latest import io
+# ⚠️ Закреплённое пространство, как и весь пак: `latest` — подвижный alias,
+# и нода сломалась бы от чужого обновления ComfyUI (гард — tests/test_static_invariants.py).
+from comfy_api.v0_0_2 import IO as io
 
 try:
     import comfy_extras.nodes_lt as _ltx_nodes

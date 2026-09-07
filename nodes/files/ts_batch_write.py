@@ -172,7 +172,9 @@ class TS_BatchWrite(IO.ComfyNode):
 
     @classmethod
     def execute(
-        cls, text, index, total, mode, output_path, name=None,
+        # ⚠️ Умолчание обязано совпадать со схемой (`default=""`), иначе вызов
+        # мимо ComfyUI — из теста или из чужого кода — получит не то же самое.
+        cls, text, index, total, mode, output_path, name="",
         prefix_with_name=False, image=None,
     ) -> IO.NodeOutput:
         target = _clean_path(output_path)
