@@ -1399,11 +1399,24 @@ function mountActions(node, editor, t) {
         // сохранённые значения от этого не сдвигаются.
         const at = (node.widgets || []).indexOf(source);
         if (at >= 0) node.widgets.splice(at, 1);
-        // Надпись меняет сам загрузчик, показывая ход дела.
-        const observer = setInterval(() => {
-            if (button.textContent !== source.name) button.textContent = source.name;
-        }, 300);
-        button._tsStop = () => clearInterval(observer);
+        // ⚠️ Надпись меняет сам загрузчик, и раньше она снималась опросом раз в
+        // 300 мс — вечный таймер на каждую ноду. Теперь имя виджета отдаёт её
+        // само: присваивание сразу видно, и главный поток не будят впустую.
+        let shown = source.name;
+        try {
+            Object.defineProperty(source, "name", {
+                configurable: true,
+                enumerable: true,
+                get: () => shown,
+                set(next) {
+                    shown = next;
+                    button.textContent = next;
+                },
+            });
+        } catch (error) {
+            console.warn("[TS FilesDownloader] could not watch the button label", error);
+        }
+        button._tsStop = () => {};
         return button;
     };
 

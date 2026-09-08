@@ -1343,7 +1343,10 @@ export function setupAudioLoader(node) {
     };
     const resizeObserver = new ResizeObserver(() => { updateScrollbar(); drawWaveform(); });
     resizeObserver.observe(container);
-    const sourceWidgetPoll = !isPreviewNode ? window.setInterval(() => {
+    // ⚠️ Раньше здесь стоял опрос раз в 300 мс — вечный таймер на каждую ноду.
+    // Теперь значение само сообщает о смене (см. watchSourceWidget ниже), а эта
+    // функция осталась тем, чем была: реакцией на смену пути.
+    const onSourceChanged = () => {
         const nextSourcePath = String(getWidgetValue(node, INPUT_SOURCE_PATH, "") || "");
         if (nextSourcePath === state.sourcePath) return;
         if (!nextSourcePath && state.mode === "record" && state.recordedPath) return;
@@ -1358,7 +1361,43 @@ export function setupAudioLoader(node) {
         }
         syncWidgets();
         fetchMetadata(state.sourcePath);
-    }, 300) : null;
+    };
+
+    /**
+     * Следить за значением виджета, не опрашивая его.
+     *
+     * ⚠️ Слушать только `callback` нельзя: интерфейс зовёт его не всегда —
+     * замерено на TS Video Guide, где адрес, вставленный человеком, до ноды не
+     * доходил вовсе. Поэтому перехватывается само присваивание.
+     */
+    const watchSourceWidget = () => {
+        if (isPreviewNode) return () => {};
+        const widget = getWidget(node, INPUT_SOURCE_PATH);
+        if (!widget) return () => {};
+        let stored = widget.value;
+        try {
+            Object.defineProperty(widget, "value", {
+                configurable: true,
+                enumerable: true,
+                get: () => stored,
+                set(next) {
+                    const changed = next !== stored;
+                    stored = next;
+                    if (changed) onSourceChanged();
+                },
+            });
+        } catch (error) {
+            console.warn("[TS AudioLoader] could not watch the source widget", error);
+            return () => {};
+        }
+        return () => {
+            try {
+                delete widget.value;
+                widget.value = stored;
+            } catch { /* виджет уже унесли вместе с нодой */ }
+        };
+    };
+    const unwatchSourceWidget = watchSourceWidget();
     // ⚠️ Звук дешевле картинки, но у этой ноды есть и ВИДЕО-элемент (файл со
     // звуковой дорожкой открывается как видео), а он декодируется видеокартой —
     // той же, на которой считает ComfyUI. Сторож снимает воспроизведение на
@@ -1368,7 +1407,7 @@ export function setupAudioLoader(node) {
 
     node._tsAudioLoaderCleanup = () => {
         resizeObserver.disconnect();
-        if (sourceWidgetPoll) window.clearInterval(sourceWidgetPoll);
+        unwatchSourceWidget();
         if (state.rafId) { cancelAnimationFrame(state.rafId); state.rafId = 0; }
         clearRecordingObjectUrl();
         [audioEl, videoEl].forEach((media) => { media.pause(); media.removeAttribute("src"); media.load(); });

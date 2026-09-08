@@ -1723,6 +1723,54 @@
       }
     }
   },
+  "TS_Compare": {
+    "api": "v3",
+    "category": "TS/Utils",
+    "class_name": "TS_Compare",
+    "display_name": "TS Compare",
+    "inputs": [
+      {
+        "index": 0,
+        "name": "image_a",
+        "type": "Image"
+      },
+      {
+        "index": 1,
+        "name": "image_b",
+        "type": "Image"
+      },
+      {
+        "index": 2,
+        "name": "fps",
+        "type": "Float"
+      },
+      {
+        "index": 3,
+        "name": "label_a",
+        "type": "String"
+      },
+      {
+        "index": 4,
+        "name": "label_b",
+        "type": "String"
+      }
+    ],
+    "python_file": "nodes/utils/ts_compare.py",
+    "widgets": {
+      "fps": {
+        "default": 24.0,
+        "max": 240.0,
+        "min": 1.0,
+        "step": 0.01
+      },
+      "label_a": {
+        "default": "before"
+      },
+      "label_b": {
+        "default": "after"
+      }
+    }
+  },
   "TS_DLSSUpscaler": {
     "api": "v3",
     "category": "TS/Video",

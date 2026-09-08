@@ -553,7 +553,23 @@ export function createVideoEditor({ api, route, strings, onRangeChange, onViewpo
             viewport.panBy(Math.sign(event.deltaY) * viewport.getViewSeconds() * 0.15);
         }
     };
-    document.addEventListener("wheel", onWheel, { capture: true, passive: false });
+    // ⚠️ Слушатель НЕПАССИВНЫЙ и на документе: пока он висит, браузер обязан
+    // ждать наш код перед КАЖДОЙ прокруткой страницы — а таких нод в графе
+    // может быть несколько. Поэтому он живёт только пока указатель над самим
+    // таймлайном, а не всю жизнь ноды.
+    let wheelBound = false;
+    const bindWheel = () => {
+        if (wheelBound) return;
+        wheelBound = true;
+        document.addEventListener("wheel", onWheel, { capture: true, passive: false });
+    };
+    const unbindWheel = () => {
+        if (!wheelBound) return;
+        wheelBound = false;
+        document.removeEventListener("wheel", onWheel, { capture: true });
+    };
+    timeline.addEventListener("pointerenter", bindWheel);
+    timeline.addEventListener("pointerleave", unbindWheel);
 
     // Скроллбар
     let thumbDrag = null;
@@ -655,7 +671,9 @@ export function createVideoEditor({ api, route, strings, onRangeChange, onViewpo
         },
 
         dispose() {
-            document.removeEventListener("wheel", onWheel, { capture: true });
+            unbindWheel();
+            timeline.removeEventListener("pointerenter", bindWheel);
+            timeline.removeEventListener("pointerleave", unbindWheel);
             playback.dispose();
             strip.dispose();
             peaks.dispose();
