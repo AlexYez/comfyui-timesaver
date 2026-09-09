@@ -45,8 +45,8 @@ class TS_ResolutionSelector(IO.ComfyNode):
                 IO.Float.Input(
                     "resolution",
                     default=1.5,
-                    min=0.5,
-                    max=4.0,
+                    min=0.1,
+                    max=3.0,
                     step=0.1,
                     display_mode=IO.NumberDisplay.slider,
                     tooltip="Target size in megapixels; width and height are derived from it and the aspect ratio.",

@@ -2152,6 +2152,22 @@
         "index": 8,
         "name": "tile_overlap",
         "type": "Int"
+      },
+      {
+        "index": 9,
+        "name": "target_frames",
+        "type": "Int"
+      },
+      {
+        "index": 10,
+        "name": "fill",
+        "type": "Combo"
+      },
+      {
+        "index": 11,
+        "name": "reference",
+        "optional": true,
+        "type": "Image"
       }
     ],
     "outputs": [
@@ -2164,6 +2180,9 @@
     ],
     "python_file": "nodes/video/ts_frame_interpolation.py",
     "widgets": {
+      "fill": {
+        "default": "hold_start"
+      },
       "max_timestep_batch": {
         "default": 8,
         "max": 64,
@@ -2193,6 +2212,12 @@
         "max": 240.0,
         "min": 1.0,
         "step": 0.1
+      },
+      "target_frames": {
+        "default": 0,
+        "max": 100000,
+        "min": 0,
+        "step": 1
       },
       "tile_overlap": {
         "default": 64,
@@ -4648,8 +4673,8 @@
       },
       "resolution": {
         "default": 1.5,
-        "max": 4.0,
-        "min": 0.5,
+        "max": 3.0,
+        "min": 0.1,
         "step": 0.1
       }
     }

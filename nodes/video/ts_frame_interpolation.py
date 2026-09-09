@@ -34,6 +34,14 @@ _SUPPORTED_MODEL_NAMES = [
 ]
 _MODE_SLOWDOWN = "slowdown_x"
 _MODE_FPS = "fps_conversion"
+_MODE_MATCH = "match_length"
+# Where the missing frames go when match_length restores a trimmed clip. The hold
+# variants keep every surviving frame on its original index, so a result that is
+# later laid over the source still matches it frame for frame; stretch trades that
+# alignment for a clip with no frozen frames.
+_FILL_HOLD_START = "hold_start"
+_FILL_HOLD_END = "hold_end"
+_FILL_STRETCH = "stretch"
 _EPSILON = 1e-6
 _DEFAULT_TILE_OVERLAP = 64
 _MIN_TILE_SIZE = 256
@@ -230,6 +238,51 @@ def _load_frame_interpolation_model(model_name: str) -> torch.nn.Module:
     return model
 
 
+def _resolve_target_count(reference: torch.Tensor | None, target_frames: int) -> int:
+    """Resolve how many frames match_length must produce.
+
+    The reference batch wins when both are supplied: it is the length the clip
+    actually had, while the number is a manual fallback for graphs where the
+    original batch is no longer around.
+    """
+    if reference is not None:
+        count = int(reference.shape[0])
+        if count < 1:
+            raise ValueError("reference must contain at least one frame.")
+        return count
+
+    if target_frames > 0:
+        return int(target_frames)
+
+    raise ValueError(
+        "match_length needs a length: connect the original batch to reference, "
+        "or set target_frames to a positive value."
+    )
+
+
+def _pad_to_length(images: torch.Tensor, target_count: int, fill: str) -> torch.Tensor:
+    """Restore an exact frame count by holding one edge, leaving the rest untouched.
+
+    Every surviving frame keeps its distance from the held edge, so a clip trimmed
+    at the head and padded with hold_start lines up with the source again.
+    """
+    frame_count = int(images.shape[0])
+    if target_count == frame_count:
+        return images
+
+    if target_count < frame_count:
+        # Too long: drop from the held edge, so the opposite end stays anchored.
+        excess = frame_count - target_count
+        return images[excess:] if fill == _FILL_HOLD_START else images[:target_count]
+
+    missing = target_count - frame_count
+    edge = images[:1] if fill == _FILL_HOLD_START else images[-1:]
+    # expand() shares storage; cat() below materialises the copy exactly once.
+    padding = edge.expand(missing, *images.shape[1:])
+    parts = (padding, images) if fill == _FILL_HOLD_START else (images, padding)
+    return torch.cat(parts, dim=0)
+
+
 def _resolve_scale(mode: str, slowdown_factor: float, source_fps: float, target_fps: float) -> float:
     """Resolve the requested output cadence relative to the source interval count."""
     if mode == _MODE_SLOWDOWN:
@@ -250,17 +303,28 @@ def _build_schedule(
     slowdown_factor: float,
     source_fps: float,
     target_fps: float,
+    target_count: int | None = None,
 ) -> tuple[int, dict[int, list[tuple[int, float]]], dict[int, int]]:
     """Build per-pair interpolation requests and direct frame copies for the output timeline."""
     if frame_count < 2:
         return frame_count, {}, {index: index for index in range(frame_count)}
 
     pair_count = frame_count - 1
-    scale = _resolve_scale(mode, slowdown_factor, source_fps, target_fps)
-    if math.isclose(scale, 1.0, rel_tol=1e-6, abs_tol=1e-6):
-        return frame_count, {}, {index: index for index in range(frame_count)}
 
-    target_intervals = max(1, int(round(pair_count * scale)))
+    if target_count is not None:
+        # An exact count, not a ratio: deriving intervals from a rounded scale
+        # could land one frame off, and the whole point here is the exact length.
+        if target_count < 2:
+            raise ValueError("match_length with stretch needs at least 2 target frames.")
+        if target_count == frame_count:
+            return frame_count, {}, {index: index for index in range(frame_count)}
+        target_intervals = target_count - 1
+    else:
+        scale = _resolve_scale(mode, slowdown_factor, source_fps, target_fps)
+        if math.isclose(scale, 1.0, rel_tol=1e-6, abs_tol=1e-6):
+            return frame_count, {}, {index: index for index in range(frame_count)}
+        target_intervals = max(1, int(round(pair_count * scale)))
+
     output_count = target_intervals + 1
 
     schedule: dict[int, list[tuple[int, float]]] = {}
@@ -493,9 +557,12 @@ class TS_Frame_Interpolation(IO.ComfyNode):
                 ),
                 IO.Combo.Input(
                     "mode",
-                    options=[_MODE_SLOWDOWN, _MODE_FPS],
+                    options=[_MODE_SLOWDOWN, _MODE_FPS, _MODE_MATCH],
                     default=_MODE_SLOWDOWN,
-                    tooltip="slowdown_x extends the clip length. fps_conversion resamples motion to a target FPS.",
+                    tooltip=(
+                        "slowdown_x extends the clip length. fps_conversion resamples motion to a "
+                        "target FPS. match_length restores an exact frame count after frames were trimmed."
+                    ),
                 ),
                 IO.Float.Input("slowdown_factor", default=2.0, min=1.0, max=16.0, step=0.1, tooltip="Used when mode is slowdown_x."),
                 IO.Float.Input("source_fps", default=24.0, min=1.0, max=240.0, step=0.1, tooltip="Used when mode is fps_conversion."),
@@ -531,6 +598,33 @@ class TS_Frame_Interpolation(IO.ComfyNode):
                     step=16,
                     tooltip="Blend overlap between tiles. Higher values reduce seams but use more compute.",
                 ),
+                # ⚠️ Новые входы дописаны В КОНЕЦ намеренно: widgets_values в
+                # сохранённых воркфлоу позиционные, вставка в середину сдвинула бы
+                # значения у всех существующих графов (§4).
+                IO.Int.Input(
+                    "target_frames",
+                    default=0,
+                    min=0,
+                    max=100000,
+                    step=1,
+                    tooltip="Used when mode is match_length and reference is not connected. 0 = take the length from reference.",
+                ),
+                IO.Combo.Input(
+                    "fill",
+                    options=[_FILL_HOLD_START, _FILL_HOLD_END, _FILL_STRETCH],
+                    default=_FILL_HOLD_START,
+                    tooltip=(
+                        "Used when mode is match_length. hold_start repeats the first frame, hold_end "
+                        "repeats the last one, and both keep the surviving frames on their original "
+                        "indices. stretch resamples the whole clip with the model instead, which is "
+                        "smoother but shifts every frame in time."
+                    ),
+                ),
+                IO.Image.Input(
+                    "reference",
+                    optional=True,
+                    tooltip="Used when mode is match_length: the original batch, read only for its frame count.",
+                ),
             ],
             outputs=[
                 IO.Image.Output(
@@ -552,8 +646,21 @@ class TS_Frame_Interpolation(IO.ComfyNode):
         max_timestep_batch: int,
         tile_size: int,
         tile_overlap: int,
+        target_frames: int = 0,
+        fill: str = _FILL_HOLD_START,
+        reference: torch.Tensor | None = None,
     ) -> IO.NodeOutput:
         """Interpolate a sequence of BHWC frames."""
+        target_count: int | None = None
+        if mode == _MODE_MATCH:
+            target_count = _resolve_target_count(reference, int(target_frames))
+            if fill != _FILL_STRETCH:
+                # Holding an edge is a pure tensor op — no model, no VRAM, no
+                # download — so it must not fall through to the RIFE path below.
+                return IO.NodeOutput(_pad_to_length(images, target_count, fill))
+            if images.shape[0] < 2:
+                raise ValueError("match_length with stretch needs at least 2 input frames.")
+
         if images.shape[0] < 2:
             return IO.NodeOutput(images)
 
@@ -563,6 +670,7 @@ class TS_Frame_Interpolation(IO.ComfyNode):
             slowdown_factor=float(slowdown_factor),
             source_fps=float(source_fps),
             target_fps=float(target_fps),
+            target_count=target_count,
         )
 
         if not schedule and output_count == images.shape[0] and all(exact_frames.get(i) == i for i in range(output_count)):
