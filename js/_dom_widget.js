@@ -176,13 +176,20 @@ function layoutFitScore(node, names, values) {
  * `node._tsWidgetOrder` records the ORIGINAL order captured before the first
  * removal, so a legacy array can be mapped back by name.
  *
- * Telling the two formats apart by LENGTH does not work: LiteGraph pushes a
- * slot for EVERY widget including the node's own DOM widget, so a current save
- * can be exactly as long as a legacy one. Instead both candidate layouts are
- * scored by how well the values fit each widget's declared type, and the array
- * is only remapped when the original layout fits strictly better. A modern
- * workflow always fits its own layout best, so it is never touched; a tie
- * (ambiguous) also leaves the data alone.
+ * Telling the two formats apart by LENGTH does not work, in either direction:
+ *  - LiteGraph pushes a slot for EVERY widget including the node's own DOM
+ *    widget, so a current save can be exactly as long as a legacy one.
+ *  - A legacy array can be SHORTER than the original order: the pack appends
+ *    new inputs at the end of a schema (that is the rule that keeps positional
+ *    saves valid), so a workflow saved before such an addition has one slot
+ *    fewer per added input. TS Files Downloader gained `integrity_mode` that
+ *    way, and every workflow saved before it lost its whole model list to the
+ *    schema default — the node would have downloaded the wrong files.
+ * Instead both candidate layouts are scored by how well the values fit each
+ * widget's declared type, and the array is only remapped when the original
+ * layout fits better. A modern workflow always fits its own layout best, so it
+ * is never touched; a tie (ambiguous) also leaves the data alone. Values past
+ * the end of a short array simply keep the defaults hideWidget seeded.
  *
  * @param {object} node LiteGraph node.
  * @param {object} info Serialized node data passed to onConfigure.
@@ -194,28 +201,26 @@ function restoreLegacyWidgetValues(node, info) {
     const values = info?.widgets_values;
     // Object-keyed saves address widgets by name and cannot shift.
     if (!Array.isArray(values) || !values.length) return;
-    // A legacy array carries a slot for EVERY original widget. Anything shorter
-    // is a current-format save (whose only slots may be the node's own DOM
-    // widget) — remapping that would overwrite values already restored from
-    // node.properties with the DOM widget's empty placeholder.
-    const currentWidgets = node.widgets || [];
-    if (values.length < order.length) return;
-    if (values.length < currentWidgets.length) return;
 
+    const currentWidgets = node.widgets || [];
     const currentNames = currentWidgets.map((w) => w?.name);
     const legacyScore = layoutFitScore(node, order, values);
     const currentScore = layoutFitScore(node, currentNames, values);
 
-    if (values.length === currentWidgets.length) {
-        // Same length: only a strict type-fit win proves this is the old
-        // layout. When the current layout has no scoreable widget at all (every
-        // widget is hidden, so the single slot belongs to the DOM widget) the
-        // comparison is meaningless — leave the data alone, because
-        // node.properties already carries the truth for such saves.
+    if (values.length > currentWidgets.length) {
+        // More slots than the current layout can hold: a legacy save, unless
+        // the values still fit the current layout better.
+        if (legacyScore < currentScore) return;
+    } else {
+        // As long as the current layout or shorter: either a current-format
+        // save (whose slots may include the DOM widget, and whose real values
+        // already sit in node.properties) or a legacy save from before the
+        // schema grew. Only a strict type-fit win proves the old layout. When
+        // the current layout has no scoreable widget at all (every widget is
+        // hidden, so the only slot belongs to the DOM widget) the comparison
+        // is meaningless — leave the data alone.
         const scoreableCurrent = currentWidgets.filter(isSerializableWidget).length;
         if (!scoreableCurrent || legacyScore <= currentScore) return;
-    } else if (legacyScore < currentScore) {
-        return; // more slots than this layout holds, but it still fits better
     }
 
     for (let i = 0; i < values.length; i += 1) {

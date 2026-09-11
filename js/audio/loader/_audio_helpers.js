@@ -333,6 +333,17 @@ export function setupAudioLoader(node) {
         viewStartSeconds: Math.max(0, Number(node.properties?.[PROP_VIEW_START]) || 0),
     };
 
+    // ⚠️ Пока идёт восстановление workflow, присваивание source_path НЕ должно
+    // тянуть за собой сброс режима. Замерено (2026-09-11): миграция старого
+    // графа выставляла mode='record', затем restore source_path будил
+    // onSourceChanged → mode форсился в 'load' и syncWidgets затирал stash и
+    // properties устаревшим состоянием — сохранённый режим пропадал молча.
+    // Флаг держится от создания ноды до конца rehydrate (для загруженного
+    // графа) или до ближайшего кадра (для только что брошенной ноды, где
+    // rehydrate не вызывается). После — onSourceChanged работает как прежде:
+    // выбор файла человеком по-прежнему переводит ноду в 'load'.
+    let restoringWorkflow = true;
+
     const container = document.createElement("div");
     container.className = `${TS_UI_CLASS} ts-audio-loader`;
     const topbar = document.createElement("div");
@@ -1349,6 +1360,10 @@ export function setupAudioLoader(node) {
     const onSourceChanged = () => {
         const nextSourcePath = String(getWidgetValue(node, INPUT_SOURCE_PATH, "") || "");
         if (nextSourcePath === state.sourcePath) return;
+        // Восстановление графа: только запоминаем путь. Режим и остальное
+        // виджеты доводит rehydrate из сохранённых значений — иначе сброс здесь
+        // затрёт восстановленный mode (см. флаг у объявления state).
+        if (restoringWorkflow) { state.sourcePath = nextSourcePath; return; }
         if (!nextSourcePath && state.mode === "record" && state.recordedPath) return;
         if (!nextSourcePath && state.sourcePath) return;
         const isSwap = Boolean(state.sourcePath) && Boolean(nextSourcePath) && nextSourcePath !== state.sourcePath;
@@ -1439,6 +1454,9 @@ export function setupAudioLoader(node) {
             state.mode = restoredMode;
             state.sourcePath = restoredSource;
         }
+        // Значения из графа восстановлены — дальше onSourceChanged работает
+        // как при живом взаимодействии (см. флаг у объявления state).
+        restoringWorkflow = false;
         const restoredCropStart = readPersistedNumber(node, INPUT_CROP_START, state.cropStart);
         const restoredCropEnd = readPersistedNumber(node, INPUT_CROP_END, state.cropEnd);
         state.cropStart = restoredCropStart;
@@ -1467,6 +1485,9 @@ export function setupAudioLoader(node) {
         }
     };
     requestAnimationFrame(() => {
+        // Свеже брошенная нода (без загрузки графа) не получает rehydrate —
+        // снимаем флаг здесь, к первому кадру миграция и configure уже позади.
+        restoringWorkflow = false;
         syncDomSize();
         updateZoomControls();
         updateScrollbar();
