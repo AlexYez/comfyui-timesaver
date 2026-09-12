@@ -49,6 +49,13 @@ class TS_AudioLoader(IO.ComfyNode):
             outputs=[
                 IO.Audio.Output(display_name="audio", tooltip="Decoded audio clip (cropped to the selected range)."),
                 IO.Int.Output(display_name="duration", tooltip="Clip length in whole seconds (rounded up)."),
+                # ⚠️ Дописан В КОНЕЦ намеренно: связи сохранённых графов ссылаются на
+                # выходы ПО ИНДЕКСУ, и слоты 0 и 1 обязаны остаться на своих местах (§4).
+                IO.Float.Output(
+                    display_name="duration_seconds",
+                    tooltip="Exact clip length in seconds. Use this when a frame count must match the audio; "
+                            "the whole-second output above is rounded up and overshoots by up to a second.",
+                ),
             ],
             search_aliases=["audio loader", "audio crop", "record audio", "video audio"],
         )
@@ -87,11 +94,11 @@ class TS_AudioLoader(IO.ComfyNode):
     @classmethod
     def execute(cls, mode: str = "load", source_path: str = "", crop_start_seconds: float = 0.0, crop_end_seconds: float = -1.0) -> IO.NodeOutput:
         if not source_path:
-            return IO.NodeOutput(_empty_audio(), 0)
+            return IO.NodeOutput(_empty_audio(), 0, 0.0)
         normalized = _normalize_selected_path(source_path)
         if not os.path.isfile(normalized):
             _log_warning(f"Selected file is missing: {source_path}")
-            return IO.NodeOutput(_empty_audio(), 0)
+            return IO.NodeOutput(_empty_audio(), 0, 0.0)
         try:
             metadata = _probe_media(normalized)
             start_seconds, end_seconds = _sanitize_crop(metadata.duration_seconds, crop_start_seconds, crop_end_seconds)
@@ -104,10 +111,14 @@ class TS_AudioLoader(IO.ComfyNode):
                 f"range={_seconds_to_hms(start_seconds)}..{_seconds_to_hms(end_seconds)} "
                 f"sample_rate={sample_rate} channels={waveform.shape[0]} samples={waveform.shape[-1]}"
             )
-            return IO.NodeOutput({"waveform": waveform.unsqueeze(0).contiguous(), "sample_rate": sample_rate}, duration_int)
+            return IO.NodeOutput(
+                {"waveform": waveform.unsqueeze(0).contiguous(), "sample_rate": sample_rate},
+                duration_int,
+                float(clip_duration_seconds),
+            )
         except Exception as exc:
             _log_warning(f"Execution fallback activated: {exc}")
-            return IO.NodeOutput(_empty_audio(), 0)
+            return IO.NodeOutput(_empty_audio(), 0, 0.0)
 
 
 

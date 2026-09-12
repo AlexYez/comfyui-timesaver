@@ -218,6 +218,7 @@ class TS_LatentUpscale(IO.ComfyNode):
                 negative=None, cfg=1.0) -> IO.NodeOutput:
         import comfy.model_management
         import comfy.nested_tensor
+        import torch
 
         samples = latent["samples"]
         if not core.is_h3_av_latent(samples):
@@ -304,7 +305,24 @@ class TS_LatentUpscale(IO.ComfyNode):
             if index > 0 and acc_v is not None:
                 cond_i = core.anchor_conditioning(cond_i, acc_v, f0, float(anchor_strength))
 
-            piece = {"samples": comfy.nested_tensor.NestedTensor((chunk_v, chunk_a))}
+            # ⚠️ Аудио на пересэмплинге ЗАКРЕПЛЯЕТСЯ (маска: видео 1, аудио 0).
+            #
+            # Иначе модель денойзит и звук тоже, то есть на каждом шаге видит его
+            # зашумлённым — и видео нечему следовать. Для обычного ролика это
+            # просто лишняя работа: результат по звуку всё равно выбрасывается
+            # (ниже берётся только `out.tensors[0]`, а в `acc_a` копится исходный
+            # `chunk_a`). А для липсинка это прямая потеря синхронизации: губы
+            # уезжают от дорожки ровно на апскейле.
+            #
+            # Тот же приём, что в ноде TS H3 Audio Inject; удержание делает
+            # штатный масочный путь ядра (`sample_piece` отдаёт маску сэмплеру).
+            piece = {
+                "samples": comfy.nested_tensor.NestedTensor((chunk_v, chunk_a)),
+                "noise_mask": comfy.nested_tensor.NestedTensor((
+                    torch.ones_like(chunk_v),
+                    torch.zeros_like(chunk_a),
+                )),
+            }
             out = core.sample_piece(piece, cond_i, model, noise, sampler, sigmas, negative, cfg)
             chunk_out_v = out.tensors[0]
 

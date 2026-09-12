@@ -898,6 +898,12 @@
         "index": 1,
         "name": "duration",
         "type": "Int"
+      },
+      {
+        "display_name": "duration_seconds",
+        "index": 2,
+        "name": "duration_seconds",
+        "type": "Float"
       }
     ],
     "python_file": "nodes/audio/loader/ts_audio_loader.py",
@@ -2293,6 +2299,38 @@
     "class_name": "TS_GroupBypasser",
     "display_name": "TS Group Bypasser",
     "python_file": "nodes/utils/ts_group_bypasser.py"
+  },
+  "TS_H3AudioInject": {
+    "api": "v3",
+    "category": "TS/Video",
+    "class_name": "TS_H3AudioInject",
+    "display_name": "TS H3 Audio Inject",
+    "inputs": [
+      {
+        "index": 0,
+        "name": "latent",
+        "type": "Latent"
+      },
+      {
+        "index": 1,
+        "name": "audio",
+        "type": "Audio"
+      },
+      {
+        "index": 2,
+        "name": "audio_vae",
+        "type": "Vae"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "latent",
+        "index": 0,
+        "name": "latent",
+        "type": "Latent"
+      }
+    ],
+    "python_file": "nodes/video/ts_h3_audio_inject.py"
   },
   "TS_IdeogramDesigner": {
     "api": "v3",

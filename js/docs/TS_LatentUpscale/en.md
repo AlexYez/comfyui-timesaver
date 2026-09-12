@@ -50,6 +50,12 @@ it.
 > own fade and blend settings, and a clip that needs tiling is better served by
 > shorter chunks.
 
+**The soundtrack is pinned while re-sampling.** Every chunk goes to the sampler with a mask
+that holds the audio stream fixed. Without it the model would denoise the audio too — seeing
+it noisy at every step — while the sampled audio is discarded anyway and the original track
+is what comes out. For lip-sync this matters: otherwise the lips drift off the track exactly
+at the upscale.
+
 ---
 
 Full node reference: [README](https://github.com/AlexYez/comfyui-timesaver#-node-reference)

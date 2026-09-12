@@ -481,6 +481,67 @@ Drop-in preview node for image batches. Renders a looping H.265 video right insi
 
 ---
 
+#### TS H3 Audio Inject
+
+Lip-sync for MiniMax H3: the node pins a soundtrack inside the latent, and the
+video has to match it. Use it when a character must speak your exact line — a
+voice-over, a recording, a song.
+
+**Use when:** you need a talking character driven by an existing soundtrack.
+
+**How it works.** H3 denoises video and audio as ONE latent: two parts of the
+same sequence, with attention running between them. The node encodes your track
+with the audio VAE, writes it into the audio part and marks that part as
+preserved. A stock KSampler then holds the audio fixed at every step, and the
+picture has no choice but to agree with it.
+
+Neither the model nor the sampler is patched: the holding is done by ComfyUI's
+own masked-sampling path.
+
+Wiring:
+
+```text
+MiniMaxH3ImageToVideo --> latent --> TS H3 Audio Inject --> KSampler --> VAEDecode
+                                        ^ audio  ^ audio_vae
+```
+
+`audio_vae` is the same audio VAE you decode with. A track shorter than the clip
+is padded with silence, a longer one is trimmed. **The decoded clip carries
+exactly your track** (through the VAE), not something resembling it.
+
+**Choosing the frame count.** H3 only accepts lengths of the form `17n + 5` at 24
+fps. Take the exact track length — the `duration_seconds` output of
+`TS Audio Loader` — and compute:
+
+```text
+max(5, ceil(a * 24 + 0.2)) + (5 - (max(5, ceil(a * 24 + 0.2)) % 17)) % 17
+```
+
+The `+0.2` frame margin is not a guess. Audio runs on its own grid of 40 latent
+frames per second, the slot is `round(frames * 5 / 3)`, and the fractional part of
+that expression is only ever 0, 1/3 or 2/3. So the slot departs from `frames / 24`
+by at most 1/120 s, and 0.2 of a frame covers exactly that. Without the margin the
+end of a phrase is sometimes clipped: sweeping every length from 1 to 10 s in 1 ms
+steps, `round` clipped in 244 cases (up to 29 ms), `ceil` in 32 (up to 8 ms), and
+the margin never did.
+
+**Warning:** do not use the whole-second `duration` output for this. It rounds up,
+so the clip ends up almost a second longer than the speech and the model invents
+that tail for nothing.
+
+**On muxing the original track.** Video and audio lengths match exactly when the
+frame count divides by 3 — 39, 90, 141, 192, 243. Otherwise the track is ±8.33 ms
+(a fifth of a frame) longer or shorter. Chasing that is not worth it: forcing
+divisibility by 3 costs 16 extra frames on average, and the mismatch does **not**
+accumulate — the audio stays real samples, the tempo is untouched, and speech
+starts at zero. Lay the original track at frame 0 and the sync holds to the end.
+
+**Warning:** this is not the stock `Add Guide for MiniMax H3`. That one adds the
+audio as a condition — the model listens to it but still generates its own
+soundtrack. Here the output audio stream itself is replaced.
+
+---
+
 #### TS Frame Interpolation
 <img src="doc/screenshots/ts_frame_interpolation.png" alt="TS Frame Interpolation" width="450" />
 
@@ -614,6 +675,12 @@ it.
 > chunk into tiles; it was dropped along with its input. Tile seams need their
 > own fade and blend settings, and a clip that needs tiling is better served by
 > shorter chunks.
+
+**The soundtrack is pinned while re-sampling.** Every chunk goes to the sampler with a mask
+that holds the audio stream fixed. Without it the model would denoise the audio too — seeing
+it noisy at every step — while the sampled audio is discarded anyway and the original track
+is what comes out. For lip-sync this matters: otherwise the lips drift off the track exactly
+at the upscale.
 
 #### TS Video Cut
 
@@ -891,9 +958,11 @@ Speech-to-text, text-to-speech, music separation, a waveform visualizer, plus a 
 #### TS Audio Loader
 <img src="doc/screenshots/ts_audio_loader.png" alt="TS Audio Loader" width="450" />
 
-The audio loader you'd build yourself if you had time. Loads audio from any media (mp3/wav/mp4/mov/…), shows a real waveform, lets you crop visually by dragging on the waveform, and can even record from the microphone right inside the node. Outputs both the `AUDIO` waveform and a `duration` int.
+The audio loader you'd build yourself if you had time. Loads audio from any media (mp3/wav/mp4/mov/…), shows a real waveform, lets you crop visually by dragging on the waveform, and can even record from the microphone right inside the node. Outputs the `AUDIO` waveform, a whole-second `duration` int and an exact `duration_seconds` float.
 
 **Use when:** preparing voiceovers, music beds, or any audio that needs trimming before processing.
+
+**Warning:** `duration` rounds UP to a whole second. That is fine for display, but if a frame count is computed from it the clip ends up almost a second longer than the speech. Where the length matters, take `duration_seconds` — it reports exactly `samples / sample_rate`.
 
 ---
 
