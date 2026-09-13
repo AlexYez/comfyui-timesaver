@@ -573,12 +573,37 @@ def _resolve_model_path(name):
     )
 
 
+#: Разрешение читать `.ckpt`/`.pt` СТАРЫМ способом, с исполнением кода.
+#: Живёт в окружении, а не в виджете: имя файла выбирают из папки моделей, а
+#: вот решение «я доверяю этому файлу» принимает хозяин машины.
+_TRUST_PICKLE_ENV = "TS_LATENT_UPSCALE_TRUST_PICKLE"
+
+
 def _load_raw_sd(path):
     if path.endswith('.safetensors'):
         from safetensors.torch import load_file
         sd = load_file(path, device='cpu')
     else:
-        sd = torch.load(path, map_location='cpu', weights_only=False)
+        # ⚠️ Нестрогое чтение — это «выполни код, лежащий внутри файла».
+        # Формат .pt/.ckpt устроен на pickle: распаковка МОЖЕТ запускать
+        # произвольный код, и чекпойнт, скачанный с форума, тем и опасен.
+        # Строгий режим читает только тензоры; он же — умолчание с torch 2.6.
+        try:
+            sd = torch.load(path, map_location='cpu', weights_only=True)
+        except Exception as error:          # noqa: BLE001 - причин много, ответ один
+            if str(os.environ.get(_TRUST_PICKLE_ENV, "")).strip().lower() not in {
+                    "1", "true", "yes", "on"}:
+                raise RuntimeError(
+                    f"[TS Latent Upscale] '{os.path.basename(path)}' cannot be read without "
+                    f"running code from inside it ({type(error).__name__}: {error}). "
+                    f"Convert it to .safetensors, or set {_TRUST_PICKLE_ENV}=1 on this "
+                    f"machine if you trust this exact file."
+                ) from error
+            logger.warning(
+                "[TS Latent Upscale] Reading %s the old way: %s is set, so code inside "
+                "the file may run.", os.path.basename(path), _TRUST_PICKLE_ENV,
+            )
+            sd = torch.load(path, map_location='cpu', weights_only=False)
     if isinstance(sd, dict) and 'model' in sd:
         sd = sd['model']
     sd = {k: v.to(torch.float16) if v.dtype == torch.float8_e4m3fn else v

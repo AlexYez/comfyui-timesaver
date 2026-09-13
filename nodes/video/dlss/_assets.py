@@ -66,17 +66,29 @@ REQUIRED = (
     "dlss/nvngx_dlss.dll",
 )
 
-# ⚠️ A hash mismatch WARNS and does not refuse: upstream rebuilds the release
-# now and then, and refusing would turn a working machine into a broken one for
-# a reason the user cannot fix. The worker itself is not pinned at all (its
-# build varies); it is only checked for being a plausible size.
+# ⚠️ Несовпадение суммы ОСТАНАВЛИВАЕТ работу, и это изменение против прежнего
+# поведения. Раньше проверка только предупреждала — «апстрим пересобирает
+# релиз, отказ сломал бы рабочую машину», — но у файла, который мы ЗАПУСКАЕМ
+# как отдельный процесс, цена ошибки другая: `v5.0` на GitHub можно удалить и
+# залить под тем же тегом что угодно, адрес этого не заметит. Пересборка
+# апстрима лечится обновлением таблицы (или выключателем ниже); подменённый
+# бинарник не лечится ничем.
+#
+# ⚠️ `host/nvngx.dll` — ТОТ САМЫЙ исполняемый файл, который запускает
+# `_session.py`, и до 14.09.2026 он единственный не имел суммы вовсе. Проверки
+# «больше мегабайта» не было достаточно и по другой причине: настоящий worker
+# весит 80 КБ, то есть эвристика ложно срабатывала на исправной установке.
 SHA256 = {
     "host/dxgi.dll": "0CEE63F9C9F13F3AC909C5B4903F4DBB4B719A7AB3B4F13B0DEAF83C814B94F7",
     "host/renodx-dlss5.addon64": "D5ADF82EB44B065F4C590AC91FE824BAB07AFEA0EB9F994BDE936710C8593952",
     "host/nvngx_dlssnr.dll": "6EB209E764F39872625DEBD6ABAF45E2BB6322F6F270F781F70C059AE30B3927",
     "dlss/nvngx_dlss.dll": "C85F971CE023C9F3492FC7455F0B01A24BA18EA39636407A846902C4360B0B7E",
+    "host/nvngx.dll": "58191F4D38288C6BFBDA47EF56911D32052A9789E65714F4583F426E01464638",
 }
-MIN_WORKER_BYTES = 1024 * 1024
+
+#: Выключатель проверки — для того, кто СОЗНАТЕЛЬНО поставил другую сборку
+#: рантайма (апстрим выпускает их часто). Живёт в окружении, а не в графе.
+_SKIP_VERIFY_ENV = "TS_DLSS_SKIP_VERIFY"
 
 #: Whose the files are. Printed before the download, and kept next to the
 #: binaries as the licence texts the archive carries.
@@ -183,14 +195,42 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest().upper()
 
 
+def verify_is_off() -> bool:
+    """Отключил ли хозяин машины сверку сумм."""
+    return str(os.environ.get(_SKIP_VERIFY_ENV, "")).strip().lower() in {
+        "1", "true", "yes", "on",
+    }
+
+
+def require_known_runtime(root: Path) -> None:
+    """Отказать, если на диске лежит не то, что мы закрепили.
+
+    ⚠️ Зовётся ПЕРЕД запуском worker'а, а не только после скачивания: файлы
+    могли смениться между установкой и прогоном, а запускаем мы их каждый раз.
+
+    Args:
+        root: корень рантайма (``models/DLSS``).
+
+    Raises:
+        RuntimeError: файл есть, но его сумма не та, что закреплена здесь.
+    """
+    if verify_is_off():
+        return
+    problems = verify(root)
+    if not problems:
+        return
+    raise RuntimeError(
+        f"{LOG_PREFIX} The DLSS runtime on disk is not the build this node pins:\n  "
+        + "\n  ".join(problems)
+        + f"\n  This node STARTS host/nvngx.dll as a process, so it refuses to run an "
+        f"unknown build. Delete {root} and let the node fetch it again, or set "
+        f"{_SKIP_VERIFY_ENV}=1 if you installed a different build on purpose."
+    )
+
+
 def verify(root: Path) -> list[str]:
-    """Warnings about files that are present but not what we expected."""
+    """Файлы, которые на месте, но не те, что мы закрепили."""
     warnings: list[str] = []
-    worker = root / "host/nvngx.dll"
-    if worker.is_file() and worker.stat().st_size < MIN_WORKER_BYTES:
-        warnings.append(
-            f"host/nvngx.dll is only {worker.stat().st_size} bytes — that is not the worker."
-        )
     for name, expected in SHA256.items():
         path = root / name
         if not path.is_file():
@@ -287,8 +327,9 @@ def download_runtime(
             f"{LOG_PREFIX} The runtime is still incomplete after the download: "
             + ", ".join(still_missing)
         )
-    for warning in verify(base):
-        logger.warning("%s %s", LOG_PREFIX, warning)
+    # ⚠️ Свежескачанное проверяется СРАЗУ: если по тому адресу лежит уже не та
+    # сборка, узнать об этом надо здесь, а не в момент запуска процесса.
+    require_known_runtime(base)
     return base
 
 
@@ -304,6 +345,9 @@ def ensure_runtime(
     root = runtime_root()
     gaps = missing_files(root)
     if not gaps:
+        # ⚠️ Проверяется КАЖДЫЙ прогон, а не только свежая установка: файлы на
+        # диске могли смениться после неё, а процесс мы запускаем заново.
+        require_known_runtime(root)
         return root
     if not download_if_missing:
         raise RuntimeError(

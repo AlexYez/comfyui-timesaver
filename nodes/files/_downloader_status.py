@@ -69,8 +69,9 @@ def _entry_status(node, url: str, directory: str, meta_cache: dict) -> dict:
     """Состояние одной строки списка. Ни одного сетевого запроса.
 
     ⚠️ `directory` приходит УЖЕ разрешённой: её вернул `_parse_file_list`,
-    который сам зовёт `_resolve_target_directory`. Разрешать второй раз — это
-    прогонять через проверку путей то, что её уже прошло.
+    который здесь зовут с `from_route=True`, то есть строгим разбором для
+    сетевых запросов. Разрешать второй раз — это прогонять через проверку
+    путей то, что её уже прошло.
     """
     resolved = str(directory or "")
     if not resolved:
@@ -143,7 +144,12 @@ async def status_route(request):
                 results.append({"line": index, "status": "skip"})
                 continue
 
-            parsed = Node._parse_file_list(line)
+            # ⚠️ `from_route=True`: маршрут читает диск по пути из ТЕЛА
+            # ЗАПРОСА, а прислать его может любая вкладка браузера. Без
+            # строгого разбора этим можно было проверять наличие файла где
+            # угодно внутри ComfyUI — тихая, но настоящая разведка. Папка, до
+            # которой сетевому запросу дела нет, честно отвечает `unknown`.
+            parsed = Node._parse_file_list(line, from_route=True)
             if not parsed:
                 results.append({"line": index, "status": "unknown", "reason": "parse"})
                 continue

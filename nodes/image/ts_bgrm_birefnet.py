@@ -17,7 +17,10 @@ from comfy.utils import ProgressBar
 from comfy_api.v0_0_2 import IO
 from PIL import Image, ImageFilter
 
-from .._hf_download import pinned_revision, snapshot_download_resilient
+# ⚠️ `require_pinned_revision`, а не `pinned_revision`: из этих репозиториев
+# пак ИСПОЛНЯЕТ код (`birefnet.py` идёт через `exec_module` ниже), и «возьмём
+# main, что бы там сегодня ни лежало» для такого случая не ответ.
+from .._hf_download import require_pinned_revision, snapshot_download_resilient
 from .._shared import raise_if_interrupted
 
 # Shared with ts_matting_vitmatte. Imported (not defined) here, and re-exported
@@ -553,7 +556,7 @@ class BiRefNetModel:
                     snapshot_download_resilient(
                         repo_id=primary_repo,
                         local_dir=cache_dir,
-                        revision=pinned_revision(primary_repo),
+                        revision=require_pinned_revision(primary_repo),
                         allow_patterns=primary_patterns,
                         log=logger,
                         log_prefix=_LOG_PREFIX,
@@ -586,7 +589,7 @@ class BiRefNetModel:
                 snapshot_download_resilient(
                     repo_id=fallback_repo,
                     local_dir=cache_dir,
-                    revision=pinned_revision(fallback_repo),
+                    revision=require_pinned_revision(fallback_repo),
                     allow_patterns=[
                         fallback_filename,
                         "birefnet.py",

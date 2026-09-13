@@ -123,6 +123,11 @@ const STRINGS = {
         downloadEmpty: "The list is empty — nothing to download.",
         downloadBusy: "A download is already running.",
         downloadFailed: "Download failed — see the console.",
+        // ⚠️ Своё сообщение, а не общее «не удалось»: строка отвергнута ДО
+        // начала загрузки, и человеку надо знать какая и почему, иначе кнопка
+        // выглядит сломанной.
+        downloadRefused: (lines) => `Line ${lines}: the button downloads into `
+            + `model folders only. Run the node in the graph for other folders.`,
         downloadCancel: "Cancel the download",
         downloadDone: (ok, failed) => (failed
             ? `Downloaded ${ok}, failed ${failed}`
@@ -206,6 +211,8 @@ const STRINGS = {
         downloadEmpty: "Список пуст — скачивать нечего.",
         downloadBusy: "Загрузка уже идёт.",
         downloadFailed: "Загрузка не удалась — смотрите консоль.",
+        downloadRefused: (lines) => `Строка ${lines}: кнопка качает только в `
+            + `модельные папки. Для других папок запустите ноду в графе.`,
         downloadCancel: "Отменить загрузку",
         downloadDone: (ok, failed) => (failed
             ? `Скачано ${ok}, не удалось ${failed}`
@@ -1516,6 +1523,14 @@ function attachDownloadButton(node, t) {
             const answer = await response.json().catch(() => ({}));
             if (response.status === 409) {
                 toast("info", t.downloadBusy);
+                reset();
+                return;
+            }
+            if (Array.isArray(answer?.rejected) && answer.rejected.length) {
+                // Папка вне моделей: отказ пришёл ДО первого байта, и список
+                // не тронут. Называем строки — иначе кнопка молча «не работает».
+                const lines = answer.rejected.map((item) => item?.line).filter(Boolean).join(", ");
+                toast("error", t.downloadRefused(lines));
                 reset();
                 return;
             }

@@ -97,6 +97,10 @@ def _outside_allowed_roots(request) -> bool:
     path = resolve_media_path(raw)
     if not path:
         return False
+    # ⚠️ «Кто прислал запрос» здесь больше не спрашивают: это делает общий
+    # регистратор маршрутов (`_shared.guard_cross_site`) — одно место на пак,
+    # мимо которого не пройдёт и новый маршрут. Здесь остаётся вопрос «что
+    # именно отдаём».
     if http_path_allowed(path):
         return False
     logger.info(

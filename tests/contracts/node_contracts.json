@@ -1869,7 +1869,7 @@
         "default": "M"
       },
       "download_if_missing": {
-        "default": true
+        "default": false
       },
       "local_structure_strength": {
         "default": 1.0,

@@ -18,6 +18,8 @@ Footage arrives by **drag and drop** — from the file manager, from the Artius 
 
 > **A path anywhere on the machine — and what happens when the server is not yours alone.** Running ComfyUI the usual way, on `127.0.0.1`, the node and its preview read **any path you give them**: Documents, Desktop, another drive. Nothing is copied into `input`, which is the whole point — that folder grows without end otherwise.
 > If ComfyUI is started open to a network (`--listen 0.0.0.0`, a LAN box, a cloud machine), the preview is served over HTTP to whoever can reach that port, so it then stays inside your home folder and ComfyUI's own directories. Add more with `TS_MEDIA_EXTRA_ROOTS=D:/footage` (several separated by your OS path separator), or lift the limit with `TS_MEDIA_ALLOW_ANY_PATH=1`. Both are set on the machine by its owner — not inside a workflow, which can arrive from anyone.
+>
+> Two limits hold regardless of those settings, and neither touches the path you type. A preview route only ever serves **media** — video, audio, images, subtitles — so no setting turns it into a way to read `id_rsa` or a password database. And it only answers **its own page**: a request arriving from another site open in your browser is refused, because ComfyUI itself has no protection against that and a page you did not open should not be able to read your disk through it.
 
 **Use when:** any workflow that starts from footage rather than from a still.
 

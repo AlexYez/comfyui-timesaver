@@ -168,6 +168,37 @@ def pinned_revision(repo_id: str, default: str = "main") -> str:
     return default
 
 
+def require_pinned_revision(repo_id: str) -> str:
+    """Коммит закреплённого репозитория — или отказ.
+
+    ⚠️ Для репозиториев, ИЗ КОТОРЫХ ПАК ИСПОЛНЯЕТ КОД, «возьмём main» —
+    неприемлемый ответ: `main` завтра указывает на другой коммит, а
+    `exec_module` выполнит то, что там окажется, в процессе ComfyUI. Реестр
+    назвал это `policy-v0.4: CODE_EXECUTION`, и назвал справедливо.
+
+    Закрепление на полный коммит и есть гарантия: Hugging Face адресует
+    содержимое по хешу, переписать коммит нельзя, а `snapshot_download`
+    проверяет целостность доехавшего файла.
+
+    Args:
+        repo_id: репозиторий модели.
+
+    Returns:
+        Коммит, на котором он закреплён.
+
+    Raises:
+        RuntimeError: репозитория нет в ``PINNED_REVISIONS``.
+    """
+    revision = PINNED_REVISIONS.get(str(repo_id or ""))
+    if not revision:
+        raise RuntimeError(
+            f"[TS HF] Refusing to run code from '{repo_id}': the repository is not pinned "
+            f"to a commit in nodes/_hf_download.py (PINNED_REVISIONS). Pin it to the commit "
+            f"you reviewed, then try again."
+        )
+    return revision
+
+
 def snapshot_download_resilient(
     repo_id: str,
     local_dir: str,

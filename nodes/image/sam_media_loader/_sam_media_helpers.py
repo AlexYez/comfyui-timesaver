@@ -124,14 +124,13 @@ def _allowed_view_roots() -> tuple[Path, ...]:
     return tuple(roots)
 
 
+# ⚠️ Здесь лежали ДВА определения `_is_inside_allowed_root` подряд: первое
+# звало общую политику пака, второе — только корни этой ноды. Работало,
+# разумеется, второе, а первое читалось как действующее правило и вводило в
+# заблуждение. Оставлено то, что и так работало: у загрузчика SAM правило
+# строже общего, и ослаблять его ради единообразия незачем.
 def _is_inside_allowed_root(path: Path) -> bool:
-    """Единая политика пака (см. ``nodes/_shared.media_path_allowed``)."""
-    from ..._shared import media_path_allowed
-
-    return media_path_allowed(path, [str(r) for r in _allowed_view_roots()])
-
-
-def _is_inside_allowed_root(path: Path) -> bool:
+    """Только собственные корни ноды — строже общей политики пака."""
     try:
         resolved = path.resolve(strict=False)
     except OSError:

@@ -441,6 +441,8 @@ Footage arrives by **drag and drop** — from the file manager, from the Artius 
 
 > **A path anywhere on the machine — and what happens when the server is not yours alone.** Running ComfyUI the usual way, on `127.0.0.1`, the node and its preview read **any path you give them**: Documents, Desktop, another drive. Nothing is copied into `input`, which is the whole point — that folder grows without end otherwise.
 > If ComfyUI is started open to a network (`--listen 0.0.0.0`, a LAN box, a cloud machine), the preview is served over HTTP to whoever can reach that port, so it then stays inside your home folder and ComfyUI's own directories. Add more with `TS_MEDIA_EXTRA_ROOTS=D:/footage` (several separated by your OS path separator), or lift the limit with `TS_MEDIA_ALLOW_ANY_PATH=1`. Both are set on the machine by its owner — not inside a workflow, which can arrive from anyone.
+>
+> Two limits hold regardless of those settings, and neither touches the path you type. A preview route only ever serves **media** — video, audio, images, subtitles — so no setting turns it into a way to read `id_rsa` or a password database. And it only answers **its own page**: a request arriving from another site open in your browser is refused, because ComfyUI itself has no protection against that and a page you did not open should not be able to read your disk through it.
 
 **Use when:** any workflow that starts from footage rather than from a still.
 
@@ -604,7 +606,9 @@ faster frame source would not make it quicker.
 
 Upscale a picture — or a whole video batch — with **NVIDIA DLSS 5 Neural Rendering**: the same feature games use, running here on your frames. `IMAGE` in, `IMAGE` out, so a single still and a batch of decoded video frames both go straight in.
 
-**It brings its own runtime.** On the first run the node downloads the NVIDIA/ReShade files it needs (~481 MB, once) into `models/DLSS` and lays them out the way the runtime expects — the download has a progress bar, and so does the processing that follows. Nothing is bundled with the pack: those binaries are NVIDIA's and RenoDX's, and their licence texts are saved next to them. A file deleted later is fetched again on the next run; `download_if_missing` turns the fetching off if you would rather place them by hand.
+**It brings its own runtime — but only once you ask it to.** `download_if_missing` is **off by default**: fetching ~481 MB of someone else's files and starting someone else's program is not something that should happen merely because you opened a workflow and pressed Run. Switch it on once and the NVIDIA/ReShade files land in `models/DLSS`, laid out the way the runtime expects — the download has a progress bar, and so does the processing that follows. Nothing is bundled with the pack: those binaries are NVIDIA's and RenoDX's, and their licence texts are saved next to them. A file deleted later is fetched again on the next run.
+
+**Every runtime file is checked against its hash, and a mismatch stops the node.** It does not merely read these files — it **runs** `host/nvngx.dll` as a process, so "upstream probably rebuilt something" is not an acceptable answer here: a GitHub release can be deleted and re-uploaded at the same address. If you installed a different build on purpose, tell the machine so with `TS_DLSS_SKIP_VERIFY=1`; the variable lives outside the workflow.
 
 **Five modes, and 1× is not a no-op.** `2× (Performance)` is the default; `1.5×`, `1.724×` and `3×` change how much is invented. `1× (DLAA)` does not resize at all — the network re-renders the picture at its own size, which is the cleanest thing this feature does to footage that is already big enough. The output is capped at 7680×4320, and asking for more names the largest factor that fits instead of failing vaguely.
 
@@ -647,6 +651,8 @@ and shows `subfolder/file.safetensors`, every folder declared in
 `extra_model_paths.yaml` is searched, and a name that tries to climb out of its
 folder is refused. Picking an upscaler from another model family now explains
 itself instead of failing with `Missing key(s) in state_dict`.
+
+**A checkpoint is read without running code from inside it.** The `.ckpt`/`.pt` format is built on pickle, and unpacking such a file **can execute arbitrary code** — which is exactly what makes a checkpoint downloaded from a forum dangerous. The node reads tensors only. If your checkpoint cannot be read that way, convert it to `.safetensors`, or set `TS_LATENT_UPSCALE_TRUST_PICKLE=1` on the machine if you trust that particular file. The variable lives outside the workflow: a workflow can arrive from anyone, the variable is set by whoever owns the machine.
 
 **Precision has a safe fallback, and fp16 is not the poor relation.** Measured
 against fp32 on the H3 checkpoint: fp16 deviates by 0.38% of the range, bf16 by
@@ -1372,7 +1378,11 @@ The folder it proposes is the one your models of that category are **already in*
 
 **Use when:** distributing a workflow that needs N specific models — open it, press the button, and the node is filled in.
 
-> **Network behaviour (for security review):** the node issues standard HTTPS `HEAD`/`GET` requests **only** to the URLs you type into `file_list`, identifying itself with an honest `comfyui-timesaver/<version>` User-Agent. It does **not** execute, import, or run anything it downloads — files are written to disk only. There are no hardcoded callback/telemetry endpoints. Optional `hf_token` / `modelscope_token` are sent as an `Authorization` header **only** to their matching host (HuggingFace / ModelScope respectively) and are never logged or forwarded elsewhere. Auto-unzip is validated against zip-slip path traversal before extraction.
+> **Network behaviour (for security review):** the node issues standard HTTPS `HEAD`/`GET` requests **only** to the URLs you type into `file_list`, identifying itself with an honest `comfyui-timesaver/<version>` User-Agent. It does **not** execute, import, or run anything it downloads — files are written to disk only. There are no hardcoded callback/telemetry endpoints. Optional `hf_token` / `modelscope_token` are sent as an `Authorization` header **only** to their matching host (HuggingFace / ModelScope respectively) and are never logged or forwarded elsewhere. Auto-unzip is validated against zip-slip path traversal before extraction, and refuses members with executable names.
+>
+> **Where files may land.** Typed into the node and run from the graph, `file_list` accepts registered model folders and — with `TS_DOWNLOADER_ALLOW_EXTERNAL=1` set on the machine — absolute paths. The **Download now** button is stricter, because its HTTP route can be reached by any page open in your browser rather than only by the button: over the wire the target must be a model folder (or any folder inside `models/`), and a line naming anything else is refused **before a single byte moves**, with the line number reported. `custom_nodes` is never a valid target by any route.
+>
+> The same split applies to the **address**. In the graph you may point at anything, your own NAS at `192.168.1.50` included. Started from the button, a line may only name a public address: `127.0.0.1`, the local network and `169.254.169.254` are refused, and a redirect that turns towards them mid-download ends the transfer. Otherwise a page open in another tab could use your ComfyUI to knock on doors inside your network that its own browser cannot reach.
 
 ---
 

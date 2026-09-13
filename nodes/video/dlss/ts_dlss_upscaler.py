@@ -139,14 +139,22 @@ class TS_DLSSUpscaler(IO.ComfyNode):
                         "reach the network as detail instead of steps."
                     ),
                 ),
+                # ⚠️ Умолчание OFF, и это изменение против прежнего поведения.
+                # Пока здесь стояло True, согласие на скачивание полугигабайта
+                # чужих проприетарных файлов И на запуск чужого исполняемого
+                # файла давало значение виджета по умолчанию — то есть граф,
+                # приехавший от кого угодно, а не человек за машиной.
+                # Сохранённые workflow это не задевает: своё значение они несут
+                # в `widgets_values` и открываются как раньше.
                 IO.Boolean.Input(
                     "download_if_missing",
-                    default=True,
+                    default=False,
                     tooltip=(
                         "Fetch the runtime into models/DLSS when it is not there "
-                        "(~481 MB, once). This is your agreement to download third-party "
-                        "components — NVIDIA (proprietary), ReShade (BSD-3), RenoDX — from "
-                        "the upstream project. This pack hosts none of them. Off, the node "
+                        "(~481 MB, once). Switching this ON is your agreement to download "
+                        "third-party components — NVIDIA (proprietary), ReShade (BSD-3), "
+                        "RenoDX — from the upstream project and to run its executable. "
+                        "This pack hosts none of them. Off (the default), the node "
                         "downloads nothing and you place the files yourself."
                     ),
                 ),

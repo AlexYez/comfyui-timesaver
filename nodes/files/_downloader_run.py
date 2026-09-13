@@ -1,10 +1,17 @@
 """Запуск загрузчика КНОПКОЙ, без прогона графа.
 
 Зачем отдельный маршрут, когда рядом уже есть ``/ts_downloader/fetch``: тот
-принимает по одной модели и с прибитыми настройками — без токенов, без зеркал,
-со строгой проверкой «папка обязана быть зарегистрированной». Он писан под
-студию. Кнопке на ноде нужно ровно то, что делает сама нода: её список, её
-токены, её зеркала, её распаковка.
+принимает по одной модели и с прибитыми настройками — без токенов, без зеркал.
+Он писан под студию. Кнопке на ноде нужно ровно то, что делает сама нода: её
+список, её токены, её зеркала, её распаковка.
+
+⚠️ А вот в проверке папки назначения оба маршрута одинаково строги, и это не
+избыточность. POST на ``127.0.0.1:8188`` может отправить любая открытая в
+браузере вкладка — своей защиты от подделки запроса у ComfyUI нет, — поэтому
+по сети папка либо модельная, либо лежит внутри ``models/``. Всё прочее (в том
+числе абсолютные пути, которые сама нода в графе принимает) требует
+``TS_DOWNLOADER_ALLOW_EXTERNAL=1``: решения, принятого хозяином машины снаружи
+браузера. Разбор один — ``TS_DownloadFilesNode.resolve_route_target_directory``.
 
     POST /ts_downloader/run     {file_list, ...виджеты..., operation_id} -> {ok}
     POST /ts_downloader/run_cancel {operation_id}
@@ -96,6 +103,11 @@ def _run_blocking(body: dict, operation_id: str) -> dict:
         str(body.get("integrity_mode") or "hf_sha256_auto"),
         "",                                 # prompt_id: прогона графа здесь нет
         sink,
+        # ⚠️ Список приехал по сети — папки судятся строгим разбором, тем же,
+        # что стоит на `/ts_downloader/fetch`. Маршрут это уже проверил и
+        # отказал бы; здесь оно повторяется потому, что писать обязан тот же
+        # разбор, который проверял, а не его двойник.
+        from_route=True,
     )
     return {"ok": True}
 
@@ -128,8 +140,30 @@ async def run_route(request):
     except Exception:                       # noqa: BLE001 - кривое тело
         return web.json_response({"error": "Expected a JSON body."}, status=400)
 
-    if not str(body.get("file_list") or "").strip():
+    file_list = str(body.get("file_list") or "")
+    if not file_list.strip():
         return web.json_response({"error": "The list is empty."}, status=400)
+
+    # ⚠️ Папки проверяются ДО старта и отказ — на весь список. Половина
+    # скачанного и «а вот эту строку я пропустил» — худший из ответов: человек
+    # видит зелёную полосу и не знает, что часть задач молча выпала. Разбор —
+    # строгий (`from_route=True`), потому что POST сюда может прислать любая
+    # открытая в браузере вкладка, а не только кнопка на ноде.
+    from .ts_downloader import TS_DownloadFilesNode as _Node
+
+    rejected: list[dict] = []
+    accepted = _Node._parse_file_list(file_list, from_route=True, rejected=rejected)
+    if rejected:
+        return web.json_response(
+            {"error": "Some lines name a folder this route does not accept. "
+                      "Downloads started from the browser go into model folders "
+                      "only.",
+             "rejected": rejected},
+            status=400,
+        )
+    if not accepted:
+        return web.json_response(
+            {"error": "Nothing in the list can be downloaded."}, status=400)
 
     operation_id = str(body.get("operation_id") or uuid.uuid4().hex)
     with _guard:

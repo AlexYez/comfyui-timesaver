@@ -827,10 +827,40 @@ def register_routes() -> None:
         instance = PromptServer.instance
         if instance is None:
             raise RuntimeError("PromptServer.instance is None")
-        routes = instance.routes
+        raw_routes = instance.routes
     except Exception as exc:  # noqa: BLE001
         ts_logger.warning("%s API routes disabled: %s", LOG_PREFIX, exc)
         return
+
+    # ⚠️ Эти маршруты регистрируются напрямую, а не общим регистратором пака
+    # (`_shared.make_route_registrars`), поэтому проверку «кто прислал запрос»
+    # надо навесить здесь руками. Без неё чужая вкладка, открытая в браузере,
+    # сохраняет и удаляет дизайны: ответ она не прочитает, а действие
+    # произойдёт.
+    from .._shared import guard_cross_site  # noqa: PLC0415
+
+    class _GuardedRoutes:
+        """Тонкая обёртка: та же запись `@routes.get(...)`, но с проверкой."""
+
+        def __init__(self, inner):
+            self._inner = inner
+
+        def _wrap(self, method_name: str):
+            def register(path: str):
+                def decorator(func):
+                    guarded = guard_cross_site(func, path)
+                    getattr(self._inner, method_name)(path)(guarded)
+                    return guarded
+                return decorator
+            return register
+
+        def get(self, path: str):
+            return self._wrap("get")(path)
+
+        def post(self, path: str):
+            return self._wrap("post")(path)
+
+    routes = _GuardedRoutes(raw_routes)
 
     _ROUTES_REGISTERED = True
 

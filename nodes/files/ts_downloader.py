@@ -23,6 +23,9 @@ except ImportError:
 
 from comfy_api.v0_0_2 import IO
 
+# Одно правило на весь пак: куда паку разрешено ходить по запросу из браузера.
+from .._shared import url_target_is_public
+
 # Registered at import time: hf_search serves the scan report's "no download
 # link" column; jobs serves the studio's fetch/cancel/jobs progress routes;
 # run serves the node's own "download now" button.
@@ -432,7 +435,18 @@ class TS_DownloadFilesNode(IO.ComfyNode):
         )
 
     @staticmethod
-    def _create_session_with_retries(proxy_url=None, total_retries=3):
+    def _create_session_with_retries(proxy_url=None, total_retries=3, *, guard_public=False):
+        """Сессия загрузчика.
+
+        Args:
+            proxy_url: прокси, если он задан.
+            total_retries: сколько раз повторять; 0 — падать сразу.
+            guard_public: запрос начат ПО СЕТИ, а не человеком за машиной —
+                тогда цепочка редиректов не вправе увести внутрь этой машины
+                или её локальной сети. Без этого адрес вроде
+                ``https://example.com/x`` с ответом ``302 -> http://127.0.0.1``
+                обходил бы проверку исходного адреса целиком.
+        """
         session = requests.Session()
         if total_retries and total_retries > 0:
             retries = Retry(
@@ -470,6 +484,37 @@ class TS_DownloadFilesNode(IO.ComfyNode):
                 'http': proxy_url.strip(),
                 'https': proxy_url.strip(),
             }
+
+        if guard_public:
+            via_proxy = bool(proxy_url and proxy_url.strip())
+
+            def _refuse_private_redirect(response, *args, **kwargs):
+                """Оборвать цепочку, если она поворачивает внутрь сети.
+
+                ⚠️ Крючок ``response`` зовётся на КАЖДЫЙ ответ цепочки, включая
+                промежуточные 3xx, и делает это ДО того, как requests пойдёт по
+                ``Location``. Это единственное место, где перехват ещё имеет
+                смысл: проверять после — значит проверять уже сделанный запрос.
+                """
+                location = response.headers.get("Location") if response is not None else None
+                if not location:
+                    return response
+                try:
+                    from urllib.parse import urljoin
+
+                    target = urljoin(str(response.url or ""), str(location))
+                except Exception:           # noqa: BLE001 - кривой Location
+                    raise requests.RequestException(
+                        f"{LOG_PREFIX} Refusing a redirect with an unreadable target."
+                    ) from None
+                allowed, reason = url_target_is_public(target, via_proxy=via_proxy)
+                if not allowed:
+                    raise requests.RequestException(
+                        f"{LOG_PREFIX} Refusing a redirect into a non-public address: {reason}."
+                    )
+                return response
+
+            session.hooks["response"].append(_refuse_private_redirect)
         return session
 
     @staticmethod
@@ -834,6 +879,71 @@ class TS_DownloadFilesNode(IO.ComfyNode):
                 return None
         return resolved
 
+    @classmethod
+    def _models_root(cls) -> str:
+        """Корень ``models/`` этой установки, либо пустая строка."""
+        if not folder_paths:
+            return ""
+        root = getattr(folder_paths, "models_dir", None)
+        if not root:
+            base = getattr(folder_paths, "base_path", None)
+            root = os.path.join(base, "models") if base else None
+        return os.path.abspath(str(root)) if root else ""
+
+    @classmethod
+    def resolve_route_target_directory(cls, target_path):
+        """Папка назначения для строки, приехавшей ПО СЕТИ.
+
+        ⚠️ Отдельный разбор нужен потому, что HTTP-маршрут не отличает нажатую
+        человеком кнопку от запроса, который любая открытая вкладка может
+        послать на ``127.0.0.1:8188``: своей защиты от подделки запроса у
+        ComfyUI нет. Поэтому у сетевого входа правила строже, чем у виджета
+        ноды, хотя список в них один и тот же.
+
+        Порядок такой:
+
+        1. зарегистрированная модельная папка (``resolve_model_target_directory``
+           — он же стоит на ``/ts_downloader/fetch``);
+        2. любая папка ВНУТРИ ``models/``, даже если ComfyUI такого имени не
+           знает: человек вправе завести ``models/my_stuff``, а исполняемого
+           там ничего нет;
+        3. всё остальное — включая абсолютные пути — только когда хозяин
+           машины поставил ``TS_DOWNLOADER_ALLOW_EXTERNAL=1``, то есть принял
+           решение СНАРУЖИ браузера.
+
+        Args:
+            target_path: правая половина строки списка, как её прислал клиент.
+
+        Returns:
+            Абсолютный путь назначения, либо ``None``, если сетевому запросу
+            такая папка не разрешена.
+        """
+        strict = cls.resolve_model_target_directory(target_path)
+        if strict is not None:
+            return strict
+        try:
+            resolved = cls._resolve_target_directory(target_path)
+        except ValueError:
+            # Общий разбор отвергает внешние пути исключением — для сетевого
+            # входа это просто «нельзя», а не повод уронить весь список.
+            return None
+        if not resolved:
+            return None
+        if _external_targets_allowed():
+            return resolved
+        models_root = cls._models_root()
+        if models_root and cls._is_within(models_root, resolved):
+            for guarded in cls._custom_nodes_roots():
+                if cls._is_within(guarded, resolved):
+                    return None
+            return resolved
+        logger.warning(
+            "%s Target '%s' is refused for a request coming over HTTP: only model "
+            "folders are allowed there. Set %s=1 on this machine to widen it.",
+            LOG_PREFIX, target_path, _EXTERNAL_TARGETS_ENV,
+        )
+        return None
+
     # Имена, которые ComfyUI регистрирует наравне с модельными папками, но
     # моделей в них не хранит.
     _NON_MODEL_FOLDER_NAMES = frozenset({"custom_nodes", "datasets"})
@@ -984,8 +1094,26 @@ class TS_DownloadFilesNode(IO.ComfyNode):
         return None
 
     @classmethod
-    def _parse_file_list(cls, file_list_text):
+    def _parse_file_list(cls, file_list_text, *, from_route: bool = False, rejected=None):
+        """Разбор списка задач.
+
+        Args:
+            file_list_text: содержимое виджета ``file_list``.
+            from_route: строка приехала по HTTP, а не из графа — папку тогда
+                судит ``resolve_route_target_directory`` (строже: см. его
+                docstring). По умолчанию False, то есть прогон графа и
+                fingerprint разбирают список ровно как раньше.
+            rejected: необязательный список, куда складываются отвергнутые
+                строки как ``{"line": <номер>, "target": <как написано>}``.
+                Нужен маршруту, чтобы отказать целиком и назвать строку, а не
+                молча скачать половину списка.
+
+        Returns:
+            Список ``{"url": ..., "target_dir": ...}`` по принятым строкам.
+        """
         files = []
+        resolve = (cls.resolve_route_target_directory if from_route
+                   else cls._resolve_target_directory)
         lines = file_list_text.strip().split('\n')
         for i, line in enumerate(lines):
             line = line.strip()
@@ -1009,14 +1137,35 @@ class TS_DownloadFilesNode(IO.ComfyNode):
                     f"{LOG_PREFIX} Line {i+1}: Expected '<url> <target_dir>' "
                     f"(two fields), got: {line[:120]!r}. Skipping."
                 )
+                if rejected is not None:
+                    rejected.append({"line": i + 1, "target": ""})
                 continue
             url, target_path = parts[0].strip(), parts[1].strip()
             if not url.startswith(('http://', 'https://')):
                 logger.warning(f"{LOG_PREFIX} Line {i+1}: Invalid URL.")
+                if rejected is not None:
+                    rejected.append({"line": i + 1, "target": target_path})
                 continue
-            target_path = cls._resolve_target_directory(target_path)
+            if from_route:
+                # ⚠️ Адрес тоже приехал по сети. Без этой проверки чужая вкладка
+                # заставляла бы ComfyUI стучаться на `127.0.0.1:<порт>`, в
+                # домашнюю сеть или на `169.254.169.254` — служебный адрес
+                # облачных машин, который отдаёт ключи доступа. В графе адрес
+                # пишет хозяин машины, и NAS в локалке там законен, поэтому
+                # ограничение живёт ровно здесь.
+                public, reason = url_target_is_public(url)
+                if not public:
+                    logger.warning("%s Line %d: %s.", LOG_PREFIX, i + 1, reason)
+                    if rejected is not None:
+                        rejected.append({"line": i + 1, "target": target_path,
+                                         "reason": reason})
+                    continue
+            written = target_path
+            target_path = resolve(target_path)
             if not target_path:
                 logger.warning(f"{LOG_PREFIX} Line {i+1}: Invalid target path.")
+                if rejected is not None:
+                    rejected.append({"line": i + 1, "target": written})
                 continue
             files.append({'url': url, 'target_dir': target_path})
         return files
@@ -1979,6 +2128,8 @@ class TS_DownloadFilesNode(IO.ComfyNode):
         integrity_mode: str = "hf_sha256_auto",
         prompt_id: str = "",
         progress_sink=None,
+        *,
+        from_route: bool = False,
     ) -> IO.NodeOutput:
         if not enable:
             logger.info("%s Skipped (disabled).", LOG_PREFIX)
@@ -1994,7 +2145,10 @@ class TS_DownloadFilesNode(IO.ComfyNode):
             logger.warning(f"{LOG_PREFIX} Unknown integrity_mode '{integrity_mode}'. Fallback to 'hf_sha256_auto'.")
             integrity_mode_value = "hf_sha256_auto"
 
-        files_to_download = cls._parse_file_list(file_list)
+        # ⚠️ Разбирать список ЗДЕСЬ, а не доверять проверке маршрута: иначе
+        # проверенные пути и записываемые оказались бы плодом двух разных
+        # разборов, и разойтись им ничего не мешало бы.
+        files_to_download = cls._parse_file_list(file_list, from_route=from_route)
         if not files_to_download:
             # ⚠️ Ранние выходы тоже обязаны отчитаться: без этого кнопка на ноде
             # осталась бы крутиться вечно на пустом или недоступном списке.
@@ -2055,7 +2209,8 @@ class TS_DownloadFilesNode(IO.ComfyNode):
         files_to_download = pending
 
         guard.raise_if_cancelled()
-        with cls._create_session_with_retries(proxy_url, total_retries=0) as probe_session:
+        with cls._create_session_with_retries(proxy_url, total_retries=0,
+                                              guard_public=from_route) as probe_session:
             if not cls._check_connectivity_to_targets(files_to_download, probe_session, hf_domain):
                 logger.warning(f"{LOG_PREFIX} All target servers are unreachable. Switching to OFFLINE MODE. Execution finished.")
                 progress.finished(0, 0, note="offline")
@@ -2067,7 +2222,7 @@ class TS_DownloadFilesNode(IO.ComfyNode):
         success = 0
         failed = 0
         remaining = len(files_to_download)
-        with cls._create_session_with_retries(proxy_url) as session:
+        with cls._create_session_with_retries(proxy_url, guard_public=from_route) as session:
             for position, file_info in enumerate(files_to_download, 1):
                 guard.raise_if_cancelled()
                 shown = os.path.basename(urlparse(file_info['url']).path) or file_info['url']

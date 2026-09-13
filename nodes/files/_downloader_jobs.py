@@ -68,6 +68,14 @@ def _run_job_blocking(job: dict[str, Any]) -> None:
     if not resolved:
         raise RuntimeError(f"Target '{target}' is not a registered model folder.")
 
+    # То же и про адрес: имя могло смениться на приватное между постановкой
+    # задачи и её запуском (DNS rebinding — ровно такой приём).
+    from .._shared import url_target_is_public
+
+    public, reason = url_target_is_public(url)
+    if not public:
+        raise RuntimeError(f"Refusing to fetch from a non-public address: {reason}.")
+
     started = time.monotonic()
     state = {"last_done": 0, "last_t": started}
 
@@ -87,7 +95,9 @@ def _run_job_blocking(job: dict[str, Any]) -> None:
         })
         _emit(job)
 
-    session = Node._create_session_with_retries()
+    # guard_public: задачу поставил сетевой клиент, поэтому и цепочка
+    # редиректов не вправе повернуть внутрь сети.
+    session = Node._create_session_with_retries(guard_public=True)
     try:
         ok = Node._download_single_file(
             session, url, resolved, True, True, 1024 * 1024,
@@ -142,6 +152,19 @@ async def fetch_route(request):
     target = str(data.get("target") or "").strip()
     if not url.lower().startswith(("http://", "https://")) or not target:
         return web.json_response({"error": "url and target are required."}, status=400)
+
+    # ⚠️ Адрес называет СЕТЕВОЙ клиент — значит он не вправе увести сервер
+    # внутрь этой машины или её локальной сети (`127.0.0.1:<порт>`,
+    # `192.168.*`, `169.254.169.254` у облачных машин). Прогон графа этим не
+    # ограничен: там адрес пишет хозяин машины, и свой NAS законен.
+    from .._shared import url_target_is_public
+
+    public, reason = url_target_is_public(url)
+    if not public:
+        return web.json_response(
+            {"error": f"This route only fetches from public addresses: {reason}."},
+            status=400,
+        )
 
     # ⚠️ Папку назначения называет СЕТЕВОЙ клиент, поэтому разбираем её строго:
     # только зарегистрированный модельный каталог. Общий разбор, которым

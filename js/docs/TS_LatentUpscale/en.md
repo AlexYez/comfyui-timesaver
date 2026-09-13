@@ -22,6 +22,8 @@ and shows `subfolder/file.safetensors`, every folder declared in
 folder is refused. Picking an upscaler from another model family now explains
 itself instead of failing with `Missing key(s) in state_dict`.
 
+**A checkpoint is read without running code from inside it.** The `.ckpt`/`.pt` format is built on pickle, and unpacking such a file **can execute arbitrary code** — which is exactly what makes a checkpoint downloaded from a forum dangerous. The node reads tensors only. If your checkpoint cannot be read that way, convert it to `.safetensors`, or set `TS_LATENT_UPSCALE_TRUST_PICKLE=1` on the machine if you trust that particular file. The variable lives outside the workflow: a workflow can arrive from anyone, the variable is set by whoever owns the machine.
+
 **Precision has a safe fallback, and fp16 is not the poor relation.** Measured
 against fp32 on the H3 checkpoint: fp16 deviates by 0.38% of the range, bf16 by
 2.67% — bf16 spends mantissa bits on a range these weights (±4.7) never use. On
