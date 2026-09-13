@@ -157,7 +157,12 @@ export function ensureListStyles() {
 .ts-fdl-row--done .ts-fdl-row__fill{background:var(--ts-success)}
 
 /* Действия — ПОД списком: сначала то, что качают, потом чем настраивают. */
-.ts-fdl-list__actions{display:flex;gap:6px;flex:0 0 auto;flex-wrap:wrap}
+/* ⚠️ nowrap: ряд лежит В ПОТОКЕ панели, а потолок высоты DOM-виджета читает
+   высоту самой ноды. Перенос кнопок на вторую строку увеличивал min-content,
+   Vue растил ноду под содержимое, потолок читал новую высоту — и нода уезжала
+   вниз при попытке её сузить (замерено: ряд 24 -> 54 px, нода 233 -> 266).
+   Ряд обязан сужаться вбок и обрезаться, а не расти вниз. */
+.ts-fdl-list__actions{display:flex;gap:6px;flex:0 0 auto;flex-wrap:nowrap;min-width:0;overflow:hidden}
 .ts-fdl-list__actions .ts-ui-btn{flex:1 1 auto;min-width:0}
 .ts-fdl-list__actions .ts-fdl-settings{flex:0 0 auto}
 `;

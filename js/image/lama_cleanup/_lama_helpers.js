@@ -202,7 +202,14 @@ function ensureStyles() {
   justify-content:center;border-radius:var(--ts-radius);overflow:hidden;cursor:pointer;
   background:var(--ts-checker);border:1px solid var(--ts-border-soft)}
 .ts-lama-shell__preview img{max-width:100%;max-height:100%;object-fit:contain;display:block}
-.ts-lama-shell__placeholder{padding:10px;text-align:center;font-size:var(--ts-fs-sm);
+/* ⚠️ Absolute, НЕ в потоке. Подпись переносится на вторую строку при сужении
+   ноды, и в потоке эта высота становилась min-content превью: Vue растил ноду
+   под содержимое, а потолок высоты DOM-виджета читает высоту самой ноды — нода
+   уезжала вниз, пока её сужали (замерено: подпись 31 -> 44, нода 170 -> 185).
+   Вне потока она заполняет превью, но в min-content не вносит ничего. Тот же
+   приём держит канвас волны в TS Audio Loader и панель TS SAM Media Loader. */
+.ts-lama-shell__placeholder{position:absolute;inset:0;display:flex;align-items:center;
+  justify-content:center;padding:10px;text-align:center;font-size:var(--ts-fs-sm);
   color:var(--ts-muted);pointer-events:none}
 .ts-lama-shell__row{display:flex;align-items:center;gap:6px;flex:0 0 auto}
 .ts-lama-shell__status{flex:0 0 auto;width:100%;min-width:0;font-size:var(--ts-fs-sm);

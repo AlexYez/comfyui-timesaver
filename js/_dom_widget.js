@@ -26,9 +26,13 @@ import { app } from "/scripts/app.js";
  * BOTH the Vue and the classic canvas renderers for helper users. The computeSize
  * branch below is legacy (pre-DOMWidgetImpl) and would fight node.size in a
  * feedback loop if it ever ran, so we must NOT switch this to read the
- * Comfy.VueNodes.Enabled setting here. (The audio nodes DO read the setting —
- * they need computeSize in the classic renderer because their pane must fill an
- * exact height; they carry their own non-feedback computeSize for it.)
+ * Comfy.VueNodes.Enabled setting here.
+ *
+ * The audio nodes used to be the exception — they mounted their own computeSize
+ * "for the classic renderer". Once DOMWidgetImpl started serving classic nodes
+ * too, that assignment became the cause of unbounded downward growth while the
+ * user narrowed the node (measured: 880->500 grew it 420->660). They now take
+ * the same bounds-only path as everyone else; do not reintroduce the exception.
  */
 export function isNodesV2() {
     if (typeof window === "undefined") return false;

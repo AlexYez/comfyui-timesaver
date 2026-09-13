@@ -30,17 +30,16 @@ const MIN_NODE_WIDTH = 440;
 // minimum would either clip the loader or make the preview needlessly tall.
 const MIN_NODE_HEIGHT_PREVIEW = 320;
 const MIN_NODE_HEIGHT_LOADER = 420;
+// Chrome allowance, used ONLY to turn the per-node minimum node height into the
+// pane's minimum (getMinHeight). It is deliberately NOT used for the ceiling:
+// a single estimate cannot fit both nodes (the renderer's real chrome is ~110
+// on the loader and ~46 on the preview), and subtracting it from node.height
+// capped the preview's pane 60px short — its transport row was clipped while
+// empty node showed underneath. The ceiling is a constant instead, so the pane
+// simply fills whatever slot the node's own layout leaves.
 const HEADER_FOOTER_HEIGHT = 118;
-// Classic (Nodes 1.0 canvas) DOM-widget sizing. computeSize = node.height −
-// chrome fills the pane and tracks a user resize. The chrome MUST be ≥ the
-// renderer's real chrome or LiteGraph grows the node every layout (feedback);
-// the loader's is bigger because of its source_path combo. Fixed per node so it
-// never mismatches (last_y is transiently short on reload and ran the loader
-// away). A small over-estimate only leaves a few px under the pane, never a clip.
-const V1_CHROME_PREVIEW = 44;
-const V1_CHROME_LOADER = 92;
-const V1_MIN_WIDGET_HEIGHT = 132;
-const V1_WIDGET_BOTTOM_PAD = 6;
+// Ceiling for the pane — a plain "no practical limit", same as js/_dom_widget.js.
+const MAX_PANE_HEIGHT = 8192;
 const HANDLE_HITBOX = 10;
 const MIN_ZOOM = 1;
 const MAX_ZOOM = 200;
@@ -176,8 +175,15 @@ function ensureStyles() {
     style.id = STYLE_ID;
     style.textContent = `
 .ts-audio-loader{width:100%;height:100%;min-height:0;box-sizing:border-box;padding:8px;display:flex;flex-direction:column;gap:8px;color:var(--ts-text);font-family:var(--ts-font);background:var(--ts-bg);border:1px solid var(--ts-border-soft);border-radius:12px;overflow:hidden}
-.ts-audio-loader__topbar{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap}
-.ts-audio-loader__actions{display:flex;gap:6px;flex-wrap:wrap}
+/* ⚠️ nowrap ОБЯЗАТЕЛЕН во всех рядах, лежащих В ПОТОКЕ панели. Потолок высоты
+   виджета читает высоту самой ноды (getMaxHeight ниже), и это безопасно ровно
+   до тех пор, пока min-content панели не растёт. Ряд с flex-wrap:wrap при
+   сужении переносил кнопки на вторую строку, min-content увеличивался, Vue
+   растил ноду под содержимое, потолок читал новую высоту — и нода уезжала
+   вниз, пока её пытались сузить. Сужаться ряды обязаны вбок (min-width:0 +
+   overflow), а не вниз. Тот же инвариант держит канвас волны ниже. */
+.ts-audio-loader__topbar{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:nowrap;min-width:0;overflow:hidden}
+.ts-audio-loader__actions{display:flex;gap:6px;flex-wrap:nowrap;min-width:0}
 .ts-audio-loader__button{border:1px solid var(--ts-border);background:var(--ts-surface);color:var(--ts-text);border-radius:8px;padding:6px 12px;font-size:var(--ts-fs-sm);cursor:pointer}
 .ts-audio-loader__button:hover{background:var(--ts-surface-hover);border-color:var(--ts-border-strong)}
 .ts-audio-loader__button.is-primary{background:var(--ts-accent);border-color:var(--ts-accent-strong);color:var(--ts-accent-contrast);font-weight:700}
@@ -185,7 +191,7 @@ function ensureStyles() {
 .ts-audio-loader__meta{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 8px;align-items:center}
 .ts-audio-loader__file{min-width:0;font-size:var(--ts-fs);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ts-audio-loader__status,.ts-audio-loader__stats,.ts-audio-loader__timeline,.ts-audio-loader__crop{font-size:var(--ts-fs-sm);color:var(--ts-muted)}
-.ts-audio-loader__stats{display:inline-flex;gap:10px;flex-wrap:wrap;justify-content:flex-end}
+.ts-audio-loader__stats{display:inline-flex;gap:10px;flex-wrap:nowrap;justify-content:flex-end;min-width:0;overflow:hidden;white-space:nowrap}
 .ts-audio-loader__wave-wrap{position:relative;flex:1 1 auto;min-height:110px;border-radius:12px;overflow:hidden;border:1px solid var(--ts-border-soft);background:repeating-linear-gradient(90deg,var(--ts-border-soft) 0 1px,transparent 1px 80px),var(--ts-sunken)}
 /* Absolute, NOT in-flow: the <canvas> carries an intrinsic pixel height (set
    from its rendered size in drawWaveform). In flow that height became the
@@ -219,21 +225,6 @@ function ensureStyles() {
     document.head.appendChild(style);
 }
 
-function isNodesV2() {
-    // "V2" must mean the node is RENDERED by the Vue graph — NOT merely that the
-    // DOMWidgetImpl class exists (it does in every modern build, even with Vue
-    // nodes turned off). The two renderers size a DOM widget differently: Vue
-    // distributes height via getMin/getMaxHeight, the classic canvas renderer
-    // sizes it from the widget's computeSize. Using the DOMWidgetImpl heuristic
-    // sent the classic renderer down the Vue path and left the pane too short
-    // (Play row clipped) with empty space below. Read the actual setting.
-    try {
-        const application = window.comfyAPI?.app?.app || window.app;
-        const enabled = application?.extensionManager?.setting?.get?.("Comfy.VueNodes.Enabled");
-        if (typeof enabled === "boolean") return enabled;
-    } catch { /* fall through to the class heuristic */ }
-    return Boolean(window?.comfyAPI?.domWidget?.DOMWidgetImpl);
-}
 function stopPropagation(element, events) { events.forEach((name) => element.addEventListener(name, (event) => event.stopPropagation())); }
 function clamp(value, min, max) { return Math.max(min, Math.min(max, value)); }
 function formatSeconds(value) {
@@ -458,44 +449,39 @@ export function setupAudioLoader(node) {
 
     stopPropagation(container, ["pointerdown", "pointerup", "mousedown", "mouseup", "mousemove", "wheel", "click", "dblclick", "contextmenu"]);
     const widgetOptions = { serialize: false, hideOnZoom: false };
-    if (isNodesV2()) {
-        // Floor is fixed; ceiling follows the node so the pane fills a user
-        // resize. This is only safe because the waveform canvas is positioned
-        // absolute (see .ts-audio-loader__canvas) — the container's min-content
-        // is just the pane's min-height, so Vue never grows the node to fit
-        // content and the ceiling reading node.height cannot run away.
+    // ⚠️ Границы ставятся В ОБОИХ режимах, и это не упрощение.
+    //
+    // DOM-виджеты в новых сборках ComfyUI обслуживает DOMWidgetImpl и в
+    // классическом рендерере тоже, поэтому путь getMin/getMaxHeight верен для
+    // обоих. Ровно так же поступает общий хелпер js/_dom_widget.js — см. его
+    // комментарий про «intentional and load-bearing».
+    {
+        // Floor is per node; ceiling is a constant, like the shared helper's.
+        // The pane then takes the whole slot the node leaves below its chrome
+        // and follows a user resize exactly (measured in Nodes 1.0: node 420 ->
+        // pane 310, node 900 -> pane 790 — a constant 110px of real chrome).
+        // A ceiling derived from node.height instead would need a chrome
+        // estimate, and one number cannot fit both nodes.
+        //
+        // A constant ceiling is only safe because nothing in the pane can grow
+        // its own min-content: the waveform canvas is positioned absolute (see
+        // .ts-audio-loader__canvas) and every in-flow row is nowrap. Otherwise
+        // the layout would grow the node to fit content with nothing to stop it.
         widgetOptions.getMinHeight = () => nodeMinHeight - HEADER_FOOTER_HEIGHT;
-        widgetOptions.getMaxHeight = () => Math.max(
-            nodeMinHeight - HEADER_FOOTER_HEIGHT,
-            (Number(node.size?.[1]) || DEFAULT_NODE_SIZE[1]) - HEADER_FOOTER_HEIGHT,
-        );
+        widgetOptions.getMaxHeight = () => MAX_PANE_HEIGHT;
         widgetOptions.afterResize = () => { syncDomSize(); updateScrollbar(); drawWaveform(); };
     }
     const domWidget = node.addDOMWidget(DOM_WIDGET_NAME, "div", container, widgetOptions);
     const domWidgetEl = domWidget?.element || domWidget?.el || domWidget?.container;
 
-    if (!isNodesV2()) {
-        // Legacy LiteGraph: without computeSize the DOM widget gets a fixed
-        // ~200px slot — the pane's own controls (Play/…) clipped at the bottom
-        // while the node reserved empty space below. this.last_y is the y-offset
-        // LiteGraph assigns the widget (below the title + input rows + the
-        // source_path combo, which differs between loader and preview), so
-        // node.height − last_y − pad fills the pane exactly and tracks a user
-        // resize — no fixed chrome constant to mismatch and run the node away.
-        const v1Chrome = isPreviewNode ? V1_CHROME_PREVIEW : V1_CHROME_LOADER;
-        domWidget.computeSize = function computeSize(width) {
-            // Clamp to the node minimum: on first layout LiteGraph calls
-            // computeSize while node.size is still its pre-clamp auto value
-            // (~260px), which would size the pane too short and clip it until a
-            // manual resize. max(MIN, node.height) makes the pane full-size at once.
-            const nodeHeight = Math.max(nodeMinHeight, Number(node.size?.[1]) || DEFAULT_NODE_SIZE[1]);
-            const height = Math.max(V1_MIN_WIDGET_HEIGHT, nodeHeight - v1Chrome - V1_WIDGET_BOTTOM_PAD);
-            return [
-                Math.max(MIN_NODE_WIDTH, Number(width) || node.size?.[0] || DEFAULT_NODE_SIZE[0]),
-                height,
-            ];
-        };
-    }
+    // ⚠️ НЕ НАЗНАЧАТЬ domWidget.computeSize — ни в каком режиме.
+    //
+    // Раньше здесь стояла своя computeSize «для классического рендерера».
+    // В новых сборках ComfyUI это выталкивает DOM-виджет в фиксированную ветку
+    // computeLayoutSize (CLAUDE.md §12.5.1) и даёт неограниченный рост высоты:
+    // замерено в Nodes 1.0 перетаскиванием мыши — сужение 880->500 растило ноду
+    // 420->660, со снятым назначением 420->420. В Nodes 2.0 дефекта не было,
+    // поэтому он и выглядел как недавняя регрессия «только в обычном режиме».
 
     function getActiveMedia() { return state.mediaType === "video" ? videoEl : audioEl; }
     function getSelectionBounds() {
