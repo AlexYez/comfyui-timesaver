@@ -2239,6 +2239,34 @@
       }
     }
   },
+  "TS_FreeVRAM": {
+    "api": "v3",
+    "category": "TS/Utils",
+    "class_name": "TS_FreeVRAM",
+    "display_name": "TS Free VRAM",
+    "inputs": [
+      {
+        "index": 0,
+        "name": "passthrough",
+        "type": "AnyType"
+      },
+      {
+        "index": 1,
+        "name": "model",
+        "optional": true,
+        "type": "Model"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "passthrough",
+        "index": 0,
+        "name": "passthrough",
+        "type": "AnyType"
+      }
+    ],
+    "python_file": "nodes/utils/ts_free_vram.py"
+  },
   "TS_GetImageMegapixels": {
     "api": "v3",
     "category": "TS/Image/Batch",
