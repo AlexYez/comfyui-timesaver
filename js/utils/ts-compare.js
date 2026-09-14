@@ -53,7 +53,15 @@ function ensureStyles() {
     style.id = STYLE_ID;
     style.textContent = `
 .ts-compare{display:flex;flex-direction:column;height:100%;min-height:0}
-.ts-compare__slot{flex:1 1 auto;min-height:0;display:flex}
+/* ⚠️ position:relative ОБЯЗАТЕЛЕН: шторка пары кадров (.ts-cmp в
+   js/_studio/_compare.js) лежит вне потока — position:absolute;inset:0, — и без
+   позиционированного хозяина ищет containing block выше по дереву. В Nodes 1.0
+   это сходило с рук: корень DOM-виджета там position:fixed и случайно совпадал
+   с панелью. В Nodes 2.0 все предки виджета static, и шторка уезжала вверх,
+   накрывая ряды fps / label_a / label_b (замерено: ручка вставала на y=87
+   высотой 256 при панели 206…364; после правки — ровно по панели).
+   Видео-шторку это не задевает: её корень лежит в потоке. */
+.ts-compare__slot{flex:1 1 auto;min-height:0;display:flex;position:relative}
 .ts-compare__slot > *{flex:1 1 auto;min-width:0;min-height:0}
 .ts-compare__idle{
   flex:1 1 auto;display:flex;align-items:center;justify-content:center;
@@ -147,6 +155,8 @@ function setupCompare(node) {
     // так и осталась бы висеть с наблюдателями и, для видео, с декодером.
     let stills = null;
     let clip = null;
+    // Ручка открытого полноэкранного окна — ровно одно на ноду.
+    let fullscreen = null;
 
     const clear = () => {
         slot.textContent = "";
@@ -158,9 +168,17 @@ function setupCompare(node) {
         node.properties[PROP_PAYLOAD] = payload;
 
         if (payload.mode === "image") {
+            // Если ролик показывали во весь экран, а пришли кадры — окно надо
+            // закрыть: иначе в нём останется шторка от уже снесённого плеера.
+            fullscreen?.close();
             clip?.teardown();
             clip = null;
             if (!stills) stills = createCompare({ before: t.before, after: t.after });
+            // Имена сторон задаёт человек виджетами label_a / label_b, и приходят
+            // они вместе с результатом. Видео-ветка их использовала всегда, а
+            // картиночная показывала локализованные «A» и «B» — то есть виджеты
+            // работали через раз, в зависимости от того, кадр это или пачка.
+            stills.setLabels(payload.label_a, payload.label_b);
             clear();
             slot.appendChild(stills.element);
             stills.show(
@@ -193,6 +211,11 @@ function setupCompare(node) {
     function openFullscreen() {
         const current = clip;
         if (!current) return;
+        // ⚠️ Второй оверлей поверх первого открывать нельзя. Шторка ПЕРЕЕЗЖАЕТ
+        // внутрь, то есть уехала бы из уже открытого окна в новое, а закрывать
+        // пришлось бы каждое по отдельности. Замерено до правки: три нажатия на
+        // кнопку разворота давали три оверлея, и крестик требовался трижды.
+        if (fullscreen?.isOpen()) return;
         const host = document.createElement("div");
         // Хост занимает весь оверлей, а шторка внутри — весь хост: иначе кадр
         // остаётся размером с ноду и висит в углу пустого экрана.
@@ -205,11 +228,17 @@ function setupCompare(node) {
         current.element.style.width = "100%";
         current.element.style.minWidth = "0";
         host.appendChild(current.element);
-        openFullscreenOverlay(host, {
+        fullscreen = openFullscreenOverlay(host, {
             label: t.fullscreen,
             closeTitle: t.fullscreen,
+            // Кнопка разворота живёт в полосе плеера и уезжает в оверлей вместе
+            // с ней. Внутри она бессмысленна — мы уже во весь экран, — а нажатая
+            // открывала ещё один оверлей. Оверлей прячет её на время показа и
+            // возвращает при закрытии (тот же приём у TS Video Loader и Saver).
+            trigger: current.expandButton,
             onOpen: () => current.relayout(),
             onClose: () => {
+                fullscreen = null;
                 // Возвращаем как было: в ноде размер задаёт слот.
                 current.element.style.flex = "";
                 current.element.style.width = "";

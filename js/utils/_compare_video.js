@@ -12,6 +12,7 @@
 // Родных controls у канваса нет, поэтому полоса воспроизведения своя.
 
 import { TS_UI_CLASS, ensureThemeStyles } from "../_theme.js";
+import { createCompareHandle } from "../_studio/_compare.js";
 import { guardPlayback } from "../_media/_playback_guard.js";
 
 const STYLE_ID = "ts-compare-video-styles";
@@ -43,9 +44,9 @@ export function ensureCompareVideoStyles() {
 .ts-cmpv__canvas{
   display:block;position:absolute;inset:0;margin:auto;
   max-width:100%;max-height:100%}
-.ts-cmpv__handle{
-  position:absolute;top:0;width:2px;background:var(--ts-accent);
-  pointer-events:none;transform:translateX(-1px)}
+/* Разделительная полоса своего стиля здесь НЕ имеет: она общая с картиночной
+   шторкой — .ts-cmp__handle из js/_studio/_compare.js. Позицию по кадру ей
+   ставит relayout() ниже (left/top/height), вид — тот же файл. */
 .ts-cmpv__tag{
   position:absolute;top:10px;padding:4px 12px;border-radius:999px;
   /* Подписи читают с расстояния, глядя на картинку, а не на текст: мелкий
@@ -90,8 +91,9 @@ export function createVideoCompare(strings = {}) {
     canvas.className = "ts-cmpv__canvas";
     const ctx = canvas.getContext("2d");
 
-    const handle = document.createElement("div");
-    handle.className = "ts-cmpv__handle";
+    // Ручка — общая с картиночной шторкой (js/_studio/_compare.js): одна нода
+    // не должна выглядеть по-разному из-за того, кадры пришли или пачка.
+    const handle = createCompareHandle();
 
     const tagA = document.createElement("div");
     tagA.className = "ts-cmpv__tag ts-cmpv__tag--a";
@@ -135,7 +137,9 @@ export function createVideoCompare(strings = {}) {
 
     const expand = document.createElement("button");
     expand.type = "button";
-    expand.className = "ts-ui-btn ts-ui-btn--icon";
+    // Собственный класс нужен не для вида, а чтобы кнопку можно было адресовать:
+    // иначе её ищут по глифу в подписи, и любая смена значка ломает проверки.
+    expand.className = "ts-ui-btn ts-ui-btn--icon ts-cmpv__expand";
     expand.textContent = "⛶";
     expand.title = strings.fullscreen || "Fullscreen";
 

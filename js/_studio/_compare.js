@@ -67,6 +67,37 @@ export function ensureCompareStyles() {
 }
 
 /**
+ * Разделительная полоса сравнения с кружком-ручкой посередине.
+ *
+ * Вынесена отдельно, потому что шторок в паке ДВЕ: эта, по паре кадров, и
+ * видеошторка в `js/utils/_compare_video.js`. Раньше у видео была своя полоса
+ * без ручки, и одна и та же нода TS Compare выглядела по-разному в зависимости
+ * от того, кадры пришли или пачка. Вид задаётся здесь один раз.
+ *
+ * Позицию ставит вызывающий (`left`, а у видео ещё `top`/`height` — полоса
+ * обязана идти по кадру, а не по всей сцене с полями). `margin-left:-1px`
+ * в стиле центрирует двухточечную линию на самом разрезе.
+ *
+ * ⚠️ Перехватывать события на ручке не нужно и нельзя: тянут обе шторки за
+ * контейнер, а нажатие на кружок всплывает к нему само.
+ *
+ * @returns {HTMLElement} готовая полоса с ручкой внутри
+ */
+export function createCompareHandle() {
+    ensureCompareStyles();
+    const handle = document.createElement("div");
+    handle.className = "ts-cmp__handle";
+    const grip = document.createElement("div");
+    grip.className = "ts-cmp__grip";
+    grip.innerHTML = '<svg viewBox="0 0 20 12" width="20" height="12" fill="none"'
+        + ' stroke="currentColor" stroke-width="1.6" stroke-linecap="round"'
+        + ' stroke-linejoin="round"><path d="M7.5 2.5 4 6l3.5 3.5"/>'
+        + '<path d="M12.5 2.5 16 6l-3.5 3.5"/></svg>';
+    handle.appendChild(grip);
+    return handle;
+}
+
+/**
  * @param {object} strings {before, after, hint}
  * @returns {{element: HTMLElement, show: Function, hide: Function, isActive: Function}}
  */
@@ -83,15 +114,7 @@ export function createCompare(strings = {}) {
     const after = document.createElement("img");
     after.className = "ts-cmp__img ts-cmp__img--after";
     after.alt = "";
-    const handle = document.createElement("div");
-    handle.className = "ts-cmp__handle";
-    const grip = document.createElement("div");
-    grip.className = "ts-cmp__grip";
-    grip.innerHTML = '<svg viewBox="0 0 20 12" width="20" height="12" fill="none"'
-        + ' stroke="currentColor" stroke-width="1.6" stroke-linecap="round"'
-        + ' stroke-linejoin="round"><path d="M7.5 2.5 4 6l3.5 3.5"/>'
-        + '<path d="M12.5 2.5 16 6l-3.5 3.5"/></svg>';
-    handle.appendChild(grip);
+    const handle = createCompareHandle();
     const tagBefore = document.createElement("div");
     tagBefore.className = "ts-cmp__tag ts-cmp__tag--before";
     tagBefore.textContent = strings.before || "before";
@@ -210,6 +233,21 @@ export function createCompare(strings = {}) {
             element.classList.remove("is-active");
             before.removeAttribute("src");
             after.removeAttribute("src");
+        },
+        /**
+         * Переименовать стороны уже созданной шторки.
+         *
+         * Нужна там, где имена приходят не при сборке интерфейса, а вместе с
+         * результатом прогона (у TS Compare это виджеты label_a / label_b).
+         * Шторка создаётся один раз и переиспользуется, поэтому задать подписи
+         * только в createCompare() недостаточно.
+         *
+         * @param {string} [beforeLabel] имя левой стороны
+         * @param {string} [afterLabel] имя правой стороны
+         */
+        setLabels(beforeLabel, afterLabel) {
+            if (beforeLabel) tagBefore.textContent = String(beforeLabel);
+            if (afterLabel) tagAfter.textContent = String(afterLabel);
         },
         isActive: () => element.classList.contains("is-active"),
         teardown: () => {
