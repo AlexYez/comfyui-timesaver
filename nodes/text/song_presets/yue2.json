@@ -1,0 +1,1227 @@
+{
+  "name": "YuE 2",
+  "order": 10,
+  "model": "YuE-2 — song generation (lyrics + style prompt)",
+  "notes": "Style prompts are comma-separated descriptor lists: genre first, then tempo, instruments, mood and production. Vocals are a SEPARATE list and deliberately so — the voice is the one thing a person changes independently of the genre, and a genre prompt that already said 'female vocal' fought with a male voice picked next to it. Each style names the vocal it was written around ('vocal'), and that one is offered first. Section tags below are the ones YuE reads out of the lyrics to know where a part starts.",
+  "tags": [
+    {
+      "tag": "[intro]",
+      "name": {
+        "en": "Intro",
+        "ru": "Интро"
+      }
+    },
+    {
+      "tag": "[verse]",
+      "name": {
+        "en": "Verse",
+        "ru": "Куплет"
+      }
+    },
+    {
+      "tag": "[pre-chorus]",
+      "name": {
+        "en": "Pre-chorus",
+        "ru": "Предприпев"
+      }
+    },
+    {
+      "tag": "[chorus]",
+      "name": {
+        "en": "Chorus",
+        "ru": "Припев"
+      }
+    },
+    {
+      "tag": "[post-chorus]",
+      "name": {
+        "en": "Post-chorus",
+        "ru": "Постприпев"
+      }
+    },
+    {
+      "tag": "[bridge]",
+      "name": {
+        "en": "Bridge",
+        "ru": "Бридж"
+      }
+    },
+    {
+      "tag": "[hook]",
+      "name": {
+        "en": "Hook",
+        "ru": "Хук"
+      }
+    },
+    {
+      "tag": "[drop]",
+      "name": {
+        "en": "Drop",
+        "ru": "Дроп"
+      }
+    },
+    {
+      "tag": "[break]",
+      "name": {
+        "en": "Break",
+        "ru": "Брейк"
+      }
+    },
+    {
+      "tag": "[instrumental]",
+      "name": {
+        "en": "Instrumental",
+        "ru": "Проигрыш"
+      }
+    },
+    {
+      "tag": "[solo]",
+      "name": {
+        "en": "Solo",
+        "ru": "Соло"
+      }
+    },
+    {
+      "tag": "[outro]",
+      "name": {
+        "en": "Outro",
+        "ru": "Концовка"
+      }
+    }
+  ],
+  "vocal_groups": [
+    {
+      "id": "female",
+      "name": {
+        "en": "Female",
+        "ru": "Женский"
+      }
+    },
+    {
+      "id": "male",
+      "name": {
+        "en": "Male",
+        "ru": "Мужской"
+      }
+    },
+    {
+      "id": "other",
+      "name": {
+        "en": "Other",
+        "ru": "Прочее"
+      }
+    }
+  ],
+  "vocals": [
+    {
+      "id": "female-clear",
+      "group": "female",
+      "name": {
+        "en": "Clear",
+        "ru": "Чистый"
+      },
+      "hint": {
+        "en": "Even, natural, right in the middle of the mix.",
+        "ru": "Ровный, естественный, прямо по центру."
+      },
+      "prompt": "clear female vocal, natural tone, centred in the mix"
+    },
+    {
+      "id": "female-airy",
+      "group": "female",
+      "name": {
+        "en": "Airy",
+        "ru": "Воздушный"
+      },
+      "hint": {
+        "en": "Breathy head voice with air around it.",
+        "ru": "Лёгкий головной звук с воздухом вокруг."
+      },
+      "prompt": "airy breathy female vocal, soft head voice, spacious reverb"
+    },
+    {
+      "id": "female-powerful",
+      "group": "female",
+      "name": {
+        "en": "Powerful",
+        "ru": "Мощный"
+      },
+      "hint": {
+        "en": "Belting — the voice that carries a big chorus.",
+        "ru": "На опоре, вытягивает большой припев."
+      },
+      "prompt": "powerful belting female vocal, wide range, confident delivery"
+    },
+    {
+      "id": "female-husky",
+      "group": "female",
+      "name": {
+        "en": "Husky",
+        "ru": "Хрипловатый"
+      },
+      "hint": {
+        "en": "Low, smoky, a little worn.",
+        "ru": "Низкий, дымный, чуть надтреснутый."
+      },
+      "prompt": "husky smoky female vocal, low register, slight rasp"
+    },
+    {
+      "id": "female-whisper",
+      "group": "female",
+      "name": {
+        "en": "Whispered",
+        "ru": "Шёпотом"
+      },
+      "hint": {
+        "en": "Close to the microphone, almost spoken.",
+        "ru": "Вплотную к микрофону, почти проговаривая."
+      },
+      "prompt": "whispered intimate female vocal, close-mic, soft spoken delivery"
+    },
+    {
+      "id": "female-soul",
+      "group": "female",
+      "name": {
+        "en": "Soulful",
+        "ru": "Соул"
+      },
+      "hint": {
+        "en": "Runs, melisma, gospel phrasing.",
+        "ru": "Распевы, мелизмы, госпел-фразировка."
+      },
+      "prompt": "soulful female vocal with runs and melisma, gospel phrasing"
+    },
+    {
+      "id": "female-rap",
+      "group": "female",
+      "name": {
+        "en": "Rap",
+        "ru": "Рэп"
+      },
+      "hint": {
+        "en": "Rhythmic, confident, on the beat.",
+        "ru": "Ритмично, уверенно, в долю."
+      },
+      "prompt": "female rap vocal, rhythmic confident flow, tight to the beat"
+    },
+    {
+      "id": "female-layered",
+      "group": "female",
+      "name": {
+        "en": "Layered",
+        "ru": "Многослойный"
+      },
+      "hint": {
+        "en": "Stacked harmonies — the wide chorus sound.",
+        "ru": "Наложенные гармонии — широкий припев."
+      },
+      "prompt": "layered female vocal harmonies, stacked chorus, wide doubling"
+    },
+    {
+      "id": "female-opera",
+      "group": "female",
+      "name": {
+        "en": "Operatic",
+        "ru": "Оперный"
+      },
+      "hint": {
+        "en": "Trained soprano with vibrato.",
+        "ru": "Поставленное сопрано с вибрато."
+      },
+      "prompt": "operatic female soprano, trained vibrato, dramatic phrasing"
+    },
+    {
+      "id": "male-clear",
+      "group": "male",
+      "name": {
+        "en": "Clear",
+        "ru": "Чистый"
+      },
+      "hint": {
+        "en": "Even, natural, right in the middle of the mix.",
+        "ru": "Ровный, естественный, прямо по центру."
+      },
+      "prompt": "clear male vocal, natural tone, centred in the mix"
+    },
+    {
+      "id": "male-deep",
+      "group": "male",
+      "name": {
+        "en": "Deep",
+        "ru": "Глубокий"
+      },
+      "hint": {
+        "en": "Low chest voice, close and heavy.",
+        "ru": "Низкий грудной, близко и весомо."
+      },
+      "prompt": "deep male vocal, low chest voice, close-mic warmth"
+    },
+    {
+      "id": "male-raspy",
+      "group": "male",
+      "name": {
+        "en": "Raspy",
+        "ru": "С хрипотцой"
+      },
+      "hint": {
+        "en": "Gravel in the tone — rock and grunge.",
+        "ru": "Песок в голосе — рок и гранж."
+      },
+      "prompt": "raspy male vocal, gravelly edge, strained emotional delivery"
+    },
+    {
+      "id": "male-falsetto",
+      "group": "male",
+      "name": {
+        "en": "Falsetto",
+        "ru": "Фальцет"
+      },
+      "hint": {
+        "en": "High and light, above the chest register.",
+        "ru": "Высокий и лёгкий, поверх грудного."
+      },
+      "prompt": "male falsetto vocal, high light head voice, smooth phrasing"
+    },
+    {
+      "id": "male-powerful",
+      "group": "male",
+      "name": {
+        "en": "Powerful",
+        "ru": "Мощный"
+      },
+      "hint": {
+        "en": "Full-throated, built for a stadium chorus.",
+        "ru": "В полный голос, под стадионный припев."
+      },
+      "prompt": "powerful male vocal, full-throated belting, anthemic delivery"
+    },
+    {
+      "id": "male-croon",
+      "group": "male",
+      "name": {
+        "en": "Crooning",
+        "ru": "Мягкий"
+      },
+      "hint": {
+        "en": "Warm, unhurried, close and personal.",
+        "ru": "Тёплый, неспешный, доверительный."
+      },
+      "prompt": "warm crooning male vocal, unhurried phrasing, intimate close-mic"
+    },
+    {
+      "id": "male-rap",
+      "group": "male",
+      "name": {
+        "en": "Rap",
+        "ru": "Рэп"
+      },
+      "hint": {
+        "en": "Confident spoken flow, hard consonants.",
+        "ru": "Уверенный речитатив, твёрдые согласные."
+      },
+      "prompt": "male rap vocal, confident flow, punchy consonants"
+    },
+    {
+      "id": "male-rap-melodic",
+      "group": "male",
+      "name": {
+        "en": "Melodic rap",
+        "ru": "Мелодичный рэп"
+      },
+      "hint": {
+        "en": "Half-sung, autotuned hook.",
+        "ru": "Полупение с автотюном в хуке."
+      },
+      "prompt": "melodic male rap vocal, half-sung flow, autotuned hook"
+    },
+    {
+      "id": "male-soul",
+      "group": "male",
+      "name": {
+        "en": "Soulful",
+        "ru": "Соул"
+      },
+      "hint": {
+        "en": "Warm, bluesy, with runs.",
+        "ru": "Тёплый, блюзовый, с распевами."
+      },
+      "prompt": "soulful male vocal, bluesy runs, warm mid-range"
+    },
+    {
+      "id": "male-shout",
+      "group": "male",
+      "name": {
+        "en": "Shouted",
+        "ru": "Крик"
+      },
+      "hint": {
+        "en": "Half-shouted punk delivery.",
+        "ru": "Полукрик, панковская подача."
+      },
+      "prompt": "shouted male vocal, punk delivery, raw and loud"
+    },
+    {
+      "id": "male-scream",
+      "group": "male",
+      "name": {
+        "en": "Screamed",
+        "ru": "Скрим"
+      },
+      "hint": {
+        "en": "Screamed verses against a clean chorus.",
+        "ru": "Скрим в куплете, чистый вокал в припеве."
+      },
+      "prompt": "screamed male vocal in the verses, clean sung chorus, harsh-to-clean contrast"
+    },
+    {
+      "id": "duet",
+      "group": "other",
+      "name": {
+        "en": "Duet",
+        "ru": "Дуэт"
+      },
+      "hint": {
+        "en": "Male and female trading lines.",
+        "ru": "Мужской и женский по очереди."
+      },
+      "prompt": "male and female duet, call and response lines, blended harmonies"
+    },
+    {
+      "id": "group-mixed",
+      "group": "other",
+      "name": {
+        "en": "Mixed group",
+        "ru": "Групповой смешанный"
+      },
+      "hint": {
+        "en": "Several voices swapping parts — idol-group style.",
+        "ru": "Несколько голосов по очереди — как в группе."
+      },
+      "prompt": "mixed group vocals, several voices trading parts, unison chorus"
+    },
+    {
+      "id": "choir",
+      "group": "other",
+      "name": {
+        "en": "Choir",
+        "ru": "Хор"
+      },
+      "hint": {
+        "en": "Full choir answering a lead voice.",
+        "ru": "Полный хор отвечает солисту."
+      },
+      "prompt": "full choir, call and response behind a lead voice, rich harmony stack"
+    },
+    {
+      "id": "gang",
+      "group": "other",
+      "name": {
+        "en": "Gang vocals",
+        "ru": "Хором"
+      },
+      "hint": {
+        "en": "A room shouting the chorus together.",
+        "ru": "Припев, который орут все вместе."
+      },
+      "prompt": "gang vocals on the chorus, crowd shouting together, live room feel"
+    },
+    {
+      "id": "chops",
+      "group": "other",
+      "name": {
+        "en": "Vocal chops",
+        "ru": "Вокальные нарезки"
+      },
+      "hint": {
+        "en": "Fragments as an instrument, no lyrics sung.",
+        "ru": "Обрывки голоса как инструмент, без пения."
+      },
+      "prompt": "processed vocal chops, pitched fragments used as an instrument"
+    },
+    {
+      "id": "instrumental",
+      "group": "other",
+      "name": {
+        "en": "No vocals",
+        "ru": "Без вокала"
+      },
+      "hint": {
+        "en": "Instrumental — nobody sings.",
+        "ru": "Инструментал, никто не поёт."
+      },
+      "prompt": "instrumental, no vocals"
+    }
+  ],
+  "styles": [
+    {
+      "id": "pop-uplifting",
+      "group": "pop",
+      "vocal": "female-clear",
+      "name": {
+        "en": "Uplifting Pop",
+        "ru": "Воодушевляющий поп"
+      },
+      "hint": {
+        "en": "Bright radio pop with a big, open chorus.",
+        "ru": "Светлый радийный поп с широким открытым припевом."
+      },
+      "prompt": "pop, uplifting, 118 BPM, bright synth pads, piano chords, punchy kick, wide chorus, polished radio mix"
+    },
+    {
+      "id": "pop-dance",
+      "group": "pop",
+      "vocal": "female-powerful",
+      "name": {
+        "en": "Dance Pop",
+        "ru": "Танцевальный поп"
+      },
+      "hint": {
+        "en": "Four-on-the-floor club pop built for the chorus drop.",
+        "ru": "Клубный поп на ровной бочке, всё ведёт к припеву."
+      },
+      "prompt": "dance pop, energetic, 126 BPM, four on the floor drums, sidechained synth stabs, rising pre-chorus, wide stereo chorus, club-ready mix"
+    },
+    {
+      "id": "pop-synth-80s",
+      "group": "pop",
+      "vocal": "male-clear",
+      "name": {
+        "en": "Synth-Pop 80s",
+        "ru": "Синти-поп 80-х"
+      },
+      "hint": {
+        "en": "Analog synths, gated drums, neon nostalgia.",
+        "ru": "Аналоговые синты, гейтированные барабаны, неоновая ностальгия."
+      },
+      "prompt": "synth-pop, retro 1980s, 112 BPM, analog synth bass, gated reverb snare, shimmering arpeggios, neon nostalgic mood, tape saturation"
+    },
+    {
+      "id": "pop-indie",
+      "group": "pop",
+      "vocal": "male-croon",
+      "name": {
+        "en": "Indie Pop",
+        "ru": "Инди-поп"
+      },
+      "hint": {
+        "en": "Jangly guitars, room drums, warm and unhurried.",
+        "ru": "Звонкие гитары, живые барабаны, тёплая неспешность."
+      },
+      "prompt": "indie pop, warm, 104 BPM, jangly clean guitars, live room drums, bass groove, tambourine, airy reverb, intimate lo-fi polish"
+    },
+    {
+      "id": "pop-kpop",
+      "group": "pop",
+      "vocal": "group-mixed",
+      "name": {
+        "en": "K-Pop",
+        "ru": "K-pop"
+      },
+      "hint": {
+        "en": "Sharp switches, maximal production.",
+        "ru": "Резкие переключения, плотный продакшн."
+      },
+      "prompt": "k-pop, high energy, 128 BPM, brass stabs, trap hi-hats, EDM chorus drop, sharp section switches, dense polished production"
+    },
+    {
+      "id": "pop-power-ballad",
+      "group": "ballad",
+      "vocal": "female-powerful",
+      "name": {
+        "en": "Power Ballad",
+        "ru": "Мощная баллада"
+      },
+      "hint": {
+        "en": "Piano opening that grows into a full-band climax.",
+        "ru": "Фортепиано в начале, полный состав в кульминации."
+      },
+      "prompt": "power ballad, emotional, 72 BPM, grand piano intro, swelling strings, slow build, huge final chorus with drums and electric guitar, cinematic dynamics"
+    },
+    {
+      "id": "rock-anthem",
+      "group": "rock",
+      "vocal": "male-powerful",
+      "name": {
+        "en": "Rock Anthem",
+        "ru": "Рок-гимн"
+      },
+      "hint": {
+        "en": "Stadium-sized chorus with crowd-ready hooks.",
+        "ru": "Стадионный припев, который поют хором."
+      },
+      "prompt": "rock anthem, stadium, 132 BPM, distorted power chords, driving drums, guitar solo, big live room sound"
+    },
+    {
+      "id": "rock-indie",
+      "group": "rock",
+      "vocal": "male-clear",
+      "name": {
+        "en": "Indie Rock",
+        "ru": "Инди-рок"
+      },
+      "hint": {
+        "en": "Guitar band, tight rhythm section, no gloss.",
+        "ru": "Гитарная группа, плотная ритм-секция, без глянца."
+      },
+      "prompt": "indie rock, driving, 120 BPM, overdriven guitars, melodic bassline, tight drums, hand claps, raw energetic mix"
+    },
+    {
+      "id": "rock-punk",
+      "group": "rock",
+      "vocal": "male-shout",
+      "name": {
+        "en": "Punk Rock",
+        "ru": "Панк-рок"
+      },
+      "hint": {
+        "en": "Fast, loud, three chords and a singalong.",
+        "ru": "Быстро, громко, три аккорда и хором."
+      },
+      "prompt": "punk rock, fast aggressive, 176 BPM, buzzsaw guitars, pounding eighth-note drums, short hooks, raw garage production"
+    },
+    {
+      "id": "rock-grunge",
+      "group": "rock",
+      "vocal": "male-raspy",
+      "name": {
+        "en": "Grunge",
+        "ru": "Гранж"
+      },
+      "hint": {
+        "en": "Quiet verse, loud chorus, dirty guitar tone.",
+        "ru": "Тихий куплет, громкий припев, грязный гитарный звук."
+      },
+      "prompt": "grunge, 1990s, 96 BPM, dynamic quiet verse loud chorus, fuzzy detuned guitars, heavy bass, loose drums, dark brooding mood"
+    },
+    {
+      "id": "rock-metalcore",
+      "group": "rock",
+      "vocal": "male-scream",
+      "name": {
+        "en": "Metalcore",
+        "ru": "Металкор"
+      },
+      "hint": {
+        "en": "Down-tuned riffs, double kick, a breakdown.",
+        "ru": "Пониженный строй, двойная бочка, брейкдаун."
+      },
+      "prompt": "metalcore, aggressive, 160 BPM, down-tuned palm-muted riffs, double kick drums, breakdown, modern heavy production"
+    },
+    {
+      "id": "rock-classic70s",
+      "group": "rock",
+      "vocal": "male-powerful",
+      "name": {
+        "en": "Classic Rock",
+        "ru": "Классический рок"
+      },
+      "hint": {
+        "en": "Two guitars, hammond, analog tape.",
+        "ru": "Две гитары, орган и аналоговая плёнка."
+      },
+      "prompt": "classic rock, 1970s, 118 BPM, twin overdriven guitars, hammond organ, punchy analog drums, tape saturation, warm live mix"
+    },
+    {
+      "id": "rock-alternative",
+      "group": "rock",
+      "vocal": "male-clear",
+      "name": {
+        "en": "Alternative Rock",
+        "ru": "Альтернативный рок"
+      },
+      "hint": {
+        "en": "Loud-quiet dynamics, big open chords.",
+        "ru": "Игра громкого и тихого, широкие аккорды."
+      },
+      "prompt": "alternative rock, 126 BPM, chorused clean verses, distorted open chords in the chorus, melodic bass, dynamic drums, 1990s production"
+    },
+    {
+      "id": "rock-poppunk",
+      "group": "rock",
+      "vocal": "male-shout",
+      "name": {
+        "en": "Pop-Punk",
+        "ru": "Поп-панк"
+      },
+      "hint": {
+        "en": "Fast, bright, chorus you shout in a car.",
+        "ru": "Быстро, звонко, припев орут в машине."
+      },
+      "prompt": "pop-punk, 168 BPM, bright power chords, octave guitar leads, fast snare backbeat, energetic bass, polished but raw mix"
+    },
+    {
+      "id": "rock-prog",
+      "group": "rock",
+      "vocal": "male-clear",
+      "name": {
+        "en": "Progressive Rock",
+        "ru": "Прогрессив-рок"
+      },
+      "hint": {
+        "en": "Odd metres, long sections, keyboards.",
+        "ru": "Нечётные размеры, длинные части, клавиши."
+      },
+      "prompt": "progressive rock, 132 BPM, shifting odd time signatures, moog and mellotron layers, technical bass runs, dynamic multi-part arrangement, spacious analog mix"
+    },
+    {
+      "id": "postpunk-dark",
+      "group": "rock",
+      "vocal": "male-deep",
+      "name": {
+        "en": "Dark Post-Punk",
+        "ru": "Тёмный пост-панк"
+      },
+      "hint": {
+        "en": "Cold, minor, driving — built for heavy words.",
+        "ru": "Холодно, минорно, на пульсе — под тяжёлый текст."
+      },
+      "prompt": "dark post-punk, 140 BPM, chorused bass leading the song, chiming tremolo guitar, motorik drums, cold minor key, reverb-soaked mix"
+    },
+    {
+      "id": "metal-heavy",
+      "group": "metal",
+      "vocal": "male-powerful",
+      "name": {
+        "en": "Heavy Metal",
+        "ru": "Хеви-метал"
+      },
+      "hint": {
+        "en": "Galloping riffs, twin leads, double kick.",
+        "ru": "Галопирующие риффы, парные соло, двойная бочка."
+      },
+      "prompt": "heavy metal, 150 BPM, galloping palm-muted riffs, twin harmonised guitar leads, double kick drums, driving bass, big arena production"
+    },
+    {
+      "id": "hiphop-boombap",
+      "group": "hiphop",
+      "vocal": "male-rap",
+      "name": {
+        "en": "Boom Bap Hip-Hop",
+        "ru": "Хип-хоп бумбэп"
+      },
+      "hint": {
+        "en": "Dusty sampled loop, hard drums, classic feel.",
+        "ru": "Пыльный сэмпл-луп, жёсткие барабаны, классика."
+      },
+      "prompt": "boom bap hip-hop, 90 BPM, dusty vinyl sample loop, hard snare, upright bass, turntable scratches, 1990s east coast production"
+    },
+    {
+      "id": "hiphop-trap",
+      "group": "hiphop",
+      "vocal": "male-rap-melodic",
+      "name": {
+        "en": "Trap",
+        "ru": "Трэп"
+      },
+      "hint": {
+        "en": "808 bass, rolling hats, sparse and dark.",
+        "ru": "808-й бас, раскатистые хэты, темно и просторно."
+      },
+      "prompt": "trap, 140 BPM half-time feel, booming 808 bass, rolling hi-hats, dark piano melody, sparse arrangement, modern loud mix"
+    },
+    {
+      "id": "hiphop-lofi",
+      "group": "hiphop",
+      "vocal": "female-whisper",
+      "name": {
+        "en": "Lo-Fi Hip-Hop",
+        "ru": "Лоу-фай хип-хоп"
+      },
+      "hint": {
+        "en": "Soft, hazy and slow — study-session mood.",
+        "ru": "Мягко, туманно и медленно — настроение для работы."
+      },
+      "prompt": "lo-fi hip-hop, relaxed, 82 BPM, mellow jazz piano chords, dusty drum loop, warm vinyl crackle, muted bass, hazy nostalgic mood"
+    },
+    {
+      "id": "hiphop-phonk",
+      "group": "hiphop",
+      "vocal": "chops",
+      "name": {
+        "en": "Phonk",
+        "ru": "Фонк"
+      },
+      "hint": {
+        "en": "Distorted cowbell, night drive.",
+        "ru": "Перегруженный каубелл, ночная трасса."
+      },
+      "prompt": "phonk, dark aggressive, 130 BPM, distorted cowbell melody, heavy 808 bass, memphis samples, tape distortion, night drive mood"
+    },
+    {
+      "id": "hiphop-drill",
+      "group": "hiphop",
+      "vocal": "male-rap",
+      "name": {
+        "en": "Drill",
+        "ru": "Дрилл"
+      },
+      "hint": {
+        "en": "Sliding 808s and skittering hats.",
+        "ru": "Скользящие 808-е и рассыпающиеся хэты."
+      },
+      "prompt": "drill, 142 BPM, sliding 808 bass, skittering triplet hi-hats, dark sparse piano, menacing mood, modern loud mix"
+    },
+    {
+      "id": "hiphop-oldschool",
+      "group": "hiphop",
+      "vocal": "male-rap",
+      "name": {
+        "en": "Old-School Hip-Hop",
+        "ru": "Олдскул хип-хоп"
+      },
+      "hint": {
+        "en": "Drum machine, funk breaks, block party.",
+        "ru": "Драм-машина, фанковые брейки, дворовая вечеринка."
+      },
+      "prompt": "old-school hip-hop, 104 BPM, TR-808 drum machine, funk guitar and horn samples, simple bassline, block party energy, dry 1980s mix"
+    },
+    {
+      "id": "rnb-smooth",
+      "group": "soul",
+      "vocal": "female-soul",
+      "name": {
+        "en": "Smooth R&B",
+        "ru": "Смуф R&B"
+      },
+      "hint": {
+        "en": "Laid-back groove, late-night mood.",
+        "ru": "Расслабленный грув, ночное настроение."
+      },
+      "prompt": "smooth r&b, sensual, 88 BPM, electric piano, finger-snapped groove, warm sub bass, lush background harmonies, late-night mood"
+    },
+    {
+      "id": "soul-neo",
+      "group": "soul",
+      "vocal": "male-soul",
+      "name": {
+        "en": "Neo-Soul",
+        "ru": "Нео-соул"
+      },
+      "hint": {
+        "en": "Live band, jazzy chords, human timing.",
+        "ru": "Живой состав, джазовые аккорды, человеческий тайминг."
+      },
+      "prompt": "neo-soul, warm organic, 84 BPM, rhodes electric piano, jazzy extended chords, live drums with loose swing, fretless bass, horn section, analog warmth"
+    },
+    {
+      "id": "gospel-choir",
+      "group": "soul",
+      "vocal": "choir",
+      "name": {
+        "en": "Gospel",
+        "ru": "Госпел"
+      },
+      "hint": {
+        "en": "Organ, hand claps, a building modulation.",
+        "ru": "Орган, хлопки, модуляция к финалу."
+      },
+      "prompt": "gospel, uplifting spiritual, 76 BPM, hammond organ, gospel piano, hand claps, building modulation, joyful climax"
+    },
+    {
+      "id": "funk-classic",
+      "group": "groove",
+      "vocal": "male-powerful",
+      "name": {
+        "en": "Funk",
+        "ru": "Фанк"
+      },
+      "hint": {
+        "en": "Slap bass, tight horns, everything on the one.",
+        "ru": "Слэп-бас, плотная духовая секция, всё на первую долю."
+      },
+      "prompt": "funk, groovy, 108 BPM, slap bass, wah clavinet, tight horn section stabs, syncopated drums, cowbell, live band energy"
+    },
+    {
+      "id": "disco-classic",
+      "group": "groove",
+      "vocal": "female-layered",
+      "name": {
+        "en": "Disco",
+        "ru": "Диско"
+      },
+      "hint": {
+        "en": "Strings, four-on-the-floor and a mirror ball.",
+        "ru": "Струнные, ровная бочка и зеркальный шар."
+      },
+      "prompt": "disco, 1970s, 120 BPM, string section, octave bassline, four on the floor drums, open hi-hats, rhythm guitar chops, mirror ball euphoria"
+    },
+    {
+      "id": "house-classic",
+      "group": "electronic",
+      "vocal": "female-soul",
+      "name": {
+        "en": "House",
+        "ru": "Хаус"
+      },
+      "hint": {
+        "en": "Warm club groove with a vocal hook.",
+        "ru": "Тёплый клубный грув с вокальным хуком."
+      },
+      "prompt": "house, club, 124 BPM, four on the floor kick, warm analog bassline, piano stabs, filtered build, open hats, danceable groove"
+    },
+    {
+      "id": "house-deep",
+      "group": "electronic",
+      "vocal": "female-airy",
+      "name": {
+        "en": "Deep House",
+        "ru": "Дип-хаус"
+      },
+      "hint": {
+        "en": "Subdued, hypnotic, late-night rooftop.",
+        "ru": "Сдержанно, гипнотично, крыша под утро."
+      },
+      "prompt": "deep house, hypnotic, 120 BPM, deep sub bass, muted chord stabs, brushed hi-hats, spacious reverb, restrained arrangement, late night mood"
+    },
+    {
+      "id": "techno",
+      "group": "electronic",
+      "vocal": "chops",
+      "name": {
+        "en": "Techno",
+        "ru": "Техно"
+      },
+      "hint": {
+        "en": "Relentless machine groove, industrial edge.",
+        "ru": "Неумолимый машинный грув, индустриальный характер."
+      },
+      "prompt": "techno, driving industrial, 138 BPM, relentless kick, metallic percussion loops, acid synth line, long filtered builds, dark warehouse atmosphere"
+    },
+    {
+      "id": "trance-uplifting",
+      "group": "electronic",
+      "vocal": "female-airy",
+      "name": {
+        "en": "Trance",
+        "ru": "Транс"
+      },
+      "hint": {
+        "en": "Long build, huge breakdown, soaring lead.",
+        "ru": "Долгий разгон, огромный брейкдаун, парящий лид."
+      },
+      "prompt": "uplifting trance, euphoric, 138 BPM, supersaw lead, rolling bassline, long emotional breakdown, gated pads, climactic drop, festival scale"
+    },
+    {
+      "id": "dnb-liquid",
+      "group": "electronic",
+      "vocal": "female-clear",
+      "name": {
+        "en": "Drum and Bass",
+        "ru": "Драм-н-бейс"
+      },
+      "hint": {
+        "en": "Fast breaks over a deep, rolling bass.",
+        "ru": "Быстрые брейки поверх глубокого катящегося баса."
+      },
+      "prompt": "liquid drum and bass, 174 BPM, chopped amen break, deep rolling sub bass, lush jazzy pads, atmospheric reverb, energetic yet warm"
+    },
+    {
+      "id": "electronic-synthwave",
+      "group": "electronic",
+      "vocal": "female-airy",
+      "name": {
+        "en": "Synthwave",
+        "ru": "Синтвейв"
+      },
+      "hint": {
+        "en": "Neon night drive, arpeggios, wide pads.",
+        "ru": "Неоновая ночная трасса, арпеджио, широкие пэды."
+      },
+      "prompt": "synthwave, 110 BPM, pulsing analog arpeggios, gated drums, wide saw pads, retro-futuristic neon mood, chorused bass"
+    },
+    {
+      "id": "electronic-futurebass",
+      "group": "electronic",
+      "vocal": "female-clear",
+      "name": {
+        "en": "Future Bass",
+        "ru": "Фьюче-бейс"
+      },
+      "hint": {
+        "en": "Pitched supersaw chords, big lift into the drop.",
+        "ru": "Питченые супер-сау аккорды, подъём к дропу."
+      },
+      "prompt": "future bass, 150 BPM, pitch-bent supersaw chords, snappy trap-influenced drums, bright risers, euphoric drop, glossy modern mix"
+    },
+    {
+      "id": "electronic-dubstep",
+      "group": "electronic",
+      "vocal": "chops",
+      "name": {
+        "en": "Dubstep",
+        "ru": "Дабстеп"
+      },
+      "hint": {
+        "en": "Half-time weight and wobbling bass.",
+        "ru": "Тяжёлая половинная доля и воющий бас."
+      },
+      "prompt": "dubstep, 140 BPM half-time, wobbling LFO bass, heavy snare on the third beat, metallic sound design, cavernous reverb, aggressive drop"
+    },
+    {
+      "id": "electronic-eurodance",
+      "group": "electronic",
+      "vocal": "female-powerful",
+      "name": {
+        "en": "Eurodance",
+        "ru": "Евродэнс"
+      },
+      "hint": {
+        "en": "1990s club: saw lead, piano stabs, rave energy.",
+        "ru": "Клуб 90-х: пила, фортепианные стабы, рейв."
+      },
+      "prompt": "eurodance, 1990s, 140 BPM, saw lead melody, piano stabs, four on the floor kick, rave hoover synth, bright energetic mix"
+    },
+    {
+      "id": "jazz-lounge",
+      "group": "jazz",
+      "vocal": "female-husky",
+      "name": {
+        "en": "Jazz Lounge",
+        "ru": "Джаз-лаунж"
+      },
+      "hint": {
+        "en": "Small combo, brushed drums, smoky room.",
+        "ru": "Малый состав, щётки по барабанам, дымный зал."
+      },
+      "prompt": "jazz lounge, smoky intimate, 92 BPM, upright bass walking line, brushed drums, muted trumpet, jazz piano comping, warm analog recording"
+    },
+    {
+      "id": "jazz-swing",
+      "group": "jazz",
+      "vocal": "female-husky",
+      "name": {
+        "en": "Swing / Big Band",
+        "ru": "Свинг и биг-бэнд"
+      },
+      "hint": {
+        "en": "Full horn section, walking bass, ride cymbal.",
+        "ru": "Полная духовая секция, шагающий бас, райд."
+      },
+      "prompt": "big band swing, 140 BPM, full brass and saxophone sections, walking upright bass, ride cymbal swing, piano comping, 1940s ballroom recording"
+    },
+    {
+      "id": "jazz-bossa",
+      "group": "jazz",
+      "vocal": "female-airy",
+      "name": {
+        "en": "Bossa Nova",
+        "ru": "Босса-нова"
+      },
+      "hint": {
+        "en": "Nylon guitar, brushed snare, quiet sway.",
+        "ru": "Нейлоновая гитара, щётки, тихое покачивание."
+      },
+      "prompt": "bossa nova, 128 BPM, nylon string guitar, soft brushed snare, muted trumpet, subtle piano, warm intimate recording"
+    },
+    {
+      "id": "blues-delta",
+      "group": "blues",
+      "vocal": "male-raspy",
+      "name": {
+        "en": "Delta Blues",
+        "ru": "Дельта-блюз"
+      },
+      "hint": {
+        "en": "One guitar, one voice, a porch and a slide.",
+        "ru": "Одна гитара, один голос, крыльцо и слайд."
+      },
+      "prompt": "delta blues, 76 BPM, resonator guitar with bottleneck slide, stomping foot percussion, sparse arrangement, dusty mono recording"
+    },
+    {
+      "id": "blues-chicago",
+      "group": "blues",
+      "vocal": "male-soul",
+      "name": {
+        "en": "Chicago Blues",
+        "ru": "Чикагский блюз"
+      },
+      "hint": {
+        "en": "Electric band blues — harmonica out front.",
+        "ru": "Электрический блюз с губной гармошкой впереди."
+      },
+      "prompt": "chicago electric blues, 92 BPM, overdriven electric guitar, wailing harmonica, walking bass, shuffle drums, hammond organ, smoky club recording"
+    },
+    {
+      "id": "blues-rock",
+      "group": "blues",
+      "vocal": "male-raspy",
+      "name": {
+        "en": "Blues Rock",
+        "ru": "Блюз-рок"
+      },
+      "hint": {
+        "en": "Blues bones, rock muscle, long solos.",
+        "ru": "Блюзовая основа, роковая мощь, длинные соло."
+      },
+      "prompt": "blues rock, 104 BPM, thick overdriven guitar riffs, pentatonic lead solo, heavy shuffle drums, driving bass, live room sound"
+    },
+    {
+      "id": "blues-slow",
+      "group": "blues",
+      "vocal": "female-husky",
+      "name": {
+        "en": "Slow Blues",
+        "ru": "Медленный блюз"
+      },
+      "hint": {
+        "en": "12/8 crawl — every bend takes its time.",
+        "ru": "Размер 12/8, каждая нота тянется."
+      },
+      "prompt": "slow blues, 60 BPM, 12/8 triplet feel, weeping electric guitar bends, brushed drums, upright bass, late-night barroom atmosphere"
+    },
+    {
+      "id": "reggaeton",
+      "group": "world",
+      "vocal": "male-clear",
+      "name": {
+        "en": "Reggaeton",
+        "ru": "Реггетон"
+      },
+      "hint": {
+        "en": "Dembow pulse, latin heat, hook-first writing.",
+        "ru": "Пульс дембоу, латинский жар, всё держится на хуке."
+      },
+      "prompt": "reggaeton, latin, 95 BPM, dembow rhythm, deep kick, syncopated snare, plucked guitar line, party mood, modern clean mix"
+    },
+    {
+      "id": "world-reggae",
+      "group": "world",
+      "vocal": "male-clear",
+      "name": {
+        "en": "Reggae",
+        "ru": "Регги"
+      },
+      "hint": {
+        "en": "One drop drums, skanking guitar, deep bass.",
+        "ru": "Одна доля, сканк-гитара, глубокий бас."
+      },
+      "prompt": "reggae, 74 BPM, one drop drums, off-beat skanking guitar, deep round bass, hammond organ bubble, spring reverb, relaxed sunny mood"
+    },
+    {
+      "id": "world-afrobeats",
+      "group": "world",
+      "vocal": "female-clear",
+      "name": {
+        "en": "Afrobeats",
+        "ru": "Афробитс"
+      },
+      "hint": {
+        "en": "Rolling percussion, bright plucks, easy sway.",
+        "ru": "Катящаяся перкуссия, звонкие плаки, лёгкое покачивание."
+      },
+      "prompt": "afrobeats, 104 BPM, rolling log drum and shaker percussion, bright plucked synth, warm bassline, sunny relaxed groove, clean modern mix"
+    },
+    {
+      "id": "country-modern",
+      "group": "acoustic",
+      "vocal": "male-croon",
+      "name": {
+        "en": "Country",
+        "ru": "Кантри"
+      },
+      "hint": {
+        "en": "Storytelling verses, singalong chorus, steel guitar.",
+        "ru": "Куплет-рассказ, припев хором, стил-гитара."
+      },
+      "prompt": "modern country, 112 BPM, acoustic guitar, pedal steel, fiddle, steady backbeat drums, singalong chorus, storytelling mood, clean nashville production"
+    },
+    {
+      "id": "folk-acoustic",
+      "group": "acoustic",
+      "vocal": "male-croon",
+      "name": {
+        "en": "Folk Acoustic",
+        "ru": "Фолк-акустика"
+      },
+      "hint": {
+        "en": "Voice and guitar first, everything else quiet.",
+        "ru": "Сначала голос и гитара, остальное тихо."
+      },
+      "prompt": "acoustic folk, intimate honest, 88 BPM, fingerpicked acoustic guitar, brushed snare, cello underneath, natural dynamics, minimal production"
+    },
+    {
+      "id": "acoustic-ballad",
+      "group": "acoustic",
+      "vocal": "female-clear",
+      "name": {
+        "en": "Acoustic Ballad",
+        "ru": "Акустическая баллада"
+      },
+      "hint": {
+        "en": "Guitar or piano, nothing in the way of the words.",
+        "ru": "Гитара или фортепиано, ничего лишнего поверх слов."
+      },
+      "prompt": "acoustic ballad, 68 BPM, fingerpicked steel string guitar, soft piano, gentle string pad, brushed drums late in the song, natural dynamics"
+    },
+    {
+      "id": "lullaby",
+      "group": "acoustic",
+      "vocal": "female-whisper",
+      "name": {
+        "en": "Lullaby",
+        "ru": "Колыбельная"
+      },
+      "hint": {
+        "en": "Slow, soft, a music box in the background.",
+        "ru": "Медленно, мягко, музыкальная шкатулка позади."
+      },
+      "prompt": "lullaby, 60 BPM, music box melody, soft celesta, warm low strings, very quiet dynamics, tender calming mood"
+    },
+    {
+      "id": "ambient-chill",
+      "group": "ambient",
+      "vocal": "female-whisper",
+      "name": {
+        "en": "Ambient Chill",
+        "ru": "Эмбиент-чилл"
+      },
+      "hint": {
+        "en": "Almost no drums — space, pads and breath.",
+        "ru": "Почти без барабанов — воздух, пэды и дыхание."
+      },
+      "prompt": "ambient chill, calm spacious, 70 BPM, evolving pads, soft piano notes, field recording texture, deep reverb, minimal percussion, meditative"
+    },
+    {
+      "id": "cinematic-orchestral",
+      "group": "cinematic",
+      "vocal": "choir",
+      "name": {
+        "en": "Cinematic Orchestral",
+        "ru": "Кинооркестр"
+      },
+      "hint": {
+        "en": "Full orchestra with a long, rising arc.",
+        "ru": "Полный оркестр с долгим нарастанием."
+      },
+      "prompt": "cinematic orchestral, 90 BPM, full string section, french horns, timpani, long dynamic build, sweeping emotional climax, wide concert hall reverb"
+    },
+    {
+      "id": "cinematic-trailer",
+      "group": "cinematic",
+      "vocal": "choir",
+      "name": {
+        "en": "Epic Trailer",
+        "ru": "Эпичный трейлер"
+      },
+      "hint": {
+        "en": "Braams, drums, hits — two minutes of rising tension.",
+        "ru": "Браамы, барабаны, удары — две минуты нарастания."
+      },
+      "prompt": "epic trailer music, 100 BPM, staccato low strings, brass braams, taiko drums, riser and impact hits, relentless build, huge modern mix"
+    },
+    {
+      "id": "chiptune",
+      "group": "other",
+      "vocal": "instrumental",
+      "name": {
+        "en": "Chiptune",
+        "ru": "Чиптюн"
+      },
+      "hint": {
+        "en": "8-bit console sound, square waves and noise.",
+        "ru": "Восьмибитная консоль: меандр и шум."
+      },
+      "prompt": "chiptune, 150 BPM, square and pulse wave leads, triangle bass, noise channel drums, playful 8-bit console sound, tight dry mix"
+    }
+  ]
+}

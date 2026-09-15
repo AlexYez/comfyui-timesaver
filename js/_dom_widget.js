@@ -206,6 +206,22 @@ function restoreLegacyWidgetValues(node, info) {
     // Object-keyed saves address widgets by name and cannot shift.
     if (!Array.isArray(values) || !values.length) return;
 
+    // ⚠️ САМЫЙ НАДЁЖНЫЙ признак формата — не счёт совпадений по типам, а факт:
+    // несёт ли сохранение наши properties. Их пишет только onSerialize ниже,
+    // то есть они есть РОВНО в сейвах, сделанных после перехода на удаление
+    // виджетов. Для такого сейва позиционный массив разбирать нечего — верные
+    // значения уже лежат по именам.
+    //
+    // Замерено на TS Song Creator: два скрытых STRING-виджета и один видимый
+    // combo дают счёт 2:1 в пользу «старой» раскладки ВСЕГДА (строка принимает
+    // любое значение), и текст песни после перезагрузки заменялся именем
+    // пресета. Счёт по типам такую пару в принципе не различает.
+    const savedProperties = info?.properties;
+    if (savedProperties && Object.keys(stash).some(
+            (name) => savedProperties[name] !== undefined)) {
+        return;
+    }
+
     const currentWidgets = node.widgets || [];
     const currentNames = currentWidgets.map((w) => w?.name);
     const legacyScore = layoutFitScore(node, order, values);

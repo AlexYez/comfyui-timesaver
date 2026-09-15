@@ -5161,6 +5161,54 @@
       }
     }
   },
+  "TS_SongCreator": {
+    "api": "v3",
+    "category": "TS/Text",
+    "class_name": "TS_SongCreator",
+    "display_name": "TS Song Creator",
+    "inputs": [
+      {
+        "index": 0,
+        "multiline": true,
+        "name": "lyrics",
+        "type": "String"
+      },
+      {
+        "index": 1,
+        "multiline": true,
+        "name": "style",
+        "type": "String"
+      },
+      {
+        "index": 2,
+        "name": "preset",
+        "type": "Combo"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "lyrics",
+        "index": 0,
+        "name": "lyrics",
+        "type": "String"
+      },
+      {
+        "display_name": "style",
+        "index": 1,
+        "name": "style",
+        "type": "String"
+      }
+    ],
+    "python_file": "nodes/text/ts_song_creator.py",
+    "widgets": {
+      "lyrics": {
+        "default": ""
+      },
+      "style": {
+        "default": ""
+      }
+    }
+  },
   "TS_StudioInpaintCrop": {
     "api": "v3",
     "category": null,
