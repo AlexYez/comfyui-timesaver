@@ -68,7 +68,9 @@ const STRINGS = {
         vocalLibraryTip: "Who sings, and how. Picking a genre brings its usual voice along; "
             + "choose another here and it replaces that one rather than piling up.",
         tabStyle: "Style",
+        tabStyleTip: "The genre list: tempo, instruments and the mood of the track.",
         tabVocal: "Vocal",
+        tabVocalTip: "The voice list: it replaces the singer the genre brought with it.",
         searchStyles: "Search styles",
         searchStylesTip: "Filter by name, description or by a word in the prompt itself.",
         noStyles: "Nothing matches",
@@ -103,7 +105,9 @@ const STRINGS = {
         vocalLibraryTip: "Кто поёт и как. Жанр приводит с собой привычный для него голос; "
             + "выберите здесь другой — он ЗАМЕНИТ прежний, а не добавится к нему.",
         tabStyle: "Стиль",
+        tabStyleTip: "Список жанров: темп, инструменты и настроение трека.",
         tabVocal: "Вокал",
+        tabVocalTip: "Список голосов: выбранный заменяет того певца, которого привёл жанр.",
         searchStyles: "Поиск стиля",
         searchStylesTip: "Ищет по названию, описанию и по словам самого промпта.",
         noStyles: "Ничего не нашлось",

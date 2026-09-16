@@ -293,14 +293,27 @@ def _normalize_selected_path(source_path: str) -> str:
 
 
 def _get_uploadable_media_options() -> list[str]:
-    """Return input-directory files compatible with ComfyUI's native upload combo."""
+    """Return input-directory files compatible with ComfyUI's native upload combo.
+
+    ⚠️ Forward slashes on every platform. ``folder_paths.recursive_search``
+    names subfolder files the way the OS does, so on Windows a microphone
+    recording arrives as ``ts_audio_loader_recordings\\take.wav`` — while
+    everything else in ComfyUI writes ``ts_audio_loader_recordings/take.wav``:
+    the ``/upload/image`` response, this node's own upload route, and the value
+    stored in a saved workflow. The frontend's missing-media scanner compares
+    those strings LITERALLY (it only strips a trailing ``" [input]"``), so the
+    value never matched its own option and the node lit up red after a page
+    reload, with the file sitting on disk the whole time. Measured on the live
+    server, 2026-09-16: root files were fine, subfolder ones were not.
+    """
     input_dir = folder_paths.get_input_directory()
     try:
         files, _ = folder_paths.recursive_search(input_dir)
     except OSError as exc:
         _log_warning(f"Failed to scan input directory for media files: {exc}")
         return []
-    return sorted(folder_paths.filter_files_content_types(files, ["audio", "video"]))
+    media_files = folder_paths.filter_files_content_types(files, ["audio", "video"])
+    return sorted({_normalize_path(str(path)) for path in media_files})
 
 
 def _to_input_annotation(filepath: Path) -> str:

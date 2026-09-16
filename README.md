@@ -966,6 +966,8 @@ Speech-to-text, text-to-speech, music separation, a waveform visualizer, plus a 
 
 The audio loader you'd build yourself if you had time. Loads audio from any media (mp3/wav/mp4/mov/…), shows a real waveform, lets you crop visually by dragging on the waveform, and can even record from the microphone right inside the node. Outputs the `AUDIO` waveform, a whole-second `duration` int and an exact `duration_seconds` float.
 
+Transport buttons, left to right: rewind to the start of the loop (the left edge of the selection, or the file start when nothing is selected), play/pause, loop.
+
 **Use when:** preparing voiceovers, music beds, or any audio that needs trimming before processing.
 
 **Warning:** `duration` rounds UP to a whole second. That is fine for display, but if a frame count is computed from it the clip ends up almost a second longer than the speech. Where the length matters, take `duration_seconds` — it reports exactly `samples / sample_rate`.

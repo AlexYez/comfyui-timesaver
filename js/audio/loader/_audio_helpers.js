@@ -70,6 +70,7 @@ const STRINGS = {
         fitTitle: "Reset zoom and pan to full waveform",
         noFile: "No file selected",
         loopTitle: "Loop playback",
+        toLoopStartTitle: "Send the playhead back to the start of the loop",
         loadAudioTitle: "Pick an audio or video file — it is uploaded into the ComfyUI input folder",
         startRecordTitle: "Record from the microphone straight into this node",
         resetCropTitle: "Take the whole file again, dropping the trim",
@@ -112,6 +113,7 @@ const STRINGS = {
         fitTitle: "Сбросить масштаб и показать всю волну",
         noFile: "Файл не выбран",
         loopTitle: "Зациклить воспроизведение",
+        toLoopStartTitle: "Вернуть курсор в начало лупа",
         loadAudioTitle: "Выбрать аудио- или видеофайл — он загрузится в папку input ComfyUI",
         startRecordTitle: "Записать с микрофона прямо в эту ноду",
         resetCropTitle: "Взять файл целиком, сбросив обрезку",
@@ -258,6 +260,39 @@ function setWidgetValue(node, name, value) {
     node.properties[name] = value;
 }
 function getWidgetValue(node, name, fallback) { return getWidget(node, name)?.value ?? fallback; }
+// ComfyUI's own annotation for a file living in one of its media folders.
+const SOURCE_ANNOTATION_PATTERN = /\s+\[(input|output|temp)\]$/;
+/**
+ * Путь внутри папки input — всегда с прямыми косыми.
+ *
+ * ⚠️ Так его пишет всё остальное: ответ `/upload/image`, маршрут записи этой
+ * ноды и сохранённый workflow. Список же файлов до 16.09.2026 приезжал с
+ * разделителями системы, и на Windows значение из подпапки
+ * (`ts_audio_loader_recordings/take.wav [input]`) не совпадало со своей же
+ * опцией (`ts_audio_loader_recordings\take.wav`). Сканер недостающих медиа
+ * сравнивает эти строки буквально, снимая только суффикс, — и красил ноду
+ * после перезагрузки вкладки, хотя файл лежал на месте. Бэкенд теперь отдаёт
+ * прямые косые; эта функция чинит значения, уже сохранённые в графах.
+ */
+function normalizeSourcePathValue(value) {
+    return String(value ?? "").replace(/\\/g, "/");
+}
+/**
+ * Показать значение в списке опций виджета, если его там ещё нет.
+ *
+ * ComfyUI делает то же самое после своей загрузки файла: `/object_info`
+ * фронтенд спрашивает при открытии страницы, а файл появляется позже — без
+ * этой строки только что загруженный трек считается пропавшим до следующей
+ * перезагрузки. В список кладётся имя БЕЗ аннотации: сканер снимает суффикс
+ * сам, а выпадающий список остаётся таким же, как у штатных нод.
+ */
+function rememberSourceOption(node, value) {
+    const options = getWidget(node, INPUT_SOURCE_PATH)?.options?.values;
+    if (!Array.isArray(options)) return;
+    const name = normalizeSourcePathValue(value).replace(SOURCE_ANNOTATION_PATTERN, "");
+    if (!name || options.includes(name)) return;
+    options.push(name);
+}
 function readPersistedNumber(node, name, fallback) {
     const widgetValue = getWidget(node, name)?.value;
     if (widgetValue !== undefined && widgetValue !== null && widgetValue !== "") {
@@ -282,6 +317,8 @@ function scheduleCanvasDirty() { app?.graph?.setDirtyCanvas?.(true, true); }
 function playIcon() { return `<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>`; }
 function pauseIcon() { return `<svg viewBox="0 0 24 24"><path d="M6 19h4V5H6zm8-14v14h4V5z"/></svg>`; }
 function loopIcon() { return `<svg viewBox="0 0 24 24"><path d="M7 7h9.5l-2-2L16 3l5 5-5 5-1.5-2 2-2H7a3 3 0 0 0-3 3v1H2v-1a5 5 0 0 1 5-5zm10 10H7.5l2 2L8 21l-5-5 5-5 1.5 2-2 2H17a3 3 0 0 0 3-3v-1h2v1a5 5 0 0 1-5 5z"/></svg>`; }
+// Полоса и треугольник к ней — привычное «к началу» из любого плеера.
+function toLoopStartIcon() { return `<svg viewBox="0 0 24 24"><path d="M6 5h2.5v14H6zm13 0v14l-9.5-7z"/></svg>`; }
 function isMediaPlaying(media) {
     return Boolean(media && !media.paused && !media.ended && media.currentTime >= 0);
 }
@@ -311,7 +348,7 @@ export function setupAudioLoader(node) {
 
     const state = {
         mode: String(getWidgetValue(node, INPUT_MODE, "load") || "load"),
-        sourcePath: String(getWidgetValue(node, INPUT_SOURCE_PATH, "") || ""),
+        sourcePath: normalizeSourcePathValue(getWidgetValue(node, INPUT_SOURCE_PATH, "")),
         recordedPath: "",
         cropStart: readPersistedNumber(node, INPUT_CROP_START, 0),
         cropEnd: readPersistedNumber(node, INPUT_CROP_END, -1),
@@ -323,6 +360,15 @@ export function setupAudioLoader(node) {
         zoom: clamp(Number(node.properties?.[PROP_ZOOM]) || 1, MIN_ZOOM, MAX_ZOOM),
         viewStartSeconds: Math.max(0, Number(node.properties?.[PROP_VIEW_START]) || 0),
     };
+
+    // Нода, поднятая сразу из сохранённого графа (rehydrate до неё не дойдёт —
+    // см. loadedGraphNode), тоже обязана получить путь в общем написании.
+    if (!isPreviewNode && state.sourcePath) {
+        if (state.sourcePath !== getWidgetValue(node, INPUT_SOURCE_PATH, "")) {
+            setWidgetValue(node, INPUT_SOURCE_PATH, state.sourcePath);
+        }
+        rememberSourceOption(node, state.sourcePath);
+    }
 
     // ⚠️ Пока идёт восстановление workflow, присваивание source_path НЕ должно
     // тянуть за собой сброс режима. Замерено (2026-09-11): миграция старого
@@ -429,6 +475,10 @@ export function setupAudioLoader(node) {
     bottom.className = "ts-audio-loader__bottom";
     const transport = document.createElement("div");
     transport.className = "ts-audio-loader__transport";
+    const toLoopStartButton = document.createElement("button");
+    toLoopStartButton.className = "ts-audio-loader__play";
+    toLoopStartButton.innerHTML = toLoopStartIcon();
+    toLoopStartButton.title = L.toLoopStartTitle;
     const playButton = document.createElement("button");
     playButton.className = "ts-audio-loader__play";
     playButton.innerHTML = playIcon();
@@ -440,7 +490,7 @@ export function setupAudioLoader(node) {
     const timelineLabel = document.createElement("div");
     timelineLabel.className = "ts-audio-loader__timeline";
     timelineLabel.textContent = "00:00.00 / 00:00.00";
-    transport.append(playButton, loopButton, timelineLabel);
+    transport.append(toLoopStartButton, playButton, loopButton, timelineLabel);
     const cropLabel = document.createElement("div");
     cropLabel.className = "ts-audio-loader__crop";
     cropLabel.textContent = L.cropFull;
@@ -663,6 +713,7 @@ export function setupAudioLoader(node) {
         if (!isPreviewNode) {
             setWidgetValue(node, INPUT_MODE, state.mode);
             setWidgetValue(node, INPUT_SOURCE_PATH, state.sourcePath);
+            rememberSourceOption(node, state.sourcePath);
         }
         setWidgetValue(node, INPUT_CROP_START, Number(state.cropStart || 0));
         const bounds = getSelectionBounds();
@@ -1133,6 +1184,17 @@ export function setupAudioLoader(node) {
         syncWidgets();
         updateText();
     }
+    /**
+     * Курсор — в начало лупа, то есть к левой границе выделения.
+     *
+     * Без выделения левая граница равна нулю, и кнопка отматывает к началу
+     * файла — ровно то, чего от неё ждут. Воспроизведение не трогается: идёт
+     * звук — он продолжится с новой точки, стоит — курсор просто переедет.
+     */
+    function toLoopStart() {
+        seekTo(getSelectionBounds().left);
+        updateText();
+    }
     function updateSelectionFromSeconds(left, right) {
         const duration = Math.max(0, state.duration);
         if (duration <= 0) return;
@@ -1291,6 +1353,7 @@ export function setupAudioLoader(node) {
     scrollbarThumb.addEventListener("pointerup", onScrollbarThumbPointerUp);
     scrollbarThumb.addEventListener("pointercancel", onScrollbarThumbPointerUp);
     scrollbar.addEventListener("pointerdown", onScrollbarTrackPointerDown);
+    toLoopStartButton.addEventListener("click", () => { toLoopStart(); });
     playButton.addEventListener("click", async () => { await togglePlay(); });
     loopButton.addEventListener("click", () => { toggleLoop(); });
     if (fileInput) {
@@ -1344,7 +1407,7 @@ export function setupAudioLoader(node) {
     // Теперь значение само сообщает о смене (см. watchSourceWidget ниже), а эта
     // функция осталась тем, чем была: реакцией на смену пути.
     const onSourceChanged = () => {
-        const nextSourcePath = String(getWidgetValue(node, INPUT_SOURCE_PATH, "") || "");
+        const nextSourcePath = normalizeSourcePathValue(getWidgetValue(node, INPUT_SOURCE_PATH, ""));
         if (nextSourcePath === state.sourcePath) return;
         // Восстановление графа: только запоминаем путь. Режим и остальное
         // виджеты доводит rehydrate из сохранённых значений — иначе сброс здесь
@@ -1436,9 +1499,17 @@ export function setupAudioLoader(node) {
     node._tsAudioLoaderRehydrate = () => {
         if (!isPreviewNode) {
             const restoredMode = String(getWidgetValue(node, INPUT_MODE, state.mode) || state.mode || "load");
-            const restoredSource = String(getWidgetValue(node, INPUT_SOURCE_PATH, state.sourcePath) || "");
+            const restoredSource = normalizeSourcePathValue(getWidgetValue(node, INPUT_SOURCE_PATH, state.sourcePath));
             state.mode = restoredMode;
             state.sourcePath = restoredSource;
+            // Граф мог прийти со старым написанием пути (обратные косые) — оно
+            // и подсвечивало ноду красным. Чиним значение до того, как за него
+            // возьмётся сканер недостающих медиа: он идёт после загрузки графа,
+            // а этот хук — внутри неё.
+            if (restoredSource !== getWidgetValue(node, INPUT_SOURCE_PATH, "")) {
+                setWidgetValue(node, INPUT_SOURCE_PATH, restoredSource);
+            }
+            rememberSourceOption(node, restoredSource);
         }
         // Значения из графа восстановлены — дальше onSourceChanged работает
         // как при живом взаимодействии (см. флаг у объявления state).

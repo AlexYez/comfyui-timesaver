@@ -90,10 +90,12 @@ export function createStyleLibrary({ onPick, onPickVocal, t, lang }) {
     styleTab.type = "button";
     styleTab.className = "ts-song-lib__tab is-active";
     styleTab.textContent = t("tabStyle");
+    styleTab.title = t("tabStyleTip");
     const vocalTab = doc.createElement("button");
     vocalTab.type = "button";
     vocalTab.className = "ts-song-lib__tab";
     vocalTab.textContent = t("tabVocal");
+    vocalTab.title = t("tabVocalTip");
     tabs.append(styleTab, vocalTab);
 
     // Пол — переключатель над списком голосов.
