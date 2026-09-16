@@ -261,6 +261,13 @@ class TS_LatentUpscale(IO.ComfyNode):
 
         acc_v = acc_a = None
         segments = []
+        # ⚠️ Шум берётся ОДИН на весь клип и нарезается теми же окнами, что и
+        # латент. Иначе каждый кусок получает шум, отсчитанный от СВОЕГО начала,
+        # и на перекрытии соседи решают две несвязанные задачи — а склейка их
+        # усредняет, давая двойное изображение на каждом шве (замерено: шум
+        # хвоста и головы не коррелирует вовсе). Тензор создаётся лениво: его
+        # размер известен только после первого апскейла.
+        clip_noise = None
 
         # ⚠️ Апскейл идёт ГРУППАМИ, а не по одному куску.
         #
@@ -323,7 +330,17 @@ class TS_LatentUpscale(IO.ComfyNode):
                     torch.zeros_like(chunk_a),
                 )),
             }
-            out = core.sample_piece(piece, cond_i, model, noise, sampler, sigmas, negative, cfg)
+            if clip_noise is None:
+                clip_noise = core.clip_noise(
+                    noise, chunk_v, chunk_a, total_tokens, audio_tokens,
+                )
+            out = core.sample_piece(
+                piece, cond_i, model, noise, sampler, sigmas, negative, cfg,
+                noise_tensor=core.slice_noise(
+                    clip_noise, k0, k0 + chunk_v.shape[2],
+                    a0, a0 + chunk_a.shape[-1],
+                ),
+            )
             chunk_out_v = out.tensors[0]
 
             acc_v, acc_a = core.temporal_append(
@@ -344,6 +361,10 @@ class TS_LatentUpscale(IO.ComfyNode):
                 LOG_PREFIX, index + 1, len(bounds), f0, f1,
                 chunk_v.shape[4], chunk_v.shape[3],
             )
+
+        # Шум на весь клип весит столько же, сколько итоговый латент, — держать
+        # его дальше незачем.
+        clip_noise = None
 
         # Клип собран — модель больше не нужна, и тому, кто пойдёт декодировать
         # получившийся латент, эта память пригодится куда больше.

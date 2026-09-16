@@ -3,7 +3,6 @@
 node_id: TS_SileroStress
 """
 
-import importlib
 import inspect
 import logging
 import os
@@ -157,7 +156,9 @@ class TS_SileroStress(IO.ComfyNode):
                 return cached
 
             try:
-                importlib.import_module("silero_stress")
+                # The import IS the check: the package registers what
+                # torch.package needs to unpickle the accentor below.
+                import silero_stress  # noqa: F401
             except Exception as exc:
                 raise RuntimeError(
                     "Missing dependency 'silero_stress'. Install package 'silero-stress' to enable TS Silero Stress."

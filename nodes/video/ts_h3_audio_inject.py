@@ -72,7 +72,7 @@ def _prepare_waveform(audio, vae_sample_rate: int) -> torch.Tensor:
     waveform = waveform[:1]  # the VAE encodes one item; one track drives the batch
     if sample_rate != vae_sample_rate:
         # Imported lazily: torchaudio is only needed when a resample is due.
-        torchaudio = __import__("torchaudio")
+        import torchaudio
         waveform = torchaudio.functional.resample(waveform, sample_rate, vae_sample_rate)
 
     # ⚠️ The stream is stereo. A mono voice track would otherwise encode to

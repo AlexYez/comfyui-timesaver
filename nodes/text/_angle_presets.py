@@ -151,14 +151,16 @@ _register_get, _register_post = make_route_registrars(
 # ---------------------------------------------------------------------------
 # ⚠️ Библиотека лежит НЕ в `js/`, и это принципиально: ComfyUI импортирует
 # КАЖДЫЙ `.js` из веб-папки пака при загрузке страницы (`/extensions` в
-# server.py собирает их глобом). Положи 675 КБ туда — и за них платил бы каждый
-# пользователь пака при каждом открытии, даже никогда не поставив эту ноду.
-# Отсюда файл отдаётся отдельным маршрутом, а редактор подтягивает его
+# server.py собирает их глобом). Положи мегабайт туда — и за него платил бы
+# каждый пользователь пака при каждом открытии, даже никогда не поставив эту
+# ноду. Отсюда файл отдаётся отдельным маршрутом, а редактор подтягивает его
 # динамическим `import()` только когда ноду действительно создали.
 #
-# Three.js r170, MIT. Текст лицензии лежит рядом с файлом.
+# Three.js r170, MIT. Лицензия и происхождение (адрес, sha256, дата) — рядом с
+# файлом: THREE_LICENSE.txt и ORIGIN.txt. Сборка неминифицированная намеренно,
+# причина расписана в ORIGIN.txt.
 _VENDOR_DIR = Path(__file__).resolve().parent / "_vendor"
-_THREE_FILE = _VENDOR_DIR / "three.module.min.js"
+_THREE_FILE = _VENDOR_DIR / "three.module.js"
 
 
 @_register_get("/ts_angle_select/three.module.js")
@@ -167,7 +169,7 @@ async def _three_endpoint(request):
 
     if not _THREE_FILE.is_file():
         return web.json_response(
-            {"ok": False, "error": "three.module.min.js is missing from the pack."},
+            {"ok": False, "error": "three.module.js is missing from the pack."},
             status=404)
     return web.FileResponse(
         _THREE_FILE,

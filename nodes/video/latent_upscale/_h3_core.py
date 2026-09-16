@@ -868,9 +868,62 @@ def build_guider(model, cond, negative, cfg):
     return guider
 
 
-def sample_piece(piece, cond, model, noise, sampler, sigmas, negative, cfg):
+def clip_noise(noise, video_sample, audio_sample, total_video_tokens, total_audio_tokens):
+    """One noise tensor for the WHOLE clip, to be sliced per chunk.
+
+    ⚠️ This is what keeps the seams from ghosting. `Noise.generate_noise()`
+    builds its tensor from the shape it is handed and reseeds every time, so a
+    per-chunk call gives every chunk the SAME noise counted from its own start
+    — and therefore DIFFERENT noise for the same frame of the clip (measured:
+    correlation between the tail of one chunk and the head of its neighbour is
+    ~0.0). The overlap then holds two unrelated samples of the same moment, and
+    the cross-fade in `temporal_append` averages them into a double exposure.
+
+    Sliced from one clip-wide tensor, both neighbours start from identical
+    noise, land on nearly identical results, and the cross-fade goes back to
+    doing what it was written for: smoothing the remaining difference.
+
+    The noise object itself is asked for it, not `torch.randn`: that keeps
+    every noise source working (random, empty, disabled), whatever the graph
+    hands in.
+    """
+    blank = comfy.nested_tensor.NestedTensor((
+        torch.zeros(
+            (video_sample.shape[0], video_sample.shape[1], int(total_video_tokens),
+             video_sample.shape[3], video_sample.shape[4]),
+            dtype=video_sample.dtype, device="cpu",
+        ),
+        torch.zeros(
+            (audio_sample.shape[0], audio_sample.shape[1], audio_sample.shape[2],
+             int(total_audio_tokens)),
+            dtype=audio_sample.dtype, device="cpu",
+        ),
+    ))
+    try:
+        return noise.generate_noise({"samples": blank})
+    finally:
+        del blank
+
+
+def slice_noise(full_noise, k0, k1, a0, a1):
+    """The clip-wide noise cut to one chunk's video and audio token ranges."""
+    if full_noise is None:
+        return None
+    video, audio = full_noise.unbind()
+    return comfy.nested_tensor.NestedTensor((
+        video[:, :, int(k0):int(k1)].contiguous(),
+        audio[:, :, :, int(a0):int(a1)].contiguous(),
+    ))
+
+
+def sample_piece(piece, cond, model, noise, sampler, sigmas, negative, cfg, noise_tensor=None):
     """Sample one piece (full chunk or tile). Mirrors SamplerCustomAdvanced,
-    including the x0 preview callback. Returns nested samples (video+audio)."""
+    including the x0 preview callback. Returns nested samples (video+audio).
+
+    `noise_tensor` is this chunk's slice of the clip-wide noise (see
+    `clip_noise`). Without it the piece falls back to asking the noise source
+    for a fresh tensor, which is what every chunk used to do.
+    """
     latent = dict(piece)
     latent_image = latent["samples"]
     latent_image = comfy.sample.fix_empty_latent_channels(
@@ -885,10 +938,11 @@ def sample_piece(piece, cond, model, noise, sampler, sigmas, negative, cfg):
     x0_output = {}
     callback = latent_preview.prepare_callback(guider.model_patcher, sigmas.shape[-1] - 1, x0_output)
     disable_pbar = not comfy.utils.PROGRESS_BAR_ENABLED
+    chunk_noise = noise_tensor if noise_tensor is not None else noise.generate_noise(latent)
     samples = guider.sample(
-        noise.generate_noise(latent), latent_image, sampler, sigmas,
+        chunk_noise, latent_image, sampler, sigmas,
         denoise_mask=noise_mask, callback=callback,
-        disable_pbar=disable_pbar, seed=noise.seed,
+        disable_pbar=disable_pbar, seed=getattr(noise, "seed", 0),
     )
     samples = samples.to(comfy.model_management.intermediate_device())
     return samples

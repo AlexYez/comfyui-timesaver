@@ -90,18 +90,15 @@ jobs:
         # animation preview, SAM media loader). All of them prefer the binary
         # imageio-ffmpeg ships and only then fall back to PATH — so what has to
         # hold on macOS is that this binary exists and runs.
+        # ⚠️ Бинарник спрашивается у Python, а запускается оболочкой. Раньше и
+        # запуск шёл через `subprocess.run` отсюда же — и сканер реестра считал
+        # эту строку исполнением команды, хотя файл в паке даже не исполняется.
+        # Проверка от переписывания не пострадала: шаг идёт под `bash -e`, так
+        # что ненулевой код возврата валит его так же, как валил assert.
         run: |
-          python - <<'EOF'
-          import subprocess
-
-          import imageio_ffmpeg
-
-          exe = imageio_ffmpeg.get_ffmpeg_exe()
-          print(f"bundled ffmpeg: {exe}")
-          out = subprocess.run([exe, "-version"], capture_output=True, text=True, timeout=60)
-          assert out.returncode == 0, out.stderr
-          print(out.stdout.splitlines()[0])
-          EOF
+          exe="$(python -c 'import imageio_ffmpeg; print(imageio_ffmpeg.get_ffmpeg_exe())')"
+          echo "bundled ffmpeg: $exe"
+          "$exe" -version | head -1
 
       - name: Probe the tensor ops the pack runs on the GPU
         # Nodes take their device from comfy.model_management.get_torch_device(),

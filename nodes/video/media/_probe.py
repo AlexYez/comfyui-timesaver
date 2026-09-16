@@ -10,6 +10,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import math
@@ -505,7 +506,7 @@ def filmstrip_sprite(path: str, *, start: float, step: float, count: int, height
     count, height = _sanitise_span(count, height)
     key = (f"{file_identity(path)}|strip{STRIP_VERSION}"
            f"|{start:.3f}|{step:.4f}|{count}|{height}")
-    digest = __import__("hashlib").sha256(key.encode("utf-8")).hexdigest()
+    digest = hashlib.sha256(key.encode("utf-8")).hexdigest()
     disk = cache_dir() / f"{digest}.jpg"
     if disk.is_file():
         try:
