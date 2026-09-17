@@ -1,22 +1,25 @@
 """Runtime files of TS DLSS Upscaler: where they live and how they arrive.
 
 Everything the node runs on is downloaded on first use into ``models/DLSS`` and
-never shipped with the pack: ``nvngx_dlssnr.dll`` and ``nvngx_dlss.dll`` are
-NVIDIA binaries under the NVIDIA DLSS licence, the add-on and ``dxgi.dll`` are
-ReShade/RenoDX. The licence texts are taken out of the same archive and kept
+never shipped with the pack: ``nvngx_dlssnr.dll`` is an NVIDIA binary under the
+NVIDIA DLSS licence, the Neuroframe Engine and its caller shim are MIT by the
+upstream author. The licence texts are taken out of the same archive and kept
 next to the binaries.
 
-⚠️ The layout is dictated by the worker and the add-on and must NOT be
-flattened::
+⚠️ The layout is dictated by the engine and must NOT be flattened::
 
     models/DLSS/
-      host/  nvngx.dll  dxgi.dll  renodx-dlss5.addon64  nvngx_dlssnr.dll
-             ReShade.ini (written by the worker)  ReShade.log (written by ReShade)
-      dlss/  nvngx_dlss.dll
+      dlssnr/  neuroframe_engine.dll  neuroframe_caller.dll  nvngx_dlssnr.dll
+               LICENSE-Merserk.txt    LICENSE-NVIDIA-DLSS.txt
 
-⚠️ ``host/nvngx.dll`` is an EXECUTABLE with a .dll name. That is not a mistake:
-the signed NVIDIA snippet checks the image name of its caller, so the worker has
-to be called that. It is launched with its working directory set to ``host/``.
+⚠️ ``neuroframe_caller.dll`` is not optional decoration: NVIDIA's signed snippet
+checks the image that calls it, and it only accepts that shim. Both DLLs have to
+sit in the same folder, which is the folder handed to ``dlss5nr_init``.
+
+⚠️ Since the upstream v9 release the old v5 layout (``host/`` with ReShade and
+the worker executable, ``dlss/nvngx_dlss.dll``) is dead weight — nothing here
+reads it any more. It is left alone rather than deleted: those files are the
+user's, not ours.
 """
 
 from __future__ import annotations
@@ -37,53 +40,57 @@ LOG_PREFIX = "[TS DLSS Upscaler]"
 #: Folder under ``models/`` — the name the user asked for.
 MODEL_FOLDER_NAME = "DLSS"
 
-#: Upstream release the runtime is taken from (481 MB; only nine entries are kept).
+#: The folder the engine is told about, under the runtime root.
+RUNTIME_SUBDIR = "dlssnr"
+
+#: Upstream release the runtime is taken from (486 MB; only five entries are kept).
 RUNTIME_URL = (
-    "https://github.com/Merserk/dlss5-visual-enhancer/releases/download/v5.0/"
-    "DLSS.5.Visual.Enhancer.v5.0.zip"
+    "https://github.com/Merserk/dlss5-visual-enhancer/releases/download/v9.0/"
+    "DLSS.5.Visual.Enhancer.v9.0.zip"
 )
-RUNTIME_SIZE_MB = 481
+RUNTIME_SIZE_MB = 486
 
 #: zip entry -> path relative to the runtime root.
 EXTRACT = {
-    "bin/runtime/host/nvngx.dll": "host/nvngx.dll",
-    "bin/runtime/host/dxgi.dll": "host/dxgi.dll",
-    "bin/runtime/host/renodx-dlss5.addon64": "host/renodx-dlss5.addon64",
-    "bin/runtime/host/nvngx_dlssnr.dll": "host/nvngx_dlssnr.dll",
-    "bin/runtime/host/LICENSE-ReShade.txt": "host/LICENSE-ReShade.txt",
-    "bin/runtime/host/LICENSE-RenoDX.txt": "host/LICENSE-RenoDX.txt",
-    "bin/runtime/host/LICENSE-NVIDIA-DLSS.txt": "host/LICENSE-NVIDIA-DLSS.txt",
-    "bin/runtime/dlss/nvngx_dlss.dll": "dlss/nvngx_dlss.dll",
-    "bin/runtime/dlss/LICENSE-NVIDIA-DLSS.txt": "dlss/LICENSE-NVIDIA-DLSS.txt",
+    "bin/runtime/dlssnr/neuroframe_engine.dll": "dlssnr/neuroframe_engine.dll",
+    "bin/runtime/dlssnr/neuroframe_caller.dll": "dlssnr/neuroframe_caller.dll",
+    "bin/runtime/dlssnr/nvngx_dlssnr.dll": "dlssnr/nvngx_dlssnr.dll",
+    "bin/runtime/dlssnr/LICENSE-Merserk.txt": "dlssnr/LICENSE-Merserk.txt",
+    "bin/runtime/dlssnr/LICENSE-NVIDIA-DLSS.txt": "dlssnr/LICENSE-NVIDIA-DLSS.txt",
 }
 
 #: Without these the node cannot run; their absence triggers the download.
 REQUIRED = (
+    "dlssnr/neuroframe_engine.dll",
+    "dlssnr/neuroframe_caller.dll",
+    "dlssnr/nvngx_dlssnr.dll",
+)
+
+#: The v5 runtime this node used until 17.09.2026. Nothing loads it any more.
+OBSOLETE = (
     "host/nvngx.dll",
     "host/dxgi.dll",
     "host/renodx-dlss5.addon64",
-    "host/nvngx_dlssnr.dll",
     "dlss/nvngx_dlss.dll",
 )
 
-# ⚠️ Несовпадение суммы ОСТАНАВЛИВАЕТ работу, и это изменение против прежнего
-# поведения. Раньше проверка только предупреждала — «апстрим пересобирает
-# релиз, отказ сломал бы рабочую машину», — но у файла, который мы ЗАПУСКАЕМ
-# как отдельный процесс, цена ошибки другая: `v5.0` на GitHub можно удалить и
-# залить под тем же тегом что угодно, адрес этого не заметит. Пересборка
-# апстрима лечится обновлением таблицы (или выключателем ниже); подменённый
-# бинарник не лечится ничем.
+# ⚠️ Несовпадение суммы ОСТАНАВЛИВАЕТ работу, и это не перестраховка. Движок
+# грузится В НАШ процесс: подменённый `neuroframe_engine.dll` — это чужой код с
+# правами ComfyUI, и никакая песочница его уже не сдержит. Релиз на GitHub
+# можно удалить и залить под тем же тегом что угодно, адрес этого не заметит.
+# Пересборка апстрима лечится обновлением таблицы (или выключателем ниже);
+# подменённый бинарник не лечится ничем.
 #
-# ⚠️ `host/nvngx.dll` — ТОТ САМЫЙ исполняемый файл, который запускает
-# `_session.py`, и до 14.09.2026 он единственный не имел суммы вовсе. Проверки
-# «больше мегабайта» не было достаточно и по другой причине: настоящий worker
-# весит 80 КБ, то есть эвристика ложно срабатывала на исправной установке.
+# ⚠️ Суммы сверены 17.09.2026 с установленным рантаймом v9.0 и совпали со всеми
+# тремя источниками: таблицей `bin/runtime/BINARIES.md` эталонного приложения,
+# его `installer/manifest.json` и файлами на диске.
 SHA256 = {
-    "host/dxgi.dll": "0CEE63F9C9F13F3AC909C5B4903F4DBB4B719A7AB3B4F13B0DEAF83C814B94F7",
-    "host/renodx-dlss5.addon64": "D5ADF82EB44B065F4C590AC91FE824BAB07AFEA0EB9F994BDE936710C8593952",
-    "host/nvngx_dlssnr.dll": "6EB209E764F39872625DEBD6ABAF45E2BB6322F6F270F781F70C059AE30B3927",
-    "dlss/nvngx_dlss.dll": "C85F971CE023C9F3492FC7455F0B01A24BA18EA39636407A846902C4360B0B7E",
-    "host/nvngx.dll": "58191F4D38288C6BFBDA47EF56911D32052A9789E65714F4583F426E01464638",
+    "dlssnr/neuroframe_engine.dll":
+        "2BDC5BFD59906DF7CB6DF98F78339D68F741B11256A26927A4C107425E7F46D4",
+    "dlssnr/neuroframe_caller.dll":
+        "58E2850F96FC1B81A9154E059E3F3A42239440280C79E1CE41F6142CA9F1BAD4",
+    "dlssnr/nvngx_dlssnr.dll":
+        "6EB209E764F39872625DEBD6ABAF45E2BB6322F6F270F781F70C059AE30B3927",
 }
 
 #: Выключатель проверки — для того, кто СОЗНАТЕЛЬНО поставил другую сборку
@@ -93,18 +100,16 @@ _SKIP_VERIFY_ENV = "TS_DLSS_SKIP_VERIFY"
 #: Whose the files are. Printed before the download, and kept next to the
 #: binaries as the licence texts the archive carries.
 COMPONENT_LICENCES = (
-    ("host/nvngx_dlssnr.dll, dlss/nvngx_dlss.dll",
+    ("dlssnr/nvngx_dlssnr.dll",
      "NVIDIA, proprietary (NVIDIA RTX SDKs License)"),
-    ("host/dxgi.dll", "ReShade, BSD-3-Clause"),
-    ("host/renodx-dlss5.addon64", "RenoDX add-on, its own distribution terms"),
-    ("host/nvngx.dll", "the upstream project's own worker executable"),
+    ("dlssnr/neuroframe_engine.dll", "Neuroframe Engine, MIT (upstream author)"),
+    ("dlssnr/neuroframe_caller.dll", "caller shim, MIT (upstream author)"),
 )
 
 # ⚠️ Печатается ПЕРЕД первым сетевым запросом, а не после. Полгигабайта чужих
-# проприетарных файлов не должны приезжать на машину молча: человек обязан
-# увидеть, что именно качается, откуда и на чьих условиях. Выключатель
-# `download_if_missing` — и есть его согласие; выключенный, он оставляет
-# раскладку файлов на самого человека.
+# файлов, из которых один проприетарный, не должны приезжать на машину молча:
+# человек обязан увидеть, что именно качается, откуда и на чьих условиях.
+# Выключатель `download_if_missing` оставляет раскладку файлов ему самому.
 LICENCE_NOTICE = "\n".join([
     "",
     "  " + "-" * 74,
@@ -116,13 +121,13 @@ LICENCE_NOTICE = "\n".join([
     "",
     "  What that archive contains, and under whose terms:",
 ] + [
-    f"      {names:<44} {owner}" for names, owner in COMPONENT_LICENCES
+    f"      {names:<32} {owner}" for names, owner in COMPONENT_LICENCES
 ] + [
     "",
-    "  This pack hosts none of it and is not affiliated with or endorsed by",
-    "  NVIDIA, ReShade, RenoDX or the upstream project. Install only components",
-    "  you are authorised to use, from sources their licences permit. The licence",
-    "  texts travel with the binaries into the same folders.",
+    "  This pack hosts none of it and is not affiliated with or endorsed by NVIDIA",
+    "  or the upstream project. Install only components you are authorised to use,",
+    "  from sources their licences permit. The licence texts travel with the",
+    "  binaries into the same folder.",
     "",
     "  Not what you want? Switch 'download_if_missing' off and place the files",
     "  under models/DLSS yourself.",
@@ -167,6 +172,17 @@ def runtime_root() -> Path:
     return _models_dir() / MODEL_FOLDER_NAME
 
 
+def runtime_dir(root: Path | None = None) -> Path:
+    """The folder handed to ``dlss5nr_init``: all three DLLs side by side."""
+    base = Path(root) if root is not None else runtime_root()
+    return base / RUNTIME_SUBDIR
+
+
+def engine_path(root: Path | None = None) -> Path:
+    """The DLL this process loads."""
+    return runtime_dir(root) / "neuroframe_engine.dll"
+
+
 def register_model_folder() -> None:
     """Tell ComfyUI about ``models/DLSS`` so overrides can point elsewhere."""
     try:
@@ -187,12 +203,45 @@ def missing_files(root: Path | None = None) -> list[str]:
     return [name for name in REQUIRED if not (base / name).is_file()]
 
 
+def obsolete_files(root: Path | None = None) -> list[str]:
+    """Leftovers of the v5 runtime, if the user still has them."""
+    base = Path(root) if root is not None else runtime_root()
+    return [name for name in OBSOLETE if (base / name).is_file()]
+
+
 def _sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as stream:
         for block in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(block)
     return digest.hexdigest().upper()
+
+
+#: Что уже сверено в этом процессе: путь -> (размер, время правки).
+#: ⚠️ Проверка обязана идти перед КАЖДЫМ прогоном — файл мог смениться, — но
+#: пересчитывать при этом 166 МБ каждый раз незачем: замерено 130 мс на прогон,
+#: то есть на коротком батче это заметная часть всей работы. Кэш держится за
+#: размер и время правки файла: подменённый файл их не сохранит.
+_verified: dict[str, tuple[int, int]] = {}
+
+
+def _unchanged_since_check(path: Path) -> bool:
+    stamp = _verified.get(str(path))
+    if stamp is None:
+        return False
+    try:
+        info = path.stat()
+    except OSError:
+        return False
+    return stamp == (info.st_size, info.st_mtime_ns)
+
+
+def _remember_check(path: Path) -> None:
+    try:
+        info = path.stat()
+    except OSError:
+        return
+    _verified[str(path)] = (info.st_size, info.st_mtime_ns)
 
 
 def verify_is_off() -> bool:
@@ -205,8 +254,9 @@ def verify_is_off() -> bool:
 def require_known_runtime(root: Path) -> None:
     """Отказать, если на диске лежит не то, что мы закрепили.
 
-    ⚠️ Зовётся ПЕРЕД запуском worker'а, а не только после скачивания: файлы
-    могли смениться между установкой и прогоном, а запускаем мы их каждый раз.
+    ⚠️ Зовётся ПЕРЕД загрузкой движка, а не только после скачивания: файлы могли
+    смениться между установкой и прогоном, а грузим мы их в свой процесс каждый
+    раз заново.
 
     Args:
         root: корень рантайма (``models/DLSS``).
@@ -222,9 +272,10 @@ def require_known_runtime(root: Path) -> None:
     raise RuntimeError(
         f"{LOG_PREFIX} The DLSS runtime on disk is not the build this node pins:\n  "
         + "\n  ".join(problems)
-        + f"\n  This node STARTS host/nvngx.dll as a process, so it refuses to run an "
-        f"unknown build. Delete {root} and let the node fetch it again, or set "
-        f"{_SKIP_VERIFY_ENV}=1 if you installed a different build on purpose."
+        + f"\n  This node LOADS neuroframe_engine.dll into the ComfyUI process, so it "
+        f"refuses to run an unknown build. Delete {root / RUNTIME_SUBDIR} and let the node "
+        f"fetch it again, or set {_SKIP_VERIFY_ENV}=1 if you installed a different build "
+        "on purpose."
     )
 
 
@@ -235,17 +286,21 @@ def verify(root: Path) -> list[str]:
         path = root / name
         if not path.is_file():
             continue
+        if _unchanged_since_check(path):
+            continue
         actual = _sha256(path)
         if actual != expected:
             warnings.append(
                 f"{name} has SHA-256 {actual}, expected {expected} — the upstream release "
                 "was probably rebuilt."
             )
+        else:
+            _remember_check(path)
     return warnings
 
 
 def extract_from_zip(archive: Path, root: Path) -> list[str]:
-    """Take the nine known entries out of the release zip into ``root``.
+    """Take the five known entries out of the release zip into ``root``.
 
     Returns the relative paths written. Entries are addressed by NAME, never by
     index, and each target is joined to the root explicitly — a zip cannot talk
@@ -328,7 +383,7 @@ def download_runtime(
             + ", ".join(still_missing)
         )
     # ⚠️ Свежескачанное проверяется СРАЗУ: если по тому адресу лежит уже не та
-    # сборка, узнать об этом надо здесь, а не в момент запуска процесса.
+    # сборка, узнать об этом надо здесь, а не в момент загрузки движка.
     require_known_runtime(base)
     return base
 
@@ -346,14 +401,14 @@ def ensure_runtime(
     gaps = missing_files(root)
     if not gaps:
         # ⚠️ Проверяется КАЖДЫЙ прогон, а не только свежая установка: файлы на
-        # диске могли смениться после неё, а процесс мы запускаем заново.
+        # диске могли смениться после неё, а движок мы грузим заново.
         require_known_runtime(root)
         return root
     if not download_if_missing:
         raise RuntimeError(
             f"{LOG_PREFIX} The DLSS runtime is missing from {root}: " + ", ".join(gaps)
-            + ". Nothing was downloaded because 'download_if_missing' is off — that "
-            "switch is where you agree to fetch third-party components (NVIDIA, "
-            "ReShade, RenoDX). Switch it on, or place the files there yourself."
+            + ". Nothing was downloaded because 'download_if_missing' is off. Switch it on, "
+            "or place the files there yourself — they are in the upstream release "
+            f"{RUNTIME_URL}, under bin/runtime/dlssnr/."
         )
     return download_runtime(root, progress=progress)

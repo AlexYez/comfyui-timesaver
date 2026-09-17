@@ -650,7 +650,8 @@ export function createVideoEditor({ api, route, strings, onRangeChange, onViewpo
             state.height = Number(meta?.height) || 0;
             state.hasAudio = Boolean(meta?.has_audio);
             peaks.setOverview(meta?.peaks);
-            state.playable = meta?.browser_playable !== false;
+            // Играбельность решает загрузчик (у него же и кнопка копии), здесь
+            // только показ — см. setPlayable.
             // Индекс в начале файла — можно смело просить метаданные; иначе
             // браузер ради перемотки утянет весь ролик.
             video.preload = meta?.faststart ? "metadata" : "none";
@@ -658,6 +659,19 @@ export function createVideoEditor({ api, route, strings, onRangeChange, onViewpo
             strip.clear();
             if (state.duration > 0) strip.ensureOverview(state.duration);
             scheduleDraw(NEED_ALL);
+        },
+
+        /**
+         * Показывать ли сам элемент видео.
+         *
+         * ⚠️ Кодек, который браузер не декодирует, даёт не сообщение, а ЧЁРНЫЙ
+         * ПРЯМОУГОЛЬНИК — и он неотличим от поломки ноды. Прячем элемент, и на
+         * сцене остаётся фон темы с подписью, а миниатюры на таймлайне работают
+         * как работали.
+         */
+        setPlayable(flag) {
+            state.playable = flag !== false;
+            video.style.visibility = state.playable ? "" : "hidden";
         },
 
         setSource(url) {

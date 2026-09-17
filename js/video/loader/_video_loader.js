@@ -37,7 +37,13 @@ const PROP_MUTED = "ts_video_muted";
 const PROP_WAVE = "ts_video_wave";
 const PROP_META = "ts_video_meta";
 
-const VIDEO_ACCEPT = "video/*,.mp4,.mov,.mkv,.webm,.avi,.m4v,.mpg,.mpeg,.m2ts,.mts,.ts";
+// ⚠️ Должен совпадать с VIDEO_EXTENSIONS в nodes/video/media/_common.py: то, что
+// принимает кнопка выбора файла, обязано совпадать с тем, что отдают маршруты.
+// `video/*` первым — системный диалог показывает по нему всё знакомое ОС, а
+// список расширений добирает то, о чём она не знает (`.mxf`, `.y4m`, `.ivf`).
+const VIDEO_ACCEPT = "video/*,.mp4,.mov,.mkv,.webm,.avi,.m4v,.mpg,.mpeg,.m2ts,.mts,.ts,"
+    + ".flv,.wmv,.ogv,.gif,.mxf,.qt,.dv,.divx,.m1v,.m2v,.mpv,.vob,.m2p,.mod,.tod,"
+    + ".3gp,.3g2,.f4v,.asf,.rm,.rmvb,.ogm,.y4m,.nut,.ivf,.mjpeg,.mjpg,.apng,.webp,.avif";
 
 export const STRINGS_LOADER = {
     en: {
@@ -51,6 +57,15 @@ export const STRINGS_LOADER = {
         analyzing: "Reading the video…",
         metadataFailed: "Could not read the video.",
         codecUnavailable: "The browser cannot play this codec — trimming still works.",
+        proxy: "Make a small copy the player can show — one full ffmpeg pass over the file",
+        proxyOffer: (codec) =>
+            `The browser cannot play ${codec} — the thumbnails still work. `
+            + "Press the copy button to get the player back.",
+        proxyBuilding: (pct) => `Building the preview copy… ${pct}%`,
+        proxyReady: "Playing the preview copy — trimming still uses the original.",
+        proxyTag: "preview copy",
+        proxyNeeded: (codec) => `${codec} — no preview, press the copy button`,
+        proxyFailed: "Could not build the preview copy.",
         play: "Play / pause (Space)",
         loop: "Loop the selection (L)",
         mute: "Sound on/off (M)",
@@ -89,6 +104,15 @@ export const STRINGS_LOADER = {
         analyzing: "Читаем видео…",
         metadataFailed: "Не удалось прочитать видео.",
         codecUnavailable: "Браузер не проигрывает этот кодек — подрезка всё равно работает.",
+        proxy: "Сделать маленькую копию для плеера — это один полный проход ffmpeg по файлу",
+        proxyOffer: (codec) =>
+            `Браузер не проигрывает ${codec} — миниатюры работают. `
+            + "Нажмите кнопку копии, чтобы вернуть проигрыш.",
+        proxyBuilding: (pct) => `Собираю копию для плеера… ${pct}%`,
+        proxyReady: "Играет копия — подрезка по-прежнему берётся из исходника.",
+        proxyTag: "копия для плеера",
+        proxyNeeded: (codec) => `${codec} — плеер не покажет, нажмите кнопку копии`,
+        proxyFailed: "Не удалось собрать копию для плеера.",
         play: "Воспроизведение / пауза (Space)",
         loop: "Зациклить выделение (L)",
         mute: "Звук вкл/выкл (M)",
@@ -295,6 +319,82 @@ export function setupVideoLoader(node) {
         }
     });
 
+    // ── копия для плеера ─────────────────────────────────────────────────── #
+    //
+    // Браузер декодирует только H.264, VP8, VP9 и AV1. ProRes, DNxHD, MPEG-2 и
+    // HEVC он не покажет: звук слышно, на месте картинки пусто. Кадры при этом
+    // читаются прекрасно — ломается ровно предпросмотр.
+    //
+    // ⚠️ Копия строится ТОЛЬКО по нажатию: это один полный проход ffmpeg по
+    // всему ролику, на длинном 4K — минуты. Молча запускать такое, потому что
+    // кто-то выбрал файл, нельзя. Уже готовую копию подхватываем без вопросов.
+    let sourcePlayable = true;
+    let proxyBusy = false;
+    let proxyToken = 0;
+
+    const sourceUrl = (path) =>
+        api.apiURL(`${ROUTE}/view?filepath=${encodeURIComponent(path)}`);
+    // Адрес копии не меняется между сборками, поэтому к свежей добавляется метка
+    // времени — иначе браузер показал бы прошлую из своего кэша.
+    const proxyUrl = (path, fresh = false) =>
+        api.apiURL(`${ROUTE}/proxy/view?filepath=${encodeURIComponent(path)}`
+                   + (fresh ? `&t=${Date.now()}` : ""));
+
+    async function proxyState(path) {
+        const response = await api.fetchApi(
+            `${ROUTE}/proxy?filepath=${encodeURIComponent(path)}`);
+        if (!response.ok) throw new Error(String(response.status));
+        return response.json();
+    }
+
+    const proxyButton = button("proxy", L.proxy, () => buildProxy());
+    // Метка для тестов: искать кнопку по подписи нельзя, она переводится.
+    proxyButton.dataset.tsProxy = "1";
+    proxyButton.style.display = "none";
+    // Играет ли сейчас копия. Это СОСТОЯНИЕ, а не событие: строка слева живёт
+    // подрезкой и стирает любое сообщение на первом же timeupdate, поэтому
+    // отметка живёт справа, рядом с «без звука».
+    let playingProxy = false;
+
+    async function buildProxy() {
+        const path = editor.state.path;
+        if (!path || proxyBusy) return;
+        const token = ++proxyToken;
+        proxyBusy = true;
+        proxyButton.disabled = true;
+        proxyButton.classList.add("is-active");
+        try {
+            const started = await api.fetchApi(
+                `${ROUTE}/proxy?filepath=${encodeURIComponent(path)}`, { method: "POST" });
+            if (!started.ok) throw new Error(String(started.status));
+            let payload = await started.json();
+            while (payload.state === "building") {
+                if (token !== proxyToken) return;
+                updateStatus(L.proxyBuilding(Math.round((payload.progress || 0) * 100)));
+                await new Promise((resolve) => setTimeout(resolve, 500));
+                payload = await proxyState(path);
+            }
+            if (token !== proxyToken) return;
+            if (payload.state !== "ready") {
+                updateStatus(payload.error || L.proxyFailed, true);
+                return;
+            }
+            editor.setPlayable(true);
+            editor.setSource(proxyUrl(path, true));
+            proxyButton.style.display = "none";
+            playingProxy = true;
+            updateStatus(L.proxyReady);
+        } catch (error) {
+            if (token !== proxyToken) return;
+            console.warn("[TS Video Loader] preview copy failed", error);
+            updateStatus(L.proxyFailed, true);
+        } finally {
+            proxyBusy = false;
+            proxyButton.disabled = false;
+            proxyButton.classList.remove("is-active");
+        }
+    }
+
     const timeLabel = document.createElement("span");
     timeLabel.className = "ts-vid__time";
 
@@ -306,8 +406,8 @@ export function setupVideoLoader(node) {
     transportSpacer.className = "ts-vid__spacer";
 
     transport.append(playButton, loopButton, muteButton, resetButton, cutsButton,
-                     timeLabel, transportSpacer, waveToggle, zoomOut, zoomIn,
-                     fitButton, zoomSelection);
+                     proxyButton, timeLabel, transportSpacer, waveToggle, zoomOut,
+                     zoomIn, fitButton, zoomSelection);
 
     // ── статус ───────────────────────────────────────────────────────────── #
     const status = document.createElement("div");
@@ -372,6 +472,11 @@ export function setupVideoLoader(node) {
                                fps ? fps.toFixed(fps % 1 ? 2 : 0) : "?"));
         }
         if (editor.state.duration && !editor.state.hasAudio) parts.push(L.noAudio);
+        // ⚠️ Обе отметки — СПРАВА, а не слева. Строка слева живёт подрезкой и
+        // стирает сообщение на первом же обновлении: в живой проверке подсказка
+        // «кодек не проигрывается» пропадала раньше, чем её успевали прочесть.
+        if (playingProxy) parts.push(L.proxyTag);
+        else if (!sourcePlayable && editor.state.path) parts.push(L.proxyNeeded(codecLabel()));
         statusRight.textContent = parts.join(" · ");
 
         timeLabel.textContent =
@@ -379,15 +484,28 @@ export function setupVideoLoader(node) {
             + `${formatTimecode(editor.state.duration, { fps })}`;
         editor.badge.textContent = editor.state.duration
             ? formatTimecode(editor.video.currentTime || 0, { fps }) : "";
-        editor.empty.style.display = editor.state.path ? "none" : "flex";
+        // ⚠️ Пустая сцена — ЧЁРНАЯ по умолчанию (это подложка под кадр), и
+        // «плеер не покажет этот кодек» на ней неотличимо от поломки ноды.
+        // Поэтому та же подсказка, что и для пустой ноды, пишется поверх сцены.
+        const needsCopy = Boolean(editor.state.path) && !sourcePlayable && !playingProxy;
+        editor.empty.textContent = needsCopy ? L.proxyOffer(codecLabel()) : L.dropHint;
+        editor.empty.style.display = editor.state.path && !needsCopy ? "none" : "flex";
     }
 
     editor.video.addEventListener("timeupdate", () => updateStatus());
     editor.video.addEventListener("play", () => setIcon(playButton, "pause"));
     editor.video.addEventListener("pause", () => setIcon(playButton, "play"));
     editor.video.addEventListener("error", () => {
-        if (editor.state.path) updateStatus(L.codecUnavailable, false);
+        if (!editor.state.path) return;
+        // Когда мы уже знаем, что кодек браузеру не по зубам, толку от «не могу
+        // проиграть» нет — человеку нужен выход, а не диагноз.
+        updateStatus(sourcePlayable ? L.codecUnavailable
+                                    : L.proxyOffer(codecLabel()), false);
     });
+
+    function codecLabel() {
+        return String(node.properties?.[PROP_META]?.codec || "").toUpperCase() || "?";
+    }
 
     // ── источник ─────────────────────────────────────────────────────────── #
     let metaToken = 0;
@@ -412,6 +530,7 @@ export function setupVideoLoader(node) {
                 width: meta.width,
                 height: meta.height,
                 has_audio: meta.has_audio,
+                codec: meta.codec,
                 browser_playable: meta.browser_playable,
             };
             // Дублировать имя рядом с полем, где оно уже написано, незачем —
@@ -419,8 +538,18 @@ export function setupVideoLoader(node) {
             const shown = meta.filename || path;
             nameLabel.textContent = pathInput.value.trim() === shown ? "" : shown;
             syncWaveToggle();
-            editor.setSource(api.apiURL(`${ROUTE}/view?filepath=${encodeURIComponent(path)}`));
-            updateStatus();
+
+            // Что открыть в плеере: исходник, готовую копию — или ничего, пока
+            // человек не попросит копию сам.
+            sourcePlayable = meta.browser_playable !== false;
+            const ready = meta.proxy?.state === "ready";
+            proxyToken += 1;                    // отменить опрос от прошлого файла
+            proxyButton.style.display = sourcePlayable || ready ? "none" : "";
+            editor.setPlayable(sourcePlayable || ready);
+            playingProxy = !sourcePlayable && ready;
+            editor.setSource(playingProxy ? proxyUrl(path) : sourceUrl(path));
+            updateStatus(sourcePlayable ? "" : (ready ? L.proxyReady
+                                                      : L.proxyOffer(codecLabel())));
         } catch (error) {
             if (token !== metaToken) return;
             console.warn("[TS Video Loader] metadata failed", error);

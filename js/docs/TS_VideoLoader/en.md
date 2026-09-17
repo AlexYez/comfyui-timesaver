@@ -14,6 +14,10 @@ The metric is how far apart the brightness histograms of neighbouring frames are
 
 The first press reads the whole file (4.7 s for 78 s of SD; longer for 4K), and what it measures is cached, so pressing again answers at once.
 
+**Formats.** The container is recognised by its content, not by its extension, so the node takes whatever ffmpeg reads: besides the usual `mp4`, `mov`, `mkv` and `avi` — editorial `mxf` and `dv`, broadcast `m2v`, `vob`, `m2p`, mobile `3gp` and `f4v`, raw `y4m`, `ivf`, `mjpeg`, animated `webp`, `avif`, `apng`. An unfamiliar extension is not a refusal: the probe decides. Only `braw` and `r3d` stay out — their formats are closed and ffmpeg does not decode them at all.
+
+**When the browser cannot play the codec.** ProRes, DNxHD, MPEG-2 and HEVC are not decoded by browsers — the sound plays, the picture stays empty. The frames themselves read fine and so do the filmstrip thumbnails: only the preview breaks. The two-frames button builds a **small copy** (H.264, 1280 on the long side) and hands it to the player — trimming still comes from the original, the copy is only there to look at. It is one full ffmpeg pass over the clip, so it runs **only when pressed**, with a percentage in the status line; a copy that already exists lives in the pack's cache and is picked up on the next open by itself.
+
 Footage arrives by **drag and drop** — from the file manager, from the Artius browser, or from another node's preview — by the button, by paste, or as a path to a file anywhere on the ComfyUI machine.
 
 > **A path anywhere on the machine — and what happens when the server is not yours alone.** Running ComfyUI the usual way, on `127.0.0.1`, the node and its preview read **any path you give them**: Documents, Desktop, another drive. Nothing is copied into `input`, which is the whole point — that folder grows without end otherwise.

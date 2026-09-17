@@ -1,13 +1,15 @@
-"""Motion vectors for the temporal path.
+"""Where the cuts are — the only thing a video batch still has to tell the engine.
 
-DLSS is a temporal upscaler: it is told where each pixel came from and reuses
-detail across frames. A decoded video carries no motion vectors, so they are
-estimated here with DIS optical flow — the same way the reference application
-does it (``src/video/guides.py``).
+Until the upstream v9 runtime the caller also estimated motion vectors with DIS
+optical flow and sent them with every frame. The Neuroframe Engine estimates
+motion itself, on the GPU (NVIDIA optical flow, with a bundled Lucas-Kanade
+fallback), so all that is left here is the question the pictures answer and the
+engine cannot: is this frame the continuation of the last one, or a new shot?
 
-Without them DLSS still runs, treating every frame as a still, and both temporal
-stability and detail on video are noticeably worse. A batch of unrelated images
-must NOT go through this: it would carry detail from one picture into the next.
+⚠️ Getting that wrong is visible. A missed cut drags the previous shot's detail
+into the first frames of the new one; a cut declared on every frame throws away
+the temporal detail the whole mode exists for. The threshold is the reference
+application's own (``src/video/guides.py``), measured on real footage.
 """
 
 from __future__ import annotations
@@ -24,17 +26,16 @@ SCENE_CUT_SCORE = 0.24
 
 @dataclass
 class GuideFrame:
-    """What the worker needs to know about this frame's relation to the last."""
+    """How this frame relates to the last one."""
 
-    motion: np.ndarray
     reset: bool
     scene_score: float
 
 
 class TemporalGuideGenerator:
-    """Estimate the guide buffers an encoded video does not contain."""
+    """Compare consecutive frames and say where the temporal history must restart."""
 
-    def __init__(self, width: int, height: int, flow_width: int = 640) -> None:
+    def __init__(self, width: int, height: int, compare_width: int = 640) -> None:
         cv2 = TSDependencyManager.import_optional("cv2")
         if cv2 is None:
             raise RuntimeError(
@@ -44,45 +45,27 @@ class TemporalGuideGenerator:
         self._cv2 = cv2
         self.width = width
         self.height = height
-        scale = min(1.0, flow_width / width)
-        # Even sizes and never below 64: the flow solver needs both.
-        self.flow_width = max(64, int(round(width * scale / 2) * 2))
-        self.flow_height = max(64, int(round(height * scale / 2) * 2))
+        scale = min(1.0, compare_width / width)
+        # Even sizes and never below 64, the same grid the flow solver used.
+        self.compare_width = max(64, int(round(width * scale / 2) * 2))
+        self.compare_height = max(64, int(round(height * scale / 2) * 2))
         self.previous_gray: np.ndarray | None = None
-        self.zero_motion = np.zeros((height, width, 2), dtype=np.float16)
-        self.dis = cv2.DISOpticalFlow_create(cv2.DISOPTICAL_FLOW_PRESET_MEDIUM)
-        self.dis.setUseSpatialPropagation(True)
-        self.dis.setFinestScale(1)
 
     def _small_gray(self, rgba: np.ndarray) -> np.ndarray:
         cv2 = self._cv2
         gray = cv2.cvtColor(rgba, cv2.COLOR_RGBA2GRAY)
         return cv2.resize(
-            gray, (self.flow_width, self.flow_height), interpolation=cv2.INTER_AREA
+            gray, (self.compare_width, self.compare_height), interpolation=cv2.INTER_AREA
         )
 
     def process(self, rgba: np.ndarray) -> GuideFrame:
         cv2 = self._cv2
         current = self._small_gray(rgba)
         if self.previous_gray is None:
-            # The first frame has nothing to reuse: reset and zero motion.
-            motion = self.zero_motion
-            reset = True
-            scene_score = 1.0
+            # The first frame has nothing to reuse.
+            reset, scene_score = True, 1.0
         else:
             scene_score = float(np.mean(cv2.absdiff(current, self.previous_gray))) / 255.0
             reset = scene_score > SCENE_CUT_SCORE
-            if reset:
-                motion = self.zero_motion
-            else:
-                # ⚠️ Current -> previous: the worker asks "where did this pixel
-                # come from", which is the previous position minus this one.
-                motion = self.dis.calc(current, self.previous_gray, None)
-                motion = cv2.resize(
-                    motion, (self.width, self.height), interpolation=cv2.INTER_LINEAR
-                )
-                motion[..., 0] *= self.width / self.flow_width
-                motion[..., 1] *= self.height / self.flow_height
-                motion = np.ascontiguousarray(motion.astype(np.float16))
         self.previous_gray = current
-        return GuideFrame(motion=motion, reset=reset, scene_score=scene_score)
+        return GuideFrame(reset=reset, scene_score=scene_score)

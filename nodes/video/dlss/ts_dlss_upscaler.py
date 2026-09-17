@@ -1,13 +1,17 @@
 """TS DLSS Upscaler — NVIDIA DLSS 5 Neural Rendering for images and video batches.
 
 One node: pictures in, upscaled pictures out. On its first run it downloads the
-runtime it needs into ``models/DLSS`` and lays it out the way the worker expects.
+runtime it needs into ``models/DLSS`` and lays it out the way the engine expects.
 
-⚠️ This is a TEMPORAL upscaler. A batch of consecutive video frames is fed with
-estimated motion vectors, so DLSS reuses detail across frames — that is where
-the quality above a still upscaler comes from. A batch of unrelated pictures
-must be run with ``temporal`` off, or each picture drags the previous one's
-detail behind it.
+⚠️ Since 17.09.2026 the node runs the upstream **v9 "Neuroframe Engine"**: the
+feature is evaluated in this process through a C ABI, not by a worker process
+over a pipe. The picture is resized to the output size first and the network
+re-renders it there — the factor chooses a size, the network adds the detail.
+
+⚠️ This is a TEMPORAL renderer. A batch of consecutive video frames shares one
+temporal history, so detail is carried across frames — that is where the quality
+above a still upscaler comes from. A batch of unrelated pictures must be run
+with ``temporal`` off, or each picture drags the previous one's detail behind it.
 
 Windows and an NVIDIA RTX card only: the work is done by NVIDIA's signed D3D12
 runtime, and there is no other implementation of it.
@@ -17,15 +21,15 @@ from __future__ import annotations
 
 import logging
 import sys
+import time
 
 from comfy_api.v0_0_2 import IO
 
 from ..._deps import TSDependencyManager
 from . import _assets
-from ._dither import quantise_rgba16_to_rgba8
+from ._dither import quantise_float_to_rgba8
 from ._session import (
     DLSSFrameSession,
-    DLSS_MODEL_PRESETS,
     NR_STYLES,
     MIN_EDGE,
     UPSCALING_LABELS,
@@ -44,6 +48,12 @@ LOG_PREFIX = "[TS DLSS Upscaler]"
 DEFAULT_FACTOR_LABEL = "2× (Performance)"
 _CURVE_LABELS = [TRANSFER_LABELS[name] for name in TRANSFER_CHOICES]
 _LABEL_TO_CURVE = {TRANSFER_LABELS[name]: name for name in TRANSFER_CHOICES}
+
+#: ⚠️ Мёртвый выбор, оставленный НАРОЧНО. У движка v9 пресетов сети нет — он
+#: выбирает её сам, — но `widgets_values` в сохранённом графе позиционный:
+#: убрать виджет значит сдвинуть все следующие, и у человека в открывшемся
+#: workflow стиль окажется равен "M". Стоит третьим, как стоял.
+LEGACY_MODEL_PRESETS = ["Default", "J", "K", "L", "M"]
 
 _assets.register_model_folder()
 
@@ -72,15 +82,18 @@ class TS_DLSSUpscaler(IO.ComfyNode):
                     options=UPSCALING_LABELS,
                     default=DEFAULT_FACTOR_LABEL,
                     tooltip=(
-                        "DLSS mode. 1× is DLAA: no resize, the network re-renders at the "
+                        "Output size. 1× is DLAA: no resize, the network re-renders at the "
                         "same size. The output is capped at 7680×4320."
                     ),
                 ),
                 IO.Combo.Input(
                     "dlss_model_preset",
-                    options=list(DLSS_MODEL_PRESETS),
+                    options=LEGACY_MODEL_PRESETS,
                     default="M",
-                    tooltip="Network revision. M measured best; the worker confirms what it applied.",
+                    tooltip=(
+                        "Ignored since the v9 runtime — the engine picks the network itself. "
+                        "Kept so older workflows keep their other settings lined up."
+                    ),
                 ),
                 IO.Combo.Input(
                     "nr_style",
@@ -111,14 +124,18 @@ class TS_DLSSUpscaler(IO.ComfyNode):
                 IO.Boolean.Input(
                     "automatic_mask",
                     default=True,
-                    tooltip="Let the runtime decide where neural rendering is applied.",
+                    tooltip=(
+                        "Let the runtime decide where neural rendering is applied. Skin "
+                        "structure and face protection need this on."
+                    ),
                 ),
                 IO.Boolean.Input(
                     "temporal",
                     default=True,
                     tooltip=(
-                        "Treat the batch as consecutive video frames and feed motion vectors. "
-                        "Switch OFF for a batch of unrelated pictures. Ignored for a single image."
+                        "Treat the batch as consecutive video frames: one temporal history, "
+                        "restarted at scene cuts. Switch OFF for a batch of unrelated "
+                        "pictures. Ignored for a single image."
                     ),
                 ),
                 IO.Combo.Input(
@@ -135,27 +152,73 @@ class TS_DLSSUpscaler(IO.ComfyNode):
                     "dither",
                     default=True,
                     tooltip=(
-                        "Blue-noise dither on the way down to the worker's 8 bits, so gradients "
-                        "reach the network as detail instead of steps."
+                        "Blue-noise dither on the way down to 8 bits, so gradients reach the "
+                        "network as detail instead of steps."
                     ),
                 ),
-                # ⚠️ Умолчание OFF, и это изменение против прежнего поведения.
-                # Пока здесь стояло True, согласие на скачивание полугигабайта
-                # чужих проприетарных файлов И на запуск чужого исполняемого
-                # файла давало значение виджета по умолчанию — то есть граф,
-                # приехавший от кого угодно, а не человек за машиной.
-                # Сохранённые workflow это не задевает: своё значение они несут
-                # в `widgets_values` и открываются как раньше.
+                # ⚠️ Умолчание снова ON — по прямому решению владельца пака
+                # (17.09.2026). Выключенным его ставили ради сканера реестра,
+                # который всё равно держит пак во Flagged независимо от этого;
+                # цена была в том, что нода при первом запуске просто падала с
+                # текстом, пока человек не найдёт этот выключатель. Уведомление
+                # о происхождении файлов печатается ДО первого запроса в сеть и
+                # никуда не делось.
                 IO.Boolean.Input(
                     "download_if_missing",
-                    default=False,
+                    default=True,
                     tooltip=(
                         "Fetch the runtime into models/DLSS when it is not there "
-                        "(~481 MB, once). Switching this ON is your agreement to download "
-                        "third-party components — NVIDIA (proprietary), ReShade (BSD-3), "
-                        "RenoDX — from the upstream project and to run its executable. "
-                        "This pack hosts none of them. Off (the default), the node "
-                        "downloads nothing and you place the files yourself."
+                        "(~486 MB, once) from the upstream project's release. It contains "
+                        "NVIDIA's proprietary DLSSNR runtime and the MIT-licensed engine; "
+                        "this pack hosts none of it. Off, the node downloads nothing and "
+                        "you place the files yourself."
+                    ),
+                ),
+                # ---------------------------------------------------- v9 controls
+                # ⚠️ Всё новое добавлено В КОНЕЦ, после `download_if_missing`.
+                # Порядок входов — это порядок `widgets_values`: вставка в
+                # середину переписала бы значения в уже сохранённых графах.
+                IO.Int.Input(
+                    "nr_passes",
+                    default=1, min=1, max=4,
+                    tooltip=(
+                        "How many times the network goes over the frame. Each pass costs "
+                        "another full evaluation; 1 is what the reference application ships."
+                    ),
+                ),
+                IO.Float.Input(
+                    "nr_color_strength",
+                    default=1.0, min=0.0, max=1.0, step=0.01,
+                    tooltip=(
+                        "How much of the network's colour reaches the result. 1 is the "
+                        "network's own; lower keeps more of the source's."
+                    ),
+                ),
+                IO.Float.Input(
+                    "tone_preservation",
+                    default=0.0, min=0.0, max=1.0, step=0.01,
+                    tooltip="Hold the source's tonality against the network's own.",
+                ),
+                IO.Float.Input(
+                    "face_skin_protection",
+                    default=0.0, min=0.0, max=1.0, step=0.01,
+                    tooltip="Extra restraint on faces. Needs the automatic mask.",
+                ),
+                IO.Float.Input(
+                    "grain_preservation",
+                    default=0.0, min=0.0, max=1.0, step=0.01,
+                    tooltip=(
+                        "Keep the source's grain instead of letting the network clean it "
+                        "away. Raise it for film scans."
+                    ),
+                ),
+                IO.Float.Input(
+                    "shimmer_suppression",
+                    default=0.70, min=0.0, max=1.0, step=0.01,
+                    tooltip=(
+                        "The engine's GPU temporal stabiliser: it estimates motion itself "
+                        "and steadies detail between frames. Used only with 'temporal' on "
+                        "and more than one frame; a still is always rendered with 0."
                     ),
                 ),
             ],
@@ -187,32 +250,23 @@ class TS_DLSSUpscaler(IO.ComfyNode):
     # ------------------------------------------------------------------- frames
     @classmethod
     def _to_rgba8(cls, np, frame, tone_map, dither: bool):
-        """One IMAGE frame -> the RGBA8 bytes the worker takes."""
+        """One IMAGE frame -> the RGBA8 bytes the network is fed."""
         rgb = np.asarray(frame[..., :3], dtype=np.float32)
         if tone_map is not None:
             rgb = tone_map.forward(rgb)
-        rgb16 = np.clip(np.rint(np.clip(rgb, 0.0, 1.0) * 65535.0), 0, 65535).astype(np.uint16)
-        if frame.shape[-1] >= 4:
-            alpha = np.asarray(frame[..., 3], dtype=np.float32)
-            alpha16 = np.clip(np.rint(np.clip(alpha, 0.0, 1.0) * 65535.0), 0, 65535)
-        else:
-            alpha16 = np.full(rgb16.shape[:2], 65535.0)
-        rgba16 = np.concatenate(
-            [rgb16, alpha16.astype(np.uint16)[..., None]], axis=-1
-        )
-        return np.ascontiguousarray(quantise_rgba16_to_rgba8(rgba16, dither=dither))
+        alpha = np.asarray(frame[..., 3], dtype=np.float32) if frame.shape[-1] >= 4 else None
+        return np.ascontiguousarray(quantise_float_to_rgba8(rgb, alpha, dither=dither))
 
     @classmethod
-    def _from_rgba8(cls, np, out8, tone_map):
-        """The worker's RGBA8 result -> IMAGE floats."""
-        rgb = out8[..., :3].astype(np.float32) / 255.0
-        if tone_map is not None:
-            rgb = tone_map.inverse(rgb)
-        return rgb
+    def _undo_curve(cls, np, tone_map, into):
+        """Bring the rendered frame back to the curve it arrived on."""
+        if tone_map is None:
+            return
+        into[...] = tone_map.inverse(into)
 
     @classmethod
     def _resize_alpha(cls, np, alpha, width: int, height: int):
-        """Carry the source alpha to the output size; the worker ignores alpha."""
+        """Carry the source alpha to the output size; the network ignores alpha."""
         if alpha.shape[0] == height and alpha.shape[1] == width:
             return alpha
         cv2 = TSDependencyManager.import_optional("cv2")
@@ -240,9 +294,16 @@ class TS_DLSSUpscaler(IO.ComfyNode):
         source_curve: str,
         dither: bool,
         download_if_missing: bool,
+        nr_passes: int = 1,
+        nr_color_strength: float = 1.0,
+        tone_preservation: float = 0.0,
+        face_skin_protection: float = 0.0,
+        grain_preservation: float = 0.0,
+        shimmer_suppression: float = 0.70,
     ) -> IO.NodeOutput:
         import torch  # noqa: PLC0415 - always present in ComfyUI, never at import time
 
+        del dlss_model_preset  # the v9 engine picks the network itself
         cls._require_platform()
         np = cls._require_numpy()
 
@@ -257,15 +318,23 @@ class TS_DLSSUpscaler(IO.ComfyNode):
 
         factor, mode = resolve_upscaling_mode(factor_from_label(upscaling_factor))
         output_width, output_height = resolve_output_size(width, height, factor)
+        # ⚠️ Стабилизатор — понятие временнОе. На одиночной картинке или с
+        # выключенным temporal ему нечего сравнивать, и включённым он будет
+        # держать историю от предыдущего, ничем не связанного кадра.
+        temporal_active = bool(temporal) and batch > 1
         native = resolve_native_settings(
-            nr_preset="Default",            # not exposed: the app keeps it at Default
             nr_style=nr_style,
-            dlss_model_preset=dlss_model_preset,
             nr_intensity=nr_intensity,
+            nr_passes=nr_passes,
             local_tone_strength=local_tone_strength,
             local_structure_strength=local_structure_strength,
             skin_structure_strength=skin_structure_strength,
             automatic_mask=automatic_mask,
+            nr_color_strength=nr_color_strength,
+            tone_preservation=tone_preservation,
+            face_skin_protection=face_skin_protection,
+            grain_preservation=grain_preservation,
+            shimmer_suppression=shimmer_suppression if temporal_active else 0.0,
         )
 
         curve = _LABEL_TO_CURVE.get(source_curve, source_curve)
@@ -275,6 +344,7 @@ class TS_DLSSUpscaler(IO.ComfyNode):
             download_if_missing=download_if_missing,
             progress=cls._download_progress(),
         )
+        cls._mention_obsolete_files(root)
 
         # ⚠️ The source tensor is never written to: everything below reads from a
         # CPU copy and builds new arrays.
@@ -282,66 +352,109 @@ class TS_DLSSUpscaler(IO.ComfyNode):
 
         session = DLSSFrameSession(
             root,
-            input_width=width,
-            input_height=height,
             output_width=output_width,
             output_height=output_height,
-            frame_count=batch,
-            mode=mode,
             native_settings=native,
+            cuda_ordinal=cls._cuda_ordinal(torch),
             cancelled=cls._cancelled,
         )
         logger.info(
-            "%s %d frame(s) %d×%d -> %d×%d, %s, model %s%s.",
+            "%s %d frame(s) %d×%d -> %d×%d, %s, %d pass(es)%s, on %s.",
             LOG_PREFIX, batch, width, height, output_width, output_height,
-            mode["name"], dlss_model_preset,
-            ", temporal" if (temporal and batch > 1) else "",
+            mode["name"], int(nr_passes),
+            ", temporal" if temporal_active else "",
+            session.bridge_status.get("gpu_name", "unknown"),
         )
 
         guides = None
-        if temporal and batch > 1:
+        if temporal_active:
             from ._guides import TemporalGuideGenerator  # noqa: PLC0415 - needs OpenCV
 
-            guides = TemporalGuideGenerator(session.render_width, session.render_height)
-        zero_motion = np.zeros(
-            (session.render_height, session.render_width, 2), dtype=np.float16
-        )
+            guides = TemporalGuideGenerator(output_width, output_height)
 
         progress = cls._progress_bar(batch)
         results = np.empty((batch, output_height, output_width, min(channels, 4)),
                            dtype=np.float32)
+        # ⚠️ Секундомер на каждой стороне. Вопрос «почему медленно» иначе решается
+        # догадками, а ответ у него не один: сеть, подготовка кадра и выдача
+        # стоят по-разному, и на 4K они одного порядка.
+        prepare_seconds = 0.0
+        deliver_seconds = 0.0
+        # ⚠️ Сессия пишет результат прямо в батч, а для этого ей нужен
+        # непрерывный кусок памяти. Он такой и есть, пока каналов три; с альфой
+        # срез `[..., :3]` идёт с пропусками, и тогда нужен свой буфер.
+        scratch = (np.empty((output_height, output_width, 3), dtype=np.float32)
+                   if channels >= 4 else None)
+        started = time.perf_counter()
         try:
             for index in range(batch):
                 cls._raise_if_interrupted()
+                mark = time.perf_counter()
                 frame = source[index].numpy()
                 rgba8 = cls._to_rgba8(np, frame, tone_map, dither)
-                rgba8 = resize_fit(rgba8, session.render_width, session.render_height)
-                if guides is None:
-                    motion, reset = zero_motion, True
-                else:
-                    guide = guides.process(rgba8)
-                    motion, reset = guide.motion, guide.reset
-                out8 = session.process(
-                    index=index, rgba=rgba8, motion=motion, reset=reset, pts=index
-                )
-                results[index, ..., :3] = cls._from_rgba8(np, out8, tone_map)
-                if channels >= 4:
+                rgba8 = resize_fit(rgba8, output_width, output_height)
+                reset = True if guides is None else guides.process(rgba8).reset
+                prepare_seconds += time.perf_counter() - mark
+
+                target = results[index] if scratch is None else scratch
+                session.render_into(index=index, rgba=rgba8, reset=reset,
+                                    destination=target)
+
+                mark = time.perf_counter()
+                cls._undo_curve(np, tone_map, target)
+                if scratch is not None:
+                    results[index, ..., :3] = scratch
                     results[index, ..., 3] = cls._resize_alpha(
                         np, np.asarray(frame[..., 3], dtype=np.float32),
                         output_width, output_height,
                     )
+                deliver_seconds += time.perf_counter() - mark
                 if progress is not None:
                     progress.update_absolute(index + 1, batch)
+            cls._report_evidence(session)
+            cls._report_time(batch, time.perf_counter() - started, prepare_seconds,
+                             session.evaluate_seconds, deliver_seconds, session.memory_path)
             session.close()
         except BaseException:
             session.abort()
             raise
 
-        cls._report_evidence(session)
-        output = torch.from_numpy(np.clip(results, 0.0, 1.0))
-        return IO.NodeOutput(output.to(images.device))
+        # ⚠️ Кламп только там, где он может понадобиться. Восьмибитный результат
+        # движка, поделённый на 255, за границы не выходит по построению, а
+        # `np.clip` на батче 4K — это ещё одна копия на 755 МБ и 24 мс на кадр.
+        # Обратная кривая тон-мапа — другое дело: она вправе промахнуться.
+        if tone_map is not None:
+            np.clip(results, 0.0, 1.0, out=results)
+        return IO.NodeOutput(torch.from_numpy(results).to(images.device))
 
     # ------------------------------------------------------------------ plumbing
+    @classmethod
+    def _cuda_ordinal(cls, torch) -> int:
+        """The card ComfyUI is working on; the engine is brought up on the same one."""
+        try:
+            import comfy.model_management as mm  # noqa: PLC0415
+
+            device = mm.get_torch_device()
+            if getattr(device, "type", "") == "cuda":
+                index = getattr(device, "index", None)
+                if index is not None:
+                    return int(index)
+                return int(torch.cuda.current_device())
+        except Exception as exc:  # noqa: BLE001 - outside ComfyUI, or a CPU device
+            logger.debug("%s Could not read ComfyUI's device: %s", LOG_PREFIX, exc)
+        return 0
+
+    @classmethod
+    def _mention_obsolete_files(cls, root) -> None:
+        """Say once that the v5 runtime in models/DLSS is no longer read."""
+        leftovers = _assets.obsolete_files(root)
+        if leftovers:
+            logger.info(
+                "%s The old v5 runtime is still in %s (%s). Nothing reads it since the v9 "
+                "engine; you can delete host/ and dlss/ to get ~180 MB back.",
+                LOG_PREFIX, root, ", ".join(leftovers),
+            )
+
     @classmethod
     def _cancelled(cls) -> bool:
         try:
@@ -387,30 +500,46 @@ class TS_DLSSUpscaler(IO.ComfyNode):
         return report
 
     @classmethod
-    def _report_evidence(cls, session) -> None:
-        """Say once whether the signed feature-18 path really ran.
+    def _report_time(cls, frames: int, total: float, prepare: float,
+                     engine: float, deliver: float, memory_path: str) -> None:
+        """Say where the time went, in the same line every run."""
+        if frames <= 0:
+            return
+        logger.info(
+            "%s Time per frame: %.2f s total — %.2f s preparing, %.2f s in the network, "
+            "%.2f s delivering (%d frame(s) in %.1f s, frames travel through %s memory).",
+            LOG_PREFIX, total / frames, prepare / frames, engine / frames,
+            deliver / frames, frames, total, memory_path,
+        )
 
-        ⚠️ Reported, never enforced: the pictures are already upscaled, and
-        refusing them because a log line is missing would throw away work. A
-        fallback to plain resizing is exactly what the user needs told.
+    @classmethod
+    def _report_evidence(cls, session) -> None:
+        """Say what actually ran, instead of leaving it to be assumed.
+
+        ⚠️ Reported, never enforced: the pictures are already rendered, and
+        refusing them because a counter is missing would throw away the run.
         """
         try:
-            evidence = verify_feature_18(session.worker_logs, session.reshade_log_text())
+            status = session.structured_status()
+            evidence = verify_feature_18(session.logs, status)
         except Exception as exc:  # noqa: BLE001 - diagnostics must not fail a good run
-            logger.debug("%s Could not read the ReShade evidence: %s", LOG_PREFIX, exc)
+            logger.debug("%s Could not read the session evidence: %s", LOG_PREFIX, exc)
             return
-        if evidence["nr_native_fallback"]:
+        if not evidence["verified"]:
             logger.warning(
-                "%s Neural rendering fell back to a plain resize — the result is NOT "
-                "DLSS-enhanced. Update the NVIDIA driver.", LOG_PREFIX
+                "%s The run finished but no frame was recorded as evaluated — the result "
+                "may not be DLSS-enhanced.", LOG_PREFIX,
             )
-        elif evidence["verified"]:
-            logger.info("%s Signed DLSSNR feature 18 confirmed by ReShade.", LOG_PREFIX)
-        else:
-            logger.warning(
-                "%s The run finished but the signed feature-18 evidence is incomplete: %s",
-                LOG_PREFIX, "; ".join(evidence["evidence"][-3:]) or "no DLSSNR lines logged",
-            )
+            return
+        frames = evidence["successful_frames"]
+        seconds = float(evidence["evaluate_seconds"]) or 0.0
+        logger.info(
+            "%s Neuroframe Engine %s on %s: %d frame(s) in %.1f s (%.2f s/frame), "
+            "%d scene reset(s), motion %s, CUDA %s.",
+            LOG_PREFIX, evidence["engine_version"], evidence["gpu_name"], frames,
+            seconds, seconds / max(1, frames), evidence["scene_resets"],
+            evidence["motion_backend"], evidence["cuda_status"],
+        )
 
 
 NODE_CLASS_MAPPINGS = {"TS_DLSSUpscaler": TS_DLSSUpscaler}

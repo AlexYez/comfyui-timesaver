@@ -28,6 +28,8 @@ from ._common import (
     resolve_media_path,
     safe_log_path,
 )
+from ._proxy import browser_playable, build as build_proxy, proxy_file
+from ._proxy import status as proxy_status
 
 logger = logging.getLogger("comfyui_timesaver.ts_video.routes")
 
@@ -166,7 +168,10 @@ async def ts_video_metadata(request):
         "has_alpha": info.has_alpha,
         "has_audio": info.has_audio,
         "faststart": info.faststart,
-        "browser_playable": info.codec in ("h264", "vp8", "vp9", "av1"),
+        # Один ответ на вопрос «проиграет ли это браузер» — в `_proxy`: там же
+        # живёт и построение копии для тех кодеков, которые он не проиграет.
+        "browser_playable": browser_playable(info.codec),
+        "proxy": proxy_status(path),
         "audio": ({"codec": info.audio.codec,
                    "sample_rate": info.audio.sample_rate,
                    "channels": info.audio.channels} if info.audio else None),
@@ -289,6 +294,59 @@ async def ts_video_view(request):
     if path is None:
         return web.json_response({"error": "File not found."}, status=404)
     return web.FileResponse(path)
+
+
+@_register_get(f"{ROUTE_BASE}/proxy")
+async def ts_video_proxy_status(request):
+    """Есть ли маленькая копия для плеера и как далеко зашла её сборка."""
+    if _outside_allowed_roots(request):
+        return web.json_response({"error": OUTSIDE_ROOTS_MESSAGE}, status=403)
+    path = _requested_path(request)
+    if path is None:
+        return web.json_response({"error": "File not found."}, status=404)
+    return web.json_response(proxy_status(path))
+
+
+@_register_post(f"{ROUTE_BASE}/proxy")
+async def ts_video_proxy_build(request):
+    """Начать сборку копии.
+
+    ⚠️ POST, а не GET: это единственный маршрут видео-нод, который ЧТО-ТО ДЕЛАЕТ,
+    а не отвечает. Полный проход ffmpeg по часовому ролику не должен запускаться
+    предзагрузкой ссылки или чужой вкладкой.
+    """
+    if _outside_allowed_roots(request):
+        return web.json_response({"error": OUTSIDE_ROOTS_MESSAGE}, status=403)
+    path = _requested_path(request)
+    if path is None:
+        return web.json_response({"error": "File not found."}, status=404)
+
+    from ._probe import probe_cached
+
+    try:
+        info = await asyncio.to_thread(probe_cached, path, want_peaks=False)
+    except Exception as error:              # noqa: BLE001 - чужой файл может быть любым
+        return web.json_response({"error": str(error)}, status=422)
+
+    return web.json_response(await build_proxy(path, info.duration))
+
+
+@_register_get(f"{ROUTE_BASE}/proxy/view")
+async def ts_video_proxy_view(request):
+    """Отдать плееру готовую копию.
+
+    Проверяется ИСХОДНИК, а отдаётся файл из кэша пака: наружу не уходит ни один
+    путь, которого человек не назвал сам.
+    """
+    if _outside_allowed_roots(request):
+        return web.json_response({"error": OUTSIDE_ROOTS_MESSAGE}, status=403)
+    path = _requested_path(request)
+    if path is None:
+        return web.json_response({"error": "File not found."}, status=404)
+    copy = proxy_file(path)
+    if not copy.is_file():
+        return web.json_response({"error": "No preview copy yet."}, status=404)
+    return web.FileResponse(copy)
 
 
 @_register_get(f"{ROUTE_BASE}/formats")

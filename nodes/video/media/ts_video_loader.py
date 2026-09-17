@@ -26,7 +26,6 @@ from ._common import (
     LOG_PREFIX,
     VIDEO_INFO_TYPE,
     build_video_info,
-    is_video_path,
     resolve_media_path,
     safe_log_path,
 )
@@ -233,8 +232,11 @@ class TS_VideoLoader(IO.ComfyNode):
         path = resolve_media_path(source_path)
         if not path:
             return "Pick a video file first."
-        if not is_video_path(path):
-            return f"Not a video file: {safe_log_path(path)}"
+        # ⚠️ ПО РАСШИРЕНИЮ ЗДЕСЬ НЕ ОТКАЗЫВАЕМ. ffmpeg узнаёт контейнер по
+        # содержимому: ProRes, переименованный в `.zzz`, открывается как обычно
+        # (проверено). Отказ по списку расширений отбрасывал файлы, которые нода
+        # прочитала бы без единой правки — `.mxf` со съёмки, например. Если файл
+        # и вправду не видео, проба скажет об этом внятно и по делу.
         if not os.path.isfile(path):
             return f"File not found: {safe_log_path(path)}"
         if start_seconds < 0:
