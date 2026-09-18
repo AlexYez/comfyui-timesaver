@@ -22,7 +22,6 @@
 
 
 <a id="conditioning"></a>
-### 🎨 Conditioning (1 нода)
 
 ---
 

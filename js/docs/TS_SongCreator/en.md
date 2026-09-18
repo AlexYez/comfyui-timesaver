@@ -18,9 +18,6 @@ Presets are plain JSON in `nodes/text/song_presets/`, one file per model.
 
 
 <a id="ideogram"></a>
-### 🎨 Ideogram (1 node)
-
-Design tools for the open-weight **Ideogram 4** image model.
 
 ---
 

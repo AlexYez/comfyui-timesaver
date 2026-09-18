@@ -3005,6 +3005,41 @@
       }
     }
   },
+  "TS_Krea2TextFusion": {
+    "api": "v3",
+    "category": "TS/Utils",
+    "class_name": "TS_Krea2TextFusion",
+    "display_name": "TS Krea 2 Text Fusion",
+    "inputs": [
+      {
+        "index": 0,
+        "name": "model",
+        "type": "Model"
+      },
+      {
+        "index": 1,
+        "name": "strength",
+        "type": "Float"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "model",
+        "index": 0,
+        "name": "model",
+        "type": "Model"
+      }
+    ],
+    "python_file": "nodes/utils/ts_krea2_text_fusion.py",
+    "widgets": {
+      "strength": {
+        "default": 1.0,
+        "max": 10.0,
+        "min": -10.0,
+        "step": 0.05
+      }
+    }
+  },
   "TS_LTXFinalLatentSelector": {
     "api": "v3",
     "category": null,
@@ -3975,6 +4010,266 @@
       }
     }
   },
+  "TS_LockedCLIP": {
+    "api": "v3",
+    "category": "TS/Loaders",
+    "class_name": "TS_LockedCLIP",
+    "display_name": "TS Load CLIP",
+    "inputs": [
+      {
+        "index": 0,
+        "name": "clip_name1",
+        "type": "Combo"
+      },
+      {
+        "index": 1,
+        "name": "type",
+        "type": "Combo"
+      },
+      {
+        "index": 2,
+        "name": "clip_name2",
+        "optional": true,
+        "type": "Combo"
+      },
+      {
+        "index": 3,
+        "name": "clip_name3",
+        "optional": true,
+        "type": "Combo"
+      },
+      {
+        "index": 4,
+        "name": "clip_name4",
+        "optional": true,
+        "type": "Combo"
+      },
+      {
+        "advanced": true,
+        "index": 5,
+        "name": "device",
+        "optional": true,
+        "type": "Combo"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "clip",
+        "index": 0,
+        "name": "clip",
+        "type": "Clip"
+      }
+    ],
+    "python_file": "nodes/loaders/ts_locked_clip.py",
+    "widgets": {
+      "clip_name2": {
+        "default": "none"
+      },
+      "clip_name3": {
+        "default": "none"
+      },
+      "clip_name4": {
+        "default": "none"
+      },
+      "device": {
+        "default": "default"
+      },
+      "type": {
+        "default": "stable_diffusion"
+      }
+    }
+  },
+  "TS_LockedCheckpoint": {
+    "api": "v3",
+    "category": "TS/Loaders",
+    "class_name": "TS_LockedCheckpoint",
+    "display_name": "TS Load Checkpoint",
+    "inputs": [
+      {
+        "index": 0,
+        "name": "ckpt_name",
+        "type": "Combo"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "model",
+        "index": 0,
+        "name": "model",
+        "type": "Model"
+      },
+      {
+        "display_name": "clip",
+        "index": 1,
+        "name": "clip",
+        "type": "Clip"
+      },
+      {
+        "display_name": "vae",
+        "index": 2,
+        "name": "vae",
+        "type": "Vae"
+      }
+    ],
+    "python_file": "nodes/loaders/ts_locked_checkpoint.py"
+  },
+  "TS_LockedDiffusionModel": {
+    "api": "v3",
+    "category": "TS/Loaders",
+    "class_name": "TS_LockedDiffusionModel",
+    "display_name": "TS Load Diffusion Model",
+    "inputs": [
+      {
+        "index": 0,
+        "name": "unet_name",
+        "type": "Combo"
+      },
+      {
+        "advanced": true,
+        "index": 1,
+        "name": "weight_dtype",
+        "type": "Combo"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "model",
+        "index": 0,
+        "name": "model",
+        "type": "Model"
+      }
+    ],
+    "python_file": "nodes/loaders/ts_locked_diffusion_model.py",
+    "widgets": {
+      "weight_dtype": {
+        "default": "default"
+      }
+    }
+  },
+  "TS_LockedLora": {
+    "api": "v3",
+    "category": "TS/Loaders",
+    "class_name": "TS_LockedLora",
+    "display_name": "TS Load LoRA",
+    "inputs": [
+      {
+        "index": 0,
+        "name": "model",
+        "type": "Model"
+      },
+      {
+        "index": 1,
+        "name": "clip",
+        "type": "Clip"
+      },
+      {
+        "index": 2,
+        "name": "lora_name",
+        "type": "Combo"
+      },
+      {
+        "index": 3,
+        "name": "strength_model",
+        "type": "Float"
+      },
+      {
+        "index": 4,
+        "name": "strength_clip",
+        "type": "Float"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "model",
+        "index": 0,
+        "name": "model",
+        "type": "Model"
+      },
+      {
+        "display_name": "clip",
+        "index": 1,
+        "name": "clip",
+        "type": "Clip"
+      }
+    ],
+    "python_file": "nodes/loaders/ts_locked_lora.py",
+    "widgets": {
+      "strength_clip": {
+        "default": 1.0,
+        "max": 100.0,
+        "min": -100.0,
+        "step": 0.01
+      },
+      "strength_model": {
+        "default": 1.0,
+        "max": 100.0,
+        "min": -100.0,
+        "step": 0.01
+      }
+    }
+  },
+  "TS_LockedLoraModelOnly": {
+    "api": "v3",
+    "category": "TS/Loaders",
+    "class_name": "TS_LockedLoraModelOnly",
+    "display_name": "TS Load LoRA, model only",
+    "inputs": [
+      {
+        "index": 0,
+        "name": "model",
+        "type": "Model"
+      },
+      {
+        "index": 1,
+        "name": "lora_name",
+        "type": "Combo"
+      },
+      {
+        "index": 2,
+        "name": "strength_model",
+        "type": "Float"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "model",
+        "index": 0,
+        "name": "model",
+        "type": "Model"
+      }
+    ],
+    "python_file": "nodes/loaders/ts_locked_lora_model_only.py",
+    "widgets": {
+      "strength_model": {
+        "default": 1.0,
+        "max": 100.0,
+        "min": -100.0,
+        "step": 0.01
+      }
+    }
+  },
+  "TS_LockedVAE": {
+    "api": "v3",
+    "category": "TS/Loaders",
+    "class_name": "TS_LockedVAE",
+    "display_name": "TS Load VAE",
+    "inputs": [
+      {
+        "index": 0,
+        "name": "vae_name",
+        "type": "Combo"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "vae",
+        "index": 0,
+        "name": "vae",
+        "type": "Vae"
+      }
+    ],
+    "python_file": "nodes/loaders/ts_locked_vae.py"
+  },
   "TS_LoraLoader": {
     "api": "v3",
     "category": "TS/utils",
@@ -4472,6 +4767,77 @@
         "default": 2,
         "max": 10,
         "min": 0
+      }
+    }
+  },
+  "TS_NAG": {
+    "api": "v3",
+    "category": "TS/Utils",
+    "class_name": "TS_NAG",
+    "display_name": "TS NAG",
+    "inputs": [
+      {
+        "index": 0,
+        "name": "model",
+        "type": "Model"
+      },
+      {
+        "index": 1,
+        "name": "negative",
+        "type": "Conditioning"
+      },
+      {
+        "index": 2,
+        "name": "nag_scale",
+        "type": "Float"
+      },
+      {
+        "index": 3,
+        "name": "nag_alpha",
+        "type": "Float"
+      },
+      {
+        "index": 4,
+        "name": "nag_tau",
+        "type": "Float"
+      },
+      {
+        "advanced": true,
+        "index": 5,
+        "name": "model_type",
+        "type": "Combo"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "model",
+        "index": 0,
+        "name": "model",
+        "type": "Model"
+      }
+    ],
+    "python_file": "nodes/utils/ts_nag.py",
+    "widgets": {
+      "model_type": {
+        "default": "auto"
+      },
+      "nag_alpha": {
+        "default": 0.25,
+        "max": 1.0,
+        "min": 0.0,
+        "step": 0.01
+      },
+      "nag_scale": {
+        "default": 11.0,
+        "max": 100.0,
+        "min": 0.0,
+        "step": 0.1
+      },
+      "nag_tau": {
+        "default": 2.5,
+        "max": 10.0,
+        "min": 0.0,
+        "step": 0.05
       }
     }
   },

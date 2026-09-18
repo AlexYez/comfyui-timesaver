@@ -22,7 +22,6 @@ Switch `one_per_run` on and set ComfyUI's **Batch count** to the number of jobs.
 
 
 <a id="conditioning"></a>
-### 🎨 Conditioning (1 node)
 
 ---
 

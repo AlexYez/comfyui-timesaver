@@ -12,9 +12,6 @@ Writes each batch result the moment it is ready, instead of holding everything u
 
 
 <a id="utils"></a>
-### 🛠️ Utils (8 nodes)
-
-Tiny helpers that make the graph less cluttered.
 
 ---
 

@@ -18,9 +18,6 @@
 
 
 <a id="ideogram"></a>
-### 🎨 Ideogram (1 нода)
-
-Инструменты дизайна для open-weight модели **Ideogram 4**.
 
 ---
 

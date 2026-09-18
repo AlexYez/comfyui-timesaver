@@ -44,9 +44,6 @@ That wording matters more than it looks. `with a Russian accent` asks for an Eng
 
 
 <a id="text"></a>
-### 📝 Text & Prompts (4 nodes)
-
-Build, randomise and manage prompts at scale.
 
 ---
 

@@ -1449,7 +1449,47 @@ Writes each batch result the moment it is ready, instead of holding everything u
 ---
 
 <a id="utils"></a>
-### 🛠️ Utils (8 nodes)
+### 🔐 Locked model loaders (6 nodes)
+
+Six of ComfyUI's own loaders, taught to open **`.tsmodel`** files — models "locked" by the `model-converter` tool. Nothing else opens them: not `safe_open`, not torch, not diffusers, not Forge, not ComfyUI itself. Useful if you hand your own models to other people and would rather they were not simply picked up and loaded.
+
+**How the format works.** A plain safetensors whose first 8 bytes are replaced by a magic marker — any reader sees a "header length" of about 1.6·10¹⁷ and fails at once. The JSON header stays where it was but is zlib-compressed, so names, shapes and offsets are not visible in a hex editor. **The tensor data sits byte for byte where it always was**, and that is the important part: locking a finished file of any size takes milliseconds, and the node hands the tensors to ComfyUI the same way it always gets them (`comfy_aimdo` mmap, streamed straight from disk into VRAM). The overhead is unpacking the header — milliseconds.
+
+⚠️ **No cryptography and no passwords.** There is deliberately no secret in the format: anyone holding the node's source can take the lock off. This guards against "just grab the file and load it", it is not DRM — and once loaded, the model is as available to any saving node as any other.
+
+⚠️ **The nodes know nothing about architectures.** They parse the header in memory and hand the state dict to the very same `comfy.sd.load_*_state_dict` the stock loaders use. So every model, every quantisation and every new architecture works by itself, with no edits here. The text-encoder type list is read from `comfy.sd.CLIPType` on the fly.
+
+Should ComfyUI's internal reading path ever change, the nodes **fall back to a plain mmap** on their own: slower to load, but still loading.
+
+Files are looked for in the same `models/…` folders the stock nodes use. The `.tsmodel` extension is deliberately not registered with ComfyUI — the stock loaders should not offer a file they cannot open anyway.
+
+#### TS Load Diffusion Model
+
+The `UNETLoader` counterpart, with the same weight casting options (`fp8_e4m3fn`, `fp8_e5m2` and the fast variant). The loaded model remembers how to load itself again — without that, a deep clone or a second GPU would end up holding no weights.
+
+#### TS Load CLIP
+
+Stands in for four nodes at once: `CLIPLoader`, `DualCLIPLoader`, `TripleCLIPLoader` and `QuadrupleCLIPLoader`. Up to four files in one node; leave the spare inputs on `none`. `device = cpu` keeps the encoder off the card.
+
+#### TS Load VAE
+
+The `VAELoader` counterpart.
+
+#### TS Load Checkpoint
+
+The `CheckpointLoaderSimple` counterpart: model, CLIP and VAE out of one file. The architecture is guessed by ComfyUI itself, from the same state dict.
+
+#### TS Load LoRA
+
+The `LoraLoader` counterpart. Both strengths at zero leave everything untouched, exactly as the stock node does.
+
+#### TS Load LoRA, model only
+
+The `LoraLoaderModelOnly` counterpart — for graphs that carry no CLIP at all: video models, distilled checkpoints.
+
+---
+
+### 🛠️ Utils (11 nodes)
 
 Tiny helpers that make the graph less cluttered.
 
@@ -1578,6 +1618,57 @@ A pure integer slider that returns an `INT`. Custom-widget UI optimised for reso
 The float counterpart, range −1e9 to +1e9 with 0.01 precision by default.
 
 **Use the pair when:** you need a clean parameter widget without dragging a full math node onto the graph.
+
+---
+
+#### TS Krea 2 Text Fusion
+
+One dial on **how loudly the prompt reaches Krea 2**.
+
+Krea 2 does not condition on a single text embedding. Its encoder is Qwen3-VL-4B, and the model keeps **twelve of its hidden layers at once** (taps `hidden_states[2, 5, 8, … 35]`). They are collapsed into the one embedding the DiT attends to by a single linear layer inside the model — `Linear(12 → 1)`, no bias. Its weight is therefore not a matrix but **twelve numbers**, one per tap: a learned weighted sum. In the owner's checkpoints `txtfusion.projector.weight` is exactly that — `[1, 12]`.
+
+This node multiplies those twelve numbers, and with them the whole fused text signal. Higher follows the prompt more closely, lower leaves the model more room. `1.0` is the model as trained, `0.0` silences the text path entirely, and negative values invert it. The author of the original tweak settles on **3.0**: better prompt adherence with the invention intact.
+
+> The idea is not ours: [Extraltodeus/ComfyUI-Krea2-attention-tweak](https://github.com/Extraltodeus/ComfyUI-Krea2-attention-tweak). He spotted it in [Beinsezii/Krea-2-Turbo-Projector-Scale-LoRA](https://huggingface.co/Beinsezii/Krea-2-Turbo-Projector-Scale-LoRA-Diffusers) — the values there were too close to the originals to be anything but a multiplier.
+
+⚠️ **The model is not damaged.** The multiply lands on a copy of the weight (the core casts with `copy=True` before applying patches), so the checkpoint on disk and in memory is untouched and the patch is undone with the model. Feed it anything other than Krea 2 and it refuses in plain words instead of failing somewhere inside someone else's code.
+
+**When to use it:** the prompt is not being followed closely enough — raise it; the picture looks over-literal and dried out — lower it.
+
+---
+
+#### TS NAG
+
+**A negative prompt where there cannot be one** — on a distilled model sampled at `cfg = 1`.
+
+At `cfg = 1` ComfyUI does not compute the negative branch at all: the wire is there, the meaning is not. NAG (*Normalized Attention Guidance*, [paper](https://github.com/ChenDarYen/Normalized-Attention-Guidance)) comes at it from the other side — it applies the negative **inside every cross-attention block**. With the same query, attention is computed twice, against the positive context and against a negative one, and then:
+
+```text
+guidance = x_pos · scale − x_neg · (scale − 1)      extrapolate
+r        = ‖guidance‖₁ / ‖x_pos‖₁                   per token
+if r > tau:  guidance ← guidance · (‖x_pos‖₁ · tau / ‖guidance‖₁)
+out      = guidance · alpha + x_pos · (1 − alpha)
+```
+
+The clamp by `tau` is what the "normalized" is for: an extrapolation with a scale of 11 would otherwise tear the activations apart. `nag_scale` is the push, `nag_tau` the ceiling on the deviation, `nag_alpha` how much of it reaches the result.
+
+**The cost is one extra cross-attention per block, not a second pass of the model.** That is the whole point: the query comes from the picture and meets a short text context, which is cheap.
+
+⚠️ **It does not work with every model, and that is not a whim.** It needs a real, separate cross-attention module that can be called a second time:
+
+| model | |
+|---|---|
+| **Wan** | `blocks[i].cross_attn`, T2V and I2V alike — supported |
+| **LTX** | `transformer_blocks[i].attn2` — supported |
+| **Krea 2**, **MiniMax H3** | text and picture are joined into one sequence before the stack — **refused, with the reason** |
+
+On a single-stream model the negative variant would have to be carried through the whole stack, which is a second full forward — exactly what CFG does. The node says so and points you at `cfg` instead of pretending it saved you something.
+
+The family is recognised **by the structure of the blocks**, not by a file name: `model_type` = `auto`. Which rows of the batch are positive is asked of the core (`cond_or_uncond`) rather than guessed from the shape — otherwise a batch of two pictures at `cfg = 1` would be indistinguishable from a positive/negative pair.
+
+> The idea and the defaults come from the `WanVideoNAG` node in [kijai/ComfyUI-KJNodes](https://github.com/kijai/ComfyUI-KJNodes). For Wan the maths is reproduced one to one, including where the two branches meet, so settings shared for it transfer as they are. For LTX the original `forward` is called twice and the combination happens after the output projection: duplicating LTX's internals (RoPE, guide masks, per-head gating) would mean breaking on every update to them.
+
+**When to use it:** a distilled model at `cfg = 1` and something you want gone — "no text", "not cartoonish", "no extra fingers".
 
 ---
 

@@ -14,9 +14,6 @@ brighter was flattened on the way into the model.
 
 
 <a id="audio"></a>
-### 🎵 Audio (6 nodes)
-
-Speech-to-text, text-to-speech, music separation, a waveform visualizer, plus a friendly audio loader and preview.
 
 ---
 
