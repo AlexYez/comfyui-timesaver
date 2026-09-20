@@ -3191,56 +3191,58 @@
         "tooltip": "То же приведение весов, что предлагает штатный UNETLoader."
       }
     },
-    "outputs": {"0": {"name": "модель", "tooltip": "Обычная MODEL — дальше всё как всегда."}}
-  },
-  "TS_LockedCLIP": {
-    "description": "Загрузить запертый текстовый энкодер .tsmodel — до четырёх файлов сразу, поэтому нода заменяет CLIPLoader, DualCLIPLoader, TripleCLIPLoader и QuadrupleCLIPLoader. Список типов берётся из самого ComfyUI.",
-    "inputs": {
-      "clip_name1": {"name": "энкодер 1", "tooltip": "Файл .tsmodel из models/text_encoders."},
-      "type": {"name": "тип", "tooltip": "Что это за энкодер. Список читается из comfy.sd.CLIPType."},
-      "clip_name2": {"name": "энкодер 2", "tooltip": "Второй энкодер для моделей, которым нужна пара. «none» — пропустить."},
-      "clip_name3": {"name": "энкодер 3", "tooltip": "Третий энкодер. «none» — пропустить."},
-      "clip_name4": {"name": "энкодер 4", "tooltip": "Четвёртый энкодер. «none» — пропустить."},
-      "device": {"name": "устройство", "tooltip": "Держать энкодер на процессоре, чтобы оставить карту модели."}
-    },
-    "outputs": {"0": {"name": "clip", "tooltip": "Обычный CLIP."}}
-  },
-  "TS_LockedVAE": {
-    "description": "Загрузить запертый VAE .tsmodel. State dict уходит в тот же comfy.sd.VAE, который собирает штатный загрузчик, поэтому работает всё, что читает ComfyUI.",
-    "inputs": {"vae_name": {"name": "VAE", "tooltip": "Файл .tsmodel из models/vae."}},
-    "outputs": {"0": {"name": "vae", "tooltip": "Обычный VAE."}}
+    "outputs": {
+      "0": {
+        "name": "модель",
+        "tooltip": "Обычная MODEL — дальше всё как всегда."
+      }
+    }
   },
   "TS_LockedCheckpoint": {
     "description": "Загрузить запертый чекпойнт .tsmodel и получить из него модель, CLIP и VAE — как CheckpointLoaderSimple. Архитектуру угадывает сам ComfyUI, из того же state dict.",
-    "inputs": {"ckpt_name": {"name": "чекпойнт", "tooltip": "Файл .tsmodel из models/checkpoints."}},
-    "outputs": {
-      "0": {"name": "модель", "tooltip": "Обычная MODEL."},
-      "1": {"name": "clip", "tooltip": "Обычный CLIP."},
-      "2": {"name": "vae", "tooltip": "Обычный VAE."}
-    }
-  },
-  "TS_LockedLora": {
-    "description": "Применить запертую LoRA .tsmodel к модели и её CLIP — как LoraLoader. Обе силы на нуле ничего не трогают.",
     "inputs": {
-      "model": {"name": "модель", "tooltip": "Модель, к которой применяется LoRA."},
-      "clip": {"name": "clip", "tooltip": "Текстовый энкодер, к которому применяется LoRA."},
-      "lora_name": {"name": "LoRA", "tooltip": "Файл .tsmodel из models/loras."},
-      "strength_model": {"name": "сила по модели", "tooltip": "Насколько сильно LoRA влияет на модель."},
-      "strength_clip": {"name": "сила по clip", "tooltip": "Насколько сильно она влияет на текстовый энкодер."}
+      "ckpt_name": {
+        "name": "чекпойнт",
+        "tooltip": "Файл .tsmodel из models/checkpoints."
+      }
     },
     "outputs": {
-      "0": {"name": "модель", "tooltip": "Модель с применённой LoRA."},
-      "1": {"name": "clip", "tooltip": "CLIP с применённой LoRA."}
+      "0": {
+        "name": "модель",
+        "tooltip": "Обычная MODEL."
+      },
+      "1": {
+        "name": "clip",
+        "tooltip": "Обычный CLIP."
+      },
+      "2": {
+        "name": "vae",
+        "tooltip": "Обычный VAE."
+      }
     }
   },
   "TS_LockedLoraModelOnly": {
-    "description": "Применить запертую LoRA .tsmodel только к модели — как LoraLoaderModelOnly, для графов, где CLIP нет вовсе.",
+    "description": "Применить запертую LoRA .tsmodel к модели — как LoraLoaderModelOnly. Только «model only»: модели, ради которых замок и заводился, это видео и дистилляты, а в таком графе CLIP отдельным проводом не ходит вовсе.",
     "inputs": {
-      "model": {"name": "модель", "tooltip": "Модель, к которой применяется LoRA."},
-      "lora_name": {"name": "LoRA", "tooltip": "Файл .tsmodel из models/loras."},
-      "strength_model": {"name": "сила", "tooltip": "Насколько сильно LoRA влияет на модель. 0 не трогает ничего."}
+      "model": {
+        "name": "модель",
+        "tooltip": "Модель, к которой применяется LoRA."
+      },
+      "lora_name": {
+        "name": "LoRA",
+        "tooltip": "Файл .tsmodel из models/loras."
+      },
+      "strength_model": {
+        "name": "сила",
+        "tooltip": "Насколько сильно LoRA влияет на модель. 0 не трогает ничего."
+      }
     },
-    "outputs": {"0": {"name": "модель", "tooltip": "Модель с применённой LoRA."}}
+    "outputs": {
+      "0": {
+        "name": "модель",
+        "tooltip": "Модель с применённой LoRA."
+      }
+    }
   },
   "TS_NAG": {
     "description": "Normalized Attention Guidance: негативный промпт применяется внутри каждого блока cross-attention, а не через CFG. Стоит одного лишнего cross-attention на блок, а не второго прохода модели, поэтому негатив продолжает работать на дистиллированных моделях при cfg 1. Только Wan и LTX: модели, где текст и картинка сведены в один поток (Krea 2, MiniMax H3), отклоняются — там то же самое уже делает CFG.",

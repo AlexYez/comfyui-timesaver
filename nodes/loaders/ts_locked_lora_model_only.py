@@ -1,15 +1,39 @@
-"""TS Load LoRA, model only (locked) — штатный LoraLoaderModelOnly для `.tsmodel`.
+"""TS Load LoRA, model only — штатный LoraLoaderModelOnly для файлов `.tsmodel`.
 
-Отдельная нода, а не флаг у соседней: у видеомоделей и дистиллятов CLIP в графе
-часто просто нет, и вход, который нечем заполнить, там мешает.
+⚠️ Только «model only», и это не упрощение ради экономии. Модели, ради которых
+замок и заводился, — видео и дистилляты: LTX, Wan, Krea 2. CLIP в таком графе
+отдельным проводом не ходит вовсе, и вход, который нечем заполнить, там только
+мешает. Парная нода «model + clip» в паке была ровно один день и снята по просьбе
+владельца: вернуть её можно из истории git (релиз 12.11.4).
 """
 
 from __future__ import annotations
 
 from comfy_api.v0_0_2 import IO
 
-from ._locked import options
-from .ts_locked_lora import CATEGORY_FOLDER, apply_locked_lora
+from ._locked import load, options
+
+CATEGORY_FOLDER = "loras"
+
+
+def apply_locked_lora(model, relative: str, strength_model: float):
+    """Открыть запертый файл и применить его к модели.
+
+    ⚠️ Нулевая сила — не «применить ноль», а «не трогать»: так же ведёт себя
+    штатная нода, и на этом держатся графы, где LoRA выключают силой.
+    """
+    import comfy.sd
+
+    if strength_model == 0:
+        return model
+
+    lora, metadata, _path = load(CATEGORY_FOLDER, relative)
+    try:
+        patched, _clip = comfy.sd.load_lora_for_models(
+            model, None, lora, strength_model, 0, lora_metadata=metadata)
+    except TypeError:                   # ComfyUI до появления lora_metadata
+        patched, _clip = comfy.sd.load_lora_for_models(model, None, lora, strength_model, 0)
+    return patched
 
 
 class TS_LockedLoraModelOnly(IO.ComfyNode):
@@ -20,8 +44,9 @@ class TS_LockedLoraModelOnly(IO.ComfyNode):
             display_name="TS Load LoRA, model only",
             category="TS/Loaders",
             description=(
-                "Apply a locked .tsmodel LoRA to a model alone, the way LoraLoaderModelOnly "
-                "does — for graphs that carry no CLIP at all."
+                "Apply a locked .tsmodel LoRA to a model, the way LoraLoaderModelOnly "
+                "does — for graphs that carry no CLIP at all, which is every video model. "
+                "Strength 0 leaves the model untouched."
             ),
             inputs=[
                 IO.Model.Input("model", tooltip="The model the LoRA is applied to."),
@@ -41,8 +66,7 @@ class TS_LockedLoraModelOnly(IO.ComfyNode):
 
     @classmethod
     def execute(cls, model, lora_name: str, strength_model: float) -> IO.NodeOutput:
-        patched_model, _clip = apply_locked_lora(model, None, lora_name, strength_model, 0)
-        return IO.NodeOutput(patched_model)
+        return IO.NodeOutput(apply_locked_lora(model, lora_name, strength_model))
 
 
 NODE_CLASS_MAPPINGS = {"TS_LockedLoraModelOnly": TS_LockedLoraModelOnly}

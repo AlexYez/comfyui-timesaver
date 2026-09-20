@@ -1449,15 +1449,17 @@ Writes each batch result the moment it is ready, instead of holding everything u
 ---
 
 <a id="utils"></a>
-### 🔐 Locked model loaders (6 nodes)
+### 🔐 Locked model loaders (3 nodes)
 
-Six of ComfyUI's own loaders, taught to open **`.tsmodel`** files — models "locked" by the `model-converter` tool. Nothing else opens them: not `safe_open`, not torch, not diffusers, not Forge, not ComfyUI itself. Useful if you hand your own models to other people and would rather they were not simply picked up and loaded.
+Three of ComfyUI's own loaders, taught to open **`.tsmodel`** files — models "locked" by the `model-converter` tool. Nothing else opens them: not `safe_open`, not torch, not diffusers, not Forge, not ComfyUI itself. Useful if you hand your own models to other people and would rather they were not simply picked up and loaded.
+
+Three, because that is how many kinds of model get handed out: a diffusion model, a checkpoint and a LoRA. Locking text encoders and VAEs buys nothing — everyone has the same ones and they are public anyway.
 
 **How the format works.** A plain safetensors whose first 8 bytes are replaced by a magic marker — any reader sees a "header length" of about 1.6·10¹⁷ and fails at once. The JSON header stays where it was but is zlib-compressed, so names, shapes and offsets are not visible in a hex editor. **The tensor data sits byte for byte where it always was**, and that is the important part: locking a finished file of any size takes milliseconds, and the node hands the tensors to ComfyUI the same way it always gets them (`comfy_aimdo` mmap, streamed straight from disk into VRAM). The overhead is unpacking the header — milliseconds.
 
 ⚠️ **No cryptography and no passwords.** There is deliberately no secret in the format: anyone holding the node's source can take the lock off. This guards against "just grab the file and load it", it is not DRM — and once loaded, the model is as available to any saving node as any other.
 
-⚠️ **The nodes know nothing about architectures.** They parse the header in memory and hand the state dict to the very same `comfy.sd.load_*_state_dict` the stock loaders use. So every model, every quantisation and every new architecture works by itself, with no edits here. The text-encoder type list is read from `comfy.sd.CLIPType` on the fly.
+⚠️ **The nodes know nothing about architectures.** They parse the header in memory and hand the state dict to the very same `comfy.sd.load_*_state_dict` the stock loaders use. So every model, every quantisation and every new architecture works by itself, with no edits here.
 
 Should ComfyUI's internal reading path ever change, the nodes **fall back to a plain mmap** on their own: slower to load, but still loading.
 
@@ -1467,25 +1469,13 @@ Files are looked for in the same `models/…` folders the stock nodes use. The `
 
 The `UNETLoader` counterpart, with the same weight casting options (`fp8_e4m3fn`, `fp8_e5m2` and the fast variant). The loaded model remembers how to load itself again — without that, a deep clone or a second GPU would end up holding no weights.
 
-#### TS Load CLIP
-
-Stands in for four nodes at once: `CLIPLoader`, `DualCLIPLoader`, `TripleCLIPLoader` and `QuadrupleCLIPLoader`. Up to four files in one node; leave the spare inputs on `none`. `device = cpu` keeps the encoder off the card.
-
-#### TS Load VAE
-
-The `VAELoader` counterpart.
-
 #### TS Load Checkpoint
 
 The `CheckpointLoaderSimple` counterpart: model, CLIP and VAE out of one file. The architecture is guessed by ComfyUI itself, from the same state dict.
 
-#### TS Load LoRA
-
-The `LoraLoader` counterpart. Both strengths at zero leave everything untouched, exactly as the stock node does.
-
 #### TS Load LoRA, model only
 
-The `LoraLoaderModelOnly` counterpart — for graphs that carry no CLIP at all: video models, distilled checkpoints.
+The `LoraLoaderModelOnly` counterpart. Model only, and not to save effort: the models this lock exists for are video models and distilled checkpoints, and such a graph carries no CLIP wire at all. Strength `0` leaves the model untouched, as the stock node does.
 
 ---
 

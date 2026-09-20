@@ -21,8 +21,10 @@ from ._mclock import EXT, LOG_PREFIX, LockedModelError, load_state_dict_comfy
 
 logger = logging.getLogger("comfyui_timesaver.ts_locked_loaders")
 
-#: Папка моделей ComfyUI под каждый вид загрузчика.
-CATEGORIES = ("diffusion_models", "text_encoders", "checkpoints", "loras", "vae")
+#: Папка моделей ComfyUI под каждый вид загрузчика. Ровно три: столько запертых
+#: моделей и раздаётся. Текстовые энкодеры и VAE запирать смысла нет — они у всех
+#: одни и те же и лежат в открытом доступе.
+CATEGORIES = ("diffusion_models", "checkpoints", "loras")
 
 NOTHING_FOUND = "(no .tsmodel files found)"
 

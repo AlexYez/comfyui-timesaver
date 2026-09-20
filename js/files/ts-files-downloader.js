@@ -1615,6 +1615,39 @@ function attachDownloadButton(node, t) {
         api.removeEventListener("ts_downloader.run_progress", onProgress);
         return onRemoved?.apply(this, arguments);
     };
+
+    /**
+     * Подобрать загрузку, которая идёт на сервере с прошлого раза.
+     *
+     * ⚠️ ЗАГРУЗКА ЖИВЁТ НА СЕРВЕРЕ, А `operationId` — НА СТРАНИЦЕ. Перезагрузили
+     * вкладку или переключили workflow посреди скачивания — нода создаётся
+     * заново, `operationId` становится null, и дальше `onProgress` молча
+     * отбрасывает КАЖДОЕ событие: `detail.operation_id !== operationId`. В
+     * консоли сервер продолжает рапортовать, в ноде — пусто. Ровно эта жалоба и
+     * привела сюда (20.09.2026).
+     *
+     * Ради этого и существует `/ts_downloader/run_status` — маршрут был написан
+     * «чтобы кнопка пережила перезагрузку страницы», но его никто не звал.
+     */
+    async function adoptRunningJob() {
+        try {
+            const response = await api.fetchApi("/ts_downloader/run_status");
+            if (!response.ok) return;
+            const answer = await response.json().catch(() => ({}));
+            // Человек мог нажать кнопку быстрее, чем пришёл ответ, — его прогон
+            // главнее, перехватывать чужой идентификатор поверх нельзя.
+            if (busy || !answer?.running || !answer.operation_id) return;
+            operationId = String(answer.operation_id);
+            busy = true;
+            // Числа приедут с первым же событием: сервер шлёт их не реже чем раз
+            // в 0.2 с. До тех пор честнее показать «идёт», чем ничего.
+            setLabel(t.downloadProgress(0, "?", 0, ""));
+        } catch (error) {
+            console.warn("[TS FilesDownloader] could not ask about a running download", error);
+        }
+    }
+
+    adoptRunningJob();
 }
 
 app.registerExtension({
