@@ -807,6 +807,179 @@ class TS_DownloadFilesNode(IO.ComfyNode):
             return model_path
         return ""
 
+    @classmethod
+    def _loader_scopes(cls, target_dir: str) -> list[tuple[str, str]]:
+        """Which loader categories read ``target_dir``, and under what name.
+
+        A loader stores a path RELATIVE to its category (``ltx/model.safetensors``
+        for ``models/diffusion_models/ltx``). This turns a download folder back
+        into that pair: the category whose registered root holds the folder,
+        and the folder's path below that root.
+
+        The DEEPEST containing root wins. A pack that registers the whole
+        ``models`` directory as a category of its own would otherwise claim
+        every model folder, and that category's loaders are not the ones this
+        line feeds. Roots of equal depth are all kept: two keys can share one
+        directory (``clip_gguf`` reads ``models/clip``).
+
+        Returns an empty list when the folder is not under any registered model
+        root — an absolute target outside ComfyUI, say. Nothing below may then
+        be claimed on a loader's behalf.
+        """
+        if not folder_paths or not target_dir:
+            return []
+        registered = getattr(folder_paths, "folder_names_and_paths", {}) or {}
+        target = os.path.abspath(str(target_dir))
+        best = -1
+        scopes: list[tuple[str, str]] = []
+        for category, entry in list(registered.items()):
+            if str(category).strip().lower() in cls._NON_MODEL_FOLDER_NAMES:
+                continue
+            try:
+                roots = [str(root) for root in entry[0] if root]
+            except (TypeError, IndexError):     # a registry entry of another shape
+                continue
+            for root in roots:
+                if not cls._is_within(root, target):
+                    continue
+                root_abs = os.path.abspath(root)
+                prefix = os.path.relpath(target, root_abs)
+                prefix = "" if prefix == "." else prefix.replace("\\", "/")
+                if len(root_abs) > best:
+                    best, scopes = len(root_abs), [(str(category), prefix)]
+                elif len(root_abs) == best:
+                    scopes.append((str(category), prefix))
+        return scopes
+
+    @classmethod
+    def _loader_path(cls, target_dir: str, filename: str) -> str:
+        """The file a ComfyUI loader opens for ``filename`` in this folder, or "".
+
+        ⚠️ The answer comes from ``folder_paths.get_full_path`` — the very call
+        the stock loaders make — and never from a search of our own. That is
+        the whole contract of the node: "on disk" in the list must mean "the
+        loader in the graph finds it". A second implementation of the search
+        would drift from ComfyUI's the first time either side changed, and the
+        list would start saying "ready" for a graph that fails.
+
+        What this adds over looking in ``target_dir`` alone: ComfyUI reads
+        EVERY directory registered for a category — ``models/unet`` beside
+        ``models/diffusion_models``, and each folder from
+        ``extra_model_paths.yaml``. A model a person already keeps in a shared
+        folder used to be downloaded a second time.
+        """
+        if not filename or not folder_paths:
+            return ""
+        getter = getattr(folder_paths, "get_full_path", None)
+        if not callable(getter):
+            return ""
+        for category, prefix in cls._loader_scopes(target_dir):
+            name = f"{prefix}/{filename}" if prefix else filename
+            try:
+                found = getter(category, name)
+            except Exception as exc:            # noqa: BLE001 - someone else's registry
+                logger.debug("%s Loader lookup failed for '%s': %s", LOG_PREFIX, name, exc)
+                continue
+            if found and os.path.isfile(found):
+                return os.path.abspath(found)
+        return ""
+
+    @classmethod
+    def _verified_elsewhere(cls, target_dir: str, url: str, meta_cache: dict) -> str:
+        """A file this node verified for ``url`` in ANOTHER folder the loader reads.
+
+        The sibling folders are the ones the loader searches under the same
+        name: ``models/unet/wan`` for a line aimed at
+        ``models/diffusion_models/wan``, and the same subfolder of every root
+        from ``extra_model_paths.yaml``. Their records are looked up by SOURCE
+        URL, not by file name — the only way to recognise a download whose
+        name came from the server: a Civitai link ends in a number, and the
+        model is saved under the name the ``Content-Disposition`` header gave.
+
+        Counts only when the loader would open that very file for this line, so
+        a record can never turn a line green that the graph could not load.
+        """
+        if not folder_paths or not url:
+            return ""
+        target = os.path.normcase(os.path.abspath(str(target_dir)))
+        for category, prefix in cls._loader_scopes(target_dir):
+            try:
+                roots = [str(root) for root in (folder_paths.get_folder_paths(category) or []) if root]
+            except Exception as exc:            # noqa: BLE001 - someone else's registry
+                logger.debug("%s No folders for '%s': %s", LOG_PREFIX, category, exc)
+                continue
+            for root in roots:
+                folder = os.path.abspath(os.path.join(root, prefix) if prefix else root)
+                if os.path.normcase(folder) == target or not os.path.isdir(folder):
+                    continue
+                found = cls._verified_local_path(folder, url, meta_cache)
+                if not found:
+                    continue
+                loaded = cls._loader_path(target_dir, os.path.basename(found))
+                if loaded and cls._same_file(loaded, found):
+                    return found
+        return ""
+
+    @staticmethod
+    def _same_file(first: str, second: str) -> bool:
+        """One file on disk, however each path spells it (links included)."""
+        try:
+            return os.path.samefile(first, second)
+        except OSError:
+            return (os.path.normcase(os.path.abspath(first))
+                    == os.path.normcase(os.path.abspath(second)))
+
+    @classmethod
+    def _shadowing_file(cls, target_dir: str, local_path: str) -> str:
+        """A DIFFERENT file the loader opens instead of ``local_path``, or "".
+
+        ComfyUI takes the first directory in its list that holds the name, and
+        ``is_default: true`` in ``extra_model_paths.yaml`` puts a shared folder
+        in front of ``models/``. A model downloaded here can then sit on disk,
+        verified and complete, while the loader reads an older file of the same
+        name from somewhere else. Same size is taken as the same model: a copy
+        kept in two places is not a problem worth an alarm.
+        """
+        found = cls._loader_path(target_dir, os.path.basename(local_path))
+        if not found or cls._same_file(found, local_path):
+            return ""
+        try:
+            if os.path.getsize(found) == os.path.getsize(local_path):
+                return ""
+        except OSError:
+            return ""
+        return found
+
+    @classmethod
+    def _report_shadowed(cls, files: list) -> None:
+        """Say out loud when a loader will read another file than the list's.
+
+        Checked after the run for every line, downloaded or already present:
+        the list turning green is worthless if the graph then loads something
+        else. The status route shows the same case in the node.
+        """
+        meta_cache: dict = {}
+        for info in files:
+            target = info.get("target_dir") or ""
+            url = str(info.get("url") or "")
+            local = cls._verified_local_path(target, url, meta_cache)
+            if not local:
+                name = cls._sanitize_filename(
+                    os.path.basename(requests_unquote(url.split("?")[0].split("#")[0]))
+                )
+                candidate = os.path.join(target, name)
+                local = candidate if os.path.isfile(candidate) else ""
+            if not local:
+                continue
+            other = cls._shadowing_file(target, local)
+            if other:
+                logger.error(
+                    "%s ComfyUI's loaders will open '%s', not '%s': another model folder "
+                    "that ComfyUI searches first holds a different file under the same "
+                    "name. Remove or rename one of the two.",
+                    LOG_PREFIX, other, local,
+                )
+
     @staticmethod
     def _is_within(root, candidate) -> bool:
         """True when `candidate` resolves inside `root`.
@@ -1596,7 +1769,9 @@ class TS_DownloadFilesNode(IO.ComfyNode):
             processed_url = cls._replace_hf_domain(url, hf_domain_active)
             processed_url = cls._process_dropbox_url(processed_url)
 
-            os.makedirs(target_dir, exist_ok=True)
+            # The folder is created further down, once it is known that
+            # something will be written: a model found in another folder the
+            # loaders read leaves no empty directory behind.
             domain_headers = cls._get_headers_for_url(
                 processed_url, hf_token, ms_token, hf_domain_active=hf_domain_active
             )
@@ -1644,6 +1819,34 @@ class TS_DownloadFilesNode(IO.ComfyNode):
                 return False
 
             local_file_path = os.path.join(target_dir, final_filename)
+
+            # Not in the target folder — but the loader may still find it: ComfyUI
+            # reads every directory registered for the category, the folders of
+            # extra_model_paths.yaml included. Then the line is already satisfied
+            # and a second copy would be pure waste. The file is someone else's
+            # (another folder, maybe another install), so it is only READ here:
+            # no meta written beside it, nothing resumed, nothing unpacked.
+            if skip_existing and not os.path.exists(local_file_path):
+                elsewhere = next(
+                    (found for found in (cls._loader_path(target_dir, n) for n in candidates) if found),
+                    "",
+                )
+                if elsewhere:
+                    elsewhere_size = cls._safe_int(os.path.getsize(elsewhere), -1)
+                    if not verify_size or remote_file_size <= 0 or elsewhere_size == remote_file_size:
+                        logger.info(
+                            f"{LOG_PREFIX} Already where ComfyUI's loaders look: '{elsewhere}'. Skipping."
+                        )
+                        return True
+                    # Same name, other bytes: an older build or another
+                    # quantisation. Download as the list says; whether the
+                    # loader then reads the new file is checked after the run.
+                    logger.warning(
+                        f"{LOG_PREFIX} '{elsewhere}' has the same name but {elsewhere_size} bytes "
+                        f"(server: {remote_file_size}). Downloading into '{target_dir}'."
+                    )
+
+            os.makedirs(target_dir, exist_ok=True)
             # Everything below reads, resumes, writes and renames this exact
             # file, so only one download of it may be in flight per process.
             download_lock = _download_lock_for(local_file_path)
@@ -1730,22 +1933,27 @@ class TS_DownloadFilesNode(IO.ComfyNode):
                         if unzip_after_download and local_file_path.lower().endswith('.zip'):
                             cls._extract_zip(local_file_path, target_dir)
                         return True
-                elif remote_file_size > 0 and local_file_size < remote_file_size and not os.path.exists(temp_file_path):
-                    try:
-                        os.replace(local_file_path, temp_file_path)
-                        cls._write_json_file(temp_meta_path, {
-                            "source_url": url,
-                            "resolved_url": processed_url,
-                            "remote_size": remote_file_size,
-                            "remote_etag": remote_etag,
-                            "updated_at": int(time.time()),
-                        })
-                        logger.info(f"{LOG_PREFIX} Found truncated final file. Moved to .part for resume.")
-                    except OSError as move_error:
-                        logger.warning(f"{LOG_PREFIX} Could not promote truncated file to .part: {move_error}")
-                elif remote_file_size > 0 and local_file_size > remote_file_size:
-                    logger.warning(f"{LOG_PREFIX} Existing file is larger than remote. Re-downloading.")
-                    cls._remove_file_silent(local_file_path)
+                else:
+                    # ⚠️ A file under the FINAL name is never a partial of ours:
+                    # this engine writes to "<file>.part" and renames only after
+                    # verification. A size that disagrees with the server means
+                    # ANOTHER file under the same name — another build, another
+                    # quantisation, another author's upload. It used to be
+                    # "resumed": renamed to .part and topped up with the new
+                    # version's tail, which the HF hash then threw away (the
+                    # person's model gone) or, without a hash, kept as a model
+                    # stitched from two files. A larger one was deleted before
+                    # the new one had arrived.
+                    #
+                    # Now the existing file is left exactly as it is, the
+                    # server's version comes down in full into .part, and
+                    # os.replace swaps it in only once it is verified. A failed
+                    # or cancelled download costs nothing that was there.
+                    logger.warning(
+                        f"{LOG_PREFIX} '{final_filename}' already exists with {local_file_size} bytes, "
+                        f"the server has {remote_file_size}: a different file under the same name. "
+                        f"Downloading the server's version; it replaces the existing one only once verified."
+                    )
 
             resume_byte_pos = 0
             file_mode = "wb"
@@ -2016,12 +2224,17 @@ class TS_DownloadFilesNode(IO.ComfyNode):
         digest.update(f"|{skip_existing}|{verify_size}|{integrity_mode}".encode())
         for item in cls._parse_file_list(file_list or ""):
             target = item.get("target_dir") or ""
-            name = os.path.basename(urlparse(item.get("url") or "").path)
+            # Decoded, as the engine saves it: "my%20model" is on disk as "my model".
+            name = requests_unquote(os.path.basename(urlparse(item.get("url") or "").path))
             state = "missing"
             try:
                 candidate = os.path.join(target, name)
                 if name and os.path.isfile(candidate):
                     state = str(os.path.getsize(candidate))
+                elif name and (elsewhere := cls._loader_path(target, name)):
+                    # Deleting the copy a loader finds in a shared folder must
+                    # rerun the node just like deleting one in the target does.
+                    state = f"elsewhere:{os.path.getsize(elsewhere)}"
                 elif os.path.isdir(target):
                     # The saved name can differ from the URL's (Content-Disposition),
                     # so fall back to the folder's own fingerprint.
@@ -2173,17 +2386,28 @@ class TS_DownloadFilesNode(IO.ComfyNode):
                                 prompt_id=prompt_id)
         pending = []
         satisfied = 0
+        # Kept whole: the check after the run covers every line, including the
+        # ones settled here without a download.
+        listed = list(files_to_download)
         if skip_existing:
             meta_cache: dict = {}
             for file_info in files_to_download:
-                local = cls._verified_local_path(file_info["target_dir"], file_info["url"], meta_cache)
+                target = file_info["target_dir"]
+                local = cls._verified_local_path(target, file_info["url"], meta_cache)
+                if not local:
+                    # This node may have downloaded the same model into another
+                    # folder the loaders read — then its record is THERE, and it
+                    # counts only for the very file the loader would open.
+                    local = cls._verified_elsewhere(target, file_info["url"], meta_cache)
                 if not local:
                     pending.append(file_info)
                     continue
                 satisfied += 1
                 progress.file_done()
-                if unzip_after_download and local.lower().endswith(".zip"):
-                    cls._extract_zip(local, file_info["target_dir"])
+                # An archive in someone else's folder is not ours to unpack.
+                if (unzip_after_download and local.lower().endswith(".zip")
+                        and cls._is_within(target, local)):
+                    cls._extract_zip(local, target)
             if satisfied:
                 logger.info(
                     "%s %d file(s) already downloaded and verified — no server check needed.",
@@ -2199,6 +2423,7 @@ class TS_DownloadFilesNode(IO.ComfyNode):
             # оставалась висеть на 0 %. Промежуточные события тут не спасают:
             # три файла засчитываются за микросекунды и целиком уходят в троттлинг,
             # а вот завершающее шлётся всегда (force).
+            cls._report_shadowed(listed)
             progress.finished(satisfied, 0, note="already-present")
             return IO.NodeOutput()
         # Say how much is left and why the node is about to sit there: every one
@@ -2235,6 +2460,7 @@ class TS_DownloadFilesNode(IO.ComfyNode):
                 progress.file_done()
 
         logger.info("%s Done. Success: %d, Failed: %d", LOG_PREFIX, success, failed)
+        cls._report_shadowed(listed)
         progress.finished(success, failed)
         return IO.NodeOutput()
 

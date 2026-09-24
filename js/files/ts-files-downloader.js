@@ -42,15 +42,23 @@ import { openFullscreenOverlay } from "../_fullscreen.js";
 import { addResizableDomWidget, hideWidget, getWidget as getAnyWidget } from "../_dom_widget.js";
 import { createListEditor } from "./_downloader_list.js";
 import { createSettingsPanel } from "./_downloader_settings.js";
+// Extensions that identify a model file, and the one opinion in this node on
+// whether two folders are the same — shared with the list's check against the
+// graph's loaders.
+import {
+    FOLDER_ALIASES,
+    MODEL_EXT,
+    expectationKey,
+    judgeLine,
+    sameDestination,
+    sameTarget,
+} from "./_downloader_graph.js";
 
 const NODE_TYPE = "TS Files Downloader";
 /** Адрес событий, идущих от прогона графа, а не от кнопки на ноде. */
 const GRAPH_RUN = "graph";
 const FILE_LIST_WIDGET = "file_list";
 const STYLE_ID = "ts-files-downloader-styles";
-
-// Extensions that identify a model file rather than an image or a config.
-const MODEL_EXT = /\.(safetensors|ckpt|pt|pth|bin|gguf|onnx|sft|safetensor)$/i;
 
 // Loader node type -> the models/ subfolder its file belongs in.
 //
@@ -91,6 +99,11 @@ const TYPE_TO_FOLDER = {
     AudioEncoderLoader: "audio_encoders",
     PhotoMakerLoader: "photomaker",
     HypernetworkLoader: "hypernetworks",
+    // The pack's own loaders for `.tsmodel`. The server cannot map them: ComfyUI
+    // lists no `.tsmodel` in any category, so their dropdowns match no folder.
+    TS_LockedDiffusionModel: "diffusion_models",
+    TS_LockedCheckpoint: "checkpoints",
+    TS_LockedLoraModelOnly: "loras",
 };
 
 const STRINGS = {
@@ -117,7 +130,25 @@ const STRINGS = {
             missing: "Not downloaded yet",
             unknown: "Cannot tell: check the address and the folder",
             skip: "A note",
+            shadowed: "Downloaded, but ComfyUI will load a different file with the same name",
         },
+        listElsewhere: (dir) => `in ${dir}`,
+        listElsewhereHint: (dir) =>
+            `Already in ${dir}, a folder ComfyUI reads models from. The loader will find it; nothing to download.`,
+        listShadowed: (path) => `loads ${path}`,
+        listShadowedHint: (path) =>
+            `ComfyUI looks in ${path} first and will load that file, not the downloaded one. ` +
+            "Remove or rename one of the two.",
+        graphMismatch: (where) => `the loader looks in ${where}`,
+        graphMismatchHint:
+            "A loader in this workflow looks for this file in another folder. Downloaded where " +
+            "the line says, it will not be found.",
+        graphFix: "Fix",
+        graphFixHint: (where) => `Point this line at ${where}`,
+        graphUnused: "no loader in this workflow uses it",
+        graphUnusedHint:
+            "No loader in this workflow selects this file. Fine for a file you want downloaded " +
+            "anyway; otherwise a loader may have been switched to another model.",
         download: "Download the models now",
         downloadHint: "Fetch the whole list right now; press again to cancel",
         downloadEmpty: "The list is empty — nothing to download.",
@@ -205,7 +236,25 @@ const STRINGS = {
             missing: "Ещё не скачана",
             unknown: "Непонятно: проверьте адрес и папку",
             skip: "Заметка",
+            shadowed: "Скачана, но ComfyUI загрузит другой файл с тем же именем",
         },
+        listElsewhere: (dir) => `лежит в ${dir}`,
+        listElsewhereHint: (dir) =>
+            `Уже лежит в ${dir} — ComfyUI берёт модели и оттуда. Загрузчик её найдёт, качать не нужно.`,
+        listShadowed: (path) => `загрузится ${path}`,
+        listShadowedHint: (path) =>
+            `ComfyUI сначала смотрит в ${path} и загрузит тот файл, а не скачанный. ` +
+            "Удалите или переименуйте один из двух.",
+        graphMismatch: (where) => `загрузчик ищет в ${where}`,
+        graphMismatchHint:
+            "Загрузчик в этом workflow ищет файл в другой папке. Скачанный туда, куда указывает " +
+            "строка, он найден не будет.",
+        graphFix: "Исправить",
+        graphFixHint: (where) => `Направить строку в ${where}`,
+        graphUnused: "ни один загрузчик workflow его не выбирает",
+        graphUnusedHint:
+            "Ни один загрузчик этого workflow не выбирает этот файл. Нормально, если он нужен " +
+            "сам по себе; иначе, возможно, загрузчик переключили на другую модель.",
         download: "Скачать модели сейчас",
         downloadHint: "Скачать весь список прямо сейчас; повторное нажатие — отмена",
         downloadEmpty: "Список пуст — скачивать нечего.",
@@ -365,16 +414,9 @@ function joinTarget(folder, sub) {
     return [...folderParts, ...(subParts || [])].join("/");
 }
 
-// ComfyUI reads two directories for some categories and keeps the old name
-// working (folder_paths.map_legacy): `models/clip` and `models/text_encoders`
-// are both searched for a text encoder, `models/unet` and
-// `models/diffusion_models` for a UNET. A list aimed at either spelling works,
-// so the two must not be reported as a disagreement.
-const FOLDER_ALIASES = {
-    unet: "diffusion_models",
-    clip: "text_encoders",
-    t2i_adapter: "controlnet",
-};
+// FOLDER_ALIASES, canonTarget and sameTarget live in `_downloader_graph.js`:
+// the list's check against the loaders must judge folders exactly as this
+// scan does.
 
 // Every name of a category that has two. A folder spelled either way in the
 // list is a decision already made, and nothing below may overrule it.
@@ -382,23 +424,6 @@ const ALIASED_CATEGORIES = new Set([
     ...Object.keys(FOLDER_ALIASES),
     ...Object.values(FOLDER_ALIASES),
 ]);
-
-/** Canonical form of a target folder: separators, case, aliases, `models/`. */
-function canonTarget(value) {
-    const parts = String(value || "")
-        .replace(/\\/g, "/")
-        .split("/")
-        .map((part) => part.trim().toLowerCase())
-        .filter((part) => part && part !== "." && part !== "..");
-    if (parts[0] === "models") parts.shift();
-    if (parts.length) parts[0] = FOLDER_ALIASES[parts[0]] || parts[0];
-    return parts.join("/");
-}
-
-/** Compare two target folders written by a human: separators and case vary. */
-function sameTarget(a, b) {
-    return canonTarget(a) === canonTarget(b);
-}
 
 // How THIS machine spells its model folders.
 //
@@ -584,6 +609,10 @@ function liveWidgetValues(node) {
 // Asked for once per session — it describes which nodes are installed, and that
 // does not change between two presses of a button.
 let loaderFolders = null;
+// The same answer's registry keys: {node type: {widget: category}}. The folder
+// above is for showing a person; the key is what the loader really passes to
+// folder_paths, and the list's check against the graph compares keys.
+let loaderCategories = {};
 
 async function loadLoaderFolders() {
     if (loaderFolders) return loaderFolders;
@@ -591,11 +620,31 @@ async function loadLoaderFolders() {
         const response = await api.fetchApi("/ts_downloader/loader_folders");
         const payload = response.ok ? await response.json() : null;
         loaderFolders = payload?.types || {};
+        loaderCategories = payload?.categories || {};
     } catch (err) {
         console.warn("[TS FilesDownloader] loader folders unavailable", err);
         loaderFolders = {};
     }
     return loaderFolders;
+}
+
+/**
+ * The registry key a given widget of a given node type reads from, or "".
+ *
+ * The static table's values ARE registry keys, so it answers for the loaders
+ * the server cannot map (an empty dropdown, the pack's `.tsmodel` loaders).
+ * Same rule as folderFor: no widget name and two answers — no answer.
+ */
+function categoryFor(map, type, widget) {
+    const widgets = map?.[type];
+    if (widgets) {
+        if (widget && widgets[widget]) return widgets[widget];
+        if (!widget) {
+            const distinct = new Set(Object.values(widgets));
+            if (distinct.size === 1) return [...distinct][0];
+        }
+    }
+    return TYPE_TO_FOLDER[type] || "";
 }
 
 /**
@@ -683,6 +732,9 @@ export function visibleModelValues(serialised, loaderMap = null) {
                         folder: consumer
                             ? folderFor(loaderMap, consumer.type, consumed)
                             : undefined,
+                        // Who reads it — the list's check asks for its category.
+                        type: consumer?.type,
+                        widget: consumed,
                     });
                 }
                 continue;
@@ -691,7 +743,12 @@ export function visibleModelValues(serialised, loaderMap = null) {
                 if (!MODEL_EXT.test(value)) continue;
                 // `#0`-style keys are positions in an old graph, not names.
                 const widget = name.startsWith("#") ? undefined : name;
-                found.push({ value, folder: folderFor(loaderMap, node.type, widget) });
+                found.push({
+                    value,
+                    folder: folderFor(loaderMap, node.type, widget),
+                    type: node.type,
+                    widget,
+                });
             }
         }
         for (const sub of container.definitions?.subgraphs || []) walk(sub);
@@ -771,13 +828,17 @@ export function scanWorkflow(graph, loaderMap = null) {
     //    into, and the template metadata above knows nothing about it.
     //    Downloading to the metadata's bare folder leaves the file invisible.
     const visible = visibleModelValues(serialised, loaderMap);
-    for (const { value, folder } of visible) {
+    for (const { value, folder, type, widget } of visible) {
         if (!folder) continue;
         const { base, sub } = splitRelativePath(value);
         const entry = upsert(base, "widget", {});
         if (!entry) continue;
         entry.directory = joinTarget(folder, sub);
         entry.fromLoader = true;
+        // Where the loader REALLY looks — the registry key and subfolder — so
+        // a list line aimed at a yaml root of any name is judged correctly.
+        entry.category = categoryFor(loaderCategories, type, widget);
+        entry.sub = sub;
     }
 
     // 4. Anything the graph actually uses. Template metadata outlives the model
@@ -793,6 +854,42 @@ export function scanWorkflow(graph, loaderMap = null) {
     return [...byName.values()].sort((a, b) =>
         (a.directory || "").localeCompare(b.directory || "") || a.name.localeCompare(b.name),
     );
+}
+
+/**
+ * Where the graph's loaders look for each file: lower-case file name ->
+ * `[{folder, category, sub}]`. `folder` is `<category folder>/<subfolder>` for
+ * showing a person ("" when the loader's folder is unknown); `category` is the
+ * registry key the loader passes to folder_paths ("" when unknown) and `sub`
+ * the subfolder from its widget value.
+ *
+ * Built from the same `visibleModelValues` as the scan above, so the list's
+ * check and «Get models from workflow» cannot disagree about what the graph
+ * wants. Returns null when the graph cannot be read — the check then stays
+ * silent instead of flagging every line.
+ */
+export function graphExpectations(graph, loaderMap = null, categoryMap = null) {
+    let serialised;
+    try {
+        serialised = graph?.serialize?.();
+    } catch (err) {
+        console.warn("[TS FilesDownloader] graph.serialize() failed", err);
+        return null;
+    }
+    if (!serialised) return null;
+    const expected = new Map();
+    for (const { value, folder, type, widget } of visibleModelValues(serialised, loaderMap)) {
+        const { base, sub } = splitRelativePath(value);
+        const key = keyOf(base);
+        if (!key) continue;
+        if (!expected.has(key)) expected.set(key, []);
+        expected.get(key).push({
+            folder: folder ? joinTarget(folder, sub) : "",
+            category: folder && type ? categoryFor(categoryMap, type, widget) : "",
+            sub,
+        });
+    }
+    return expected;
 }
 
 /* --------------------------------------------------------------- file_list IO */
@@ -832,8 +929,13 @@ function parseFileList(text) {
  *
  * A model that is already downloaded is NOT filtered out: the point of the list
  * is to travel with the workflow, so the next person gets the file too.
+ *
+ * @param {(url:string)=>Array<[string,string]>|undefined} [scopesOf] the server's
+ *   word on where the loaders find a listed line (see `/ts_downloader/status`).
+ *   With it, "the wrong folder" is decided by registry key, as the list's own
+ *   check does; without it, by folder name.
  */
-export function classify(entries, existingText, machine = null) {
+export function classify(entries, existingText, machine = null, scopesOf = null) {
     // The list itself is a source of URLs: anything already in it was curated
     // by hand, and for a model no template describes it is the ONLY link there
     // is. Ignoring it reported hand-added models as "no download link".
@@ -868,7 +970,11 @@ export function classify(entries, existingText, machine = null) {
         }
         if (!row) {
             add.push(entry);
-        } else if (sameTarget(row.target, entry.directory)) {
+        } else if (sameDestination(
+            row.target,
+            { folder: entry.directory, category: entry.category, sub: entry.sub },
+            scopesOf?.(row.url),
+        )) {
             present.push(entry);
         } else {
             // Listed, but aimed at a folder the loader does not read from —
@@ -1290,7 +1396,8 @@ function attachButton(node) {
         // The machine's layout decides which spelling of the folder the download
         // is offered in.
         const machine = machineSpellings(folders);
-        const buckets = classify(entries, widget.value, machine);
+        const buckets = classify(entries, widget.value, machine,
+            (url) => node.__tsFdlList?.scopesFor?.(url));
         if (!buckets.add.length && !buckets.present.length && !buckets.noLink.length) {
             toast("info", t.empty);
         }
@@ -1322,6 +1429,14 @@ function attachListEditor(node, t) {
     const widget = getWidget(node, FILE_LIST_WIDGET);
     if (!widget) return;
 
+    // Where the graph's loaders look, recomputed when the graph changes. Null
+    // until the server has said which installed node reads which folder:
+    // judging against the static table alone would flag a custom loader's
+    // files as unused for a moment and then take it back.
+    let expected = null;
+    let expectedKey = "";
+    let loaderMap = null;
+
     const editor = createListEditor({
         getValue: () => String(widget.value ?? ""),
         setValue: (text) => {
@@ -1330,6 +1445,22 @@ function attachListEditor(node, t) {
             node.setDirtyCanvas?.(true, true);
         },
         strings: t,
+        judge: (fileName, target, state) => {
+            // The server's word on where the loaders find this line, when it
+            // has spoken: exact, by registry key. No status yet — wait rather
+            // than guess by folder name.
+            const scopes = state ? (Array.isArray(state.scopes) ? state.scopes : undefined) : null;
+            const verdict = judgeLine(fileName, target, expected, scopes);
+            if (verdict?.kind !== "mismatch") return verdict;
+            return {
+                ...verdict,
+                wanted: verdict.wanted.map(displayTarget),
+                // One answer only: with two loaders asking for two folders, a
+                // one-click fix would pick for the author, and pick wrong half
+                // the time.
+                fix: verdict.wanted.length === 1 ? displayTarget(verdict.wanted[0]) : "",
+            };
+        },
         fetchStatus: async (fileList) => {
             const response = await api.fetchApi("/ts_downloader/status", {
                 method: "POST",
@@ -1369,6 +1500,40 @@ function attachListEditor(node, t) {
     node.__tsFdlList = editor;
     mountActions(node, editor, t);
     editor.refresh();
+
+    // The check follows the graph: change a loader's subfolder and the line
+    // pointing at the old one is flagged at once, not after the next F5.
+    // `graphChanged` fires on every edit, so the work is debounced and the
+    // list redrawn only when what the loaders want has actually changed.
+    const recheck = () => {
+        if (!loaderMap) return;
+        const next = graphExpectations(app.graph, loaderMap, loaderCategories);
+        const key = expectationKey(next);
+        if (next && key === expectedKey && expected) return;
+        expected = next;
+        expectedKey = key;
+        editor.rerender();
+    };
+    let timer = null;
+    const onGraphChanged = () => {
+        clearTimeout(timer);
+        timer = setTimeout(recheck, 500);
+    };
+    api.addEventListener("graphChanged", onGraphChanged);
+    loadLoaderFolders().then((map) => {
+        loaderMap = map || {};
+        recheck();
+        // A node created while a workflow is still being laid out sees half a
+        // graph; one more look once the loading has settled.
+        onGraphChanged();
+    });
+
+    const previousRemoved = node.onRemoved;
+    node.onRemoved = function tsFdlCheckRemoved(...args) {
+        clearTimeout(timer);
+        api.removeEventListener("graphChanged", onGraphChanged);
+        return previousRemoved?.apply(this, args);
+    };
 }
 
 /**

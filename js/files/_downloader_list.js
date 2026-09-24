@@ -12,7 +12,7 @@
 
 import { TS_UI_CLASS, ensureThemeStyles } from "../_theme.js";
 
-const STATUS_ORDER = { partial: 0, missing: 1, unknown: 2, ready: 3, skip: 4 };
+const STATUS_ORDER = { shadowed: 0, partial: 1, missing: 2, unknown: 3, ready: 4, skip: 5 };
 
 /** Разделитель, который видно. Пробел тоже понимается — см. splitLine. */
 export const ARROW = " → ";
@@ -110,6 +110,8 @@ export function ensureListStyles() {
 .ts-fdl-dot--ready{background:var(--ts-success)}
 .ts-fdl-dot--partial{background:var(--ts-warning)}
 .ts-fdl-dot--missing{background:var(--ts-danger)}
+/* Скачана, но загрузчик откроет другой файл: для графа это то же «нет». */
+.ts-fdl-dot--shadowed{background:var(--ts-danger)}
 .ts-fdl-dot--unknown{background:var(--ts-muted)}
 .ts-fdl-dot--busy{background:var(--ts-accent);animation:ts-fdl-pulse 1.1s ease-in-out infinite}
 @keyframes ts-fdl-pulse{0%,100%{opacity:1}50%{opacity:.35}}
@@ -127,6 +129,23 @@ export function ensureListStyles() {
 .ts-fdl-row__host{
   font-size:var(--ts-fs-xs);color:var(--ts-faint);white-space:nowrap;
   overflow:hidden;text-overflow:ellipsis}
+/* Где файл лежит на самом деле, когда это не папка строки. */
+.ts-fdl-row__host--elsewhere{color:var(--ts-muted)}
+.ts-fdl-row__host--shadowed{color:var(--ts-danger)}
+
+/* Сверка с загрузчиками графа — отдельной строчкой под папкой: это замечание
+   к строке списка, а не состояние файла на диске. */
+.ts-fdl-row__check{
+  display:flex;align-items:center;gap:6px;min-width:0;
+  font-size:var(--ts-fs-xs);color:var(--ts-muted)}
+.ts-fdl-row__check--mismatch{color:var(--ts-danger)}
+.ts-fdl-row__check span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.ts-fdl-row__fix{
+  flex:0 0 auto;border:1px solid var(--ts-border);background:var(--ts-surface);
+  color:var(--ts-text);border-radius:var(--ts-radius-sm);cursor:pointer;
+  font-size:var(--ts-fs-xs);line-height:1.4;padding:0 6px}
+.ts-fdl-row__fix:hover{background:var(--ts-surface-hover);border-color:var(--ts-accent-line)}
+.ts-fdl-row__fix:focus-visible{outline:2px solid var(--ts-accent);outline-offset:1px}
 .ts-fdl-row__size{
   font-size:var(--ts-fs-xs);color:var(--ts-muted);white-space:nowrap;
   font-variant-numeric:tabular-nums}
@@ -177,8 +196,12 @@ export function ensureListStyles() {
  * @param {(text:string)=>void} options.setValue записать значение обратно.
  * @param {object} options.strings          локализованные строки.
  * @param {(text:string)=>Promise<object>} options.fetchStatus запрос статусов.
+ * @param {(fileName:string, target:string, state:object|null)=>object|null} [options.judge]
+ *   что загрузчики графа говорят о строке: `{kind:"mismatch", wanted, fix}`,
+ *   `{kind:"unused"}` или `null`. `state` — ответ сервера о строке (или null,
+ *   пока его нет). Без `judge` сверки нет вовсе.
  */
-export function createListEditor({ getValue, setValue, strings: L, fetchStatus }) {
+export function createListEditor({ getValue, setValue, strings: L, fetchStatus, judge = null }) {
     ensureListStyles();
 
     const root = document.createElement("div");
@@ -262,6 +285,61 @@ export function createListEditor({ getValue, setValue, strings: L, fetchStatus }
         return rows.querySelector(`.ts-fdl-row[data-ts-line="${index}"]`);
     }
 
+    /**
+     * Строчка сверки с загрузчиками графа, либо null, если сказать нечего.
+     *
+     * ⚠️ Это замечание к СТРОКЕ списка, а не к файлу: точка статуса по-прежнему
+     * говорит только о диске. Смешать их — значит снова получить зелёную
+     * точку у модели, которую граф не откроет.
+     */
+    function checkLine(entry, state, index) {
+        if (!judge) return null;
+        let verdict = null;
+        try {
+            verdict = judge(state?.filename || fileNameOf(entry.url), entry.target, state);
+        } catch (error) {
+            console.warn("[TS FilesDownloader] graph check failed", error);
+            return null;
+        }
+        if (!verdict) return null;
+
+        const line = document.createElement("div");
+        line.className = "ts-fdl-row__check";
+        const text = document.createElement("span");
+        line.appendChild(text);
+
+        if (verdict.kind === "unused") {
+            text.textContent = L.graphUnused;
+            line.title = L.graphUnusedHint;
+            return line;
+        }
+
+        line.classList.add("ts-fdl-row__check--mismatch");
+        const where = verdict.wanted.join(", ");
+        text.textContent = L.graphMismatch(where);
+        line.title = L.graphMismatchHint;
+        if (verdict.fix) {
+            const fix = document.createElement("button");
+            fix.type = "button";
+            fix.className = "ts-fdl-row__fix";
+            fix.textContent = L.graphFix;
+            fix.title = L.graphFixHint(verdict.fix);
+            fix.addEventListener("click", () => {
+                // Меняется ТОЛЬКО папка этой строки — адрес и остальные строки
+                // остаются, как их написали.
+                const list = entries();
+                if (!list[index]?.url) return;
+                list[index] = { ...list[index], target: verdict.fix };
+                writeBack(list);
+                statuses = new Map();
+                render();
+                refresh();
+            });
+            line.appendChild(fix);
+        }
+        return line;
+    }
+
     function renderRows() {
         rows.textContent = "";
         const list = entries();
@@ -314,13 +392,28 @@ export function createListEditor({ getValue, setValue, strings: L, fetchStatus }
 
                 const host = document.createElement("span");
                 host.className = "ts-fdl-row__host";
-                try {
-                    host.textContent = new URL(entry.url).hostname;
-                } catch {
-                    host.textContent = "";
+                if (state?.status === "shadowed" && state.loaded) {
+                    // Место адреса занимает то, что важнее: граф откроет не
+                    // этот файл. Адрес остаётся в подсказке к имени.
+                    host.classList.add("ts-fdl-row__host--shadowed");
+                    host.textContent = L.listShadowed(state.loaded);
+                    host.title = L.listShadowedHint(state.loaded);
+                } else if (state?.status === "ready" && state.elsewhere) {
+                    host.classList.add("ts-fdl-row__host--elsewhere");
+                    host.textContent = L.listElsewhere(state.elsewhere);
+                    host.title = L.listElsewhereHint(state.elsewhere);
+                } else {
+                    try {
+                        host.textContent = new URL(entry.url).hostname;
+                    } catch {
+                        host.textContent = "";
+                    }
                 }
                 where.appendChild(host);
                 main.appendChild(where);
+
+                const check = checkLine(entry, state, index);
+                if (check) main.appendChild(check);
             } else {
                 row.classList.add("ts-fdl-row--comment");
             }
@@ -463,6 +556,28 @@ export function createListEditor({ getValue, setValue, strings: L, fetchStatus }
             statuses = new Map();
             render();
             refresh();
+        },
+        /**
+         * Под каким именем загрузчики найдут строку с этим адресом — по
+         * последнему ответу сервера; `undefined`, если ответа о ней нет.
+         */
+        scopesFor(url) {
+            const wanted = String(url || "").trim();
+            let found;
+            entries().forEach((entry, index) => {
+                if (found === undefined && entry.url && entry.url.trim() === wanted) {
+                    const scopes = statusOf(index)?.scopes;
+                    if (Array.isArray(scopes)) found = scopes;
+                }
+            });
+            return found;
+        },
+        /**
+         * Перерисовать строки с теми же статусами — изменился граф, а не диск.
+         * Сервер при этом не спрашивается.
+         */
+        rerender() {
+            if (!asText) renderRows();
         },
         /**
          * Ход загрузки конкретной модели.

@@ -9,6 +9,13 @@
              следующий запуск продолжит её Range-запросом, а не начнёт заново.
     missing  ни того, ни другого.
 
+⚠️ «Готово» значит ровно одно: ЗАГРУЗЧИК ИЗ ГРАФА НАЙДЁТ ЭТОТ ФАЙЛ. Поэтому
+кроме целевой папки спрашивается сам ComfyUI (`folder_paths.get_full_path`,
+тот же вызов, что у загрузчиков): модель в `extra_model_paths.yaml` тоже
+«готова», и в ответе появляется ``elsewhere`` — где она лежит. Обратный случай
+— ``shadowed``: файл скачан, но загрузчик откроет другой с тем же именем из
+папки, которую ComfyUI проверяет раньше.
+
 ⚠️ Маршрут НЕ ходит в сеть. Он отвечает по одному диску, поэтому его можно
 звать на каждое открытие ноды и после каждой правки списка — иначе список из
 двадцати моделей стоил бы двадцати HEAD-запросов на каждый показ.
@@ -21,8 +28,9 @@
 from __future__ import annotations
 
 import logging
-import threading
 import os
+import threading
+from urllib.parse import unquote
 
 from .._shared import make_route_registrars, resolve_prompt_server
 
@@ -48,12 +56,14 @@ logging.getLogger("comfyui_timesaver.ts_downloader").addFilter(_QuietProbe())
 class _quiet_probe:
     """Контекст, в котором разбор списка молчит."""
 
-    def __enter__(self) -> "_quiet_probe":
+    def __enter__(self) -> _quiet_probe:
         _probe.quiet = True
         return self
 
     def __exit__(self, *exc_info) -> None:
         _probe.quiet = False
+
+
 LOG_PREFIX = "[TS Files Downloader]"
 
 _PROMPT_SERVER = resolve_prompt_server(lambda message: logger.warning("%s %s", LOG_PREFIX, message))
@@ -77,8 +87,11 @@ def _entry_status(node, url: str, directory: str, meta_cache: dict) -> dict:
     if not resolved:
         return {"status": "unknown", "reason": "target", "directory": ""}
 
+    # ⚠️ Раскодировать ДО разбора — ровно как движок, который сохраняет файл:
+    # для адреса с `%20` проверка искала `my%20model.safetensors`, файл лежал
+    # как `my model.safetensors`, и точка оставалась красной навсегда.
     name = node._sanitize_filename(
-        os.path.basename(url.split("?")[0].split("#")[0].rstrip("/"))
+        os.path.basename(unquote(url.split("?")[0].split("#")[0]).rstrip("/"))
     ) or ""
 
     # Сначала спрашиваем движок: у него есть запись о проверенной загрузке.
@@ -89,18 +102,71 @@ def _entry_status(node, url: str, directory: str, meta_cache: dict) -> dict:
         logger.debug("%s verified lookup failed: %s", LOG_PREFIX, error)
 
     if verified:
-        return _found(verified, "ready", name or os.path.basename(verified), resolved)
+        return _shadowed(node, resolved, verified) or _found(
+            verified, "ready", name or os.path.basename(verified), resolved)
 
     # Записи нет — но файл мог быть положен руками, и это тоже «скачан».
-    if name:
-        final = os.path.join(resolved, name)
-        if os.path.isfile(final):
-            return _found(final, "ready", name, resolved, unverified=True)
-        part = final + ".part"
-        if os.path.isfile(part):
-            return _found(part, "partial", name, resolved)
+    final = os.path.join(resolved, name) if name else ""
+    if final and os.path.isfile(final):
+        return _shadowed(node, resolved, final) or _found(
+            final, "ready", name, resolved, unverified=True)
+
+    # ⚠️ В целевой папке пусто — но загрузчик может найти файл в другой папке
+    # той же категории (`models/unet` рядом с `models/diffusion_models`, папки
+    # `extra_model_paths.yaml`). Зелёный обязан значить «граф его откроет», и
+    # ничего сверх того: файл, лежащий там, куда загрузчик не смотрит, остаётся
+    # «не скачан» — это правда.
+    #
+    # Сначала — запись о НАШЕЙ загрузке в соседней папке, по адресу: только так
+    # находится модель, чьё имя дал сервер (ссылка Civitai кончается числом).
+    recorded = _ask(node._verified_elsewhere, resolved, url, meta_cache)
+    if recorded:
+        return _elsewhere(recorded, os.path.basename(recorded), resolved, unverified=False)
+    # Потом — по имени, ТЕМ ЖЕ вызовом, которым ищет сам загрузчик.
+    loaded = _ask(node._loader_path, resolved, name) if name else ""
+    if loaded:
+        return _elsewhere(loaded, name, resolved, unverified=True)
+
+    if final and os.path.isfile(final + ".part"):
+        return _found(final + ".part", "partial", name, resolved)
 
     return {"status": "missing", "filename": name, "directory": resolved, "bytes": 0}
+
+
+def _ask(lookup, *args) -> str:
+    """Спросить движок; сбой поиска — это «не нашлось», а не упавший маршрут."""
+    try:
+        return lookup(*args) or ""
+    except Exception as error:              # noqa: BLE001
+        logger.debug("%s lookup failed: %s", LOG_PREFIX, error)
+        return ""
+
+
+def _elsewhere(path: str, name: str, directory: str, *, unverified: bool) -> dict:
+    """«Скачана», но лежит в другой папке, которую загрузчик тоже читает."""
+    payload = _found(path, "ready", name, directory, unverified=unverified)
+    payload["elsewhere"] = os.path.dirname(path)
+    return payload
+
+
+def _shadowed(node, directory: str, local: str) -> dict | None:
+    """Файл скачан, но загрузчик откроет ДРУГОЙ с тем же именем.
+
+    ComfyUI берёт первую папку категории, где нашлось имя, а `is_default: true`
+    в `extra_model_paths.yaml` ставит общую папку впереди `models/`. Тогда
+    скачанный файл лежит целым, а граф грузит старый. Зелёная точка в этом
+    случае была бы ложью — отдельное состояние, красное.
+    """
+    try:
+        other = node._shadowing_file(directory, local)
+    except Exception as error:              # noqa: BLE001
+        logger.debug("%s shadow lookup failed: %s", LOG_PREFIX, error)
+        return None
+    if not other:
+        return None
+    payload = _found(local, "shadowed", os.path.basename(local), directory)
+    payload["loaded"] = other
+    return payload
 
 
 def _found(path: str, status: str, name: str, directory: str, *, unverified: bool = False) -> dict:
@@ -158,6 +224,12 @@ async def status_route(request):
             state = _entry_status(Node, entry["url"], entry["target_dir"], meta_cache)
             state["line"] = index
             state["url"] = entry["url"]
+            # Под каким именем загрузчики найдут то, что скачает эта строка:
+            # `[[категория реестра, подпапка]]`. Сверка с графом сравнивает
+            # это с категорией загрузчика — точно, а не по имени папки, которое
+            # у корня из `extra_model_paths.yaml` может быть каким угодно.
+            state["scopes"] = [list(scope) for scope in
+                               (_ask(Node._loader_scopes, entry["target_dir"]) or [])]
             results.append(state)
 
     return web.json_response({"schema": 1, "entries": results})

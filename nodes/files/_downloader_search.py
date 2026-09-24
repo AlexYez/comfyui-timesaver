@@ -609,13 +609,22 @@ def _relative_folder(path: str, models_dir: str) -> str:
 async def loader_folders(_request: web.Request) -> web.StreamResponse:
     """Every node widget that names a model, and the folder it reads from.
 
-    Answers ``{"types": {"<node type>": {"<widget>": "<folder under models/>"}}}``.
+    Answers ``{"types": {"<node type>": {"<widget>": "<folder under models/>"}},
+    "categories": {"<node type>": {"<widget>": "<registry key>"}}}``.
+
+    ``categories`` is the exact answer to "where does this loader look": the
+    registry key it passes to ``folder_paths``. A folder NAME cannot say that —
+    a root from ``extra_model_paths.yaml`` may be called anything — so the
+    list's check against the graph compares keys, and uses ``types`` only for
+    what to show a person.
     """
     try:
         import folder_paths
+
+        # ComfyUI's own `nodes` module, not this pack's `nodes/` package.
         import nodes as comfy_nodes
     except ImportError:
-        return web.json_response({"types": {}, "available": False})
+        return web.json_response({"types": {}, "categories": {}, "available": False})
 
     def _collect() -> dict:
         models_dir = str(getattr(folder_paths, "models_dir", "") or "")
@@ -648,6 +657,7 @@ async def loader_folders(_request: web.Request) -> web.StreamResponse:
                               folder or key.strip().lower())
 
         out: dict = {}
+        keys: dict = {}
         for type_name, node_class in (getattr(comfy_nodes, "NODE_CLASS_MAPPINGS", {}) or {}).items():
             try:
                 spec = node_class.INPUT_TYPES()
@@ -659,6 +669,7 @@ async def loader_folders(_request: web.Request) -> web.StreamResponse:
             if not isinstance(spec, dict):
                 continue
             widgets: dict = {}
+            widget_keys: dict = {}
             for section in ("required", "optional"):
                 entries = spec.get(section)
                 if not isinstance(entries, dict):
@@ -670,10 +681,12 @@ async def loader_folders(_request: web.Request) -> web.StreamResponse:
                     category = match_category(options, catalogue)
                     if category:
                         widgets[str(widget_name)] = catalogue[category][1]
+                        widget_keys[str(widget_name)] = str(category)
             if widgets:
                 out[str(type_name)] = widgets
-        return out
+                keys[str(type_name)] = widget_keys
+        return out, keys
 
-    types = await asyncio.to_thread(_collect)
+    types, categories = await asyncio.to_thread(_collect)
     LOGGER.debug("%s loader map: %d node type(s)", LOG_PREFIX, len(types))
-    return web.json_response({"types": types, "available": True})
+    return web.json_response({"types": types, "categories": categories, "available": True})
