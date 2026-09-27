@@ -1738,6 +1738,17 @@ Add up to three reference images as `reference_latents` into the conditioning st
 | Process only the face/object | TS Crop To Mask → upscaler/restorer → TS Restore From Crop |
 | FP8 a model | TS Model Converter Advanced |
 
+### Free the memory without closing ComfyUI
+
+The **Free memory** button in ComfyUI's top bar unloads every model and clears the cached results, so a video editor or another app can take the video memory and RAM while ComfyUI stays open. It frees more than ComfyUI's own «Unload Models» command: this pack's models live outside ComfyUI's accounting (Gemma in Super Prompt RT runs on WebGPU; Qwen, Whisper, BiRefNet, LaMa, SAM3 and the rest keep their own caches), and the button releases those too. A message says how much video memory and RAM came back.
+
+- **During a run** nothing is pulled from under a working node: ComfyUI's models are unloaded after the current run, the pack's once the queue is empty — and the button says so.
+- **The next run is slower**: models load from disk again and the nodes recompute.
+- A model busy with a generation outside the queue (Super Prompt's «Enhance», for instance) is left loaded, and the message says it was.
+- Windows Task Manager may show the Python process shrinking less than the message reports: the allocator keeps some freed RAM for reuse. Video memory comes back in full.
+
+The button is on by default and hides in **Settings → TS Timesaver → Interface → «Free memory» button in the top bar**.
+
 ### Where do model files live?
 
 | Node | Default folder |

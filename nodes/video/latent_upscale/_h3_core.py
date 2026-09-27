@@ -62,6 +62,8 @@ import latent_preview
 # и нода сломалась бы от чужого обновления ComfyUI (гард — tests/test_static_invariants.py).
 from comfy_api.v0_0_2 import IO as io
 
+from ..._shared import register_memory_release
+
 try:
     import comfy_extras.nodes_lt as _ltx_nodes
 except Exception:
@@ -505,6 +507,20 @@ class _LatentResizer3D(nn.Module):
 
 
 _MODEL_CACHE = {}
+
+
+def _release_memory() -> bool:
+    """«Освободить память»: апскейлеры латентов ждут в ОЗУ между прогонами.
+
+    Идущий апскейл держит сеть текущего куска в локальной переменной, а
+    следующий кусок просто загрузит её с диска заново.
+    """
+    released = bool(_MODEL_CACHE)
+    _MODEL_CACHE.clear()
+    return released
+
+
+register_memory_release("latent_upscale", _release_memory)
 
 
 def _model_dirs():

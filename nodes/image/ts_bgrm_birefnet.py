@@ -21,7 +21,7 @@ from PIL import Image, ImageFilter
 # пак ИСПОЛНЯЕТ код (`birefnet.py` идёт через `exec_module` ниже), и «возьмём
 # main, что бы там сегодня ни лежало» для такого случая не ответ.
 from .._hf_download import require_pinned_revision, snapshot_download_resilient
-from .._shared import raise_if_interrupted
+from .._shared import raise_if_interrupted, register_memory_release
 
 # Shared with ts_matting_vitmatte. Imported (not defined) here, and re-exported
 # so any existing `from .ts_bgrm_birefnet import pil2tensor, ...` keeps working.
@@ -856,6 +856,21 @@ class _BiRefNetState:
 
 
 _state = _BiRefNetState()
+
+
+def _release_memory() -> bool:
+    """«Освободить память»: BiRefNet лежит в VRAM сам по себе, мимо ComfyUI.
+
+    Только отпускаем ссылку, без `.cpu()`: идущая обработка читает сеть на
+    каждом куске и упала бы на полпути. Своя ссылка у неё есть — доработает,
+    и память вернётся после.
+    """
+    released = _state.model is not None
+    _state.model = None
+    return released
+
+
+register_memory_release("birefnet", _release_memory)
 
 
 class TS_BGRM_BiRefNet(IO.ComfyNode):

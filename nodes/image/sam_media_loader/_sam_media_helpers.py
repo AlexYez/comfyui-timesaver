@@ -46,7 +46,13 @@ import numpy as np
 import torch
 from aiohttp import web
 
-from ..._shared import make_route_registrars, resolve_prompt_server
+from ..._shared import (
+    MemoryReleaseBusy,
+    held_or_busy,
+    make_route_registrars,
+    register_memory_release,
+    resolve_prompt_server,
+)
 
 try:
     from PIL import Image
@@ -1062,6 +1068,42 @@ def _get_preview_lock(checkpoint: str) -> asyncio.Lock:
     """Return the shared preview lock (the argument is kept for call-site clarity)."""
     del checkpoint
     return _PREVIEW_LOCK
+
+
+def _release_preview_model() -> bool:
+    """Thread half of the release: the caller holds ``_PREVIEW_LOCK``."""
+    inst = _Sam3PreviewModel._instance
+    if inst is None:
+        return False
+    with held_or_busy(inst._load_lock, "sam3"):
+        released = inst._model is not None
+        inst._unload_locked()
+        if released:
+            # _unload_locked leaves the status alone; without this the
+            # frontend would keep showing «loaded» for a model that is gone.
+            inst._set_status(loaded=False, loading=False, error="",
+                             message="Model unloaded.", checkpoint="")
+        return released
+
+
+async def _release_memory() -> bool:
+    """«Освободить память»: превью SAM3 держит многогигабайтный чекпойнт.
+
+    VRAM у него ComfyUI и сам освободит (это ModelPatcher), но наша ссылка
+    держит веса в ОЗУ. ⚠️ Превью читает модель ВНЕ блокировки загрузки,
+    поэтому сначала — общая блокировка превью (asyncio), и только потом поток.
+    """
+    try:
+        await asyncio.wait_for(_PREVIEW_LOCK.acquire(), timeout=2.0)
+    except asyncio.TimeoutError:
+        raise MemoryReleaseBusy("sam3") from None
+    try:
+        return await asyncio.to_thread(_release_preview_model)
+    finally:
+        _PREVIEW_LOCK.release()
+
+
+register_memory_release("sam3", _release_memory)
 
 
 def _remove_small_regions(

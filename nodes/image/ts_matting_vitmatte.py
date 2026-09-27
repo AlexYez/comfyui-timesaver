@@ -30,7 +30,7 @@ from comfy_api.v0_0_2 import IO
 from PIL import Image, ImageFilter
 
 from .._hf_download import pinned_revision, snapshot_download_resilient
-from .._shared import raise_if_interrupted
+from .._shared import raise_if_interrupted, register_memory_release
 from ._image_utils import (
     _format_device_label,
     _get_target_device,
@@ -270,6 +270,25 @@ class _ViTMatteState:
 
 
 _state = _ViTMatteState()
+
+
+def _release_memory() -> bool:
+    """«Освободить память»: ViTMatte лежит в VRAM сам по себе, мимо ComfyUI.
+
+    Без `.cpu()` из чужого потока: идущая обработка держит сеть в локальной
+    переменной и доработает на ней; память вернётся после.
+    """
+    released = _state.model is not None
+    _state.model = None
+    _state.processor = None
+    _state.variant = ""
+    _state.device = ""
+    _state.dtype = None
+    _state.precision = ""
+    return released
+
+
+register_memory_release("vitmatte", _release_memory)
 
 
 def _state_matches(

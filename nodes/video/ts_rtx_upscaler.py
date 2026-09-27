@@ -8,6 +8,7 @@ import torch
 from comfy_api.v0_0_2 import IO
 
 from .._deps import TSDependencyManager
+from .._shared import held_or_busy, register_memory_release
 
 nvvfx = TSDependencyManager.import_optional("nvvfx")
 
@@ -58,6 +59,19 @@ def release_super_res() -> bool:
             logger.debug("%s Could not close the VSR engine: %s", LOG_PREFIX, exc)
         logger.info("%s VSR engine released.", LOG_PREFIX)
         return True
+
+
+def _release_memory() -> bool:
+    """«Освободить память»: нативный движок NVIDIA держит свою VRAM.
+
+    Блокировку движок держит на весь проход по кадрам — занято значит
+    «занято», а не ожидание до конца ролика.
+    """
+    with held_or_busy(_state.lock, "rtx_upscaler"):
+        return release_super_res()
+
+
+register_memory_release("rtx_upscaler", _release_memory)
 
 
 class TS_UpscaleType(str, Enum):

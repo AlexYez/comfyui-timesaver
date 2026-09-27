@@ -5,6 +5,7 @@ underscore prefix is honored by `_discover_module_entries` in __init__.py).
 """
 
 import logging
+from contextlib import contextmanager
 from typing import Callable
 
 _logger = logging.getLogger("comfyui_timesaver.ts_shared")
@@ -145,6 +146,68 @@ def raise_if_interrupted() -> None:
     check = getattr(mm, "throw_exception_if_processing_interrupted", None)
     if callable(check):
         check()
+
+
+# ---------------------------------------------------------------------------
+# Кнопка «Освободить память»: реестр кэшей моделей пака
+# ---------------------------------------------------------------------------
+# ComfyUI выгружает только то, что ему отдали под управление (ModelPatcher).
+# Пак держит модели и мимо него: Gemma на WebGPU, Qwen, Whisper, BiRefNet и
+# ещё десяток — замерено, см. project_memory/reference_free_memory.md.
+#
+# Как отпустить кэш, знает только его владелец: у одного блокировка на всю
+# генерацию, у другого нативный движок с close(), у третьего словарь, который
+# нельзя переприсваивать (lock_class). Поэтому владелец сам регистрирует здесь
+# функцию освобождения, а кнопка лишь зовёт всех по очереди.
+#
+# Контракт функции освобождения:
+#   * возвращает True, если что-то отпустила, и False, если держать было нечего;
+#   * бросает ``MemoryReleaseBusy``, если кэш сейчас в работе (не дождалась
+#     блокировки) — тогда кнопка скажет «занято», а не «освобождено»;
+#   * ОБЯЗАНА соблюдать блокировку своего кэша: закрытие движка посреди
+#     генерации уже роняло процесс (LiteRT, access violation);
+#   * может быть ``async def`` — если её блокировка asyncio-шная;
+#   * не зовёт gc и empty_cache — это кнопка сделает один раз после всех.
+#
+# Реестр живёт на уровне модуля намеренно: регистрируются при импорте модули,
+# которых кнопка не знает по именам, и новый кэш не требует правки кнопки.
+
+_MEMORY_RELEASERS: dict = {}
+
+
+class MemoryReleaseBusy(RuntimeError):
+    """Кэш сейчас занят генерацией — освободить его не удалось."""
+
+
+def register_memory_release(name: str, release: Callable[[], object]) -> None:
+    """Зарегистрировать функцию, отпускающую кэш моделей модуля.
+
+    Args:
+        name: короткое имя для отчёта и журнала (``"whisper"``, ``"qwen"``).
+        release: функция по контракту выше; повторная регистрация под тем же
+            именем заменяет прежнюю (перезагрузка модуля в тестах).
+    """
+    _MEMORY_RELEASERS[str(name)] = release
+
+
+def memory_releasers() -> dict:
+    """Снимок реестра: имя -> функция освобождения."""
+    return dict(_MEMORY_RELEASERS)
+
+
+@contextmanager
+def held_or_busy(lock, name: str, timeout: float = 2.0):
+    """Держать блокировку кэша — или сказать, что он занят.
+
+    Ждём недолго: блокировку держит генерация, и ждать её конца значило бы
+    повесить кнопку на минуты без единого слова.
+    """
+    if not lock.acquire(timeout=timeout):
+        raise MemoryReleaseBusy(name)
+    try:
+        yield
+    finally:
+        lock.release()
 
 
 # ---------------------------------------------------------------------------
@@ -349,16 +412,32 @@ def media_roots(extra: "list[str] | tuple[str, ...] | None" = None) -> list[str]
 # произвольный путь остаётся (ради него всё и заведено — часовые исходники не
 # таскают в `input`), а `~/.ssh/id_rsa` и `cookies.sqlite` перестают быть
 # достижимыми.
+#
+# ⚠️ Список обязан покрывать всё, что принимают ноды (гард —
+# test_the_media_list_covers_every_format_the_pack_itself_accepts). В 12.11.3
+# загрузчик видео научился 41 формату, а этот список — нет: `.vob`, `.dv`,
+# `.qt` и ещё 19 нода принимала, а превью показать не могла.
+# Каждое имя здесь — медиаконтейнер или поток, исполняемых нет. У `.ts`,
+# `.mod` и `.nut` бывают и посторонние значения (TypeScript, `go.mod`, скрипт
+# Squirrel) — это исходники, не секреты, и ради них ломать превью видео незачем.
 _MEDIA_EXTENSIONS = frozenset({
     # видео
     ".avi", ".flv", ".m2ts", ".m4v", ".mkv", ".mov", ".mp4", ".mpeg", ".mpg",
     ".mts", ".ts", ".webm", ".ogv", ".wmv", ".mxf", ".y4m",
+    # монтажные и вещательные (ProRes и DNxHD живут и в `.qt`)
+    ".qt", ".dv", ".divx",
+    # MPEG: элементарный поток и программный
+    ".m1v", ".m2v", ".mpv", ".vob", ".m2p", ".mod", ".tod",
+    # мобильные и сетевые
+    ".3gp", ".3g2", ".f4v", ".asf", ".rm", ".rmvb", ".ogm",
+    # сырые и служебные потоки
+    ".nut", ".ivf", ".mjpeg", ".mjpg",
     # аудио
     ".aac", ".aif", ".aiff", ".flac", ".m4a", ".mp3", ".oga", ".ogg", ".opus",
     ".wav", ".wma",
     # изображения и кадры
-    ".apng", ".bmp", ".exr", ".gif", ".jpeg", ".jpg", ".png", ".tif", ".tiff",
-    ".webp",
+    ".apng", ".avif", ".bmp", ".exr", ".gif", ".jpeg", ".jpg", ".png", ".tif",
+    ".tiff", ".webp",
     # субтитры: их тоже читает таймлайн
     ".srt", ".vtt",
 })

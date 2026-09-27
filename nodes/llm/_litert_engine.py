@@ -40,6 +40,7 @@ from pathlib import Path
 from typing import Any, Iterable, Sequence
 
 from .._deps import TSDependencyManager
+from .._shared import held_or_busy, register_memory_release
 
 logger = logging.getLogger("comfyui_timesaver.litert_engine")
 LOG_PREFIX = "[TS LiteRT]"
@@ -362,6 +363,20 @@ def unload_engine() -> bool:
             logger.debug("%s engine.close() failed: %s", LOG_PREFIX, exc)
         logger.info("%s Model unloaded, VRAM released.", LOG_PREFIX)
         return True
+
+
+def _release_memory() -> bool:
+    """«Освободить память»: Gemma живёт на WebGPU, и ComfyUI её не видит вовсе.
+
+    ⚠️ Только через блокировку движка: генерация держит её целиком, а закрытие
+    движка посреди генерации роняло процесс (access violation). Занято —
+    значит «занято», а не ожидание до конца ответа.
+    """
+    with held_or_busy(_state.lock, "gemma"):
+        return unload_engine()
+
+
+register_memory_release("gemma", _release_memory)
 
 
 def engine_status() -> dict[str, Any]:

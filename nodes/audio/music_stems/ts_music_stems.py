@@ -27,6 +27,7 @@ import torch
 from comfy_api.v0_0_2 import IO
 from comfy_execution.graph_utils import ExecutionBlocker
 
+from ..._shared import register_memory_release
 from . import _catalog, _demucs, _roformer
 
 logger = logging.getLogger("comfyui_timesaver.ts_music_stems")
@@ -396,6 +397,20 @@ class TS_MusicStems(IO.ComfyNode):
 # ⚠️ Кэш моделей — мутация словаря уровня модуля. V3 клонирует класс ноды и
 # запирает его, поэтому присваивание атрибута классу упало бы (CLAUDE.md §5).
 _model_cache: dict = {}
+
+
+def _release_memory() -> bool:
+    """«Освободить память»: сети RoFormer ждут в ОЗУ между прогонами.
+
+    Словарь чистится на месте, а не переприсваивается. Идущее разделение
+    держит сеть в локальной переменной и доработает.
+    """
+    released = bool(_model_cache)
+    _model_cache.clear()
+    return released
+
+
+register_memory_release("music_stems", _release_memory)
 
 
 NODE_CLASS_MAPPINGS = {

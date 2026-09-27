@@ -10,6 +10,8 @@ import torch
 from comfy.utils import ProgressBar
 from comfy_api.v0_0_2 import IO
 
+from .._shared import register_memory_release
+
 
 class TS_SileroTTS(IO.ComfyNode):
     _LOGGER = logging.getLogger("comfyui_timesaver.ts_silero_tts")
@@ -638,6 +640,20 @@ class TS_SileroTTS(IO.ComfyNode):
         )
         return IO.NodeOutput(audio_output)
 
+
+def _release_memory() -> bool:
+    """«Освободить память»: модель Silero ComfyUI не учитывает.
+
+    Словарь класса чистится на месте: V3 запирает класс, и клон делит с ним
+    этот же словарь. Идущий синтез держит модель в локальной переменной.
+    """
+    with TS_SileroTTS._MODEL_CACHE_LOCK:
+        released = bool(TS_SileroTTS._MODEL_CACHE)
+        TS_SileroTTS._MODEL_CACHE.clear()
+        return released
+
+
+register_memory_release("silero_tts", _release_memory)
 
 
 NODE_CLASS_MAPPINGS = {"TS_SileroTTS": TS_SileroTTS}

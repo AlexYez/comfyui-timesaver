@@ -23,6 +23,7 @@ import torch.nn.functional as F
 from comfy.utils import ProgressBar, load_torch_file
 
 from ._hf_download import pinned_revision, snapshot_download_resilient
+from ._shared import register_memory_release
 
 logger = logging.getLogger("comfyui_timesaver.depth_core")
 LOG_PREFIX = "[TS Depth]"
@@ -165,6 +166,23 @@ class _VideoDepthState:
 
 
 _state = _VideoDepthState()
+
+
+def _release_memory() -> bool:
+    """«Освободить память»: патчеры глубины держат веса в ОЗУ.
+
+    VRAM у них ComfyUI выгрузит сам — это ModelPatcher, — но наш словарь
+    держит копию весов в памяти. Таблицы раскраски (килобайты) остаются.
+    Кнопка зовёт это только когда нет прогона: `_ensure_patcher` обходит
+    словарь в потоке исполнителя.
+    """
+    released = bool(_state.patchers)
+    _state.patchers.clear()
+    _state.loaded_filename = None
+    return released
+
+
+register_memory_release("depth", _release_memory)
 
 
 # ---------------------------------------------------------------------------

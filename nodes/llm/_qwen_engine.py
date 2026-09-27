@@ -30,6 +30,8 @@ import numpy as np
 import torch
 from PIL import Image
 
+from .._shared import held_or_busy, register_memory_release
+
 _DEFAULT_LOG_PREFIX = "[TS Qwen Engine]"
 _DEFAULT_LOGGER_NAME = "comfyui_timesaver.qwen_engine"
 
@@ -1720,3 +1722,23 @@ def get_qwen_engine() -> QwenEngine:
             if _ENGINE is None:
                 _ENGINE = QwenEngine()
     return _ENGINE
+
+
+def _release_memory() -> bool:
+    """«Освободить память»: Qwen грузится прямо в VRAM, мимо ComfyUI.
+
+    ⚠️ Только под QWEN_MODEL_LOCK: его держат обе ноды на всё время загрузки и
+    генерации, и перенос весов на CPU посреди generate() портил идущий прогон.
+    Движок не создаётся ради того, чтобы его освободить — читаем как есть.
+    """
+    engine = _ENGINE
+    if engine is None:
+        return False
+    with held_or_busy(QWEN_MODEL_LOCK, "qwen"):
+        keys = list(engine._cache)
+        for key in keys:
+            engine._unload_cached_key(key)
+        return bool(keys)
+
+
+register_memory_release("qwen", _release_memory)

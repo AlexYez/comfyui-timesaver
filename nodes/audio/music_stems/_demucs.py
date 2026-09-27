@@ -19,12 +19,27 @@ import threading
 
 import torch
 
+from ..._shared import register_memory_release
+
 logger = logging.getLogger("comfyui_timesaver.ts_music_stems.demucs")
 LOG_PREFIX = "[TS Music Stems]"
 
 MODEL_NAMES = ("htdemucs", "htdemucs_ft", "hdemucs_mmi")
 
 _model_cache: dict = {}
+
+
+def _release_memory() -> bool:
+    """«Освободить память»: модель Demucs после прогона остаётся в VRAM.
+
+    Идущее разделение держит модель в локальной переменной и доработает.
+    """
+    released = bool(_model_cache)
+    _model_cache.clear()
+    return released
+
+
+register_memory_release("demucs", _release_memory)
 
 
 def prepare_waveform(waveform: torch.Tensor) -> tuple[torch.Tensor, int]:

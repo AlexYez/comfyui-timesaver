@@ -29,6 +29,7 @@ import folder_paths
 
 from ._ffmpeg import MISSING_MESSAGE as MISSING_FFMPEG_MESSAGE
 from ._ffmpeg import ffmpeg_executable
+from ._shared import held_or_busy, register_memory_release
 
 LOGGER = logging.getLogger("comfyui_timesaver.whisper_engine")
 LOG_PREFIX = "[TS Whisper Engine]"
@@ -128,6 +129,22 @@ def _remember_model(cache_key: tuple, model: Any) -> None:
 
 # torchaudio resampler cache keyed by (orig, new, device, quality).
 _RESAMPLER_CACHE: dict[tuple[int, int, str, str], Any] = {}
+
+
+def _release_memory() -> bool:
+    """«Освободить память»: модели Whisper ComfyUI не учитывает.
+
+    Под LOAD_LOCK — иначе очистка попадёт между проверкой и укладкой новой
+    модели. Идущая расшифровка держит свою ссылку и доработает; память
+    вернётся, когда она кончится.
+    """
+    with held_or_busy(LOAD_LOCK, "whisper"):
+        released = unload_models() > 0
+        _RESAMPLER_CACHE.clear()
+        return released
+
+
+register_memory_release("whisper", _release_memory)
 
 
 # --------------------------------------------------------------------------- #

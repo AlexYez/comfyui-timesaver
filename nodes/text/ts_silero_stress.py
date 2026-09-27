@@ -16,6 +16,8 @@ import folder_paths
 import torch
 from comfy_api.v0_0_2 import IO
 
+from .._shared import register_memory_release
+
 
 class TS_SileroStress(IO.ComfyNode):
     _LOGGER = logging.getLogger("comfyui_timesaver.ts_silero_stress")
@@ -350,6 +352,20 @@ class TS_SileroStress(IO.ComfyNode):
         )
         return IO.NodeOutput(output_text)
 
+
+def _release_memory() -> bool:
+    """«Освободить память»: модель ударений ComfyUI не учитывает.
+
+    Словарь класса чистится на месте (V3 запирает класс). Идущая расстановка
+    держит модель в локальной переменной.
+    """
+    with TS_SileroStress._ACCENTOR_CACHE_LOCK:
+        released = bool(TS_SileroStress._ACCENTOR_CACHE)
+        TS_SileroStress._ACCENTOR_CACHE.clear()
+        return released
+
+
+register_memory_release("silero_stress", _release_memory)
 
 
 NODE_CLASS_MAPPINGS = {"TS_SileroStress": TS_SileroStress}

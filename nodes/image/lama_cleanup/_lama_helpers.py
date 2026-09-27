@@ -58,7 +58,12 @@ try:
 except ImportError:
     _safetensors_load_file = None
 
-from ..._shared import make_route_registrars, resolve_prompt_server
+from ..._shared import (
+    held_or_busy,
+    make_route_registrars,
+    register_memory_release,
+    resolve_prompt_server,
+)
 from ._lama_arch import build_lama_inpainter
 
 LOGGER = logging.getLogger("comfyui_timesaver.ts_lama_cleanup")
@@ -575,25 +580,35 @@ class _LamaModel:
     def unload(self) -> None:
         """Release the model and its VRAM. Safe to call when nothing is loaded."""
         with self._load_lock:
-            if self._model is None:
-                return
-            self._model = None
-            self._device = None
-            gc.collect()
-            if model_management is not None:
-                try:
-                    model_management.soft_empty_cache()
-                except Exception as exc:
-                    _log_warning(f"soft_empty_cache after LaMa unload failed: {exc}")
-            elif torch.cuda.is_available():
-                torch.cuda.empty_cache()
-            self._set_status(
-                loaded=False,
-                loading=False,
-                error="",
-                message="Model unloaded.",
-            )
-            _log_info("LaMa model unloaded.")
+            self._unload_locked()
+
+    def _unload_locked(self) -> bool:
+        """The body of ``unload``; the caller holds ``_load_lock``.
+
+        Split out for the pack's «free memory» button, which must take the
+        lock itself — waiting briefly and saying "busy" instead of sitting out
+        a five-minute download. Returns True when a model was released.
+        """
+        if self._model is None:
+            return False
+        self._model = None
+        self._device = None
+        gc.collect()
+        if model_management is not None:
+            try:
+                model_management.soft_empty_cache()
+            except Exception as exc:
+                _log_warning(f"soft_empty_cache after LaMa unload failed: {exc}")
+        elif torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        self._set_status(
+            loaded=False,
+            loading=False,
+            error="",
+            message="Model unloaded.",
+        )
+        _log_info("LaMa model unloaded.")
+        return True
 
     def inpaint(self, image_rgb: np.ndarray, mask_gray: np.ndarray) -> np.ndarray:
         """Run LaMa inference on a single RGB image with a binary mask.
@@ -817,6 +832,22 @@ async def ts_lama_cleanup_unload_model(_: web.Request) -> web.StreamResponse:
     """Explicitly release the LaMa weights and their VRAM."""
     await asyncio.to_thread(_LamaModel.instance().unload)
     return web.json_response({"ok": True})
+
+
+def _release_memory() -> bool:
+    """«Освободить память»: LaMa лежит в VRAM мимо учёта ComfyUI.
+
+    Экземпляр не создаётся ради того, чтобы его освободить. Идущая чистка
+    держит свою ссылку на модель и доработает.
+    """
+    inst = _LamaModel._instance
+    if inst is None:
+        return False
+    with held_or_busy(inst._load_lock, "lama"):
+        return inst._unload_locked()
+
+
+register_memory_release("lama", _release_memory)
 
 
 @_register_post("/ts_lama_cleanup/inpaint")
