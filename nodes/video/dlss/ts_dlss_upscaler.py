@@ -312,8 +312,8 @@ class TS_DLSSUpscaler(IO.ComfyNode):
         batch, height, width, channels = (int(value) for value in images.shape)
         if height < MIN_EDGE or width < MIN_EDGE:
             raise ValueError(
-                f"{LOG_PREFIX} DLSS needs at least {MIN_EDGE}×{MIN_EDGE} pixels; "
-                f"this batch is {width}×{height}."
+                f"{LOG_PREFIX} DLSS needs at least {MIN_EDGE}x{MIN_EDGE} pixels; "
+                f"this batch is {width}x{height}."
             )
 
         factor, mode = resolve_upscaling_mode(factor_from_label(upscaling_factor))
@@ -359,7 +359,8 @@ class TS_DLSSUpscaler(IO.ComfyNode):
             cancelled=cls._cancelled,
         )
         logger.info(
-            "%s %d frame(s) %d×%d -> %d×%d, %s, %d pass(es)%s, on %s.",
+            # «x», а не «×»: см. tests/test_log_encoding.py.
+            "%s %d frame(s) %dx%d -> %dx%d, %s, %d pass(es)%s, on %s.",
             LOG_PREFIX, batch, width, height, output_width, output_height,
             mode["name"], int(nr_passes),
             ", temporal" if temporal_active else "",

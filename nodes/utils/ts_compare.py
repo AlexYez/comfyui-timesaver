@@ -212,7 +212,10 @@ class TS_Compare(IO.ComfyNode):
             # ровно то, на что человек смотрит.
             payload["filename_a"] = cls._save_png(cls._resize(left[0], view_w, view_h), "a")
             payload["filename_b"] = cls._save_png(cls._resize(right[0], view_w, view_h), "b")
-            logger.info("%s two stills %d×%d.", LOG_PREFIX, view_w, view_h)
+            # ⚠️ «x», а не «×»: в cp1251 знака умножения нет, и на русской
+            # Windows с выводом не в консоль эта строка роняла поток очереди
+            # ComfyUI целиком (замерено 28.09.2026, tests/test_log_encoding.py).
+            logger.info("%s two stills %dx%d.", LOG_PREFIX, view_w, view_h)
         else:
             count = max(len(left), len(right))
             if len(left) != len(right):
@@ -244,7 +247,7 @@ class TS_Compare(IO.ComfyNode):
             payload["filename"] = target.name
             payload["frames"] = count
             payload["fps"] = float(fps)
-            logger.info("%s %d frame(s), %d×%d per side.",
+            logger.info("%s %d frame(s), %dx%d per side.",
                         LOG_PREFIX, count, view_w, view_h)
 
         return IO.NodeOutput(ui={PREVIEW_UI_KEY: [payload]})

@@ -88,9 +88,10 @@ def resolve_upscaling_mode(raw_factor: float) -> tuple[float, dict[str, str | in
     for supported, mode in UPSCALING_MODES.items():
         if math.isclose(factor, supported, rel_tol=0.0, abs_tol=1e-9):
             return supported, mode
-    choices = ", ".join(f"{value:g}×" for value in UPSCALING_MODES)
+    # «x», а не «×»: текст ошибки уходит в лог ComfyUI (tests/test_log_encoding.py).
+    choices = ", ".join(f"{value:g}x" for value in UPSCALING_MODES)
     raise ValueError(
-        f"{LOG_PREFIX} Unsupported upscaling factor {factor:g}×. Choose one of: {choices}."
+        f"{LOG_PREFIX} Unsupported upscaling factor {factor:g}x. Choose one of: {choices}."
     )
 
 
@@ -115,13 +116,13 @@ def resolve_output_size(width: int, height: int, factor: float) -> tuple[int, in
         ]
         best = max(fitting) if fitting else None
         hint = (
-            f" Choose {best:g}× or lower for this source."
+            f" Choose {best:g}x or lower for this source."
             if best is not None
             else " The source already exceeds the supported 8K boundary."
         )
         raise ValueError(
-            f"{LOG_PREFIX} The requested {output_width}×{output_height} output exceeds the "
-            f"supported {MAX_LONG_EDGE}×{MAX_SHORT_EDGE} boundary.{hint}"
+            f"{LOG_PREFIX} The requested {output_width}x{output_height} output exceeds the "
+            f"supported {MAX_LONG_EDGE}x{MAX_SHORT_EDGE} boundary.{hint}"
         )
     return output_width, output_height
 
@@ -251,8 +252,8 @@ class DLSSFrameSession:
     ) -> None:
         if output_width < MIN_EDGE or output_height < MIN_EDGE:
             raise ValueError(
-                f"{LOG_PREFIX} The neural pass needs at least {MIN_EDGE}×{MIN_EDGE} pixels; "
-                f"this run asks for {output_width}×{output_height}."
+                f"{LOG_PREFIX} The neural pass needs at least {MIN_EDGE}x{MIN_EDGE} pixels; "
+                f"this run asks for {output_width}x{output_height}."
             )
         self.root = Path(root)
         self.output_width = int(output_width)
@@ -430,14 +431,14 @@ class DLSSFrameSession:
         if rgba.dtype != np.uint8 or rgba.shape != (self.output_height, self.output_width, 4):
             raise ValueError(
                 f"{LOG_PREFIX} The frame handed to Neural Rendering must be RGBA8 at "
-                f"{self.output_width}×{self.output_height}."
+                f"{self.output_width}x{self.output_height}."
             )
         if destination.dtype != np.float32 \
                 or destination.shape != (self.output_height, self.output_width, 3) \
                 or not destination.flags.c_contiguous:
             raise ValueError(
                 f"{LOG_PREFIX} The result buffer must be a contiguous float32 "
-                f"{self.output_width}×{self.output_height}×3 array."
+                f"{self.output_width}x{self.output_height}x3 array."
             )
         rgba = np.ascontiguousarray(rgba)
         if self._incoming is not None:

@@ -2,7 +2,7 @@
 name = "comfyui-timesaver"
 description = "ComfyUI nodes from [Timesaver](https://github.com/AlexYez/comfyui-timesaver)."
 # ⚠️ Три составляющих: Comfy Registry принимает только SemVer.
-version = "12.11.7"
+version = "12.11.8"
 license = { file = "LICENSE.txt" }
 # Matches CI (.github/workflows/ci.yml) and the Python range ComfyUI itself
 # supports; >=3.12 wrongly blocked pip installs on 3.10/3.11.
@@ -92,16 +92,20 @@ audio-silero = [
 # so no separate NVIDIA SDK install is needed. Needs an RTX card at run time.
 rtx-upscaler = ["nvidia-vfx==0.1.0.1"]
 
-# TS Super Prompt RT: Gemma 4 on Google's LiteRT-LM runtime.
+# TS Super Prompt RT and TS RT Prompt Enhancer: Gemma 4 on Google's LiteRT-LM.
 #
-# ⚠️ Windows and macOS only — LiteRT-LM publishes no Linux wheels (checked
-# against every manylinux tag at 0.16.1). Version is pinned, not floored: the
-# API moved between releases (`create_conversation` changed signature), and one
-# adapter in the pack speaks to exactly this one.
+# `litert-lm-api` is the runtime itself (the `litert_lm` module and its native
+# library); the plain `litert-lm` only adds a CLI and a model builder on top,
+# which pull protobuf in. Wheels: Windows x64, macOS arm64 and manylinux_2_27
+# x86_64/aarch64 (an earlier note here said "no Linux wheels" — that was wrong,
+# checked on PyPI 2026-09-27). No Intel macOS. Version is pinned, not floored:
+# the API moved between releases, and one adapter in the pack speaks to exactly
+# this one.
 #
-# ⚠️ Deliberately NOT part of `all`: on Linux it would make `pip install .[all]`
-# fail outright for the sake of a single node that already explains itself.
-litert = ["litert-lm==0.16.1"]
+# ⚠️ Deliberately NOT part of `all`: an exact pin on a native runtime for two
+# nodes is not something to force on every install; the nodes load without it
+# and say what is missing.
+litert = ["litert-lm-api==0.16.1"]
 
 # Convenience meta-extra: install everything optional in one go.
 all = [

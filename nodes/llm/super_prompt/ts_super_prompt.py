@@ -71,6 +71,7 @@ from ._helpers import (
     send_voice_status,
     voice_log_warning,
 )
+from .._prompt_wire import RESULT_UI_KEY, wired_prompt
 from ._qwen import _generate_with_qwen, default_preset, preset_options
 from ._voice import (
     _audio_tmp_dir,
@@ -662,6 +663,35 @@ class TS_SuperPrompt(IO.ComfyNode):
                         "1 MP on the way in."
                     ),
                 ),
+                # A prompt from the graph. A socket of its own, not the text
+                # field turned into one: the node's editor hides that widget
+                # (Nodes 2.0 layout), and a wired field would leave the editor
+                # showing text the run no longer reads. LAST, for the same reason
+                # as `images`: an input added earlier renumbers saved sockets.
+                IO.String.Input(
+                    "prompt",
+                    multiline=True,
+                    force_input=True,
+                    optional=True,
+                    tooltip=(
+                        "Optional prompt from another node. When connected and not "
+                        "empty it replaces the text field and goes out as it is — or "
+                        "enhanced, with 'enhance_prompt' on. Empty — the text field "
+                        "is used."
+                    ),
+                ),
+                # Whether a WIRED prompt is enhanced on the run. Off by default:
+                # connecting a prompt should not by itself start a model. Last
+                # of all — a widget, and `widgets_values` is positional.
+                IO.Boolean.Input(
+                    "enhance_prompt",
+                    default=False,
+                    tooltip=(
+                        "Only for a prompt arriving on the 'prompt' input. Off: it goes "
+                        "out unchanged. On: the node enhances it with the chosen preset "
+                        "when the workflow runs."
+                    ),
+                ),
             ],
             outputs=[IO.String.Output(display_name="text", tooltip="Prompt text (enhanced when enhancement runs).")],
             search_aliases=[
@@ -684,10 +714,14 @@ class TS_SuperPrompt(IO.ComfyNode):
         attached_image_2: str = "",
         bigger_model: bool = False,
         images: Any = None,
+        prompt: Any = None,
+        enhance_prompt: bool = False,
         **_: Any,
     ) -> bool | str:
         if not isinstance(text, str):
             return "text must be a string."
+        if not isinstance(enhance_prompt, bool):
+            return "enhance_prompt must be a boolean."
         if not isinstance(high_quality, bool):
             return "high_quality must be a boolean."
         if not isinstance(system_preset, str):
@@ -714,10 +748,20 @@ class TS_SuperPrompt(IO.ComfyNode):
         attached_image_2: str = "",
         bigger_model: bool = False,
         images: Any = None,
+        prompt: Any = None,
+        enhance_prompt: bool = False,
         **_: Any,
     ) -> IO.NodeOutput:
         _ = high_quality
-        if not SUPER_PROMPT_ENHANCE_ON_EXECUTE:
+        wired = wired_prompt(prompt)
+        # A prompt on the wire has had no chance to go through the Enhance
+        # button — its text only exists when the graph runs. So it can be
+        # enhanced HERE, when the switch says so; by default it goes out as it
+        # came. The typed field keeps its old behaviour (enhanced by the
+        # button, passed through by the run).
+        if wired and not enhance_prompt:
+            return IO.NodeOutput(wired, ui={RESULT_UI_KEY: [wired]})
+        if not wired and not SUPER_PROMPT_ENHANCE_ON_EXECUTE:
             return IO.NodeOutput(text or "")
 
         # A wired batch wins outright, and as a whole: it already states the
@@ -728,12 +772,17 @@ class TS_SuperPrompt(IO.ComfyNode):
         frames = _socket_images(images) or _load_attached_images(
             attached_image, attached_image_2)
         enhanced = _generate_with_qwen(
-            text=text or "",
+            text=wired or text or "",
             system_preset=system_preset,
             operation_id=None,
             image=frames or None,
             model_id=resolve_prompt_model(bigger_model),
         )
+        if wired:
+            # Shown in the node under the field; NOT written into the field
+            # itself — a changed widget would bust ComfyUI's cache and re-run
+            # everything downstream on the next queue.
+            return IO.NodeOutput(enhanced, ui={RESULT_UI_KEY: [enhanced]})
         return IO.NodeOutput(enhanced)
 
 

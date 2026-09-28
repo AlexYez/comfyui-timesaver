@@ -16,9 +16,6 @@ Presets are plain JSON in `nodes/text/song_presets/`, one file per model.
 
 **Use when:** any song you hand to YuE or ACE-Step — especially a Russian one, where without stress marks the model sings the words with the wrong syllable stressed.
 
-
-<a id="ideogram"></a>
-
 ---
 
 Full node reference: [README](https://github.com/AlexYez/comfyui-timesaver#-node-reference)

@@ -206,7 +206,7 @@ class TS_LTXHDRGuide(IO.ComfyNode):
             if sdr_image is None:
                 raise RuntimeError(
                     f"{LOG_PREFIX} This node needs its sdr_image input connected — "
-                    "that is the ordinary LoadImage → resize → LTXVPreprocess chain. "
+                    "that is the ordinary LoadImage -> resize -> LTXVPreprocess chain. "
                     + ("The IC-LoRA mode guides from ordinary SDR: the range is grown "
                        "by the model, not prepared by us."
                        if settings.expands_sdr else "")

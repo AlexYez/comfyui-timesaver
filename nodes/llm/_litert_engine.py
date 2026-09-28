@@ -16,10 +16,24 @@ measured on this machine before a line was written (2026-08-26):
   warm reload 4.8 s, cold 13.7 s. So "unload after every run" costs about five
   seconds — worth paying, since the alternative is a sampler that OOMs on
   memory it was told it had.
-* **The context is 4096 tokens, hard.** Our longest preset plus a picture
-  measured 2636 prompt tokens, which fits with ~1400 to spare — but two
-  pictures, or a long recording, will not. The budget is checked BEFORE
-  generation and refused with a readable message rather than silently truncated.
+* **The context is ours to set, and we set 8192.** 4096 is only the runtime's
+  DEFAULT when neither the caller nor the file names a size — these files name
+  none, the model card says 32K. Measured 2026-09-27 on E4B/WebGPU: at 8192 a
+  code word planted at the start of a 5976-token prompt came back exact, decode
+  speed did not move, and the cost is +0.5 GB (E4B) / +0.37 GB (E2B) of the
+  memory ComfyUI cannot see. 16384 cost +1.6 GB and was slower — not worth it
+  for prompt writing. The budget is still checked BEFORE generation and refused
+  with a readable message rather than silently truncated.
+* **MTP makes sampling greedy.** With speculative decoding on, the same prompt
+  gave the same words for every seed and every temperature, on GPU and CPU
+  alike (measured 2026-09-27) — the presets' temperatures were dead letters and
+  "generate again" returned the previous text. Off, the seed works and E4B/E2B
+  lose only ~10 % decode speed (57 vs 63, 88 vs 99 tok/s). So it is OFF by
+  default; the switch stays for a runtime that fixes this.
+* **The answer needs a ceiling.** Sampling can run away: one Ideogram answer in
+  twelve degenerated into "0, 0,0, …" for 2215 tokens and 46 s. The ceiling
+  (``max_new_tokens``) and the preset's repetition penalty both reach the
+  runtime now — with the penalty the same twelve seeds ran clean.
 
 Media crosses the boundary as FILES (``Content.ImageFile`` / ``AudioFile``),
 never as tensors, so IMAGE inputs are written to ComfyUI's temp directory and
@@ -80,10 +94,16 @@ HIGH_QUALITY_MODEL = "Gemma 4 E4B (3.4 GB)"
 
 DEFAULT_MODEL = HIGH_QUALITY_MODEL
 
-#: Context window of these artefacts. Not the architecture's limit — Gemma 4
-#: itself does 128K — but what these files were built with, and the runtime
-#: enforces it.
-CONTEXT_TOKENS = 4096
+#: Context window we ask the runtime for. ⚠️ It MUST be passed to ``Engine``:
+#: left out, the runtime falls back to 4096 (measured: "4399 >= 4096"), and
+#: every budget check here would promise room that is not there. Why 8192 and
+#: not more — see the module docstring.
+CONTEXT_TOKENS = 8192
+
+#: The stable runtime this adapter is written and measured against. The
+#: ``-api`` package is the runtime itself (``litert_lm`` and its DLL); the plain
+#: ``litert-lm`` adds a CLI and a builder that drags protobuf in.
+RUNTIME_REQUIREMENT = "litert-lm-api==0.16.1"
 
 #: Left for the answer when checking whether a prompt fits.
 _MIN_ANSWER_TOKENS = 256
@@ -100,7 +120,8 @@ _IMAGE_TOKENS = 250
 #: ⚠️ The documented ceiling for ONE audio clip: "Audio supports a maximum
 #: length of 30 seconds". Longer clips are not refused by this runtime — 85 s
 #: still returned a sensible transcript here, and only at 90 s did it stop with
-#: "4688 >= 4096" — but past 30 s the model is outside what it was trained for,
+#: "4688 >= 4096" (the old default window; at 8192 the wall only moves further
+#: out) — but past 30 s the model is outside what it was trained for,
 #: and nothing guarantees it keeps hearing the whole clip. So the voice helper
 #: segments at this boundary rather than leaning on what happens to work.
 AUDIO_CLIP_SECONDS = 30.0
@@ -140,25 +161,18 @@ def runtime_available() -> bool:
 def require_runtime() -> Any:
     """The runtime, or a RuntimeError that says what to do about it.
 
-    ⚠️ There are no Linux wheels for ``litert-lm`` (checked against every
-    manylinux tag at 0.16.1), so on Linux this is not a "you forgot to pip
-    install" situation and must not pretend to be one.
+    One message for every platform. ⚠️ An earlier version refused Linux
+    outright, claiming there were no wheels — wrong: ``litert-lm-api`` ships
+    ``manylinux_2_27`` x86_64 and aarch64 wheels (0.16.1 included, checked on
+    PyPI 2026-09-27). Linux is simply not measured here; if its GPU backend
+    does not come up, :func:`load_engine` falls back to the CPU on its own.
     """
     runtime = import_runtime()
     if runtime is not None:
         return runtime
-
-    import sys
-
-    if sys.platform.startswith("linux"):
-        raise RuntimeError(
-            f"{LOG_PREFIX} LiteRT-LM publishes no Linux wheels (checked at 0.16.1), "
-            "so this node cannot run on Linux. Use TS Super Prompt, which runs on "
-            "transformers and works on every platform."
-        )
     raise RuntimeError(
         f"{LOG_PREFIX} The LiteRT-LM runtime is missing. Install it into the Python "
-        "that runs ComfyUI:  python -m pip install litert-lm==0.16.1"
+        f"that runs ComfyUI:  python -m pip install {RUNTIME_REQUIREMENT}"
     )
 
 
@@ -275,11 +289,14 @@ def load_engine(
     model_key: str,
     *,
     backend: str = "GPU",
-    mtp: bool = True,
+    mtp: bool = False,
     allow_download: bool = True,
     on_progress: Any = None,
 ) -> Any:
     """Load (or reuse) the engine for ``model_key``.
+
+    ``mtp`` is off by default: speculative decoding makes sampling greedy (see
+    the module docstring).
 
     Falls back to CPU when the GPU backend refuses to come up — the vendor's own
     studio does the same, and a machine without a working WebGPU stack is a real
@@ -325,6 +342,8 @@ def load_engine(
                     # recording out of VRAM entirely.
                     audio_backend=runtime.Backend.CPU(),
                     max_num_images=4,
+                    # Without it the runtime quietly uses 4096 (module docstring).
+                    max_num_tokens=CONTEXT_TOKENS,
                     enable_benchmark=True,
                     enable_speculative_decoding=bool(mtp),
                 )
@@ -406,7 +425,7 @@ def stage_images(image: Any, *, max_side: int = 1024, limit: int = 4) -> list[Pa
 
     LiteRT takes paths, not tensors, so the tensor has to land on disk. Frames
     are shrunk to ``max_side`` first: every pixel costs context, and the window
-    is 4096 tokens wide.
+    is only ``CONTEXT_TOKENS`` wide.
     """
     if image is None:
         return []
@@ -491,6 +510,45 @@ def cleanup(paths: Iterable[Path]) -> None:
 # --------------------------------------------------------------------------
 # Generation
 # --------------------------------------------------------------------------
+#: The runtime takes the seed as a signed 32-bit ``c_int`` (``_ffi.py``), and
+#: ctypes does not complain about a bigger number — it wraps it. The RT button
+#: sends 32 unsigned bits and a graph seed can be larger still, so seeds are
+#: folded into the range here, deterministically.
+SEED_MODULUS = 2 ** 31
+
+#: Thinking-channel budget when thinking is on. The runtime counts thinking
+#: toward the answer ceiling, so the ceiling grows by the same amount.
+THINKING_BUDGET = 512
+
+
+def answer_ceiling(max_new_tokens: int | None, thinking: bool = False) -> int | None:
+    """``max_output_tokens`` for the runtime, or ``None`` for "the window only".
+
+    Kept inside the window: a ceiling past it promises nothing extra.
+    """
+    if max_new_tokens is None:
+        return None
+    ceiling = max(1, int(max_new_tokens)) + (THINKING_BUDGET if thinking else 0)
+    return min(ceiling, CONTEXT_TOKENS)
+
+
+def repetition_penalty_config(runtime: Any, penalty: float | None) -> Any:
+    """The runtime's penalty object, or ``None`` when there is nothing to apply.
+
+    ``1.0`` is "no penalty" in the preset file as in transformers, and the
+    runtime rejects anything below it — so both mean "leave it out".
+    """
+    if penalty is None:
+        return None
+    try:
+        value = float(penalty)
+    except (TypeError, ValueError):
+        return None
+    if not value > 1.0:
+        return None
+    return runtime.RepetitionPenaltyConfig(repetition_penalty=value)
+
+
 def _chunk_text(chunk: Any) -> str:
     """Text out of one stream chunk.
 
@@ -520,11 +578,12 @@ def generate(
     temperature: float = 0.6,
     top_p: float = 0.9,
     top_k: int = 64,
-    max_new_tokens: int = 512,
+    max_new_tokens: int | None = 512,
+    repetition_penalty: float | None = None,
     seed: int | None = None,
     thinking: bool = False,
     backend: str = "GPU",
-    mtp: bool = True,
+    mtp: bool = False,
     keep_loaded: bool = False,
     allow_download: bool = True,
     on_progress: Any = None,
@@ -532,7 +591,12 @@ def generate(
     """One prompt in, one answer out, card clean on the way back.
 
     ``seed=None`` lets the runtime choose; pass one to make a repeat press
-    sample differently (or to reproduce an answer exactly).
+    sample differently (or to reproduce an answer exactly). ⚠️ Only with
+    ``mtp=False`` — with MTP on every seed gives the same words.
+
+    ``max_new_tokens`` is a real ceiling: the runtime stops there, mid-sentence
+    if it has to. ``None`` leaves only the window as the limit. A penalty of
+    ``None`` or ``<= 1.0`` means none.
 
     ``keep_loaded=True`` skips the unload — faster on repeated presses, but the
     memory it holds is memory ComfyUI believes it still has (see the module
@@ -562,8 +626,8 @@ def generate(
         return _generate_locked(
             runtime=runtime, model_key=model_key, system_prompt=system_prompt,
             user_text=user_text, images=images, audio=audio, temperature=temperature,
-            top_p=top_p, top_k=top_k, max_new_tokens=max_new_tokens, seed=seed,
-            thinking=thinking,
+            top_p=top_p, top_k=top_k, max_new_tokens=max_new_tokens,
+            repetition_penalty=repetition_penalty, seed=seed, thinking=thinking,
             backend=backend, mtp=mtp, keep_loaded=keep_loaded,
             allow_download=allow_download, on_progress=on_progress,
         )
@@ -582,7 +646,8 @@ def _generate_locked(
     temperature: float,
     top_p: float,
     top_k: int,
-    max_new_tokens: int,
+    max_new_tokens: int | None,
+    repetition_penalty: float | None,
     seed: int | None,
     thinking: bool,
     backend: str,
@@ -607,15 +672,16 @@ def _generate_locked(
             # twice does not come back word for word.
             sampler_config=runtime.SamplerConfig(
                 temperature=float(temperature), top_k=int(top_k), top_p=float(top_p),
-                seed=(None if seed is None else int(seed)),
+                seed=(None if seed is None else int(seed) % SEED_MODULUS),
             ),
             thinking_config=runtime.ThinkingConfig(
                 enable_thinking=bool(thinking),
-                thinking_token_budget=(512 if thinking else 0),
+                thinking_token_budget=(THINKING_BUDGET if thinking else 0),
             ),
             # Keeps the thinking channel out of the KV cache, so a second turn
             # does not read back the model's own scratch work as context.
             filter_channel_content_from_kv_cache=True,
+            max_output_tokens=answer_ceiling(max_new_tokens, thinking),
         )
 
         # Fixed modality order: pictures, then the instruction, then sound.
@@ -643,7 +709,13 @@ def _generate_locked(
 
         _PACE = 22.0        # столько кусков даёт примерно две трети пути
         reported = -1
-        for index, chunk in enumerate(conversation.send_message_async(payload)):
+        penalty = repetition_penalty_config(runtime, repetition_penalty)
+        stream = (
+            conversation.send_message_async(payload, repetition_penalty_config=penalty)
+            if penalty is not None
+            else conversation.send_message_async(payload)
+        )
+        for index, chunk in enumerate(stream):
             pieces.append(_chunk_text(chunk))
             if on_progress is not None:
                 percent = 30.0 + 65.0 * (1.0 - math.exp(-index / _PACE))

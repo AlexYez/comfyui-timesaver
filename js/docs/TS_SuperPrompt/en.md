@@ -40,6 +40,8 @@ flirtatiously: <d>[Russian] Привет, красавчик!</d>
 
 That wording matters more than it looks. `with a Russian accent` asks for an English voice tinted with Russian; `a native Russian speaker … authentic native Russian prosody` asks for a Russian voice. The preset also keeps speech and signage apart — a line someone says goes in the dialogue block, a text on a sign stays in quotes — and only ever uses H3's own language tags.
 
+**A prompt from another node.** The optional `prompt` input takes a string from the graph — TS Prompt Library, a text file, another LLM. Connected and not empty, it replaces the text field and **goes out as it is**; tick **Enhance the incoming prompt on run** and the node enhances it with the chosen preset when the workflow runs (a wired prompt only exists during the run, so the Enhance button cannot reach it). Empty, the field is used and passed through as before. While the input is connected, a panel above the field says so, holds that switch and shows the last run's result with a Copy button — shown there rather than written into the field, because a changed field would make ComfyUI re-run everything downstream on the next queue.
+
 **Use when:** quick prompt brainstorming, voice-driven workflows, or bridging a sketchy idea into a production-ready prompt.
 
 

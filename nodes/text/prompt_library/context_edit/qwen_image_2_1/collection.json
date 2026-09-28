@@ -1,0 +1,1171 @@
+{
+  "schema": 1,
+  "title": "Qwen Image 2.1",
+  "model": "Qwen Image 2.1 Edit",
+  "order": 10,
+  "references": "<image1>, <image2>",
+  "summary": {
+    "ru": "50 шаблонов: 34 для одного изображения и 16 для двух. Промпты адаптированы по официальным инструкциям PE-I2I и проверены на роли референсов, область изменения и противоречия; визуальные прогоны на конкретных снимках не выполнялись.",
+    "en": "50 templates: 34 for one image and 16 for two. Adapted to the official PE-I2I instructions and checked for reference roles, edit scope and contradictions; no visual runs on specific images were made."
+  },
+  "guide": {
+    "ru": [
+      "Выберите шаблон по задаче и подайте указанное число изображений.",
+      "Заполните поля в фигурных скобках — {TARGET}, {POSITION} и другие — конкретным описанием на английском.",
+      "Для двух входов проверьте порядок: <image1> и <image2> — входные референсы, роль каждого задана в тексте.",
+      "Размер холста, соотношение сторон и маску задавайте в workflow: промпт их не заменяет."
+    ],
+    "en": [
+      "Pick a template for the task and feed the stated number of images.",
+      "Fill the fields in curly braces — {TARGET}, {POSITION} and others — with a concrete description in English.",
+      "With two inputs, check the order: <image1> and <image2> are the input references; the text sets each one's role.",
+      "Set canvas size, aspect ratio and mask in the workflow: the prompt does not replace them."
+    ]
+  },
+  "source": {
+    "title": "Qwen Image 2.1 PE-I2I system prompt",
+    "url": "https://huggingface.co/Qwen/Qwen-Image-2.1-PE-I2I/blob/main/system_prompt.txt",
+    "edition": "2026-09-27"
+  },
+  "placeholders": {
+    "TARGET": {
+      "label": {
+        "ru": "Конкретный объект или область",
+        "en": "A specific object or region"
+      },
+      "example": "the red suitcase beside the left chair"
+    },
+    "OBJECT": {
+      "label": {
+        "ru": "Нужный тип или описание объекта",
+        "en": "The type or description of the object"
+      },
+      "example": "a small matte red ceramic mug"
+    },
+    "POSITION": {
+      "label": {
+        "ru": "Место относительно объектов сцены",
+        "en": "Placement relative to objects in the scene"
+      },
+      "example": "on the table, to the right of the laptop"
+    },
+    "SCALE": {
+      "label": {
+        "ru": "Понятный размер относительно сцены",
+        "en": "A clear size relative to the scene"
+      },
+      "example": "half the height of the adjacent bottle"
+    },
+    "COUNT": {
+      "label": {
+        "ru": "Итоговое количество",
+        "en": "The final number of objects"
+      },
+      "example": "3"
+    },
+    "HAIRSTYLE": {
+      "label": {
+        "ru": "Новая причёска",
+        "en": "New hairstyle"
+      },
+      "example": "a shoulder-length layered bob with curtain bangs"
+    },
+    "HAIR_COLOR": {
+      "label": {
+        "ru": "Цвет волос",
+        "en": "Hair color"
+      },
+      "example": "natural dark auburn"
+    },
+    "EXPRESSION": {
+      "label": {
+        "ru": "Мимика",
+        "en": "Facial expression"
+      },
+      "example": "a subtle closed-mouth smile"
+    },
+    "LIGHTING": {
+      "label": {
+        "ru": "Направление, цвет и мягкость света",
+        "en": "Direction, color and softness of the light"
+      },
+      "example": "a large soft neutral key from camera-left with weak frontal fill"
+    },
+    "VIEWPOINT": {
+      "label": {
+        "ru": "Положение камеры относительно объекта",
+        "en": "Camera position relative to the subject"
+      },
+      "example": "a three-quarter view from the subject's left at eye level"
+    },
+    "FRAMING": {
+      "label": {
+        "ru": "Крупность и границы кадра",
+        "en": "Shot size and frame boundaries"
+      },
+      "example": "a tighter head-and-shoulders crop"
+    },
+    "DIRECTION": {
+      "label": {
+        "ru": "Направление расширения холста",
+        "en": "Direction in which to extend the canvas"
+      },
+      "example": "the left and right sides"
+    },
+    "BACKGROUND": {
+      "label": {
+        "ru": "Описание нового окружения",
+        "en": "Description of the new surroundings"
+      },
+      "example": "a quiet brick courtyard in soft overcast daylight"
+    },
+    "TIME_OF_DAY": {
+      "label": {
+        "ru": "Время суток",
+        "en": "Time of day"
+      },
+      "example": "early blue hour after sunset"
+    },
+    "WEATHER": {
+      "label": {
+        "ru": "Погода и интенсивность",
+        "en": "Weather and its intensity"
+      },
+      "example": "steady light rain under an overcast sky"
+    },
+    "FOCUS_TARGET": {
+      "label": {
+        "ru": "Область фокуса",
+        "en": "Area to put in focus"
+      },
+      "example": "the person's eyes"
+    },
+    "BACKGROUND_BLUR": {
+      "label": {
+        "ru": "Характер размытия",
+        "en": "Character of the background blur"
+      },
+      "example": "a subtle optical background blur"
+    },
+    "COLOR": {
+      "label": {
+        "ru": "Базовый цвет поверхности",
+        "en": "Base color of the surface"
+      },
+      "example": "deep forest green"
+    },
+    "MATERIAL": {
+      "label": {
+        "ru": "Материал и фактура",
+        "en": "Material and texture"
+      },
+      "example": "brushed stainless steel"
+    },
+    "STYLE": {
+      "label": {
+        "ru": "Художественная техника",
+        "en": "Artistic technique"
+      },
+      "example": "watercolor on textured paper"
+    },
+    "OLD_TEXT": {
+      "label": {
+        "ru": "Точное исходное написание",
+        "en": "Exact original spelling"
+      },
+      "example": "ВХОД"
+    },
+    "NEW_TEXT": {
+      "label": {
+        "ru": "Точное новое написание",
+        "en": "Exact new spelling"
+      },
+      "example": "ДОБРО ПОЖАЛОВАТЬ"
+    },
+    "SOURCE_LANGUAGE": {
+      "label": {
+        "ru": "Язык исходного текста",
+        "en": "Language of the original text"
+      },
+      "example": "Russian"
+    },
+    "TARGET_LANGUAGE": {
+      "label": {
+        "ru": "Язык нового текста",
+        "en": "Language of the new text"
+      },
+      "example": "English"
+    },
+    "TEXT_MAPPING": {
+      "label": {
+        "ru": "Готовые пары замен",
+        "en": "Ready-made replacement pairs"
+      },
+      "example": "\"ВХОД\" -> \"ENTRANCE\"; \"ВЫХОД\" -> \"EXIT\""
+    },
+    "HAND": {
+      "label": {
+        "ru": "Какая именно кисть",
+        "en": "Which hand exactly"
+      },
+      "example": "the hand holding the cup on the left side of the frame"
+    }
+  },
+  "groups": [
+    {
+      "id": "restoration",
+      "title": {
+        "ru": "Восстановление и качество фотографии",
+        "en": "Restoration and photo quality"
+      },
+      "presets": [
+        {
+          "id": "R01",
+          "title": {
+            "ru": "Бережная реставрация с сохранением идентичности",
+            "en": "Gentle restoration that keeps identity"
+          },
+          "inputs": 1,
+          "summary": {
+            "ru": "Для очистки старой фотографии от повреждений с сохранением исходных лиц, возраста и общего характера снимка.",
+            "en": "Clean dust and damage off an old photo while keeping the original faces, ages and character of the shot."
+          },
+          "prompt": "Restore the photograph conservatively. Remove visible dust, scratches, stains, creases and scanning defects while preserving each person's exact identity, facial proportions, expression, age and hairstyle. Repair damaged areas only where surviving visual evidence supports the reconstruction; keep uncertain features ambiguous. Preserve the original monochrome or color appearance, lighting, composition, clothing, fine textures and natural grain. Maintain the original photographic character without beautification, face redesign, artificial sharpening or invented detail.",
+          "note": {
+            "ru": "Если значительная часть лица утрачена, достоверно восстановить её по одному снимку нельзя; для проверки нужен другой снимок того же человека.",
+            "en": "If a large part of a face is lost, one photo cannot restore it reliably; checking needs another photo of the same person."
+          }
+        },
+        {
+          "id": "R02",
+          "title": {
+            "ru": "Реставрация и раскрашивание фотографии",
+            "en": "Restoration and colorization"
+          },
+          "inputs": 1,
+          "summary": {
+            "ru": "Для одновременного устранения повреждений и создания правдоподобной цветной версии старого снимка.",
+            "en": "Repair damage and create a plausible color version of an old photo in one pass."
+          },
+          "prompt": "Restore and colorize the photograph. Remove visible dust, scratches, stains and creases using surviving details as guidance. Preserve every person's identity, facial anatomy, expression, age and hairstyle, along with the original objects, composition, textures and grain. Add restrained, plausible colors consistent with visible materials and scene context. Preserve the original light direction, shadow relationships and tonal depth. Keep unsupported missing details ambiguous. Avoid beautification, invented features, oversaturated colors and a modern retouched appearance.",
+          "note": {
+            "ru": "Цвета без подтверждающего референса будут правдоподобной интерпретацией, а не установленными историческими цветами. Неоднозначность колоризации рассматривается в работе Colorful Image Colorization.",
+            "en": "Colors without a confirming reference are a plausible interpretation, not established historical colors. The ambiguity of colorization is discussed in Colorful Image Colorization."
+          },
+          "links": [
+            {
+              "title": "Colorful Image Colorization",
+              "url": "https://arxiv.org/abs/1603.08511"
+            }
+          ]
+        },
+        {
+          "id": "R03",
+          "title": {
+            "ru": "Только раскрашивание без реставрации",
+            "en": "Colorization only, no restoration"
+          },
+          "inputs": 1,
+          "summary": {
+            "ru": "Для создания цветной версии монохромной фотографии с сохранением её повреждений, зерна и исходной детализации.",
+            "en": "Make a color version of a monochrome photo while keeping its damage, grain and original detail."
+          },
+          "prompt": "Colorize the monochrome photograph using restrained, plausible colors for visible skin, hair, clothing, objects and surroundings. Preserve the existing identities, expressions, geometry, composition, texture, grain, scratches and other visible damage. Keep the original lighting direction, shadow structure and relative brightness relationships. Change only the color appearance; retain the original focus and level of detail. Do not restore damaged areas, reshape faces, smooth skin, sharpen the image or add objects.",
+          "note": {
+            "ru": "Промпт намеренно сохраняет дефекты фотографии; предполагаемые цвета сами по себе не подтверждают их историческую точность.",
+            "en": "The prompt deliberately keeps the photo's defects; the assumed colors do not by themselves prove historical accuracy."
+          }
+        },
+        {
+          "id": "R04",
+          "title": {
+            "ru": "Раскрашивание по цветовому референсу",
+            "en": "Colorization from a color reference"
+          },
+          "inputs": 2,
+          "summary": {
+            "ru": "В <image1> подайте монохромный снимок, а в <image2> — цветной референс того же человека, предмета или сцены.",
+            "en": "Feed the monochrome photo as <image1> and a color reference of the same person, object or scene as <image2>."
+          },
+          "prompt": "Colorize <image1> using <image2> solely as a reference for intrinsic colors. Apply them to corresponding skin, hair, clothing and materials where the correspondence is clear, rendered under <image1>'s original lighting. Use restrained, plausible colors elsewhere. Preserve <image1>'s identities, expressions, shapes, composition, shadow structure, relative brightness, texture and visible damage. Transfer no facial anatomy, objects, pose, illumination or photographic style from <image2>. Keep the existing detail and focus; perform no restoration or beautification.",
+          "note": {
+            "ru": "Свет на цветовом референсе влияет на видимые оттенки; соответствие реальных цветов нужно оценивать отдельно.",
+            "en": "The lighting in the color reference affects the visible hues; check the real colors separately."
+          }
+        },
+        {
+          "id": "R05",
+          "title": {
+            "ru": "Удаление шума и артефактов JPEG",
+            "en": "Noise and JPEG artifact removal"
+          },
+          "inputs": 1,
+          "summary": {
+            "ru": "Для умеренной очистки цифрового шума, блочности и ореолов сжатия при сохранении настоящих мелких деталей.",
+            "en": "Moderately clean digital noise, blocking and compression halos while keeping real fine detail."
+          },
+          "prompt": "Reduce visible digital noise and JPEG compression artifacts in the image, including block boundaries and ringing around edges. Preserve real fine detail such as hair, skin texture, fabric weave, foliage and visible lettering. Keep identities, shapes, colors, lighting, composition and depth of field unchanged. Retain intentional photographic grain. Clean only supported image structure without inventing texture or reconstructing unreadable text. Avoid waxy surfaces, smeared detail, sharpening halos and excessive smoothing.",
+          "note": {
+            "ru": "Удаление артефактов не возвращает мелкие детали, полностью утраченные при сжатии.",
+            "en": "Removing artifacts does not bring back fine detail that compression destroyed completely."
+          }
+        },
+        {
+          "id": "R06",
+          "title": {
+            "ru": "Умеренное устранение смаза и нерезкости",
+            "en": "Moderate deblurring"
+          },
+          "inputs": 1,
+          "summary": {
+            "ru": "Для небольшого улучшения читаемости слегка размытого снимка без произвольного дорисовывания лиц и фактуры.",
+            "en": "Slightly improve the readability of a mildly blurred photo without inventing faces or texture."
+          },
+          "prompt": "Improve mild blur in the image with restrained deblurring. Recover edge clarity only where the existing image provides visual evidence. Preserve each person's identity, facial proportions, expression and age, as well as object shapes, colors, lighting and composition. Retain intentional background blur and the original depth of field. Keep unrecoverable fine details and unreadable text ambiguous. Avoid invented pores, eyelashes, lettering, artificial textures, crunchy edges and sharpening halos.",
+          "note": {
+            "ru": "При сильном смазе результат будет интерпретацией; точность идентичности и надписей нужно проверять по исходнику.",
+            "en": "With heavy blur the result is an interpretation; check identity and lettering against the original."
+          }
+        },
+        {
+          "id": "R07",
+          "title": {
+            "ru": "Исправление выцветания и паразитного оттенка",
+            "en": "Fixing fading and color casts"
+          },
+          "inputs": 1,
+          "summary": {
+            "ru": "Для коррекции старой цветной фотографии, на которой выцвели краски или появился общий посторонний оттенок.",
+            "en": "Correct an old color photo whose colors have faded or taken on an overall unwanted cast."
+          },
+          "prompt": "Correct fading and unwanted age-related color casts in the color photograph. Restore balanced color separation and moderate saturation using surviving color information; use clearly identifiable neutral surfaces as references when available. Preserve genuine scene lighting, naturally colored shadows, skin texture, identities, expressions and composition. Keep the original grain and photographic character. Do not recolor individual objects arbitrarily, introduce modern color grading, exaggerate contrast or invent colors where the original information is lost.",
+          "note": {
+            "ru": "Если исходная цветовая информация исчезла полностью, точный прежний оттенок по одному снимку определить нельзя.",
+            "en": "If the original color information is completely gone, the exact former hue cannot be determined from one photo."
+          }
+        },
+        {
+          "id": "R08",
+          "title": {
+            "ru": "Выравнивание и очистка фотографии документа",
+            "en": "Straightening and cleaning a document photo"
+          },
+          "inputs": 1,
+          "summary": {
+            "ru": "Для исправления перспективы и неравномерного освещения на фотографии бумажного документа без переписывания текста.",
+            "en": "Fix perspective and uneven lighting on a photographed paper document without retyping the text."
+          },
+          "prompt": "Rectify the photographed document's perspective using its visible boundaries, preserving page proportions and all content. Remove capture-related background distractions, uneven illumination and color casts; improve existing text legibility conservatively. Preserve every visible letter, number, punctuation mark, signature, stamp, diagram and layout without retyping, translation or autocorrection. Keep uncertain or missing characters unreadable rather than inventing them. Retain the document's intrinsic paper color and original markings. Crop only outside the visible page.",
+          "note": {
+            "ru": "Генеративная правка не гарантирует посимвольного сохранения текста: сверьте результат с оригиналом, особенно числа, подписи и реквизиты.",
+            "en": "Generative editing does not guarantee character-exact text: compare the result with the original, especially numbers, signatures and details."
+          }
+        }
+      ]
+    },
+    {
+      "id": "removal",
+      "title": {
+        "ru": "Удаление объектов и помех",
+        "en": "Removing objects and distractions"
+      },
+      "presets": [
+        {
+          "id": "O01",
+          "title": {
+            "ru": "Удаление всех людей из кадра",
+            "en": "Removing all people from the shot"
+          },
+          "inputs": 1,
+          "summary": {
+            "ru": "Очистить улицу, интерьер или пейзаж от людей, сохранив саму сцену.",
+            "en": "Clear a street, interior or landscape of people while keeping the scene itself."
+          },
+          "prompt": "Remove every real person physically present in the image, including partial bodies, their reflections in mirrors or glass, and shadows cast by them. Leave depicted people in photographs, posters, paintings and statues unchanged. Reconstruct the newly exposed background from surrounding scene geometry and textures, with continuous lines and consistent perspective. Preserve remaining objects, vegetation, architecture, lighting, colors, grain and framing. Modify only the removed people and the areas affected by their reflections, shadows and occlusion.",
+          "note": {
+            "ru": "Люди на постерах, картинах и скульптуры остаются. Чтобы удалить также их, явно расширьте условие. Скрытые за людьми участки модель реконструирует, поэтому это не восстановление достоверно известного фона.",
+            "en": "People on posters, in paintings and sculptures stay. To remove them too, widen the condition explicitly. Areas hidden behind people are reconstructed, so this is not a recovery of a reliably known background."
+          }
+        },
+        {
+          "id": "O02",
+          "title": {
+            "ru": "Удаление выбранного объекта",
+            "en": "Removing a chosen object"
+          },
+          "inputs": 1,
+          "summary": {
+            "ru": "Удалить конкретный предмет, человека или группу, указанную в {TARGET}.",
+            "en": "Remove the specific item, person or group given in {TARGET}."
+          },
+          "prompt": "Remove {TARGET} completely from the image, including all visible fragments, its reflections and the shadows it casts. Reconstruct the background and surfaces it obscured using adjacent geometry, texture and perspective. Keep contact edges of remaining objects clean and restore consistent lighting across the repaired region. Preserve unrelated reflections and shadows, all remaining subjects, colors, focus, grain and framing. Change only the selected object and areas directly affected by its removal.",
+          "examples": {
+            "TARGET": "the red suitcase beside the left chair"
+          },
+          "note": {
+            "ru": "Опишите цель однозначно: например, the red suitcase beside the left chair. Если одинаковых объектов несколько, добавьте положение, цвет или маску.",
+            "en": "Describe the target unambiguously, for example: the red suitcase beside the left chair. If there are several identical objects, add position, color or a mask."
+          }
+        },
+        {
+          "id": "O03",
+          "title": {
+            "ru": "Удаление проводов и тонких препятствий",
+            "en": "Removing wires and thin obstructions"
+          },
+          "inputs": 1,
+          "summary": {
+            "ru": "Убрать провода, сетку или другое тонкое перекрытие, указанное в {TARGET}.",
+            "en": "Remove wires, netting or another thin obstruction given in {TARGET}."
+          },
+          "prompt": "Remove {TARGET} from the image along its entire visible extent, including small fragments belonging to that obstruction. Reconnect interrupted contours, architectural lines and textures across the removed strips using the surrounding perspective. Preserve crossing objects and fine details that do not belong to the selected obstruction. Remove only shadows attributable to it. Match the repaired areas to the existing lighting, colors, sharpness and grain. Preserve the remaining scene and framing.",
+          "examples": {
+            "TARGET": "the overhead utility wires across the sky"
+          },
+          "note": {
+            "ru": "Укажите, что именно мешает: overhead utility wires across the sky или the chain-link fence in the foreground. Чем больше сцены скрыто препятствием, тем больше деталей придётся реконструировать.",
+            "en": "Say exactly what is in the way: overhead utility wires across the sky or the chain-link fence in the foreground. The more of the scene the obstruction hides, the more detail has to be reconstructed."
+          }
+        },
+        {
+          "id": "O04",
+          "title": {
+            "ru": "Удаление выбранного отражения или блика",
+            "en": "Removing a chosen reflection or glare"
+          },
+          "inputs": 1,
+          "summary": {
+            "ru": "Убрать мешающее отражение или засветку {TARGET} в конкретной области.",
+            "en": "Remove a distracting reflection or glare {TARGET} in a specific area."
+          },
+          "prompt": "Remove only {TARGET} from its specified region in the image. Recover the obscured appearance conservatively from visible surrounding structure. Preserve the surface's material, curvature, transparency, texture and natural sheen; retain other reflections and highlights needed to show its physical form. Keep underlying features and edges consistent, without inventing lettering or identifying detail that cannot be inferred. Match local exposure and color, leaving the rest of the image, lighting and framing unchanged.",
+          "examples": {
+            "TARGET": "the bright rectangular reflection covering the left eyeglass lens"
+          },
+          "note": {
+            "ru": "В {TARGET} укажите эффект и место: the bright rectangular reflection covering the left eyeglass lens. Участки, полностью перекрытые бликом, придётся реконструировать; их реальные детали по такому снимку установить нельзя.",
+            "en": "In {TARGET} give the effect and the place: the bright rectangular reflection covering the left eyeglass lens. Areas fully covered by glare have to be reconstructed; their real details cannot be established from such a photo."
+          }
+        }
+      ]
+    },
+    {
+      "id": "objects",
+      "title": {
+        "ru": "Добавление, замена и размещение объектов",
+        "en": "Adding, replacing and placing objects"
+      },
+      "presets": [
+        {
+          "id": "O05",
+          "title": {
+            "ru": "Добавление одного объекта из второго изображения",
+            "en": "Adding one object from a second image"
+          },
+          "inputs": 2,
+          "summary": {
+            "ru": "Вставить ровно один {OBJECT} из <image2> в <image1>: место {POSITION}, размер {SCALE}.",
+            "en": "Insert exactly one {OBJECT} from <image2> into <image1>: placement {POSITION}, size {SCALE}."
+          },
+          "prompt": "Use <image1> as the canvas. Add exactly one {OBJECT} from <image2> at {POSITION}, sized {SCALE}. Transfer only that object, preserving its distinctive shape, materials, intrinsic colors, texture and markings. Fit its perspective and depth to the scene. Discard <image2>'s lighting and relight the object using <image1>'s illumination. Create appropriate contact, cast shadows, reflections and occlusion. Preserve <image1>'s existing subjects, framing, colors and detail, changing only the inserted object and areas physically affected by it. Match <image1>'s local focus and grain.",
+          "note": {
+            "ru": "Задавайте масштаб относительно сцены: half the height of the adjacent chair. Если важна надпись или логотип, их точное воспроизведение нужно проверить на результате.",
+            "en": "Give the scale relative to the scene: half the height of the adjacent chair. If a label or logo matters, check its exact reproduction in the result."
+          }
+        },
+        {
+          "id": "O06",
+          "title": {
+            "ru": "Замена объекта предметом из второго изображения",
+            "en": "Replacing an object with one from a second image"
+          },
+          "inputs": 2,
+          "summary": {
+            "ru": "Заменить {TARGET} в <image1> выбранным объектом {OBJECT} из <image2>.",
+            "en": "Replace {TARGET} in <image1> with the chosen {OBJECT} from <image2>."
+          },
+          "prompt": "Use <image1> as the canvas. Remove {TARGET} completely, including its old outline, reflections and cast shadows. Replace it with exactly one {OBJECT} from <image2>, keeping the original placement and a plausible scale relative to surrounding objects. Preserve the replacement's shape, materials, intrinsic colors and markings. Match <image1>'s perspective and rebuild lighting, shadows, reflections and occlusion. Restore background exposed by the new silhouette. Preserve the remaining scene and framing, with no fragments of the original object. Match <image1>'s local focus and grain.",
+          "examples": {
+            "TARGET": "the white vase on the lower shelf",
+            "OBJECT": "the blue ceramic vase"
+          },
+          "note": {
+            "ru": "Для непохожих предметов лучше дополнительно задать размер: например, the new vase should reach the lower shelf. В отличие от простой вставки, здесь удаляются следы прежнего объекта.",
+            "en": "For dissimilar items it helps to also set the size, for example: the new vase should reach the lower shelf. Unlike a simple insertion, traces of the old object are removed here."
+          }
+        },
+        {
+          "id": "O07",
+          "title": {
+            "ru": "Добавление объекта по текстовому описанию",
+            "en": "Adding an object from a text description"
+          },
+          "inputs": 1,
+          "summary": {
+            "ru": "Создать один новый {OBJECT} без референса, разместить в {POSITION} и задать {SCALE}.",
+            "en": "Create one new {OBJECT} without a reference, place it {POSITION} and set {SCALE}."
+          },
+          "prompt": "Add exactly one {OBJECT} to the image at {POSITION}, sized {SCALE}. Make its geometry, materials and level of detail consistent with the existing scene. Align its perspective and depth with the camera view, using plausible physical support and occlusion. Illuminate it with the scene's existing light sources and add appropriate contact shadows, cast shadows and reflections. Preserve existing subjects, objects, colors, focus, grain and framing; change only the new object and areas physically affected by it.",
+          "note": {
+            "ru": "В {OBJECT} включите материал, форму и цвет. Например: a small matte red ceramic mug with a curved handle. Для определённого серийного товара используйте вариант с референсом.",
+            "en": "Include material, shape and color in {OBJECT}, for example: a small matte red ceramic mug with a curved handle. For a specific commercial product, use the reference-based variant."
+          }
+        },
+        {
+          "id": "O08",
+          "title": {
+            "ru": "Перемещение существующего объекта",
+            "en": "Moving an existing object"
+          },
+          "inputs": 1,
+          "summary": {
+            "ru": "Перенести {TARGET} в {POSITION} внутри исходной сцены.",
+            "en": "Move {TARGET} to {POSITION} within the original scene."
+          },
+          "prompt": "Move {TARGET} in the image to {POSITION}, keeping exactly one instance. Preserve its identity, shape, materials, colors and real-world dimensions, adjusting apparent size only as required by its new depth. Remove its previous outline, reflections and cast shadows, and reconstruct the vacated area. Match the new position's perspective, support, occlusion and existing illumination. Rebuild affected shadows and reflections. Preserve all unrelated objects, scene geometry, camera view, framing, focus and grain.",
+          "note": {
+            "ru": "Этот вариант сохраняет физический размер предмета: при перемещении в глубину он выглядит меньше. Чтобы сохранить именно размер в пикселях, потребуется заменить соответствующее условие.",
+            "en": "This variant keeps the object's physical size: moved deeper into the scene it looks smaller. To keep its size in pixels instead, replace the corresponding condition."
+          }
+        },
+        {
+          "id": "O09",
+          "title": {
+            "ru": "Изменение размера выбранного объекта",
+            "en": "Resizing a chosen object"
+          },
+          "inputs": 1,
+          "summary": {
+            "ru": "Изменить размер {TARGET} до {SCALE}, сохранив его форму и место опоры.",
+            "en": "Resize {TARGET} to {SCALE}, keeping its shape and support point."
+          },
+          "prompt": "Resize only {TARGET} in the image to {SCALE}. Preserve its identity, shape, aspect ratio, materials, colors and orientation. Keep its support point or attachment fixed while changing its dimensions; preserve the camera view and perspective. Remove the previous outline and reconstruct newly exposed areas. Update occlusion, contact shadows, cast shadows and reflections to fit the new size under the existing lighting. Preserve surrounding objects, scene composition, focus, grain and framing.",
+          "examples": {
+            "TARGET": "the green bottle on the table",
+            "SCALE": "twice its current height"
+          },
+          "note": {
+            "ru": "Укажите коэффициент или понятный ориентир: twice its current height или the same height as the nearby bottle. Если важен центр вместо точки опоры, замените соответствующую фразу.",
+            "en": "Give a factor or a clear reference: twice its current height or the same height as the nearby bottle. If the center matters instead of the support point, replace the corresponding phrase."
+          }
+        },
+        {
+          "id": "O10",
+          "title": {
+            "ru": "Изменение количества одинаковых объектов",
+            "en": "Changing the number of identical objects"
+          },
+          "inputs": 1,
+          "summary": {
+            "ru": "Оставить в кадре ровно {COUNT} объектов типа {OBJECT}.",
+            "en": "Leave exactly {COUNT} objects of type {OBJECT} in the frame."
+          },
+          "prompt": "Adjust the number of {OBJECT} in the image to exactly {COUNT} clearly distinguishable, visible instances. Keep existing instances where possible, adding matching ones or removing extras as needed. Maintain consistent design, plausible spacing, scale and perspective without merging shapes or hiding extra copies behind one another. Rebuild background where objects are removed and update affected occlusion, shadows and reflections. Preserve unrelated subjects, lighting, colors, camera view and framing.",
+          "examples": {
+            "OBJECT": "apples on the front plate",
+            "COUNT": "3"
+          },
+          "note": {
+            "ru": "Укажите область, если счёт относится только к ней: apples on the front plate. Точное количество требует визуальной проверки; особенно внимательно проверяйте частично перекрытые экземпляры.",
+            "en": "Name the area if the count applies only to it: apples on the front plate. An exact count needs visual checking; look especially closely at partly hidden instances."
+          }
+        },
+        {
+          "id": "O11",
+          "title": {
+            "ru": "Перенос человека или объекта в сцену второго изображения",
+            "en": "Moving a person or object into the scene of a second image"
+          },
+          "inputs": 2,
+          "summary": {
+            "ru": "Извлечь {TARGET} из <image1> и поместить в сцену <image2> в {POSITION}, размер {SCALE}.",
+            "en": "Extract {TARGET} from <image1> and place it in the scene of <image2> at {POSITION}, size {SCALE}."
+          },
+          "prompt": "Use <image2> as the canvas and scene reference. Extract only {TARGET} from <image1> and place it at {POSITION}, sized {SCALE}. Preserve its identity, proportions, pose, clothing or materials, intrinsic colors and fine features. Exclude <image1>'s background, lighting and cast shadows. Relight the subject using <image2>'s light direction, color, softness and contrast. Match the scene's perspective, depth, occlusion and contact, adding appropriate shadows and reflections. Preserve <image2>'s framing and existing scene outside affected areas.",
+          "examples": {
+            "TARGET": "the woman in the red coat"
+          },
+          "note": {
+            "ru": "Здесь роли намеренно обратные: <image1> содержит переносимый объект, а <image2> задаёт итоговый кадр и свет. Для человека выбирайте референсы с совместимой перспективой, если позу нужно сохранить.",
+            "en": "The roles are deliberately reversed here: <image1> holds the transferred subject and <image2> defines the final frame and light. For a person, pick references with compatible perspective if the pose must be kept."
+          }
+        },
+        {
+          "id": "O12",
+          "title": {
+            "ru": "Изоляция объекта на прозрачном фоне",
+            "en": "Isolating an object on a transparent background"
+          },
+          "inputs": 1,
+          "summary": {
+            "ru": "Оставить только {TARGET}, сохранив тонкие края и прозрачность материалов.",
+            "en": "Keep only {TARGET}, preserving fine edges and material transparency."
+          },
+          "prompt": "This is an RGBA image with transparency. Isolate {TARGET} from the image and remove the entire surrounding background to genuine transparency. Preserve the subject's original identity, shape, proportions, colors, texture, internal shading and position within the existing canvas. Retain fine hair, fur, threads and other delicate edges, with appropriate partial transparency where visible. Remove background color contamination and detached background shadows without erasing subject detail. Return an RGBA image with an alpha channel, no replacement backdrop, checkerboard pattern or opaque halo.",
+          "examples": {
+            "TARGET": "the ceramic teapot"
+          },
+          "note": {
+            "ru": "Нужен workflow, сохраняющий alpha, и выходной PNG или WebP с прозрачностью. Сам текст промпта не гарантирует сохранение альфа-канала; шахматный рисунок внутри RGB не является прозрачностью. Модель поддерживает нативное RGBA и редактирование прозрачных изображений: Qwen Image 2.1.",
+            "en": "You need a workflow that keeps alpha and a PNG or WebP output with transparency. The prompt text alone does not guarantee an alpha channel; a checkerboard inside RGB is not transparency. The model supports native RGBA and editing transparent images."
+          },
+          "links": [
+            {
+              "title": "Qwen Image 2.1",
+              "url": "https://github.com/QwenLM/Qwen-Image-2.1"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "portrait",
+      "title": {
+        "ru": "Лица, головы, волосы, одежда и позы",
+        "en": "Faces, heads, hair, clothing and poses"
+      },
+      "presets": [
+        {
+          "id": "P01",
+          "title": {
+            "ru": "Замена лица по референсу",
+            "en": "Face swap from a reference"
+          },
+          "inputs": 2,
+          "summary": {
+            "ru": "Для замены только черт лица с сохранением причёски, мимики, ракурса, цвета кожи и освещения исходника.",
+            "en": "Replace only the facial features while keeping the hairstyle, expression, angle, skin tone and lighting of the original."
+          },
+          "prompt": "Replace only <image1>'s face with <image2>'s exact facial identity. Preserve <image1>'s hair, hairline, ears, head size, position, angle, expression and gaze. Use <image1> exclusively for skin pigmentation and illumination; discard <image2>'s complexion, shadows, highlights and color casts. Rebuild facial shading under <image1>'s light direction, color, softness and key-to-fill balance. Match the original face region's exposure, highlight and shadow hues, contrast, focus and grain. Preserve the donor's characteristic facial anatomy without averaging identities, adapting it to the original expression and mouth opening. Fit the replacement within the existing face area. Blend only the boundary naturally into surrounding skin, maintaining coherent shading into the neck. Preserve the remaining image.",
+          "note": {
+            "ru": "Свет и оттенки берутся именно из исходной области лица в <image1>. Шея — ориентир для естественного стыка, а не требование сделать всё лицо таким же тёмным или светлым. Формы черт остаются от <image2>; полного переноса её внешнего контура этот вариант не требует.",
+            "en": "Light and hues come from the original face area in <image1>. The neck is a reference for a natural seam, not a requirement to make the whole face as dark or light. The feature shapes come from <image2>; this variant does not require a full transfer of its outer contour."
+          }
+        },
+        {
+          "id": "P02",
+          "title": {
+            "ru": "Полная замена головы и причёски",
+            "en": "Full head and hairstyle swap"
+          },
+          "inputs": 2,
+          "summary": {
+            "ru": "Для переноса всей головы, включая уши, линию роста, причёску и цвет волос, с сохранением масштаба, мимики, цвета кожи и света исходника.",
+            "en": "Transfer the whole head, including ears, hairline, hairstyle and hair color, while keeping the scale, expression, skin tone and lighting of the original."
+          },
+          "prompt": "First remove <image1>'s original head and all hair, including shoulder strands and obsolete hair shadows. Replace them exclusively with <image2>'s complete head and hairstyle, preserving its identity, anatomy and intrinsic hair color without mixing hairstyles. Keep <image1>'s head position, anatomical scale, angle, expression, gaze and framing. Use <image1> exclusively for skin pigmentation and lighting; discard <image2>'s illumination and complexion. Relight the face, ears and hair using <image1>'s light direction, color, softness and key-to-fill balance. Match the original face's exposure, skin highlight and shadow hues, contrast, focus and grain. Recalculate contact and cast shadows on surrounding surfaces. Blend naturally into the neck, reconstruct newly uncovered areas, and preserve the remaining scene.",
+          "note": {
+            "ru": "При маске включите старый и новый силуэт волос, пряди на плечах и затронутые тени. Свет и цветовые оттенки светотени задаёт <image1>; собственный цвет новых волос — <image2>. First/remove описывает правку и не включает автоматически отдельный проход генерации.",
+            "en": "When masking, include the old and new hair silhouettes, strands on the shoulders and affected shadows. <image1> sets the light and the shading hues; <image2> sets the intrinsic color of the new hair. 'First remove' describes the edit and does not automatically add a separate generation pass."
+          }
+        },
+        {
+          "id": "P03",
+          "title": {
+            "ru": "Перенос причёски по референсу",
+            "en": "Hairstyle transfer from a reference"
+          },
+          "inputs": 2,
+          "summary": {
+            "ru": "Для переноса только волос: стрижки, длины, фактуры, объёма, линии роста и цвета. Лицо остаётся исходным.",
+            "en": "Transfer only the hair: cut, length, texture, volume, hairline and color. The face stays original."
+          },
+          "prompt": "Change only the hairstyle in <image1>, using <image2> solely for the haircut, hairline, length, texture, volume, and intrinsic hair color. Remove all original hair, including fringe and shoulder strands; do not combine hairstyles. Fit the new hairstyle naturally to <image1>'s scalp, preserving its facial identity, expression, gaze, anatomical head size, ears, neck, body, clothing, and pose. Relight the hair using <image1>'s illumination. Reconstruct newly uncovered areas and update necessary hair shadows; preserve the remaining scene and framing. Match <image1>'s local focus and grain.",
+          "note": {
+            "ru": "Не фиксируйте исходный силуэт волос: другая длина и объём требуют изменения их внешней границы. При маскировании учитывайте и старую, и новую причёску.",
+            "en": "Do not lock the original hair silhouette: a different length and volume require changing its outer boundary. When masking, account for both the old and the new hairstyle."
+          }
+        },
+        {
+          "id": "P04",
+          "title": {
+            "ru": "Новая причёска по описанию",
+            "en": "New hairstyle from a description"
+          },
+          "inputs": 1,
+          "summary": {
+            "ru": "Замените {HAIRSTYLE}, например, на a shoulder-length layered bob with curtain bangs.",
+            "en": "Replace {HAIRSTYLE}, for example with a shoulder-length layered bob with curtain bangs."
+          },
+          "prompt": "Change only the hairstyle in the photograph to {HAIRSTYLE}. Replace the old hairstyle completely, including obsolete bangs and stray shoulder strands. Preserve the person's facial identity, expression, gaze, head size, pose, and original hair color. Fit the new hair naturally to the scalp with the original scene lighting. Reconstruct newly uncovered skin, clothing, and background; update necessary hair shadows. Keep the remaining scene, framing, sharpness, and grain unchanged.",
+          "note": {
+            "ru": "По умолчанию цвет волос остаётся исходным. Для одновременной смены цвета замените original hair color на точное описание нужного цвета.",
+            "en": "By default the hair color stays original. To change the color at the same time, replace 'original hair color' with an exact description of the desired color."
+          }
+        },
+        {
+          "id": "P05",
+          "title": {
+            "ru": "Изменение цвета волос",
+            "en": "Changing hair color"
+          },
+          "inputs": 1,
+          "summary": {
+            "ru": "Замените {HAIR_COLOR}, например, на natural dark auburn, cool platinum blonde или copper red.",
+            "en": "Replace {HAIR_COLOR}, for example with natural dark auburn, cool platinum blonde or copper red."
+          },
+          "prompt": "Change only the hair color in the photograph to {HAIR_COLOR}. Preserve the exact haircut, hairline, length, volume, strand direction, texture, and arrangement, including flyaways. Keep the original lighting, with natural highlights, shadows, and root-to-tip variation appropriate to the new color. Preserve the person's face, eyebrows, facial hair, skin tone, expression, body, clothing, and background. Change no other colors, geometry, sharpness, or framing.",
+          "note": {
+            "ru": "Промпт отдельно фиксирует исходные брови и растительность на лице. Если их тоже нужно перекрасить, явно включите их в область изменения.",
+            "en": "The prompt separately keeps the original eyebrows and facial hair. If they should be recolored too, include them in the edit explicitly."
+          }
+        },
+        {
+          "id": "P06",
+          "title": {
+            "ru": "Перенос одежды по референсу",
+            "en": "Clothing transfer from a reference"
+          },
+          "inputs": 2,
+          "summary": {
+            "ru": "Для переноса фасона, ткани, рисунка и цвета одежды без переноса внешности и телосложения человека с референса.",
+            "en": "Transfer the style, fabric, pattern and color of clothing without transferring the reference person's appearance or build."
+          },
+          "prompt": "Dress the person in <image1> in the clothing shown in <image2>. Use <image2> only for garment design, cut, material, pattern, and intrinsic colors, never for the person or body shape. Fit the garments to <image1>'s unchanged anatomy and pose, allowing realistic folds, drape, and clothing volume. Preserve its face, hair, skin tone, hands, and accessories. Relight the outfit to <image1>, recalculate necessary shadows, and preserve the background, framing, and image dimensions. Match <image1>'s local focus and grain.",
+          "note": {
+            "ru": "Объём одежды и складки могут меняться; анатомия и пропорции тела не должны переноситься с референса. Для одного предмета одежды уточните его вместо the clothing.",
+            "en": "Clothing volume and folds may change; body anatomy and proportions must not be taken from the reference. For a single garment, name it instead of 'the clothing'."
+          }
+        },
+        {
+          "id": "P07",
+          "title": {
+            "ru": "Изменение выражения лица",
+            "en": "Changing the facial expression"
+          },
+          "inputs": 1,
+          "summary": {
+            "ru": "Замените {EXPRESSION}, например, на a subtle closed-mouth smile или genuine surprise with raised eyebrows.",
+            "en": "Replace {EXPRESSION}, for example with a subtle closed-mouth smile or genuine surprise with raised eyebrows."
+          },
+          "prompt": "Change only the person's facial expression in the photograph to {EXPRESSION}. Express it through natural movements of the eyebrows, eyelids, cheeks, and mouth while preserving the same facial identity and characteristic anatomy. Keep the original gaze direction, head position, angle, size, hair, skin pigmentation, clothing, body pose, and background. Preserve the scene lighting and recompute only the shading caused by the changed expression. Maintain the original framing, image dimensions, texture, and grain.",
+          "note": {
+            "ru": "Мимика меняет положение мягких тканей. Не добавляйте требование сохранить контуры губ и век пиксель в пиксель; это будет мешать новой эмоции.",
+            "en": "An expression moves soft tissue. Do not add a requirement to keep lip and eyelid contours pixel-exact; it would fight the new emotion."
+          }
+        },
+        {
+          "id": "P08",
+          "title": {
+            "ru": "Изменение позы тела по референсу",
+            "en": "Changing body pose from a reference"
+          },
+          "inputs": 2,
+          "summary": {
+            "ru": "Для переноса положения корпуса и конечностей при сохранении внешности, телосложения, одежды и освещения исходника.",
+            "en": "Transfer the position of the torso and limbs while keeping the appearance, build, clothing and lighting of the original."
+          },
+          "prompt": "Repose the person in <image1> to match only the body posture and limb arrangement in <image2>. Use <image2> as a pose reference, never for identity, anatomy, clothing, colors, lighting, or camera style. Preserve <image1>'s facial identity, expression, body proportions, hair, and outfit. Adapt garment folds and hair naturally to the new pose. Keep <image1>'s camera view, framing, and environment; update the silhouette, occlusions, contact points, and shadows under its original lighting.",
+          "note": {
+            "ru": "Новая поза может открыть скрытые части тела, одежды или фона; их потребуется дорисовать. Внешний силуэт, складки и падающие тени должны меняться вместе с позой.",
+            "en": "A new pose may reveal hidden parts of the body, clothing or background that have to be generated. The outer silhouette, folds and cast shadows must change together with the pose."
+          }
+        }
+      ]
+    },
+    {
+      "id": "scene",
+      "title": {
+        "ru": "Свет, ракурс, кадрирование и окружение",
+        "en": "Light, camera angle, framing and surroundings"
+      },
+      "presets": [
+        {
+          "id": "S01",
+          "title": {
+            "ru": "Перенос только освещения со второго изображения",
+            "en": "Transferring only the lighting from a second image"
+          },
+          "inputs": 2,
+          "summary": {
+            "ru": "<image1> — редактируемый кадр; <image2> — только образец света. Идентичность, причёска, материалы и обстановка остаются из первого кадра.",
+            "en": "<image1> is the frame being edited; <image2> is only a lighting sample. Identity, hairstyle, materials and setting stay from the first frame."
+          },
+          "prompt": "Relight <image1> using only the lighting setup of <image2>. Infer the reference light directions relative to the camera, colors, softness and key-to-fill balance, then apply them coherently to <image1>'s geometry. Rebuild cast shadows, reflections, catchlights and hair highlights on the existing surfaces. Preserve <image1>'s identity, expression, pose, hair, objects, background, composition and intrinsic skin and material colors. Transfer no people, objects, textures or color grading from <image2>. Change only illumination and its physical effects.",
+          "note": {
+            "ru": "Базовые цвета кожи и материалов сохраняются, но их видимые оттенки и яркость закономерно меняются под новым светом. Светотень строится по геометрии первого кадра; точные контуры теней со второго копировать нельзя.",
+            "en": "Base skin and material colors are kept, but their visible hues and brightness naturally change under the new light. Shading is built from the first frame's geometry; exact shadow contours from the second cannot be copied."
+          }
+        },
+        {
+          "id": "S02",
+          "title": {
+            "ru": "Изменение освещения по текстовому описанию",
+            "en": "Changing the lighting from a text description"
+          },
+          "inputs": 1,
+          "summary": {
+            "ru": "Замените {LIGHTING} конкретным световым рисунком: например, a large soft key light from camera-left, weak neutral fill and a subtle warm rim light.",
+            "en": "Replace {LIGHTING} with a concrete lighting setup, for example: a large soft key light from camera-left, weak neutral fill and a subtle warm rim light."
+          },
+          "prompt": "Change only the lighting in the image to {LIGHTING}. Rebuild illumination, cast shadows, reflections, eye catchlights and hair highlights consistently with the existing geometry. Preserve identity, expression, pose, hairstyle, clothing, objects, background structure, framing and intrinsic skin and material colors. Keep shadows coherent across the subject and surroundings, including contact shadows. Change visible brightness and hues only as required by the new light. Add no visible lighting equipment or unrelated scene elements.",
+          "note": {
+            "ru": "Описывайте направление относительно камеры, цвет и мягкость каждого нужного источника. Видимые лампы этим шаблоном не добавляются.",
+            "en": "Describe the direction relative to the camera, the color and the softness of each light you need. This template does not add visible lamps."
+          }
+        },
+        {
+          "id": "S03",
+          "title": {
+            "ru": "Коррекция экспозиции и баланса белого",
+            "en": "Exposure and white balance correction"
+          },
+          "inputs": 1,
+          "summary": {
+            "ru": "Для аккуратной технической коррекции снимка без изменения расположения источников света.",
+            "en": "Careful technical correction of a photo without moving the light sources."
+          },
+          "prompt": "Correct exposure and white balance in the image while retaining the original lighting arrangement. Recover available shadow and highlight detail gently, without inventing information in clipped areas. Neutralize unwanted overall color casts using plausible neutral references, while preserving intentional colored illumination. Maintain natural skin tones, material colors, local contrast and the original light-to-shadow pattern. Preserve all identities, expressions, shapes, textures, objects, composition and framing. Avoid HDR halos, exaggerated saturation, skin smoothing and added sharpness.",
+          "note": {
+            "ru": "Это тональная и цветовая коррекция, а не релайтинг. Полностью выбитые света и проваленные тени могут не содержать восстанавливаемой информации.",
+            "en": "This is tonal and color correction, not relighting. Fully blown highlights and crushed shadows may hold no recoverable information."
+          }
+        },
+        {
+          "id": "S04",
+          "title": {
+            "ru": "Смена ракурса по описанию",
+            "en": "Changing the camera angle from a description"
+          },
+          "inputs": 1,
+          "summary": {
+            "ru": "Замените {VIEWPOINT}, например: a three-quarter view from the subject's left, with the camera slightly above eye level.",
+            "en": "Replace {VIEWPOINT}, for example: a three-quarter view from the subject's left, with the camera slightly above eye level."
+          },
+          "prompt": "Re-render the scene in the image from {VIEWPOINT}. Move the camera without rotating or reposing the subject. Preserve identity, expression, hairstyle, clothing, body pose, object shapes and their relative positions within the scene. Reproject perspective, background geometry, occlusions and reflections consistently with the new viewpoint. Keep the lighting fixed within the scene and recompute its appearance from the new camera position. Infer newly visible surfaces conservatively, consistent with the visible anatomy, materials and surroundings.",
+          "note": {
+            "ru": "Речь о новом положении камеры, а не повороте плоской картинки. Невидимые ранее стороны лица и предметов модель достраивает; точность их реального устройства и полная идентичность не гарантируются.",
+            "en": "This means a new camera position, not rotating a flat picture. Previously hidden sides of faces and objects are generated by the model; their real structure and full identity are not guaranteed."
+          }
+        },
+        {
+          "id": "S05",
+          "title": {
+            "ru": "Смена ракурса по второму изображению",
+            "en": "Changing the camera angle from a second image"
+          },
+          "inputs": 2,
+          "summary": {
+            "ru": "<image1> задаёт человека или сцену; <image2> — только направление камеры, высоту съёмки и крупность.",
+            "en": "<image1> sets the person or scene; <image2> sets only the camera direction, shooting height and shot size."
+          },
+          "prompt": "Re-render <image1> using only <image2>'s camera viewing direction, elevation and comparable framing relative to the main subject. Preserve <image1>'s identity, expression, hairstyle, clothing, pose, objects and their arrangement within the scene. Reproject the background, occlusions and perspective coherently, keeping the original lighting fixed in the scene. Infer newly visible surfaces conservatively. Transfer no person, pose, hairstyle, objects, background, lighting or visual style from <image2>. Match the reference viewpoint by moving the camera, not by turning the subject.",
+          "note": {
+            "ru": "Второй кадр лучше выбирать с понятной ориентацией объекта и близкой композицией. Точные параметры камеры из обычного изображения однозначно не определяются.",
+            "en": "Pick a second frame with a clear subject orientation and similar composition. Exact camera parameters cannot be determined unambiguously from an ordinary image."
+          }
+        },
+        {
+          "id": "S06",
+          "title": {
+            "ru": "Изменение крупности и кадрирования без смены перспективы",
+            "en": "Changing shot size and framing without changing perspective"
+          },
+          "inputs": 1,
+          "summary": {
+            "ru": "Замените {FRAMING}: например, a tighter head-and-shoulders crop или a wider composition showing the full body.",
+            "en": "Replace {FRAMING}: for example a tighter head-and-shoulders crop or a wider composition showing the full body."
+          },
+          "prompt": "Adjust the framing of the image to {FRAMING} through cropping or canvas extension, keeping the camera viewpoint and perspective fixed. Preserve the subject's identity, expression, pose, proportions, hairstyle, clothing and lighting. Keep existing objects in their original spatial relationships; do not move or reshape them to fit the frame. For a wider composition, continue the scene and newly visible anatomy conservatively. Maintain consistent texture, focus and grain throughout. Do not orbit the camera or change perspective.",
+          "note": {
+            "ru": "Более крупный план здесь получается кадрированием, а более общий — дорисовкой поля. Фактический размер выходного изображения задаётся в workflow.",
+            "en": "A tighter shot is made by cropping here, and a wider one by painting the extra field. The actual output size is set in the workflow."
+          }
+        },
+        {
+          "id": "S07",
+          "title": {
+            "ru": "Расширение изображения — outpainting",
+            "en": "Extending the image — outpainting"
+          },
+          "inputs": 1,
+          "summary": {
+            "ru": "Замените {DIRECTION}: например, to the left and right или upward. Подготовьте холст с нужным расширением и областью для дорисовки.",
+            "en": "Replace {DIRECTION}: for example to the left and right or upward. Prepare a canvas with the needed extension and an area to fill."
+          },
+          "prompt": "Extend the image toward {DIRECTION}, generating content only in the added canvas. Leave the entire original image area untouched. Continue existing surfaces, objects and background naturally across the border, matching perspective, scale, lighting, color, depth of field, texture and grain. Infer missing continuations conservatively from the visible scene. Preserve complete subjects and avoid duplicated people, repeated objects or visible seams. Do not resize, reposition or repaint the original content. Add no unrelated focal elements.",
+          "note": {
+            "ru": "Промпт не задаёт размер холста. Для гарантированной неизменности исходной области нужны соответствующая маска и наложение исходника поверх результата.",
+            "en": "The prompt does not set the canvas size. A guaranteed untouched original area needs a matching mask and compositing the original over the result."
+          }
+        },
+        {
+          "id": "S08",
+          "title": {
+            "ru": "Замена фона по описанию с сохранением света на объекте",
+            "en": "Replacing the background from a description, keeping the subject's lighting"
+          },
+          "inputs": 1,
+          "summary": {
+            "ru": "Замените {BACKGROUND} описанием фона. Подходит, когда человека или предмет нужно оставить с исходным освещением.",
+            "en": "Replace {BACKGROUND} with a description of the background. Use it when a person or object must keep its original lighting."
+          },
+          "prompt": "Replace only the background in the image with {BACKGROUND}. Preserve the main subject's identity, expression, pose, proportions, hairstyle, clothing, colors and existing illumination. Build the new background with perspective, light direction, exposure and depth of field compatible with the unchanged subject. Preserve foreground objects and natural occlusions. Integrate hair and fine edges without halos, and create plausible contact shadows where the subject meets the new surroundings. Do not relight, retouch or reshape the subject.",
+          "note": {
+            "ru": "Новый фон подстраивается под уже существующий свет на объекте. Для сцены с принципиально другим светом используйте явный релайтинг.",
+            "en": "The new background adapts to the light already on the subject. For a scene with fundamentally different light, use explicit relighting."
+          }
+        },
+        {
+          "id": "S09",
+          "title": {
+            "ru": "Замена фона вторым изображением с подстройкой света",
+            "en": "Replacing the background with a second image and matching the light"
+          },
+          "inputs": 2,
+          "summary": {
+            "ru": "<image1> задаёт человека или предмет, его положение и итоговое кадрирование; <image2> задаёт новый фон и освещение.",
+            "en": "<image1> sets the person or object, its position and the final framing; <image2> sets the new background and lighting."
+          },
+          "prompt": "Use <image1> as the canvas. Replace its background with the environment from <image2>, adapting that environment to <image1>'s camera perspective and framing. Keep <image1>'s main subject, identity, pose, expression, size, position and intrinsic colors. Use <image2>'s lighting to relight the subject, rebuilding shadows, reflections and edge lighting coherently. Integrate hair, fine boundaries and contact with the new surroundings. Match focus and grain across the composite. Transfer no foreground people or featured subjects from <image2>.",
+          "note": {
+            "ru": "В отличие от O11, кадрирование и положение исходного объекта здесь остаются из <image1>. Фон и свет берутся из <image2>; геометрия фона подстраивается под исходную камеру.",
+            "en": "Unlike O11, the framing and position of the original subject stay from <image1> here. The background and light come from <image2>; the background geometry adapts to the original camera."
+          }
+        },
+        {
+          "id": "S10",
+          "title": {
+            "ru": "Смена времени суток",
+            "en": "Changing the time of day"
+          },
+          "inputs": 1,
+          "summary": {
+            "ru": "Замените {TIME_OF_DAY}: например, early blue hour after sunset или bright late morning.",
+            "en": "Replace {TIME_OF_DAY}: for example early blue hour after sunset or bright late morning."
+          },
+          "prompt": "Change the scene in the image to {TIME_OF_DAY}. Update illumination, visible sky, exposure, shadows and reflections consistently with that time. Relight people, objects and surroundings together while preserving their identities, expressions, poses, shapes, materials and intrinsic colors. Keep the same scene, object arrangement, weather, camera viewpoint and framing. Activate existing practical lights only when appropriate; add no new fixtures. Maintain coherent contact shadows and a natural photographic appearance without unrelated stylistic changes.",
+          "note": {
+            "ru": "Меняются свет и связанные с ним признаки времени суток; погода и содержимое сцены сохраняются.",
+            "en": "The light and related signs of the time of day change; the weather and the scene content are kept."
+          }
+        },
+        {
+          "id": "S11",
+          "title": {
+            "ru": "Смена погоды",
+            "en": "Changing the weather"
+          },
+          "inputs": 1,
+          "summary": {
+            "ru": "Замените {WEATHER}: например, steady light rain under an overcast sky или thin morning fog.",
+            "en": "Replace {WEATHER}: for example steady light rain under an overcast sky or thin morning fog."
+          },
+          "prompt": "Change the weather in the image to {WEATHER}. Update the visible sky, atmospheric visibility, illumination and relevant surface effects consistently, while preserving the time of day. Apply rain, snow or wetness only where physically appropriate; keep sheltered areas protected. Preserve people, identities, expressions, poses, clothing, object geometry, arrangement, camera viewpoint and framing. Rebuild weather-dependent reflections and shadows naturally. Retain the underlying materials and scene structure, adding no unrelated objects or dramatic effects beyond the requested weather.",
+          "note": {
+            "ru": "Укажите интенсивность погоды. Туман или осадки могут закономерно закрывать часть исходных деталей, а мокрые поверхности — менять видимую яркость и отражения.",
+            "en": "Give the intensity of the weather. Fog or precipitation may naturally cover part of the original detail, and wet surfaces change visible brightness and reflections."
+          }
+        },
+        {
+          "id": "S12",
+          "title": {
+            "ru": "Изменение фокуса и глубины резкости",
+            "en": "Changing focus and depth of field"
+          },
+          "inputs": 1,
+          "summary": {
+            "ru": "Замените {FOCUS_TARGET} объектом фокусировки, а {BACKGROUND_BLUR} — степенью размытия, например: the person's eyes; a subtle optical background blur.",
+            "en": "Replace {FOCUS_TARGET} with what to focus on and {BACKGROUND_BLUR} with the amount of blur, for example: the person's eyes; a subtle optical background blur."
+          },
+          "prompt": "Place the image's focus on {FOCUS_TARGET} and apply {BACKGROUND_BLUR}, with a smooth, depth-consistent transition. Keep the chosen subject's available detail clear without fabricating missing features or aggressively sharpening edges. Preserve identity, expression, anatomy, hairstyle, pose, objects, lighting, colors, composition and perspective. Respect hair strands, transparent edges and occlusions; avoid cutout halos or uniformly blurring everything outside a flat mask. Keep objects at similar depths similarly focused and render out-of-focus highlights naturally.",
+          "note": {
+            "ru": "Изменение ГРИП не восстанавливает достоверно отсутствующие детали. Если лицо сильно размыто, его уточнение может затронуть идентичность.",
+            "en": "Changing depth of field does not reliably restore missing detail. If a face is heavily blurred, sharpening it may affect identity."
+          }
+        }
+      ]
+    },
+    {
+      "id": "surface",
+      "title": {
+        "ru": "Цвет, материалы, стиль, текст и детали",
+        "en": "Color, materials, style, text and details"
+      },
+      "presets": [
+        {
+          "id": "T01",
+          "title": {
+            "ru": "Локальная смена цвета",
+            "en": "Local color change"
+          },
+          "inputs": 1,
+          "summary": {
+            "ru": "Замените {TARGET} точным описанием объекта или участка, а {COLOR} — нужным цветом.",
+            "en": "Replace {TARGET} with an exact description of the object or area and {COLOR} with the desired color."
+          },
+          "prompt": "Change only the color of {TARGET} in the image to {COLOR}. Preserve its shape, dimensions, texture, material, position and boundaries. Render the new base color under the existing lighting, retaining natural variations across highlights, midtones and shadows. Keep fine surface details, printed markings and transparent areas intact. Leave everything outside the selected area unchanged, including the background and framing.",
+          "examples": {
+            "TARGET": "the jacket fabric, excluding zippers, patches and buttons"
+          },
+          "note": {
+            "ru": "Уточните, что входит в выбранную область: например, ткань куртки без молний, нашивок и пуговиц. Цвет в светах и тенях должен естественно различаться.",
+            "en": "Specify what the selected area includes: for example the jacket fabric without zippers, patches and buttons. The color should differ naturally between highlights and shadows."
+          }
+        },
+        {
+          "id": "T02",
+          "title": {
+            "ru": "Замена материала поверхности",
+            "en": "Replacing a surface material"
+          },
+          "inputs": 1,
+          "summary": {
+            "ru": "Укажите объект в {TARGET} и материал с нужной фактурой в {MATERIAL}.",
+            "en": "Give the object in {TARGET} and the material with the desired texture in {MATERIAL}."
+          },
+          "prompt": "Change the surface material of {TARGET} in the image to {MATERIAL}. Preserve the object's silhouette, dimensions, position, seams, joints and functional details. Rebuild its surface texture, roughness, reflections and transparency as required by the new material under the existing scene lighting. Keep perspective and contact with surrounding objects consistent. Change only the selected surface and any optical effects directly caused by its new material.",
+          "examples": {
+            "TARGET": "the kitchen countertop"
+          },
+          "note": {
+            "ru": "Это замена материала при сохранении формы. Для прозрачного материала модели также придётся восстановить то, что становится видно сквозь поверхность.",
+            "en": "This replaces the material while keeping the shape. For a transparent material the model also has to reconstruct what becomes visible through the surface."
+          }
+        },
+        {
+          "id": "T03",
+          "title": {
+            "ru": "Перенос фактуры с референса",
+            "en": "Texture transfer from a reference"
+          },
+          "inputs": 2,
+          "summary": {
+            "ru": "В <image1> укажите поверхность {TARGET}; <image2> — образец фактуры.",
+            "en": "In <image1> point to the surface {TARGET}; <image2> is the texture sample."
+          },
+          "prompt": "Use <image2> only as a reference for the surface texture of {TARGET} in <image1>. Apply its characteristic pattern, grain and fine surface relief at a plausible scale, following the target's geometry and perspective. Preserve <image1>'s object shape, base color, position and scene lighting. Generate the texture's shading under that lighting; exclude <image2>'s cast shadows, highlights and surrounding objects. Keep everything outside the selected surface unchanged.",
+          "examples": {
+            "TARGET": "the armchair upholstery"
+          },
+          "note": {
+            "ru": "Переносит рисунок, зернистость и мелкий рельеф, сохраняя базовый цвет поверхности. Крупный образец без сильных теней помогает отделить фактуру от освещения.",
+            "en": "Transfers pattern, grain and fine relief while keeping the surface's base color. A large sample without strong shadows helps separate texture from lighting."
+          }
+        },
+        {
+          "id": "T04",
+          "title": {
+            "ru": "Перенос цветокоррекции с референса",
+            "en": "Color grading transfer from a reference"
+          },
+          "inputs": 2,
+          "summary": {
+            "ru": "<image1> — редактируемый кадр; <image2> — образец цветовой палитры и тональной обработки.",
+            "en": "<image1> is the frame being edited; <image2> is a sample of the palette and tonal treatment."
+          },
+          "prompt": "Apply the color grading of <image2> to <image1>. Transfer its overall palette, white balance, contrast curve and treatment of highlights, midtones and shadows. Preserve <image1>'s subjects, identities, composition, materials, light directions and shadow boundaries. Keep each person's underlying skin pigmentation recognizable, allowing the grade to affect it naturally without replacing their complexion. Transfer only color and tonal treatment, with no added lights, reshaped shadows or content from <image2>.",
+          "note": {
+            "ru": "Меняет цвет и тональные отношения, сохраняя расположение света и теней. Для изменения направления света используйте отдельный промпт релайтинга.",
+            "en": "Changes color and tonal relationships while keeping where the light and shadows are. To change the light direction, use a separate relighting prompt."
+          }
+        },
+        {
+          "id": "T05",
+          "title": {
+            "ru": "Перенос визуального стиля с референса",
+            "en": "Visual style transfer from a reference"
+          },
+          "inputs": 2,
+          "summary": {
+            "ru": "<image1> задаёт сюжет и композицию; <image2> — визуальный стиль изображения.",
+            "en": "<image1> sets the subject and composition; <image2> sets the visual style of the image."
+          },
+          "prompt": "Render <image1> in the visual style of <image2>. Transfer its characteristic mark-making, edge treatment, level of abstraction, palette and rendering method, while preserving <image1>'s subjects, recognizable identities, poses, object arrangement and framing. Adapt the style to the existing content instead of importing characters, objects or composition from <image2>. Keep clothing designs and essential identifying details recognizable within the new representation.",
+          "note": {
+            "ru": "Стиль включает способ изображения, палитру и степень условности. Сильная стилизация может уменьшить портретное сходство даже при явном требовании его сохранить.",
+            "en": "Style includes the rendering method, palette and degree of abstraction. Strong stylization may reduce likeness even with an explicit requirement to keep it."
+          }
+        },
+        {
+          "id": "T06",
+          "title": {
+            "ru": "Смена художественной техники по описанию",
+            "en": "Changing the artistic technique from a description"
+          },
+          "inputs": 1,
+          "summary": {
+            "ru": "В {STYLE} укажите технику, например watercolor on textured paper или charcoal drawing.",
+            "en": "Give the technique in {STYLE}, for example watercolor on textured paper or charcoal drawing."
+          },
+          "prompt": "Re-render the image as {STYLE}. Translate the existing subjects and scene into that medium's characteristic marks, textures, edges and color treatment. Preserve recognizable identities, expressions, poses, clothing designs, object proportions, perspective and composition. Keep essential details readable at the original scale while allowing the rendering itself to change naturally with the medium. Retain the existing subjects and framing without adding decorative objects or a new border.",
+          "note": {
+            "ru": "Описывайте именно технику и её признаки. Запрос на акварель меняет изображение сцены; он не должен превращать предметы внутри сцены в акварельные материалы.",
+            "en": "Describe the technique and its traits. A watercolor request changes how the scene is depicted; it should not turn objects inside the scene into watercolor materials."
+          }
+        },
+        {
+          "id": "T07",
+          "title": {
+            "ru": "Замена конкретной надписи",
+            "en": "Replacing specific lettering"
+          },
+          "inputs": 1,
+          "summary": {
+            "ru": "В {OLD_TEXT} вставьте исходную надпись, в {NEW_TEXT} — требуемый текст; используйте точное написание.",
+            "en": "Put the original text in {OLD_TEXT} and the required text in {NEW_TEXT}; use the exact spelling."
+          },
+          "prompt": "Replace the visible text \"{OLD_TEXT}\" in the image with exactly \"{NEW_TEXT}\". Preserve the supplied spelling, capitalization, punctuation and language without translating it. Match the original lettering style, weight, color, alignment and surface perspective. Fit the new wording within the original text area using natural spacing and necessary line breaks. Recreate the surface beneath removed letters and apply its existing lighting, texture and wear. Preserve all unrelated text and surrounding content.",
+          "note": {
+            "ru": "Если одна надпись встречается несколько раз, добавьте её расположение. Проверьте результат посимвольно: точное написание и воспроизведение шрифта не гарантированы.",
+            "en": "If the same lettering appears several times, add its location. Check the result character by character: exact spelling and font reproduction are not guaranteed."
+          }
+        },
+        {
+          "id": "T08",
+          "title": {
+            "ru": "Перевод надписей по заданному соответствию",
+            "en": "Translating lettering by a given mapping"
+          },
+          "inputs": 1,
+          "summary": {
+            "ru": "Заполните {SOURCE_LANGUAGE}, {TARGET_LANGUAGE} и {TEXT_MAPPING}; пример соответствия: \"ВХОД\" -> \"ENTRANCE\".",
+            "en": "Fill in {SOURCE_LANGUAGE}, {TARGET_LANGUAGE} and {TEXT_MAPPING}; mapping example: \"ВХОД\" -> \"ENTRANCE\"."
+          },
+          "prompt": "Replace the specified visible {SOURCE_LANGUAGE} text in the image with the supplied {TARGET_LANGUAGE} wording, following this exact mapping: {TEXT_MAPPING}. Use each replacement verbatim, including spelling, capitalization and punctuation. Preserve the original text locations, typographic character, color, alignment and surface perspective. Adjust spacing and line breaks to fit the replacement naturally. Leave unmapped text unchanged; do not invent translations for unreadable lettering. Preserve the surrounding scene and original surface lighting.",
+          "note": {
+            "ru": "Таблица соответствий обязательна: перевод подготавливается заранее. Сначала проверьте исходный текст и перевод, затем проверьте буквы в полученном изображении.",
+            "en": "The mapping is mandatory: prepare the translation in advance. First check the source text and the translation, then check the letters in the resulting image."
+          }
+        },
+        {
+          "id": "T09",
+          "title": {
+            "ru": "Замена логотипа или эмблемы",
+            "en": "Replacing a logo or emblem"
+          },
+          "inputs": 2,
+          "summary": {
+            "ru": "<image1> — исходное изображение с областью {TARGET}; <image2> — логотип без лишнего окружения.",
+            "en": "<image1> is the original image with the area {TARGET}; <image2> is the logo without extra surroundings."
+          },
+          "prompt": "Replace the existing branding on {TARGET} in <image1> with the logo artwork from <image2>. Remove the old design completely. Preserve the new logo's internal proportions, lettering, symbols and intrinsic colors, adapting only its placement, scale and projection to the target surface. Match that surface's perspective, curvature, folds, texture, lighting and occlusion. Integrate the logo using the existing application method, such as print or embroidery. Keep the object and surrounding scene unchanged.",
+          "examples": {
+            "TARGET": "the front of the white T-shirt"
+          },
+          "note": {
+            "ru": "Для точного фирменного знака проверьте контуры, буквы и цвета. Проекция на складки и перспектива меняют видимый контур; финальную точность удобнее обеспечить наложением исходного логотипа в редакторе.",
+            "en": "For an exact trademark, check its contours, letters and colors. Projection onto folds and perspective changes the visible contour; final accuracy is easier to ensure by overlaying the original logo in an editor."
+          }
+        },
+        {
+          "id": "T10",
+          "title": {
+            "ru": "Исправление анатомии кисти и пальцев",
+            "en": "Fixing hand and finger anatomy"
+          },
+          "inputs": 1,
+          "summary": {
+            "ru": "В {HAND} точно укажите нужную кисть, например the hand holding the cup on the left side of the frame.",
+            "en": "In {HAND} name the exact hand, for example the hand holding the cup on the left side of the frame."
+          },
+          "prompt": "Correct clear anatomical errors in {HAND} in the image. Preserve its gesture, wrist position, scale, visible orientation and contact with any held object. Reconstruct plausible finger joints and separation using the visible anatomy and occlusion as constraints. Keep naturally hidden fingers hidden and retain the original number of hands. Preserve rings, nails, skin tone, lighting and surrounding content. Leave ambiguous areas unchanged rather than inventing additional fingers or altering the gesture.",
+          "note": {
+            "ru": "Промпт сохраняет исходный жест и перекрытия пальцев. Для сильно повреждённой или почти полностью скрытой кисти точный жест лучше задать дополнительным референсом.",
+            "en": "The prompt keeps the original gesture and finger overlaps. For a badly damaged or almost fully hidden hand, it is better to give the exact gesture with an extra reference."
+          }
+        }
+      ]
+    }
+  ]
+}

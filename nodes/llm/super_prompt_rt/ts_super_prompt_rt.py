@@ -40,6 +40,7 @@ from .._litert_engine import (
     cleanup,
     context_error,
     engine_status,
+    ensure_model,
     estimate_prompt_tokens,
     fits_in_context,
     generate,
@@ -49,6 +50,7 @@ from .._litert_engine import (
     stage_images,
     unload_engine,
 )
+from .._prompt_wire import RESULT_UI_KEY, wired_prompt
 from ._helpers import (
     ENHANCE_MAX_TEXT_LEN,
     LOG_PREFIX,
@@ -226,7 +228,7 @@ class TS_SuperPromptRT(IO.ComfyNode):
                         "Optional reference images from the graph. Takes precedence over "
                         "images attached in the node. Up to four frames, each shrunk to "
                         "1024 px on the way in — every pixel costs context, and the window "
-                        "is 4096 tokens."
+                        "is 8192 tokens."
                     ),
                 ),
                 IO.Audio.Input(
@@ -236,6 +238,32 @@ class TS_SuperPromptRT(IO.ComfyNode):
                         "Optional recording to transcribe. The transcript replaces the text "
                         "field before enhancement, so a spoken idea can go straight into a "
                         "prompt. Longer recordings are transcribed in 30-second segments."
+                    ),
+                ),
+                # A prompt from the graph — a socket of its own, last, exactly as
+                # on TS Super Prompt (see nodes/llm/_prompt_wire.py for why the
+                # text field is not turned into one).
+                IO.String.Input(
+                    "prompt",
+                    multiline=True,
+                    force_input=True,
+                    optional=True,
+                    tooltip=(
+                        "Optional prompt from another node. When connected and not "
+                        "empty it replaces the text field and goes out as it is — or "
+                        "enhanced, with 'enhance_prompt' on. With a recording on "
+                        "'audio' as well, the transcript is added after it."
+                    ),
+                ),
+                # Same switch as on TS Super Prompt, same place: last, a widget.
+                IO.Boolean.Input(
+                    "enhance_prompt",
+                    default=False,
+                    tooltip=(
+                        "Only for a prompt arriving on the 'prompt' input. Off: it goes "
+                        "out unchanged. On: Gemma enhances it with the chosen preset "
+                        "when the workflow runs. The text field is enhanced on the run "
+                        "as before, whatever this says."
                     ),
                 ),
             ],
@@ -266,8 +294,12 @@ class TS_SuperPromptRT(IO.ComfyNode):
         keep_loaded: bool = False,
         images: Any = None,
         audio: Any = None,
+        prompt: Any = None,
+        enhance_prompt: bool = False,
         **_: Any,
     ) -> bool | str:
+        if not isinstance(enhance_prompt, bool):
+            return "enhance_prompt must be a boolean."
         if not isinstance(text, str):
             return "text must be a string."
         if not isinstance(high_quality, bool):
@@ -292,17 +324,45 @@ class TS_SuperPromptRT(IO.ComfyNode):
         keep_loaded: bool = False,
         images: Any = None,
         audio: Any = None,
+        prompt: Any = None,
+        enhance_prompt: bool = False,
         **_: Any,
     ) -> IO.NodeOutput:
         model_key = model_for(high_quality)
-        prompt_text = str(text or "")
+        wired = wired_prompt(prompt)
+        prompt_text = wired or str(text or "")
 
         # A recording on the wire is dictation: it becomes the text, and the
-        # text is then enhanced exactly as if it had been typed.
+        # text is then enhanced exactly as if it had been typed. With a prompt
+        # wired too, both are explicit inputs — the transcript is added after
+        # it rather than silently dropping one of them.
         if audio is not None:
-            prompt_text = transcribe_audio(
+            # The transcriber itself never downloads (the record button has its
+            # own download dialog); a graph run does, the way Enhance does —
+            # without this the first run with a recording failed "not
+            # downloaded yet" (found by the 2026-09-28 audit).
+            ensure_model(model_key, allow_download=True)
+            transcript = transcribe_audio(
                 audio, model_key=model_key, keep_loaded=True,
-            ) or prompt_text
+            )
+            if transcript:
+                prompt_text = f"{wired}\n\n{transcript}" if wired else transcript
+
+        def output(value: str) -> IO.NodeOutput:
+            # With a wired prompt the node shows what it produced right under
+            # its field — never INSIDE the field: a changed widget would bust
+            # ComfyUI's cache and re-run everything downstream next time.
+            if wired:
+                return IO.NodeOutput(value, ui={RESULT_UI_KEY: [value]})
+            return IO.NodeOutput(value)
+
+        if wired and not enhance_prompt:
+            # A wired prompt goes out as it came (with a transcript, if one was
+            # wired too). The transcription may have left the model loaded for
+            # an enhancement that is not coming — let it go unless asked not to.
+            if audio is not None and not keep_loaded:
+                unload_engine()
+            return output(prompt_text)
 
         staged: list[Path] = []
         try:
@@ -317,7 +377,7 @@ class TS_SuperPromptRT(IO.ComfyNode):
                 # loading three gigabytes to describe silence.
                 if not keep_loaded:
                     unload_engine()
-                return IO.NodeOutput(prompt_text)
+                return output(prompt_text)
 
             enhanced = _enhance(
                 text=prompt_text or "Write the prompt for the attached reference.",
@@ -326,7 +386,7 @@ class TS_SuperPromptRT(IO.ComfyNode):
                 image_paths=image_paths,
                 keep_loaded=keep_loaded,
             )
-            return IO.NodeOutput(enhanced or prompt_text)
+            return output(enhanced or prompt_text)
         finally:
             cleanup(staged)
 
@@ -368,7 +428,7 @@ async def _status_route(_request):
             "repo": CATALOGUE[name]["repo_id"],
             # An absent runtime is reported as a missing dependency rather than
             # an error, so the node greys its buttons out and says why.
-            "missing_dependencies": [] if available else ["litert-lm"],
+            "missing_dependencies": [] if available else ["litert-lm-api"],
         }
         for name in model_names()
     }

@@ -3,10 +3,11 @@
 The same artefact that writes the prompt also hears the recording, which is why
 this node needs no separate ASR stack at all. Two measured facts shape the code:
 
-* **Audio costs ~28 prompt tokens per second of sound.** With a 4096-token
-  window and a system instruction on top, a single pass is safe up to roughly
-  half a minute. Anything longer is cut into segments and stitched — the same
-  approach the vendor's own studio takes, for the same reason.
+* **Audio costs ~25 prompt tokens per second of sound, and one pass is 30 s.**
+  The window would now hold more (8192 tokens since 12.11.8), but the limit
+  that matters is the audio encoder's documented 30 seconds — see
+  ``SEGMENT_SECONDS``. Anything longer is cut into segments and stitched — the
+  same approach the vendor's own studio takes, for the same reason.
 * **The model will summarise if you let it.** A first measurement returned one
   tidy sentence for 25 seconds of speech: 21 decoded tokens where the audio had
   far more to say. The instruction below is written against exactly that
@@ -30,7 +31,8 @@ LOG_PREFIX = "[TS Super Prompt RT voice]"
 #:
 #: ⚠️ This runtime does NOT enforce it. Measured: 85 s went through and returned
 #: a sensible transcript that carried on past the 30-second mark, and only at
-#: 90 s did it stop with "Input token ids are too long: 4688 >= 4096". That is a
+#: 90 s did it stop with "Input token ids are too long: 4688 >= 4096" (measured
+#: at the old default window; since 12.11.8 it is 8192). That is a
 #: temptation to resist — past 30 s the clip is outside what the audio encoder
 #: was trained on, and "it did not error" is not the same as "it heard all of
 #: it". We segment at the documented boundary.

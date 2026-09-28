@@ -15,6 +15,7 @@ import { api } from "/scripts/api.js";
 
 import { TS_UI_CLASS, ensureThemeStyles, pickLocaleStrings } from "../_theme.js";
 import { addResizableDomWidget, hideWidget } from "../_dom_widget.js";
+import { ENHANCE_WIDGET, attachPromptWire } from "./_prompt_wire.js";
 // The pack already has one drag-and-drop service, and it is the one that
 // knows how an Artius card, an OS file and a ComfyUI preview each arrive —
 // including the fallback for a drag that starts inside a shadow root and
@@ -782,6 +783,13 @@ function setupSuperPrompt(node) {
     refreshAiHqToggle();
 
     container.append(bar, textarea, statusRow, fileInput, busy);
+    // Провод на входе `prompt`: подсказка над полем, переключатель улучшения и
+    // результат запуска. Штатный виджет переключателя убран — им управляет панель.
+    hideWidget(node, ENHANCE_WIDGET);
+    const promptWire = attachPromptWire(node, container, textarea, doc, {
+        getEnhance: () => toBoolean(getWidgetValue(node, ENHANCE_WIDGET, false)),
+        setEnhance: (on) => setWidgetValue(node, ENHANCE_WIDGET, on),
+    });
 
     // -----------------------------------------------------------------
     // State
@@ -825,6 +833,7 @@ function setupSuperPrompt(node) {
         state.attachedImages = IMAGE_SLOTS.map(
             (widget) => String(getWidgetValue(node, widget, "") || ""));
         renderAttached();
+        promptWire.refresh();
     }
 
     // Initial values from hidden widgets.
@@ -1990,6 +1999,7 @@ function setupSuperPrompt(node) {
             const idx = node.widgets.indexOf(domWidget);
             if (idx >= 0) node.widgets.splice(idx, 1);
         }
+        promptWire.dispose();
         container.remove();
         // Detach onConfigure wrapper + sync-handle so a fresh setupSuperPrompt
         // can install its own without stacking wrappers.

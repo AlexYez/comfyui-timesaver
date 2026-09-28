@@ -16,9 +16,6 @@
 
 **Когда использовать:** любая песня, которую вы отдаёте YuE или ACE-Step; особенно русская, где без ударений модель поёт слова не с тем ударением.
 
-
-<a id="ideogram"></a>
-
 ---
 
 Полный справочник нод: [README](https://github.com/AlexYez/comfyui-timesaver/blob/master/README.ru.md)

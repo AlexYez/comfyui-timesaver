@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "title": {
+    "ru": "Контекстное редактирование",
+    "en": "Context editing"
+  },
+  "summary": {
+    "ru": "Правка готового изображения инструкцией: реставрация, удаление и вставка объектов, портрет, свет, ракурс, фон, материалы, стиль и надписи.",
+    "en": "Editing an existing image by instruction: restoration, removing and adding objects, portraits, light, camera angle, background, materials, style and lettering."
+  },
+  "order": 10
+}

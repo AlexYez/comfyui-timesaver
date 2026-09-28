@@ -5,17 +5,18 @@
 #   pip install bitsandbytes        # for TS_Qwen3_VL_V3 int4/int8
 #   pip install demucs geomloss pykeops  # for the older Demucs engine in TS_Music_Stems
 #   pip install silero silero-stress  # Russian TTS / stress marks
-#   pip install litert-lm==0.16.1     # for TS Super Prompt RT (Gemma 4 on LiteRT)
+#   pip install litert-lm-api==0.16.1  # for TS Super Prompt RT / TS RT Prompt Enhancer (Gemma 4 on LiteRT)
 #
 # TS RTX Upscaler needs NVIDIA's own package index — the copy on PyPI is a
 # 2.7 KB stub that fails to build, while the real wheel (792 MB of VFX SDK,
 # TensorRT and NPP libraries) lives only here:
 #   pip install nvidia-vfx==0.1.0.1 --no-build-isolation --index-url https://pypi.nvidia.com
 #
-# ⚠️ litert-lm СОЗНАТЕЛЬНО не в списке ниже и не в extra `all`: колёс под
-# Linux у него нет ни под один manylinux-тег, и обязательная строка здесь
-# ломала бы установку всего пака на каждой линуксовой сборке ComfyUI.
-# Нода без него грузится и объясняет, чего не хватает.
+# ⚠️ litert-lm-api СОЗНАТЕЛЬНО не в списке ниже и не в extra `all`: это
+# нативный рантайм с точной версией ради двух нод, и колёс под Intel-мак у него
+# нет. (Прежняя пометка «колёс под Linux нет» была ошибкой: manylinux_2_27
+# x86_64/aarch64 есть, проверено 27.09.2026.) Ноды без него грузятся и
+# объясняют, чего не хватает.
 huggingface_hub>=0.20.0
 # TS Music Stems runs BS-RoFormer and Mel-Band RoFormer as its default engines,
 # and the vendored architectures need these two. Small, pure-Python, no build

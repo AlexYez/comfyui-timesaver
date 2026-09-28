@@ -237,6 +237,39 @@ def downscale_to_megapixels(
     return chw.permute(0, 2, 3, 1).contiguous()
 
 
+def _sliding_max_last(x: torch.Tensor, radius: int) -> torch.Tensor:
+    """Максимум по окну [i-r, i+r] вдоль последней оси, края — без подмеса.
+
+    Окно растёт удвоением: max по [i, i+w) и [i+s, i+s+w) даёт [i, i+w+s), пока
+    s ≤ w. Итого ~log₂(2r+1) сдвигов целого тензора вместо 2r+1 сравнений на
+    каждый элемент — у CPU-шного `max_pool2d` длинное окно именно так и стоило.
+    """
+    k = 2 * radius + 1
+    pad = torch.full((*x.shape[:-1], radius), float("-inf"), dtype=x.dtype, device=x.device)
+    y = torch.cat([pad, x, pad], dim=-1)
+    width = 1
+    while width < k:
+        step = min(width, k - width)
+        y = torch.maximum(y[..., :-step], y[..., step:])
+        width += step
+    return y
+
+
+def _dilate(x: torch.Tensor, radius: int) -> torch.Tensor:
+    """Максимум по квадратному окну (2r+1)×(2r+1) для тензора [B, C, H, W].
+
+    ⚠️ Не одним квадратным `max_pool2d`, а по строкам, потом по столбцам, и
+    каждый проход — удвоением окна (`_sliding_max_last`). Результат тот же бит
+    в бит, что у `max_pool2d(kernel=2r+1, padding=r)` (сторожит тест). Замерено
+    28.09.2026 на CPU: маска 2048² с ростом на сотню пикселей считалась 185 с —
+    вот столько TS Smart Inpaint и думал над большой маской.
+    """
+    if radius <= 0:
+        return x
+    x = _sliding_max_last(x, radius)
+    return _sliding_max_last(x.transpose(-1, -2), radius).transpose(-1, -2).contiguous()
+
+
 def grow_mask(mask: torch.Tensor, grow_px: float, blur_px: float = 0.0) -> torch.Tensor:
     """Расширить маску на `grow_px` и мягко размыть край на `blur_px`.
 
@@ -246,14 +279,10 @@ def grow_mask(mask: torch.Tensor, grow_px: float, blur_px: float = 0.0) -> torch
     внутри мазка альфа остаётся строго единицей — весь переход выносится в
     кольцо снаружи.
 
-    Дилатация — максимум по окну (`max_pool2d`): дёшево и без зависимостей.
+    Дилатация — максимум по окну (`_dilate`): дёшево и без зависимостей.
     """
     m = mask if mask.dim() == 4 else mask.unsqueeze(1) if mask.dim() == 3 else mask[None, None]
-    grown = m
-    radius = int(math.ceil(grow_px))
-    if radius > 0:
-        grown = torch.nn.functional.max_pool2d(
-            grown, kernel_size=2 * radius + 1, stride=1, padding=radius)
+    grown = _dilate(m, int(math.ceil(grow_px)))
     if blur_px > 0:
         grown = gaussian_blur_2d(grown, blur_px)
     grown = grown.clamp(0.0, 1.0)
@@ -560,11 +589,8 @@ def plan_and_crop(
     hard = (m[:1, y0:y1, x0:x1] >= 0.5).to(m.dtype)
     grow = int(math.ceil(FEATHER_GROW_FACTOR * feather_px))
     if grow > 0:
-        # Дилатация max-пулом: дёшево и без зависимостей.
-        k = 2 * grow + 1
-        hard = torch.nn.functional.max_pool2d(
-            hard.unsqueeze(0), kernel_size=k, stride=1, padding=grow,
-        ).squeeze(0)
+        # Дилатация max-пулом в два прохода (см. `_dilate`).
+        hard = _dilate(hard.unsqueeze(0), grow).squeeze(0)
     mask_up = (resize_spatial(hard, out_h, out_w, "bilinear") >= 0.5).to(m.dtype)
 
     mask_soft = resize_spatial(

@@ -27,6 +27,14 @@ const TYPING_TAGS = new Set(["INPUT", "TEXTAREA", "SELECT"]);
 export function isTypingTarget(target) {
     const element = target && target.nodeType === 1 ? target : null;
     if (!element) return false;
+    // ⚠️ В поле «только для чтения» не печатают. Именно таким полем сделан
+    // якорь фокуса полноэкранного окна (`.ts-ui-keyanchor`, js/_fullscreen.js),
+    // и пока он считался полем ввода, все простые горячие клавиши окна были
+    // мертвы: стрелки TS Prompt Library, клавиши LaMa и таймлайна видео
+    // (замерено настоящими нажатиями 28.09.2026).
+    if ((element.tagName === "INPUT" || element.tagName === "TEXTAREA") && element.readOnly) {
+        return false;
+    }
     if (TYPING_TAGS.has(element.tagName)) {
         // Кнопка и чекбокс — тоже <input>, но в них не печатают: пробел и
         // стрелки там ничего не вводят, и горячие клавиши им не мешают.

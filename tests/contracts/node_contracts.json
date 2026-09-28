@@ -2837,43 +2837,6 @@
       }
     }
   },
-  "TS_ImageStudio": {
-    "api": "v3",
-    "category": "TS/Image",
-    "class_name": "TS_ImageStudio",
-    "display_name": "TS Image Studio",
-    "inputs": [
-      {
-        "index": 0,
-        "name": "session_id",
-        "socketless": true,
-        "type": "String"
-      },
-      {
-        "index": 1,
-        "name": "result_path",
-        "socketless": true,
-        "type": "String"
-      }
-    ],
-    "outputs": [
-      {
-        "display_name": "image",
-        "index": 0,
-        "name": "image",
-        "type": "Image"
-      }
-    ],
-    "python_file": "nodes/image/studio/ts_image_studio.py",
-    "widgets": {
-      "result_path": {
-        "default": ""
-      },
-      "session_id": {
-        "default": ""
-      }
-    }
-  },
   "TS_ImageTileMerger": {
     "api": "v3",
     "category": "TS/Image/Tiles",
@@ -4725,6 +4688,40 @@
       }
     }
   },
+  "TS_PromptLibrary": {
+    "api": "v3",
+    "category": "TS/Text",
+    "class_name": "TS_PromptLibrary",
+    "display_name": "TS Prompt Library",
+    "inputs": [
+      {
+        "index": 0,
+        "name": "preset",
+        "type": "Combo"
+      },
+      {
+        "index": 1,
+        "multiline": false,
+        "name": "fields",
+        "socketless": true,
+        "type": "String"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "prompt",
+        "index": 0,
+        "name": "prompt",
+        "type": "String"
+      }
+    ],
+    "python_file": "nodes/text/ts_prompt_library.py",
+    "widgets": {
+      "fields": {
+        "default": "{}"
+      }
+    }
+  },
   "TS_Qwen3_VL_V3": {
     "api": "v3",
     "category": "TS/LLM",
@@ -4890,6 +4887,108 @@
         "max": 256,
         "min": 4,
         "step": 4
+      }
+    }
+  },
+  "TS_RTPromptEnhancer": {
+    "api": "v3",
+    "category": "TS/LLM",
+    "class_name": "TS_RTPromptEnhancer",
+    "display_name": "TS RT Prompt Enhancer",
+    "inputs": [
+      {
+        "index": 0,
+        "name": "model",
+        "type": "Combo"
+      },
+      {
+        "index": 1,
+        "name": "system_preset",
+        "type": "Combo"
+      },
+      {
+        "index": 2,
+        "multiline": true,
+        "name": "prompt",
+        "type": "String"
+      },
+      {
+        "index": 3,
+        "name": "seed",
+        "type": "Int"
+      },
+      {
+        "index": 4,
+        "name": "max_new_tokens",
+        "type": "Int"
+      },
+      {
+        "index": 5,
+        "name": "keep_loaded",
+        "type": "Boolean"
+      },
+      {
+        "index": 6,
+        "name": "enable",
+        "type": "Boolean"
+      },
+      {
+        "index": 7,
+        "name": "audio_mode",
+        "type": "Combo"
+      },
+      {
+        "index": 8,
+        "name": "images",
+        "optional": true,
+        "type": "Image"
+      },
+      {
+        "index": 9,
+        "name": "audio",
+        "optional": true,
+        "type": "Audio"
+      },
+      {
+        "force_input": true,
+        "index": 10,
+        "multiline": true,
+        "name": "custom_system_prompt",
+        "optional": true,
+        "type": "String"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "text",
+        "index": 0,
+        "name": "text",
+        "type": "String"
+      }
+    ],
+    "python_file": "nodes/llm/ts_rt_prompt_enhancer.py",
+    "widgets": {
+      "audio_mode": {
+        "default": "listen"
+      },
+      "enable": {
+        "default": true
+      },
+      "keep_loaded": {
+        "default": false
+      },
+      "max_new_tokens": {
+        "default": 0,
+        "min": 0,
+        "step": 64
+      },
+      "prompt": {
+        "default": ""
+      },
+      "seed": {
+        "default": 0,
+        "max": 18446744073709551615,
+        "min": 0
       }
     }
   },
@@ -5487,471 +5586,6 @@
       }
     }
   },
-  "TS_StudioInpaintCrop": {
-    "api": "v3",
-    "category": null,
-    "class_name": "TS_StudioInpaintCrop",
-    "display_name": "TS Studio Inpaint Crop",
-    "inputs": [
-      {
-        "index": 0,
-        "name": "image",
-        "type": "Image"
-      },
-      {
-        "index": 1,
-        "name": "mask",
-        "type": "Mask"
-      },
-      {
-        "index": 2,
-        "name": "megapixels",
-        "type": "Float"
-      },
-      {
-        "index": 3,
-        "name": "context_pct",
-        "type": "Float"
-      },
-      {
-        "index": 4,
-        "name": "denoise",
-        "type": "Float"
-      },
-      {
-        "index": 5,
-        "name": "snap_px",
-        "type": "Int"
-      },
-      {
-        "index": 6,
-        "name": "feather_pct",
-        "type": "Float"
-      }
-    ],
-    "outputs": [
-      {
-        "display_name": "crop",
-        "index": 0,
-        "name": "crop",
-        "type": "Image"
-      },
-      {
-        "display_name": "crop_mask",
-        "index": 1,
-        "name": "crop_mask",
-        "type": "Mask"
-      },
-      {
-        "display_name": "crop_mask_soft",
-        "index": 2,
-        "name": "crop_mask_soft",
-        "type": "Mask"
-      },
-      {
-        "display_name": "plan",
-        "index": 3,
-        "name": "plan",
-        "type": "PLAN_TYPE"
-      },
-      {
-        "display_name": "source",
-        "index": 4,
-        "name": "source",
-        "type": "Image"
-      }
-    ],
-    "python_file": "nodes/image/studio/inpaint/ts_studio_inpaint_crop.py",
-    "widgets": {
-      "context_pct": {
-        "default": 8.0,
-        "max": 50.0,
-        "min": 0.0,
-        "step": 0.5
-      },
-      "denoise": {
-        "default": 1.0,
-        "max": 1.0,
-        "min": 0.0,
-        "step": 0.05
-      },
-      "feather_pct": {
-        "default": 3.0,
-        "max": 25.0,
-        "min": 0.0,
-        "step": 0.5
-      },
-      "megapixels": {
-        "default": 1.0,
-        "max": 8.0,
-        "min": 0.1,
-        "step": 0.1
-      },
-      "snap_px": {
-        "default": 64,
-        "max": 256,
-        "min": 8,
-        "step": 8
-      }
-    }
-  },
-  "TS_StudioInpaintRestore": {
-    "api": "v3",
-    "category": null,
-    "class_name": "TS_StudioInpaintRestore",
-    "display_name": "TS Studio Inpaint Restore",
-    "inputs": [
-      {
-        "index": 0,
-        "name": "image",
-        "type": "Image"
-      },
-      {
-        "index": 1,
-        "name": "patch",
-        "type": "Image"
-      },
-      {
-        "index": 2,
-        "name": "plan",
-        "type": "PLAN_TYPE"
-      }
-    ],
-    "outputs": [
-      {
-        "display_name": "image",
-        "index": 0,
-        "name": "image",
-        "type": "Image"
-      }
-    ],
-    "python_file": "nodes/image/studio/inpaint/ts_studio_inpaint_restore.py"
-  },
-  "TS_StudioInputImage": {
-    "api": "v3",
-    "category": null,
-    "class_name": "TS_StudioInputImage",
-    "display_name": "TS Studio Input (Image)",
-    "inputs": [
-      {
-        "index": 0,
-        "name": "value",
-        "socketless": true,
-        "type": "String"
-      },
-      {
-        "index": 1,
-        "name": "param_name",
-        "type": "String"
-      },
-      {
-        "index": 2,
-        "name": "label",
-        "optional": true,
-        "type": "String"
-      }
-    ],
-    "outputs": [
-      {
-        "display_name": "image",
-        "index": 0,
-        "name": "image",
-        "type": "Image"
-      },
-      {
-        "display_name": "mask",
-        "index": 1,
-        "name": "mask",
-        "type": "Mask"
-      }
-    ],
-    "python_file": "nodes/image/studio/markers/ts_studio_input_image.py",
-    "widgets": {
-      "label": {
-        "default": ""
-      },
-      "param_name": {
-        "default": "source_image"
-      },
-      "value": {
-        "default": ""
-      }
-    }
-  },
-  "TS_StudioInputMask": {
-    "api": "v3",
-    "category": null,
-    "class_name": "TS_StudioInputMask",
-    "display_name": "TS Studio Input (Mask)",
-    "inputs": [
-      {
-        "index": 0,
-        "name": "value",
-        "socketless": true,
-        "type": "String"
-      },
-      {
-        "index": 1,
-        "name": "param_name",
-        "type": "String"
-      },
-      {
-        "index": 2,
-        "name": "label",
-        "optional": true,
-        "type": "String"
-      }
-    ],
-    "outputs": [
-      {
-        "display_name": "mask",
-        "index": 0,
-        "name": "mask",
-        "type": "Mask"
-      }
-    ],
-    "python_file": "nodes/image/studio/markers/ts_studio_input_mask.py",
-    "widgets": {
-      "label": {
-        "default": ""
-      },
-      "param_name": {
-        "default": "mask"
-      },
-      "value": {
-        "default": ""
-      }
-    }
-  },
-  "TS_StudioInputNumber": {
-    "api": "v3",
-    "category": null,
-    "class_name": "TS_StudioInputNumber",
-    "display_name": "TS Studio Input (Number)",
-    "inputs": [
-      {
-        "index": 0,
-        "name": "value",
-        "type": "Float"
-      },
-      {
-        "index": 1,
-        "name": "param_name",
-        "type": "String"
-      },
-      {
-        "index": 2,
-        "name": "label",
-        "optional": true,
-        "type": "String"
-      }
-    ],
-    "outputs": [
-      {
-        "display_name": "float",
-        "index": 0,
-        "name": "float",
-        "type": "Float"
-      },
-      {
-        "display_name": "int",
-        "index": 1,
-        "name": "int",
-        "type": "Int"
-      }
-    ],
-    "python_file": "nodes/image/studio/markers/ts_studio_input_number.py",
-    "widgets": {
-      "label": {
-        "default": ""
-      },
-      "param_name": {
-        "default": "steps"
-      },
-      "value": {
-        "default": 0.0,
-        "max": 1000000000.0,
-        "min": -1000000000.0,
-        "step": 0.01
-      }
-    }
-  },
-  "TS_StudioInputSeed": {
-    "api": "v3",
-    "category": null,
-    "class_name": "TS_StudioInputSeed",
-    "display_name": "TS Studio Input (Seed)",
-    "inputs": [
-      {
-        "index": 0,
-        "name": "value",
-        "type": "Int"
-      },
-      {
-        "index": 1,
-        "name": "param_name",
-        "type": "String"
-      }
-    ],
-    "outputs": [
-      {
-        "display_name": "seed",
-        "index": 0,
-        "name": "seed",
-        "type": "Int"
-      }
-    ],
-    "python_file": "nodes/image/studio/markers/ts_studio_input_seed.py",
-    "widgets": {
-      "param_name": {
-        "default": "seed"
-      },
-      "value": {
-        "default": 0,
-        "max": 18446744073709551615,
-        "min": 0
-      }
-    }
-  },
-  "TS_StudioInputText": {
-    "api": "v3",
-    "category": null,
-    "class_name": "TS_StudioInputText",
-    "display_name": "TS Studio Input (Text)",
-    "inputs": [
-      {
-        "index": 0,
-        "multiline": true,
-        "name": "value",
-        "type": "String"
-      },
-      {
-        "index": 1,
-        "name": "param_name",
-        "type": "String"
-      },
-      {
-        "index": 2,
-        "name": "label",
-        "optional": true,
-        "type": "String"
-      }
-    ],
-    "outputs": [
-      {
-        "display_name": "text",
-        "index": 0,
-        "name": "text",
-        "type": "String"
-      }
-    ],
-    "python_file": "nodes/image/studio/markers/ts_studio_input_text.py",
-    "widgets": {
-      "label": {
-        "default": ""
-      },
-      "param_name": {
-        "default": "prompt"
-      },
-      "value": {
-        "default": ""
-      }
-    }
-  },
-  "TS_StudioLoraStack": {
-    "api": "v3",
-    "category": null,
-    "class_name": "TS_StudioLoraStack",
-    "display_name": "TS Studio LoRA Stack",
-    "inputs": [
-      {
-        "index": 0,
-        "name": "model",
-        "type": "Model"
-      }
-    ],
-    "outputs": [
-      {
-        "display_name": "model",
-        "index": 0,
-        "name": "model",
-        "type": "Model"
-      }
-    ],
-    "python_file": "nodes/image/studio/markers/ts_studio_lora_stack.py"
-  },
-  "TS_StudioManifest": {
-    "api": "v3",
-    "category": null,
-    "class_name": "TS_StudioManifest",
-    "display_name": "TS Studio Manifest",
-    "inputs": [
-      {
-        "index": 0,
-        "multiline": true,
-        "name": "manifest",
-        "type": "String"
-      }
-    ],
-    "outputs": [
-      {
-        "display_name": "manifest",
-        "index": 0,
-        "name": "manifest",
-        "type": "String"
-      }
-    ],
-    "python_file": "nodes/image/studio/markers/ts_studio_manifest.py",
-    "widgets": {
-      "manifest": {
-        "default": "{}"
-      }
-    }
-  },
-  "TS_StudioOutput": {
-    "api": "v3",
-    "category": null,
-    "class_name": "TS_StudioOutput",
-    "display_name": "TS Studio Output",
-    "inputs": [
-      {
-        "index": 0,
-        "name": "image",
-        "type": "Image"
-      },
-      {
-        "index": 1,
-        "name": "filename_prefix",
-        "type": "String"
-      },
-      {
-        "index": 2,
-        "name": "folder",
-        "optional": true,
-        "socketless": true,
-        "type": "Combo"
-      },
-      {
-        "index": 3,
-        "name": "studio_state",
-        "optional": true,
-        "socketless": true,
-        "type": "String"
-      }
-    ],
-    "python_file": "nodes/image/studio/markers/ts_studio_output.py",
-    "widgets": {
-      "filename_prefix": {
-        "default": "ts_studio/session"
-      },
-      "folder": {
-        "default": "output"
-      },
-      "studio_state": {
-        "default": ""
-      }
-    }
-  },
   "TS_StylePromptSelector": {
     "api": "v3",
     "category": "TS/Text",
@@ -6023,6 +5657,19 @@
         "name": "images",
         "optional": true,
         "type": "Image"
+      },
+      {
+        "force_input": true,
+        "index": 7,
+        "multiline": true,
+        "name": "prompt",
+        "optional": true,
+        "type": "String"
+      },
+      {
+        "index": 8,
+        "name": "enhance_prompt",
+        "type": "Boolean"
       }
     ],
     "outputs": [
@@ -6042,6 +5689,9 @@
         "default": ""
       },
       "bigger_model": {
+        "default": false
+      },
+      "enhance_prompt": {
         "default": false
       },
       "high_quality": {
@@ -6102,6 +5752,19 @@
         "name": "audio",
         "optional": true,
         "type": "Audio"
+      },
+      {
+        "force_input": true,
+        "index": 8,
+        "multiline": true,
+        "name": "prompt",
+        "optional": true,
+        "type": "String"
+      },
+      {
+        "index": 9,
+        "name": "enhance_prompt",
+        "type": "Boolean"
       }
     ],
     "outputs": [
@@ -6119,6 +5782,9 @@
       },
       "attached_image_2": {
         "default": ""
+      },
+      "enhance_prompt": {
+        "default": false
       },
       "high_quality": {
         "default": false

@@ -28,7 +28,7 @@ DEFAULT_PRESET = "Prompts enhance"
 CUSTOM_PRESET = "Your instruction"
 
 #: Hard cap on the enhance route's text field — same reasoning as the Qwen
-#: node: anything larger is misuse, and the context is 4096 tokens anyway.
+#: node: anything larger is misuse, and the context window is 8192 tokens anyway.
 ENHANCE_MAX_TEXT_LEN = 8192
 
 #: Hard cap on a transcribe upload (bytes). Voice notes are small; a 200 MB
@@ -94,24 +94,39 @@ def preset_generation_params(name: str, gen_params: dict[str, Any]) -> dict[str,
     """Sampling settings for Gemma, derived from the preset's Qwen settings.
 
     ⚠️ The numbers in the preset file were measured against Qwen and are kept
-    as the starting point — temperature and top_p carry over, because they mean
-    the same thing to any sampler. The token ceiling does NOT carry over
-    unchanged: it is clamped to what is left of a 4096-token window, and that
-    clamp is the whole reason this function exists rather than a dict copy.
+    as the starting point — temperature, top_p and the repetition penalty carry
+    over, because they mean the same thing to any sampler. The token ceiling is
+    clamped to half the window, and that clamp is the reason this function
+    exists rather than a dict copy.
+
+    The ceiling now REACHES the runtime (until 12.11.8 it was only used for the
+    fit check, and a runaway answer ran to the end of the window). Measured
+    2026-09-27, all 15 presets on E4B and E2B, four seeds each: the longest
+    ordinary answer used 63 % of its preset's ceiling (Minimax, 570 of 900), so
+    the Qwen numbers leave Gemma room. A preset that names no ceiling (OCR,
+    translation — their answer grows with the input) gets half the window: a
+    guard against a runaway, not a limit on a long page.
     """
     from .._litert_engine import CONTEXT_TOKENS
 
     temperature = float(gen_params.get("temperature", 0.6) or 0.6)
     top_p = float(gen_params.get("top_p", 0.9) or 0.9)
     top_k = int(gen_params.get("top_k", 64) or 64)
-    max_new = int(gen_params.get("max_new_tokens", 512) or 512)
+    max_new = int(gen_params.get("max_new_tokens") or CONTEXT_TOKENS // 2)
     # Never promise more answer than the window can hold, whatever the file says.
     max_new = max(64, min(max_new, CONTEXT_TOKENS // 2))
+    try:
+        penalty = float(gen_params.get("repetition_penalty") or 1.0)
+    except (TypeError, ValueError):
+        penalty = 1.0
     return {
         "temperature": temperature,
         "top_p": top_p,
         "top_k": top_k,
         "max_new_tokens": max_new,
+        # 1.0 = none; the engine leaves it out. Measured: without it one
+        # Ideogram answer in twelve degenerated into "0, 0,0, …".
+        "repetition_penalty": penalty,
     }
 
 

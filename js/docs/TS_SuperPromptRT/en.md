@@ -24,10 +24,20 @@ sampler that follows plans accordingly. Unloading costs about a second and a
 reload about five, which is why `keep_loaded` is off by default and its tooltip
 says plainly what turning it on costs you.
 
-**The context is 4096 tokens** — the artefact's limit, not Gemma's. Every preset
-in the pack fits, checked with a test, and a prompt that would not fit is
-refused with a readable message *before* three gigabytes are read from disk
-rather than being silently truncated.
+**The context is 8192 tokens.** 4096 turned out to be only the runtime's default
+when nobody names a size, not a limit of the files: at 8192 a code word planted
+at the start of a 5976-token prompt came back exact, at the same speed, for
++0.5 GB on E4B (+0.37 GB on E2B). Every preset in the pack fits, checked with a
+test, and a prompt that would not fit is refused with a readable message
+*before* three gigabytes are read from disk rather than being silently
+truncated.
+
+**Every press can give a new wording.** Speculative decoding (MTP) made sampling
+greedy: the same idea came back word for word at any seed and any temperature,
+so "Enhance" twice returned the same text and the presets' temperatures did
+nothing. It is off now, at a measured cost of about 10 % speed. Each preset's
+answer ceiling and repetition penalty now reach the model too — without them one
+answer in twelve could loop ("0, 0,0, …") for 46 seconds.
 
 **The transcription prompt is written for Russian speech about software** —
 Russian in Cyrillic, technical terms and product names in Latin script the way
@@ -67,8 +77,8 @@ at 30 seconds**, at 25 tokens per second, and the node already respects that by
 transcribing in 30-second segments — measured to lose nothing: the same minute of
 speech gave 141 words in two segments against 140 in a single oversized pass.
 This runtime does not enforce the 30 s itself (85 s went through here, and only
-at 90 s did it stop with `4688 >= 4096`), which is exactly why the boundary is
-kept deliberately rather than by accident.
+at 90 s did it stop with `4688 >= 4096` under the old window), which is exactly
+why the boundary is kept deliberately rather than by accident.
 
 Models are pulled from
 [`hfmaster/Gemma-4-RT`](https://huggingface.co/hfmaster/Gemma-4-RT) into
@@ -79,12 +89,18 @@ whole job is writing prompts. The runtime itself is not in
 `requirements.txt` and installs separately:
 
 ```
-python -m pip install litert-lm==0.16.1
+python -m pip install litert-lm-api==0.16.1
 ```
 
-> **Windows and macOS only.** LiteRT-LM publishes no Linux wheels. On Linux the
-> node loads and explains itself instead of failing obscurely — use TS Super
-> Prompt, which runs on transformers everywhere.
+`litert-lm-api` is the runtime itself; the plain `litert-lm` package installs the
+same runtime plus a command-line tool, and keeps working if you already have it.
+
+> **Windows, macOS (Apple Silicon) and Linux.** Wheels exist for all three
+> (Linux: x86_64 and aarch64) — an earlier version of this page said Linux had
+> none, which was wrong. Linux is not measured here; if its GPU backend does
+> not come up, the node falls back to the CPU on its own.
+
+**A prompt from another node.** The optional `prompt` input takes a string from the graph — TS Prompt Library, a text file, another LLM. Connected and not empty, it replaces the text field for the run and **goes out as it is**; tick **Enhance the incoming prompt on run** and Gemma enhances it with the chosen preset. Empty, the field is used — and enhanced on the run as before. With a recording on `audio` as well, the transcript is added after the wired prompt. While the input is connected, a panel above the field says so, holds that switch and shows the last run's result with a Copy button — shown there rather than written into the field, because a changed field would make ComfyUI re-run everything downstream on the next queue.
 
 ---
 

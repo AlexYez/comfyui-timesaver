@@ -4,13 +4,11 @@
 
 # 🚀 Timesaver Nodes for ComfyUI
 
-**A friendly toolkit of 76 production-ready nodes that take the boring busywork out of your ComfyUI graphs.**
+**A friendly toolkit of 80 production-ready nodes that take the boring busywork out of your ComfyUI graphs.**
 
-> 11 of them belong to TS Image Studio — its own node plus the markers and backends it drives — and are not written up separately below; the reference covers the other 60.
+Resize, color, cut out, inpaint, transcribe, translate, prompt-build, manage models — without leaving the canvas.
 
-Resize, color-grade, key, denoise, transcribe, translate, prompt-build, manage models — without leaving the canvas.
-
-[![Version](https://img.shields.io/badge/version-12.2.0-blue.svg)](pyproject.toml)
+[![Version](https://img.shields.io/badge/version-12.11.8-blue.svg)](pyproject.toml)
 [![ComfyUI](https://img.shields.io/badge/ComfyUI-V3%20API-orange.svg)](https://github.com/comfyanonymous/ComfyUI)
 [![Python](https://img.shields.io/badge/python-3.10+-green.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-see%20LICENSE.txt-lightgrey.svg)](LICENSE.txt)
@@ -27,18 +25,19 @@ Whether you build pipelines for image generation, video, audio, or just want to 
 
 |  | Category | Count | Highlights |
 |---|---|---|---|
-| 🖼️ | **[Image](#image)** | 30 | Resize, color, masks, keyer, tiling, 360°, Lama cleanup, Smart Inpaint, BiRefNet bg removal, ViTMatte, SAM3 picker |
-| 🎬 | **[Video](#video)** | 9 | Frame interpolation, RTX/spandrel upscale, depth, animation preview |
+| 🖼️ | **[Image](#image)** | 25 | Resize, color, masks, tiling, 360°, Lama cleanup, Smart Inpaint, BiRefNet bg removal, ViTMatte, SAM3 picker |
+| 🎬 | **[Video](#video)** | 12 | Frame interpolation, RTX/spandrel upscale, depth, animation preview |
 | 🌈 | **[HDR / EXR](#hdr)** | 7 | Native LTX 2.5 HDR: EXR in, ACEScct working space, float32 decode, scene-linear master |
 | 🎵 | **[Audio](#audio)** | 6 | Whisper transcription, Silero TTS, Demucs stem split, audio cropping |
-| 🤖 | **[LLM](#llm)** | 2 | Qwen 3 VL multimodal chat, Super Prompt with voice input |
-| 📝 | **[Text & Prompts](#text)** | 4 | Prompt builder, batch loader, style picker, Russian stress marks |
+| 🤖 | **[LLM](#llm)** | 4 | Qwen 3 VL multimodal chat, Super Prompt with voice input, Gemma 4 on LiteRT (Super Prompt RT, RT Prompt Enhancer) |
+| 📝 | **[Text & Prompts](#text)** | 7 | Prompt library, prompt builder, batch loader, style picker, camera angles, songs, Russian stress marks |
 | 🎨 | **[Ideogram](#ideogram)** | 1 | Visual JSON-prompt designer for Ideogram 4 — text/object blocks, WYSIWYG node preview, per-area colours, layout/style/design presets, width/height output, RU/EN, import/export |
-| 📁 | **[Files & Models](#files)** | 9 | Model scanner, FP8 converter, file path loader, EDL→YouTube chapters |
-| 🛠️ | **[Utils](#utils)** | 6 | Workflow group bypass panel, custom sliders, math, smart type-aware switch |
+| 📁 | **[Files & Models](#files)** | 3 | Model downloader, batch writer, EDL→YouTube chapters |
+| 🔐 | **[Locked model loaders](#loaders)** | 3 | Open `.tsmodel` files: diffusion model, checkpoint, LoRA model-only |
+| 🛠️ | **[Utils](#utils)** | 11 | Workflow group bypass panel, before/after compare, LoRA loader, custom sliders, math, smart type-aware switch |
 | 🎨 | **[Conditioning](#conditioning)** | 1 | Multi-reference image conditioning |
 
-> All 76 nodes use the **ComfyUI V3 API** (`comfy_api.v0_0_2.IO` — a pinned namespace, not a stable one: the adapter itself declares `STABLE = False`. Pinning keeps the pack off the moving `latest` alias; it does not promise the API will not change).
+> All 80 nodes use the **ComfyUI V3 API** (`comfy_api.v0_0_2.IO` — a pinned namespace, not a stable one: the adapter itself declares `STABLE = False`. Pinning keeps the pack off the moving `latest` alias; it does not promise the API will not change).
 >
 > **Plus extra samplers & schedulers** added straight into the native KSampler / KSamplerAdvanced / BasicScheduler dropdowns (no node to wire — they just appear after install): sampler **`res_2s`** (2nd-order exponential RK / "RES"), schedulers **`bong_tangent`** (two-stage arctangent sigma curve) and **`beta57`** (`beta` α=0.5/β=0.7). Algorithms reimplemented clean-room from [RES4LYF](https://github.com/ClownsharkBatwing/RES4LYF)'s public math (no code copied).
 
@@ -1067,7 +1066,7 @@ Turns any `AUDIO` clip into a stylized SoundCloud-style waveform image at the re
 ---
 
 <a id="llm"></a>
-### 🤖 LLM (3 nodes)
+### 🤖 LLM (4 nodes)
 
 Multimodal LLM-powered prompt enhancement and image understanding.
 
@@ -1097,10 +1096,20 @@ sampler that follows plans accordingly. Unloading costs about a second and a
 reload about five, which is why `keep_loaded` is off by default and its tooltip
 says plainly what turning it on costs you.
 
-**The context is 4096 tokens** — the artefact's limit, not Gemma's. Every preset
-in the pack fits, checked with a test, and a prompt that would not fit is
-refused with a readable message *before* three gigabytes are read from disk
-rather than being silently truncated.
+**The context is 8192 tokens.** 4096 turned out to be only the runtime's default
+when nobody names a size, not a limit of the files: at 8192 a code word planted
+at the start of a 5976-token prompt came back exact, at the same speed, for
++0.5 GB on E4B (+0.37 GB on E2B). Every preset in the pack fits, checked with a
+test, and a prompt that would not fit is refused with a readable message
+*before* three gigabytes are read from disk rather than being silently
+truncated.
+
+**Every press can give a new wording.** Speculative decoding (MTP) made sampling
+greedy: the same idea came back word for word at any seed and any temperature,
+so "Enhance" twice returned the same text and the presets' temperatures did
+nothing. It is off now, at a measured cost of about 10 % speed. Each preset's
+answer ceiling and repetition penalty now reach the model too — without them one
+answer in twelve could loop ("0, 0,0, …") for 46 seconds.
 
 **The transcription prompt is written for Russian speech about software** —
 Russian in Cyrillic, technical terms and product names in Latin script the way
@@ -1140,8 +1149,8 @@ at 30 seconds**, at 25 tokens per second, and the node already respects that by
 transcribing in 30-second segments — measured to lose nothing: the same minute of
 speech gave 141 words in two segments against 140 in a single oversized pass.
 This runtime does not enforce the 30 s itself (85 s went through here, and only
-at 90 s did it stop with `4688 >= 4096`), which is exactly why the boundary is
-kept deliberately rather than by accident.
+at 90 s did it stop with `4688 >= 4096` under the old window), which is exactly
+why the boundary is kept deliberately rather than by accident.
 
 Models are pulled from
 [`hfmaster/Gemma-4-RT`](https://huggingface.co/hfmaster/Gemma-4-RT) into
@@ -1152,12 +1161,71 @@ whole job is writing prompts. The runtime itself is not in
 `requirements.txt` and installs separately:
 
 ```
-python -m pip install litert-lm==0.16.1
+python -m pip install litert-lm-api==0.16.1
 ```
 
-> **Windows and macOS only.** LiteRT-LM publishes no Linux wheels. On Linux the
-> node loads and explains itself instead of failing obscurely — use TS Super
-> Prompt, which runs on transformers everywhere.
+`litert-lm-api` is the runtime itself; the plain `litert-lm` package installs the
+same runtime plus a command-line tool, and keeps working if you already have it.
+
+> **Windows, macOS (Apple Silicon) and Linux.** Wheels exist for all three
+> (Linux: x86_64 and aarch64) — an earlier version of this page said Linux had
+> none, which was wrong. Linux is not measured here; if its GPU backend does
+> not come up, the node falls back to the CPU on its own.
+
+**A prompt from another node.** The optional `prompt` input takes a string from the graph — TS Prompt Library, a text file, another LLM. Connected and not empty, it replaces the text field for the run and **goes out as it is**; tick **Enhance the incoming prompt on run** and Gemma enhances it with the chosen preset. Empty, the field is used — and enhanced on the run as before. With a recording on `audio` as well, the transcript is added after the wired prompt. While the input is connected, a panel above the field says so, holds that switch and shows the last run's result with a Copy button — shown there rather than written into the field, because a changed field would make ComfyUI re-run everything downstream on the next queue.
+
+---
+
+#### TS RT Prompt Enhancer
+
+The same Gemma 4 on LiteRT-LM as TS Super Prompt RT, as an **ordinary graph
+node** — what TS Qwen 3 is to TS Super Prompt. No buttons, no panel: text,
+pictures and sound in, text out, run by the queue like any other node. Build it
+into a workflow wherever a prompt needs enhancing, a picture or a sound
+describing, speech writing out or a phrase translating.
+
+It reads **the same preset file** as TS Qwen 3 and both Super Prompts
+(`nodes/qwen_3_vl_presets.json`): pick a preset, or choose *Your instruction*
+and connect your own system prompt to `custom_system_prompt`. Each preset brings
+its own sampling settings and answer ceiling; `max_new_tokens` at **0** keeps
+the preset's, any other number replaces it. The `seed` works — same seed, same
+answer; change it for a different wording.
+
+**Pictures:** one, two or a whole clip's frames on `images`. At most **four**
+reach the model; a longer batch is sampled evenly from the first frame to the
+last rather than cut after four. There is deliberately no VIDEO input: ComfyUI
+would decode the whole clip into frames — a minute of 1080p is tens of
+gigabytes — for the four the model can take. Feed a clip's frames to `images`
+and its soundtrack to `audio`.
+
+**Sound** on `audio`, in one of two modes (`audio_mode`):
+
+- **listen** (default) — the model hears the recording itself: music, sounds, a
+  short phrase. Good with the audio presets (ACE-Step, Minimax, Stable Audio
+  SFX) to write a prompt *from* a sound. Only the **first 30 seconds** — the
+  longest clip Gemma is trained on. Feeding a long recording as several clips
+  does not work: measured, two different tracks in one message came back as the
+  same song described twice.
+- **transcribe** — speech of any length (up to five minutes) is written out in
+  30-second pieces by TS Super Prompt RT's transcriber and added to the prompt,
+  which the preset then works on. Tuned for Russian speech with English terms.
+
+With pictures or a recording connected the text may stay empty.
+
+The model is **unloaded after every run** by default, for the same reason as in
+TS Super Prompt RT: ComfyUI cannot see the memory it takes. `keep_loaded` keeps
+it for faster repeats, at that price. `enable` off passes the prompt through
+without loading anything. When something goes wrong — nothing to work from, a
+prompt too long for the window — the run stops with a readable message instead
+of sending the word "ERROR" downstream as a prompt.
+
+Models (E2B 2.4 GB, E4B 3.4 GB) download into `models/LLM/litert` on first use;
+the runtime installs as described for TS Super Prompt RT.
+
+**Use when:** a workflow needs an LLM step without a hand on a button — batch
+captioning, prompt enhancement inside a pipeline, a music or sound prompt from a
+reference track, a voice note turned into a prompt, translation before a text
+encoder.
 
 #### TS Qwen 3
 <img src="doc/screenshots/ts_qwen3_vl.png" alt="TS Qwen 3 VL V3" width="450" />
@@ -1211,12 +1279,14 @@ flirtatiously: <d>[Russian] Привет, красавчик!</d>
 
 That wording matters more than it looks. `with a Russian accent` asks for an English voice tinted with Russian; `a native Russian speaker … authentic native Russian prosody` asks for a Russian voice. The preset also keeps speech and signage apart — a line someone says goes in the dialogue block, a text on a sign stays in quotes — and only ever uses H3's own language tags.
 
+**A prompt from another node.** The optional `prompt` input takes a string from the graph — TS Prompt Library, a text file, another LLM. Connected and not empty, it replaces the text field and **goes out as it is**; tick **Enhance the incoming prompt on run** and the node enhances it with the chosen preset when the workflow runs (a wired prompt only exists during the run, so the Enhance button cannot reach it). Empty, the field is used and passed through as before. While the input is connected, a panel above the field says so, holds that switch and shows the last run's result with a Copy button — shown there rather than written into the field, because a changed field would make ComfyUI re-run everything downstream on the next queue.
+
 **Use when:** quick prompt brainstorming, voice-driven workflows, or bridging a sketchy idea into a production-ready prompt.
 
 ---
 
 <a id="text"></a>
-### 📝 Text & Prompts (4 nodes)
+### 📝 Text & Prompts (7 nodes)
 
 Build, randomise and manage prompts at scale.
 
@@ -1369,6 +1439,27 @@ Presets are plain JSON in `nodes/text/song_presets/`, one file per model.
 
 ---
 
+#### TS Prompt Library
+
+A library of ready-made prompts. Pick a **section**, a **model** and a **prompt**: the node shows the prompt with a **Copy** button and sends the same text on as a `STRING`.
+
+**The first section is context editing** — 50 tasks for two models: restoration and colorization, removing and adding objects, face, head and hair swaps, clothing and pose, relighting, camera angle, framing and outpainting, background, time of day and weather, color, material, style, lettering and hands. Each prompt comes with a short explanation, the number of input images it expects and a note on its limits.
+
+- **Qwen Image 2.1** — an author's catalog written to the official PE-I2I instructions; inputs are named `<image1>`, `<image2>`.
+- **FLUX.2 Klein 9B** — the same 50 tasks, rewritten to Black Forest Labs' FLUX.2 guidance: inputs named in words (`image 1`, `image 2`), no prohibitions in the text — FLUX has no negative prompt and whatever the text names tends to appear — and an explicit list of what stays unchanged. Klein has no alpha channel, so its isolation prompt puts the subject on white for TS Remove Background to cut out.
+
+Task codes match across models, so switching from Qwen to Klein stays on the same task.
+
+**Fields in braces are filled in on the node.** `{TARGET}`, `{POSITION}`, `{LIGHTING}` and the rest appear as input rows with an explanation and an example (one click puts the example in). The prompt highlights each field — filled or still empty — and the output is the finished text, not a template with braces. An empty field is left in braces and named under the prompt.
+
+**Full screen.** The **Open interface** button turns the node into a catalog: every prompt of the chosen model in a list on the left — grouped, with a search over code, title and the prompt text itself, and with thumbnails once presets have previews — and the chosen prompt on the right with a large preview. ↑ / ↓ step through the prompts, Esc closes. Thumbnails load only there, so the compact node never fetches them.
+
+**The library is data, not code.** It lives in `nodes/text/prompt_library/` as `section/model/collection.json`: a new model or a whole new section — video prompts, say — is a new folder. Each preset may carry a picture in the collection's `previews/` folder, shown above the prompt. The format is described in the folder's own README. A preset that uses an undeclared field, or a preview that points outside its collection, is skipped with a line in the log.
+
+**Use when:** editing images with Qwen Image 2.1 or FLUX.2 Klein and you want a tested wording for the task instead of writing it from scratch — or to hand a collaborator a prompt they can copy.
+
+---
+
 <a id="ideogram"></a>
 ### 🎨 Ideogram (1 node)
 
@@ -1452,7 +1543,7 @@ Writes each batch result the moment it is ready, instead of holding everything u
 
 ---
 
-<a id="utils"></a>
+<a id="loaders"></a>
 ### 🔐 Locked model loaders (3 nodes)
 
 Three of ComfyUI's own loaders, taught to open **`.tsmodel`** files — models "locked" by the `model-converter` tool. Nothing else opens them: not `safe_open`, not torch, not diffusers, not Forge, not ComfyUI itself. Useful if you hand your own models to other people and would rather they were not simply picked up and loaded.
@@ -1483,6 +1574,7 @@ The `LoraLoaderModelOnly` counterpart. Model only, and not to save effort: the m
 
 ---
 
+<a id="utils"></a>
 ### 🛠️ Utils (11 nodes)
 
 Tiny helpers that make the graph less cluttered.
@@ -1759,6 +1851,7 @@ The button is on by default and hides in **Settings → TS Timesaver → Interfa
 | TS Silero Stress | `models/silero-stress/` |
 | TS Qwen 3 VL | `models/LLM/` |
 | TS Super Prompt | `models/LLM/` |
+| TS Super Prompt RT, TS RT Prompt Enhancer | `models/LLM/litert/` |
 | TS Music Stems | `models/roformer/`; demucs default cache for the legacy engine |
 
 You can override these with `extra_model_paths.yaml` — Timesaver respects ComfyUI's path resolution.
