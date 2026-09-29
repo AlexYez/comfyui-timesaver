@@ -32,6 +32,7 @@ import time
 
 from comfy_api.v0_0_2 import IO
 
+from .._shared import raise_if_interrupted
 # ⚠️ Зависимость от media НАМЕРЕННАЯ и односторонняя: сборка кадров в файл живёт
 # там, второй копии кодировщика в паке быть не должно. Обратной зависимости
 # (media -> utils) нет и заводить её нельзя.
@@ -93,14 +94,35 @@ class TS_Compare(IO.ComfyNode):
 
     # ------------------------------------------------------------------ кадры
     @classmethod
-    def _to_uint8(cls, images):
-        """IMAGE -> список кадров ``[H,W,3]`` uint8, не трогая вход."""
+    def _frame_uint8(cls, images, index: int):
+        """Один кадр IMAGE -> ``[H,W,3]`` uint8, не трогая вход.
+
+        ⚠️ Строго ПО КАДРУ, не всей пачкой. Раньше зажим, умножение и
+        округление шли по всему тензору в полном разрешении — три копии
+        float32 ДО уменьшения до 1280. На 241 кадре 4K (выход DLSS) это около
+        24 ГБ на копию, и память кончалась раньше, чем начиналась сборка.
+        Теперь в памяти живёт одна вещественная копия одного кадра.
+
+        Арифметика та же, что была у пачки (float32, clip -> *255 -> rint),
+        поэтому результат совпадает бит в бит: это стережёт
+        ``tests/test_compare.py::test_streaming_matches_the_old_whole_batch_path``.
+        """
         import numpy as np
 
-        array = images.detach().to("cpu").numpy()
-        array = array[..., :3]
-        array = np.clip(array, 0.0, 1.0) * 255.0
-        return [np.ascontiguousarray(frame.astype(np.uint8)) for frame in np.rint(array)]
+        # ⚠️ .float(): кадр bfloat16 numpy не понимает вовсе, а float16 считал
+        # бы округление в половинной точности. У float32 это та же память.
+        frame = images[index].detach().to("cpu").float().numpy()[..., :3]
+        # Первая операция создаёт новый массив, дальше — на месте: вход
+        # делит память с `frame` и трогать его нельзя.
+        buffer = np.clip(frame, 0.0, 1.0)
+        buffer *= 255.0
+        np.rint(buffer, out=buffer)
+        return np.ascontiguousarray(buffer.astype(np.uint8))
+
+    @classmethod
+    def _side_frame(cls, images, index: int, width: int, height: int):
+        """Кадр стороны, готовый к шторке: в байтах и уже в размере превью."""
+        return cls._resize(cls._frame_uint8(images, index), width, height)
 
     @classmethod
     def _resize(cls, frame, width: int, height: int):
@@ -118,14 +140,10 @@ class TS_Compare(IO.ComfyNode):
         resized = Image.fromarray(frame).resize((width, height), Image.LANCZOS)
         return np.ascontiguousarray(np.asarray(resized))
 
-    @classmethod
-    def _fit_length(cls, frames, count: int):
-        """Дотянуть сторону до нужной длины, придержав последний кадр."""
-        if not frames:
-            return frames
-        if len(frames) >= count:
-            return frames[:count]
-        return frames + [frames[-1]] * (count - len(frames))
+    @staticmethod
+    def _held_index(index: int, length: int) -> int:
+        """Номер кадра стороны при общей длине: короткая держит последний кадр."""
+        return min(index, max(0, length - 1))
 
     # ---------------------------------------------------------------- выдача
     @classmethod
@@ -147,6 +165,10 @@ class TS_Compare(IO.ComfyNode):
         работает — в отличие от кнопки загрузчика, где её вообще нет к чему
         прицепить. Сборка сотни кадров занимает секунды, и без полосы нода
         выглядит зависшей.
+
+        Кадры готовятся по одному внутри цикла записи, поэтому шаг полосы —
+        это подготовка кадра (байты + уменьшение) вместе с его кодированием, а
+        не одно кодирование, как было, пока пачка переводилась в байты заранее.
         """
         try:
             import comfy.utils  # noqa: PLC0415
@@ -183,12 +205,14 @@ class TS_Compare(IO.ComfyNode):
         import numpy as np
 
         for name, value in (("image_a", image_a), ("image_b", image_b)):
-            if value is None or value.ndim != 4:
+            if value is None or value.ndim != 4 or int(value.shape[0]) < 1:
                 raise ValueError(f"{LOG_PREFIX} '{name}' must be a batch shaped [B,H,W,C].")
 
-        left = cls._to_uint8(image_a)
-        right = cls._to_uint8(image_b)
-        height, width = left[0].shape[0], left[0].shape[1]
+        # ⚠️ Размер берём из формы тензора, а кадры готовим по одному прямо по
+        # ходу записи (см. _frame_uint8): пачка целиком в памяти не
+        # разворачивается ни в байты, ни во float.
+        len_a, len_b = int(image_a.shape[0]), int(image_b.shape[0])
+        height, width = int(image_a.shape[1]), int(image_a.shape[2])
 
         # Ширина превью: уменьшаем ДО складывания, иначе в файл уедет двойная
         # высота полного разрешения.
@@ -196,7 +220,7 @@ class TS_Compare(IO.ComfyNode):
         view_w = max(2, int(round(width * scale)) - (int(round(width * scale)) % 2))
         view_h = max(2, int(round(height * scale)) - (int(round(height * scale)) % 2))
 
-        still = len(left) == 1 and len(right) == 1
+        still = len_a == 1 and len_b == 1
         payload = {
             "mode": "image" if still else "video",
             "label_a": str(label_a or "before"),
@@ -210,31 +234,58 @@ class TS_Compare(IO.ComfyNode):
         if still:
             # ⚠️ PNG, а не кадр видео: сравнивают детали, а H.264 уничтожил бы
             # ровно то, на что человек смотрит.
-            payload["filename_a"] = cls._save_png(cls._resize(left[0], view_w, view_h), "a")
-            payload["filename_b"] = cls._save_png(cls._resize(right[0], view_w, view_h), "b")
+            report = cls._progress(2)
+            raise_if_interrupted()
+            payload["filename_a"] = cls._save_png(
+                cls._side_frame(image_a, 0, view_w, view_h), "a")
+            if report is not None:
+                report(1)
+            raise_if_interrupted()
+            payload["filename_b"] = cls._save_png(
+                cls._side_frame(image_b, 0, view_w, view_h), "b")
+            if report is not None:
+                report(2)
             # ⚠️ «x», а не «×»: в cp1251 знака умножения нет, и на русской
             # Windows с выводом не в консоль эта строка роняла поток очереди
             # ComfyUI целиком (замерено 28.09.2026, tests/test_log_encoding.py).
             logger.info("%s two stills %dx%d.", LOG_PREFIX, view_w, view_h)
         else:
-            count = max(len(left), len(right))
-            if len(left) != len(right):
+            count = max(len_a, len_b)
+            if len_a != len_b:
                 logger.info(
                     "%s sides are %d and %d frames; the shorter holds its last frame.",
-                    LOG_PREFIX, len(left), len(right),
+                    LOG_PREFIX, len_a, len_b,
                 )
-            left = cls._fit_length(left, count)
-            right = cls._fit_length(right, count)
+            # ⚠️ Полоса заводится ДО первого кадра: подготовка кадров идёт
+            # внутри того же цикла, что и запись, и полоса покрывает обе.
+            report = cls._progress(count)
+            if report is not None:
+                report(0)
+
+            def side(images, length, held):
+                """Кадр стороны по общему номеру; придержанный не готовится заново.
+
+                ``held`` — ячейка ``[номер, кадр]``: когда короткая сторона
+                держит последний кадр, его не переводят в байты и не
+                уменьшают по разу на каждый кадр длинной стороны.
+                """
+                def frame_at(index):
+                    wanted = cls._held_index(index, length)
+                    if held[0] != wanted:
+                        held[0] = wanted
+                        held[1] = cls._side_frame(images, wanted, view_w, view_h)
+                    return held[1]
+                return frame_at
+
+            left_at = side(image_a, len_a, [None, None])
+            right_at = side(image_b, len_b, [None, None])
 
             def stacked():
-                for a_frame, b_frame in zip(left, right):
-                    yield np.concatenate(
-                        (
-                            cls._resize(a_frame, view_w, view_h),
-                            cls._resize(b_frame, view_w, view_h),
-                        ),
-                        axis=0,
-                    )
+                for index in range(count):
+                    # Cancel слышен на каждом кадре: ProgressBar прерывание не
+                    # бросает, он только рисует (см. nodes/_shared.py).
+                    raise_if_interrupted()
+                    yield np.concatenate((left_at(index), right_at(index)), axis=0)
 
             target = cls._temp_target(".mp4")
             write_proxy(
@@ -242,7 +293,7 @@ class TS_Compare(IO.ComfyNode):
                 path=target,
                 fps=float(fps),
                 frame_count=count,
-                on_frame=cls._progress(count),
+                on_frame=report,
             )
             payload["filename"] = target.name
             payload["frames"] = count

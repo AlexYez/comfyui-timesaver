@@ -4,11 +4,11 @@
 
 # 🚀 Timesaver Nodes for ComfyUI
 
-**A friendly toolkit of 80 production-ready nodes that take the boring busywork out of your ComfyUI graphs.**
+**A friendly toolkit of 82 production-ready nodes that take the boring busywork out of your ComfyUI graphs.**
 
 Resize, color, cut out, inpaint, transcribe, translate, prompt-build, manage models — without leaving the canvas.
 
-[![Version](https://img.shields.io/badge/version-12.11.8-blue.svg)](pyproject.toml)
+[![Version](https://img.shields.io/badge/version-12.12.0-blue.svg)](pyproject.toml)
 [![ComfyUI](https://img.shields.io/badge/ComfyUI-V3%20API-orange.svg)](https://github.com/comfyanonymous/ComfyUI)
 [![Python](https://img.shields.io/badge/python-3.10+-green.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-see%20LICENSE.txt-lightgrey.svg)](LICENSE.txt)
@@ -25,8 +25,8 @@ Whether you build pipelines for image generation, video, audio, or just want to 
 
 |  | Category | Count | Highlights |
 |---|---|---|---|
-| 🖼️ | **[Image](#image)** | 25 | Resize, color, masks, tiling, 360°, Lama cleanup, Smart Inpaint, BiRefNet bg removal, ViTMatte, SAM3 picker |
-| 🎬 | **[Video](#video)** | 12 | Frame interpolation, RTX/spandrel upscale, depth, animation preview |
+| 🖼️ | **[Image](#image)** | 25 | Resize, color, masks, tiling, Lama cleanup, Smart Inpaint, BiRefNet bg removal, ViTMatte, SAM3 picker, depth of a still |
+| 🎬 | **[Video](#video)** | 12 | Loader with a timeline and saver, frame interpolation, RTX / DLSS upscale, latent upscale, depth, trimming, animation preview |
 | 🌈 | **[HDR / EXR](#hdr)** | 7 | Native LTX 2.5 HDR: EXR in, ACEScct working space, float32 decode, scene-linear master |
 | 🎵 | **[Audio](#audio)** | 6 | Whisper transcription, Silero TTS, Demucs stem split, audio cropping |
 | 🤖 | **[LLM](#llm)** | 4 | Qwen 3 VL multimodal chat, Super Prompt with voice input, Gemma 4 on LiteRT (Super Prompt RT, RT Prompt Enhancer) |
@@ -34,10 +34,10 @@ Whether you build pipelines for image generation, video, audio, or just want to 
 | 🎨 | **[Ideogram](#ideogram)** | 1 | Visual JSON-prompt designer for Ideogram 4 — text/object blocks, WYSIWYG node preview, per-area colours, layout/style/design presets, width/height output, RU/EN, import/export |
 | 📁 | **[Files & Models](#files)** | 3 | Model downloader, batch writer, EDL→YouTube chapters |
 | 🔐 | **[Locked model loaders](#loaders)** | 3 | Open `.tsmodel` files: diffusion model, checkpoint, LoRA model-only |
-| 🛠️ | **[Utils](#utils)** | 11 | Workflow group bypass panel, before/after compare, LoRA loader, custom sliders, math, smart type-aware switch |
+| 🛠️ | **[Utils](#utils)** | 13 | Workflow group bypass panel, before/after compare, LoRA loader, unmerged LoRA and turbo sigmas for Qwen Image 2.1, custom sliders, math, smart type-aware switch |
 | 🎨 | **[Conditioning](#conditioning)** | 1 | Multi-reference image conditioning |
 
-> All 80 nodes use the **ComfyUI V3 API** (`comfy_api.v0_0_2.IO` — a pinned namespace, not a stable one: the adapter itself declares `STABLE = False`. Pinning keeps the pack off the moving `latest` alias; it does not promise the API will not change).
+> All 82 nodes use the **ComfyUI V3 API** (`comfy_api.v0_0_2.IO` — a pinned namespace, not a stable one: the adapter itself declares `STABLE = False`. Pinning keeps the pack off the moving `latest` alias; it does not promise the API will not change).
 >
 > **Plus extra samplers & schedulers** added straight into the native KSampler / KSamplerAdvanced / BasicScheduler dropdowns (no node to wire — they just appear after install): sampler **`res_2s`** (2nd-order exponential RK / "RES"), schedulers **`bong_tangent`** (two-stage arctangent sigma curve) and **`beta57`** (`beta` α=0.5/β=0.7). Algorithms reimplemented clean-room from [RES4LYF](https://github.com/ClownsharkBatwing/RES4LYF)'s public math (no code copied).
 
@@ -95,14 +95,13 @@ A few nodes need extra packages — they fail gracefully and tell you what's mis
 
 | Node | Needs | Install via extra |
 |---|---|---|
-| TS Cube ↔ Equirectangular | `py360convert` | (bundled in core) |
 | TS Qwen 3 VL int4/int8 | `bitsandbytes` (no Apple Silicon wheel) | `pip install -e .[llm-quant]` |
 | TS Music Stems | none for the RoFormer engines; `demucs` only for the legacy `htdemucs*` options | `pip install -e .[audio-stems]` |
 | TS Silero TTS / Stress | `silero`, `silero-stress` | `pip install -e .[audio-silero]` |
 | TS RTX Upscaler | `nvidia-vfx` (NVIDIA RTX only) | `--index-url https://pypi.nvidia.com` |
-| TS Video Upscale With Model | `spandrel` | install manually |
+| TS Super Prompt RT / TS RT Prompt Enhancer | `litert-lm-api==0.16.1` (no Intel macOS wheel) | `pip install -e .[litert]` |
 
-> Want everything in one go? `pip install -e .[all]`
+> Want everything in one go? `pip install -e .[all]` — everything except `litert`, which stays opt-in on purpose (an exact pin on a native runtime).
 
 ### Platforms
 
@@ -164,7 +163,11 @@ python -m pip install -r requirements.txt
 
 Restart ComfyUI. Node ids, inputs and defaults are frozen across versions, so saved workflows keep working.
 
-> ⚠️ **One exception, 11 Aug 2026 (v11.0.0): 16 nodes were retired.** A workflow that used one of them shows it in red as a missing node; everything else in that graph is untouched. What was removed, why, and how to get it back is in [CHANGELOG.md](CHANGELOG.md).
+> ⚠️ **The exceptions are retired nodes — three times so far.** A workflow that used one of them shows it in red as a missing node; everything else in that graph is untouched. What was removed, why, and how to get it back is in [CHANGELOG.md](CHANGELOG.md), under the release named:
+>
+> - **12.0.0 (11 Aug 2026): 16 nodes** — Qwen Canvas, Qwen / WAN Safe Resize, Color Grade, Film Grain, Keyer, Despill, both panorama nodes, Video Upscale With Model and six file nodes (File Path Loader, Model Scanner, three converters, CPU LoRA Merger).
+> - **12.11.5: three locked-model loaders** — TS Load CLIP, TS Load VAE and TS Load LoRA (the one with a `clip` input). The diffusion-model, checkpoint and model-only LoRA loaders stay.
+> - **12.11.8: TS Image Studio and its ten service nodes** (the `TS/Studio` shelf), together with the subscription, keys and encryption that came with it.
 
 ---
 
@@ -176,9 +179,11 @@ Every node below shows the actual look in ComfyUI (English UI). Click any image 
 ---
 
 <a id="image"></a>
-### 🖼️ Image (21 nodes)
+### 🖼️ Image (25 nodes)
 
-Everything that touches pixels: resize, color, masks, background removal, keying, tiling, panoramas, and inpainting.
+Everything that touches pixels: resize, color, masks, background removal, matting, tiling, batches and inpainting.
+
+24 of them are described below. The 25th, **TS Image Depth**, sits on the Image shelf but is described in the [Video](#video) section, right after its twin TS Video Depth.
 
 #### TS Image Resize
 <img src="doc/screenshots/ts_image_resize.png" alt="TS Image Resize" width="450" />
@@ -415,9 +420,11 @@ Reads one image from a file path — the companion to TS Batch Source, which han
 ---
 
 <a id="video"></a>
-### 🎬 Video (11 nodes)
+### 🎬 Video (12 nodes)
 
-Reading and writing video files, frame interpolation, model-based upscale, depth, animation preview.
+Reading and writing video files, frame interpolation, RTX / DLSS and latent upscale, trimming, depth, animation preview.
+
+Plus **TS Image Depth** from the Image shelf, described here next to TS Video Depth. The seven HDR / EXR nodes have [their own section](#hdr).
 
 #### TS Video Loader
 <img src="doc/screenshots/ts_video_loader.png" alt="TS Video Loader" width="450" />
@@ -609,7 +616,9 @@ faster frame source would not make it quicker.
 
 Upscale a picture — or a whole video batch — with **NVIDIA DLSS 5 Neural Rendering**: the same feature games use, running here on your frames. `IMAGE` in, `IMAGE` out, so a single still and a batch of decoded video frames both go straight in.
 
-**It brings its own runtime, and by default it fetches it.** On the first run ~486 MB arrive in `models/DLSS/dlssnr/` from the upstream project's release — three files: NVIDIA's DLSSNR runtime, the Neuroframe Engine that drives it and the caller shim NVIDIA's signed snippet insists on. The download has a progress bar, and so does the processing that follows; the licence notice is printed *before* the network is touched, not after. Nothing is bundled with the pack. A file deleted later is fetched again on the next run, and `download_if_missing` off means the node fetches nothing and you place the files yourself.
+**It brings its own runtime, and by default it fetches it.** On the first run ~486 MB arrive in `models/DLSS/dlssnr/` from the upstream project's release — three files: NVIDIA's DLSSNR runtime, the Neuroframe Engine that drives it and the caller shim NVIDIA's signed snippet insists on. The download has a progress bar, and so does the processing that follows; the licence notice is printed *before* the network is touched, not after. Nothing is bundled with the pack. A file deleted later is fetched again on the next run, and `download_if_missing` off means the node fetches nothing and you place the files yourself — with one exception: if the old v5 runtime from the same project is already on disk, it is updated to v9 anyway, because you installed it once already.
+
+⚠️ **"The DLSS runtime is missing … 'download_if_missing' is off" after an update.** A workflow keeps the switch's value in itself. Pack versions 12.10.0–12.11.2 had it **off** by default, so a node placed in those days still carries "off" today, even though you never touched it. Switch `download_if_missing` on in the node and run again: the runtime arrives once.
 
 **Every runtime file is checked against its hash, and a mismatch stops the node.** It does not merely read these files — it **loads `neuroframe_engine.dll` into the ComfyUI process**, so "upstream probably rebuilt something" is not an acceptable answer here: a GitHub release can be deleted and re-uploaded at the same address. If you installed a different build on purpose, tell the machine so with `TS_DLSS_SKIP_VERIFY=1`; the variable lives outside the workflow.
 
@@ -631,7 +640,7 @@ Upscale a picture — or a whole video batch — with **NVIDIA DLSS 5 Neural Ren
 
 > **Licensing (read before the first run).** This pack **hosts and redistributes none of the runtime**, and it is **not affiliated with or endorsed by NVIDIA or the upstream project**. What the node downloads on your behalf is a third-party release, and the pieces inside it belong to other people: `nvngx_dlssnr.dll` is NVIDIA's, proprietary, under the [NVIDIA RTX SDKs License](https://github.com/NVIDIA/DLSS/blob/main/LICENSE.txt); `neuroframe_engine.dll` and `neuroframe_caller.dll` are the upstream author's, MIT. Their licence texts are written into `models/DLSS/dlssnr/` next to the binaries and are meant to stay there.
 >
-> The node prints the whole notice, with the source URL and every licence, in the log before it touches the network. **Install only components you are authorised to use, from sources their licences permit.** Turn `download_if_missing` off and the node downloads nothing: place the three files under `models/DLSS/dlssnr/` yourself. The old v5 layout (`host/`, `dlss/`) is no longer read by anything and can be deleted.
+> The node prints the whole notice, with the source URL and every licence, in the log before it touches the network. **Install only components you are authorised to use, from sources their licences permit.** Turn `download_if_missing` off and the node downloads nothing: place the three files under `models/DLSS/dlssnr/` yourself. The one exception is the old v5 layout (`host/`, `dlss/`): if it is there, the runtime you installed from this project is updated to v9 even with the switch off. Nothing loads the v5 files any more, so once `dlssnr/` is in place they can be deleted.
 
 **Use when:** upscaling footage or stills and you have an RTX card — especially video, where the temporal path beats a still-image upscaler run frame by frame.
 
@@ -1575,7 +1584,7 @@ The `LoraLoaderModelOnly` counterpart. Model only, and not to save effort: the m
 ---
 
 <a id="utils"></a>
-### 🛠️ Utils (11 nodes)
+### 🛠️ Utils (13 nodes)
 
 Tiny helpers that make the graph less cluttered.
 
@@ -1745,16 +1754,56 @@ The clamp by `tau` is what the "normalized" is for: an extrapolation with a scal
 | model | |
 |---|---|
 | **Wan** | `blocks[i].cross_attn`, T2V and I2V alike — supported |
-| **LTX** | `transformer_blocks[i].attn2` — supported |
+| **LTX** | `transformer_blocks[i].attn2` — supported, LTX-Video 0.9 and LTX-2 (2.0 / 2.3 / 2.5) |
 | **Krea 2**, **MiniMax H3** | text and picture are joined into one sequence before the stack — **refused, with the reason** |
 
 On a single-stream model the negative variant would have to be carried through the whole stack, which is a second full forward — exactly what CFG does. The node says so and points you at `cfg` instead of pretending it saved you something.
 
-The family is recognised **by the structure of the blocks**, not by a file name: `model_type` = `auto`. Which rows of the batch are positive is asked of the core (`cond_or_uncond`) rather than guessed from the shape — otherwise a batch of two pictures at `cfg = 1` would be indistinguishable from a positive/negative pair.
+The family is recognised **by the structure of the blocks**, not by a file name: `model_type` = `auto`. Which rows of the batch are positive is asked of the core (`cond_or_uncond`) rather than guessed from the shape — otherwise a batch of two pictures at `cfg = 1` would be indistinguishable from a positive/negative pair. When the positive and the negative do not fit into memory together, the core runs them as separate passes; the negative-only pass is left alone.
+
+**The negative takes the same road as the positive.** It is prepared on the first attention call, in the dtype and on the device the model is actually computing in — so fp8 weights are no obstacle. On LTX-2 the text first goes through the model's text connector (`preprocess_text_embeds`, a small transformer of its own), then its video part is projected — exactly as the core does it for the positive; checked against the core's own `LTXAVModel`, with zero difference.
 
 > The idea and the defaults come from the `WanVideoNAG` node in [kijai/ComfyUI-KJNodes](https://github.com/kijai/ComfyUI-KJNodes). For Wan the maths is reproduced one to one, including where the two branches meet, so settings shared for it transfer as they are. For LTX the original `forward` is called twice and the combination happens after the output projection: duplicating LTX's internals (RoPE, guide masks, per-head gating) would mean breaking on every update to them.
 
 **When to use it:** a distilled model at `cfg = 1` and something you want gone — "no text", "not cartoonish", "no extra fingers".
+
+---
+
+#### TS Shifted Sigmas
+
+**The schedule a few-step turbo LoRA for Qwen Image 2.1 was distilled on** — Viggle's [viggle-turbo](https://huggingface.co/Viggle/Qwen-Image-2.1-viggle-turbo) is the one it was written for.
+
+Such a LoRA is trained on a handful of raw timesteps — by default `1.0, 0.9375, 0.875, 0.75, 0.5, 0.25`, six steps. The diffusers pipeline does not sample at those numbers directly: it bends them with a shift that grows with the size of the picture:
+
+```text
+tokens = (height / 16) · (width / 16)
+mu     = 0.5 + (0.9 − 0.5) · (tokens − 256) / (8192 − 256)
+sigma  = e^mu / (e^mu + (1/t − 1))            then a final 0
+```
+
+None of ComfyUI's schedulers produce this — they either space the steps themselves or apply a fixed shift that ignores the resolution — and a turbo LoRA sampled on a different schedule loses sharpness. The node gives the schedule number for number: checked against diffusers' own `FlowMatchEulerDiscreteScheduler` and against Viggle's node on 28 sizes, with zero difference.
+
+The size is read from the latent **the way the sampler will see it**: an empty latent from the stock *Empty Latent Image* (grid /8) is resized by the sampler to Qwen's /16, so it is counted on /16; a latent with content is counted at the size it has.
+
+Wire it into `SamplerCustom` / `SamplerCustomAdvanced` with the `euler` sampler and no CFG (`BasicGuider`, or `cfg 1`). Add or drop steps **at the noisy end only** and keep `0.875, 0.75, 0.5, 0.25`: five steps are `1.0, 0.875, 0.75, 0.5, 0.25`, seven are `1.0, 0.9583, 0.9167, 0.875, 0.75, 0.5, 0.25`.
+
+**When to use it:** any few-step LoRA for Qwen Image 2.1 distilled on the diffusers schedule — together with TS LoRA Unmerged below.
+
+---
+
+#### TS LoRA Unmerged
+
+**A LoRA applied as a side branch, `y = W·x + B·A·x`, instead of being merged into the weights.**
+
+ComfyUI's LoRA loaders merge: `W + strength · B·A` is written into the weight once. That is free at run time and exact in float32 — but a model rarely sits in float32. On **bf16** weights round-to-nearest throws away a large part of a small update; on **int8** weights the requantization after the merge adds noise several times the update's size. A distilled turbo LoRA feels it most, because each of its six steps has to land. Viggle's comparison against the diffusers reference: LPIPS **0.093 merged vs 0.052 unmerged on bf16, 0.086 vs 0.038 on int8**.
+
+This node leaves the weights alone and adds `B·(A·x)` to the output of every targeted layer on the fly, in the layer's own dtype — what diffusers/PEFT do without `fuse_lora()`. Measured on Qwen Image 2.1 int8 with the r128 turbo LoRA (RTX 3080 Ti Laptop, 1024×1024): **2.8 s per step without a LoRA, 3.45 s with this branch**, and the result is **bitwise identical** to Viggle's own node. A stock merge of the same LoRA on the same model is off from it by about half the LoRA's effect.
+
+⚠️ **Qwen Image 2.1 fuses its MLP.** In ComfyUI `gate_layer` and `proj` are one `gate_up` layer, while LoRAs address the two halves separately; which half goes where is taken from ComfyUI's own key map, not guessed. And under int8 the down projection runs inside a fused kernel that skips its module entirely — so its branch is added one level up, to the output of the whole MLP, from the same numbers.
+
+The LoRA's own tensors sit in VRAM only while sampling runs (about 0.7 GB for the r128 turbo LoRA) and are dropped afterwards. They are put there **before** the model is loaded, after asking ComfyUI to free that much, so its memory manager plans around them. They are always kept in the dtype the model computes in — on an fp8 model that is bf16, not fp8, which would zero out a third of a small LoRA. A LoRA whose layers the model reaches some other way than through its modules is reported in the log rather than silently skipped. Naming understood: diffusers/PEFT (`lora_A`/`lora_B`, alpha from the file's metadata) and kohya (`lora_down`/`lora_up` + `alpha`). A DoRA is refused with a message (a side branch cannot renormalise it); LoKr, LoHa, conv LoRAs and full-weight `.diff` entries are not applied, and the log says which.
+
+**When to use it:** a turbo or otherwise small LoRA on a bf16 or int8 model where the stock merge visibly loses it. For ordinary style LoRAs the stock loader (or TS LoRA Loader) is free and good enough.
 
 ---
 
@@ -1866,7 +1915,7 @@ You can override these with `extra_model_paths.yaml` — Timesaver respects Comf
 On a clean load the pack now says one line and nothing else:
 
 ```
-[TS Timesaver] All 73 nodes loaded successfully.
+[TS Timesaver] All 82 nodes loaded successfully.
 ```
 
 The ComfyUI console is shared by every pack you have installed, and two screens
@@ -1939,7 +1988,7 @@ Use the same Python ComfyUI runs from. On Windows portable: `python_embeded\pyth
 <details>
 <summary><b>A node doesn't appear in the menu</b></summary>
 
-Look at the startup log for **Module load issues**. The most common cause is a missing optional dependency — e.g. `py360convert` is required for the cube/equirect nodes. Install it and restart.
+Look at the startup log for **Module load issues**. The most common cause is a missing optional dependency — e.g. `silero` for TS Silero TTS, or `litert-lm-api` for TS Super Prompt RT (see [Optional dependencies](#optional-dependencies)). Install it and restart.
 </details>
 
 <details>
@@ -1986,7 +2035,7 @@ What the pack does **not** do is switch the event loop to `WindowsSelectorEventL
 ```text
 comfyui-timesaver/
 ├─ ts_pasted_media_fix.py  # the pack's one patch to ComfyUI itself
-├─ nodes/                  # 77 modules: 73 nodes + 4 that register none
+├─ nodes/                  # 86 ts_*.py modules: 82 nodes + 4 that register none
 │                          #   (sampler + scheduler injectors, shared routes,
 │                          #    one backward-compat re-export shim)
 ├─ js/                     # frontend extensions for DOM-widget nodes
@@ -2009,8 +2058,6 @@ Licensed under the terms in [LICENSE.txt](LICENSE.txt).
 - [Demucs](https://github.com/facebookresearch/demucs) — music source separation.
 - [Silero](https://github.com/snakers4/silero-models) — Russian TTS / stress.
 - [Qwen](https://github.com/QwenLM/Qwen3-VL) — vision-language model.
-- [Spandrel](https://github.com/chaiNNer-org/spandrel) — model loading for upscalers.
-- [py360convert](https://github.com/sunset1995/py360convert) — 360° conversions.
 - [RIFE](https://github.com/megvii-research/ECCV2022-RIFE) / [FILM](https://github.com/google-research/frame-interpolation) — frame interpolation.
 
 **Maintainer:** [@AlexYez](https://github.com/AlexYez)

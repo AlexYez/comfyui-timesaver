@@ -310,8 +310,38 @@ function installNodeHooks(node) {
         } catch (err) {
             console.warn("[TS DomWidget] configure re-seed failed", err);
         }
+        try {
+            for (const name of Object.keys(node._tsKeptInputs || {})) ensurePlainInput(node, name);
+        } catch (err) {
+            console.warn("[TS DomWidget] kept input restore failed", err);
+        }
         return result;
     };
+}
+
+/**
+ * Make sure a hidden widget's value still has a plain, wireable input socket.
+ *
+ * Adds the slot when it is missing (a workflow saved while hideWidget still
+ * removed it) and strips the `widget` link from an existing one (see hideWidget
+ * for why a widget-input slot without its widget is invisible). The slot keeps
+ * its index, so links pointing at it stay valid.
+ *
+ * @param {object} node LiteGraph node.
+ * @param {string} name Input name.
+ */
+function ensurePlainInput(node, name) {
+    if (!node) return;
+    const type = node._tsKeptInputs?.[name] || "*";
+    const slot = (node.inputs || []).find((i) => i?.name === name);
+    if (!slot) {
+        if (typeof node.addInput === "function") node.addInput(name, type);
+        return;
+    }
+    if (slot.widget !== undefined) {
+        try { delete slot.widget; } catch { /* non-configurable */ }
+        if (slot.widget !== undefined) slot.widget = undefined;
+    }
 }
 
 /**
@@ -338,12 +368,23 @@ function installNodeHooks(node) {
  *    node's prompt inputs at queue time. Verified across save/reload + execute.
  *
  * Also removes the widget's converted-input SLOT (unconnected only) so no socket
- * row remains either.
+ * row remains either — unless `options.keepInput` is set: then the slot stays
+ * as a PLAIN input socket, so the value can still be fed by a wire.
+ *
+ * ⚠️ keepInput strips the slot's `widget` link on purpose. A widget-input slot
+ * is laid out by its widget: the classic canvas neither measures nor positions
+ * it while the widget is missing from node.widgets (and it is drawn only on
+ * hover), so a new node would show no socket at all. A plain slot is laid out
+ * like any other input in both renderers. It is re-applied after every
+ * configure (a workflow saved without the slot gets it back; one saved with
+ * the widget link loses it again), because configure replaces node.inputs.
  *
  * @param {object} node LiteGraph node.
  * @param {string} name Widget/input name to hide.
+ * @param {{keepInput?: boolean}} [options] keepInput — keep a wireable socket.
  */
-export function hideWidget(node, name) {
+export function hideWidget(node, name, options = {}) {
+    const keepInput = Boolean(options?.keepInput);
     installPromptInjector();
     const widget = (node?.widgets || []).find((w) => w?.name === name);
     if (widget) {
@@ -376,6 +417,14 @@ export function hideWidget(node, name) {
         const wi = node.widgets.indexOf(widget);
         if (wi >= 0) node.widgets.splice(wi, 1);
         installNodeHooks(node);
+    }
+    if (keepInput) {
+        if (!node) return;
+        node._tsKeptInputs = node._tsKeptInputs || {};
+        const existing = (node.inputs || []).find((i) => i?.name === name);
+        node._tsKeptInputs[name] = String(existing?.type || node._tsKeptInputs[name] || "*");
+        ensurePlainInput(node, name);
+        return;
     }
     if (Array.isArray(node?.inputs)) {
         const idx = node.inputs.findIndex((i) => i?.name === name);

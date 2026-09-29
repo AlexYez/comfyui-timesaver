@@ -30,6 +30,10 @@ _RATE_DENOMINATOR = 90000
 
 _CHANNEL_LAYOUTS = {1: "mono", 2: "stereo", 6: "5.1", 8: "7.1"}
 
+# Профили ProRes, которые несут альфу. Остальные профили 4:2:2 — прозрачности
+# в них нет, и альфа там отбрасывается.
+_ALPHA_PROFILES = frozenset({"4444", "4444 XQ"})
+
 
 def _av():
     from ._probe import _av as resolve
@@ -37,11 +41,66 @@ def _av():
     return resolve()
 
 
+def _split_channels(array):
+    """Кадр ``[H,W]`` / ``[H,W,C]`` → ``(rgb [H,W,3], alpha [H,W,1] или None)``.
+
+    ⚠️ IMAGE в ComfyUI бывает не только трёхканальным: Join Image with Alpha
+    отдаёт RGBA, маска, пропущенная через Convert Mask to Image, — серый.
+    ``VideoFrame.from_ndarray(..., "rgb24")`` на четырёх каналах падает с
+    ``Unexpected numpy array shape (H, W, 4)`` — и падал, уже после минут
+    генерации. Здесь любая разумная раскладка сводится к RGB (+ альфа).
+
+    Ничего не пишет во вход: срезы — это представления, повтор канала — копия.
+    """
+    import numpy as np
+
+    if array.ndim == 2:
+        array = array[..., None]
+    if array.ndim != 3:
+        raise RuntimeError(
+            f"{LOG_PREFIX} Expected a frame shaped [H, W, C], got {tuple(array.shape)}.")
+    channels = int(array.shape[2])
+    if channels == 1:
+        return np.repeat(array, 3, axis=2), None
+    if channels == 2:                       # серый + альфа
+        return np.repeat(array[..., :1], 3, axis=2), array[..., 1:2]
+    if channels == 3:
+        return array, None
+    if channels == 4:
+        return array[..., :3], array[..., 3:4]
+    raise RuntimeError(
+        f"{LOG_PREFIX} Unsupported channel count {channels}: expected 1 (gray), "
+        f"2 (gray + alpha), 3 (RGB) or 4 (RGBA).")
+
+
+def _fit_channels(array, alpha: bool):
+    """Кадр uint8 → ровно RGB (``alpha=False``) или ровно RGBA (``alpha=True``).
+
+    Альфа отбрасывается без смешивания с фоном — так же поступают штатные
+    сохранятели ComfyUI с форматами, где альфы нет. Если альфа нужна, а в
+    кадре её нет, кадр считается непрозрачным.
+    """
+    import numpy as np
+
+    if array.ndim == 3 and int(array.shape[2]) == (4 if alpha else 3):
+        return array
+    rgb, opacity = _split_channels(array)
+    if not alpha:
+        return np.ascontiguousarray(rgb)
+    if opacity is None:
+        opacity = np.full(rgb.shape[:2] + (1,), 255, dtype=np.uint8)
+    return np.ascontiguousarray(np.concatenate([rgb, opacity], axis=2))
+
+
 def _frames_from_tensor(images) -> Iterator:
     """Тензор ComfyUI ``[B,H,W,C]`` 0..1 → кадры uint8 по одному.
 
     Генератором, а не списком: у сейвера на входе может лежать тысяча кадров 4K,
     и вторая их копия в памяти никому не нужна.
+
+    Кадры выходят RGB или RGBA: серый размножается в три канала, альфа
+    сохраняется — выбросить её или записать решает ``write_video``, потому что
+    только он знает, умеет ли выбранный формат прозрачность.
     """
     import numpy as np
 
@@ -50,8 +109,14 @@ def _frames_from_tensor(images) -> Iterator:
         frame = images[index]
         # ⚠️ Приводим к float32 ЯВНО: превью HDR-декодера приходит в float16, а
         # у него шаг возле 255 равен 0.25 — округление до байта поехало бы.
+        # ⚠️ У float32-тензора на CPU `.numpy()` ДЕЛИТ память со входом, поэтому
+        # ниже только операции, создающие новый массив (clip, repeat, concat).
         array = (frame.detach().float().cpu().numpy() if hasattr(frame, "detach")
                  else np.asarray(frame, dtype=np.float32))
+        if not (array.ndim == 3 and int(array.shape[2]) in (3, 4)):
+            # Серый -> RGB, серый + альфа -> RGBA. RGB и RGBA идут как есть.
+            rgb, alpha = _split_channels(array)
+            array = rgb if alpha is None else np.concatenate([rgb, alpha], axis=2)
         array = np.clip(array, 0.0, 1.0)
         yield np.ascontiguousarray((array * 255.0 + 0.5).astype(np.uint8))
 
@@ -121,6 +186,45 @@ def _open_output(path: str | os.PathLike[str] | None, fmt: Format, to_memory):
     return av.open(target, mode="w", format=fmt.container, options=options)
 
 
+def _discard_partial(path) -> None:
+    """Удалить недописанный файл. Никогда не бросает.
+
+    Зовётся только для файла, которого до записи НЕ было: чужой файл, даже
+    совпавший по имени, не трогается никогда.
+    """
+    try:
+        Path(path).unlink(missing_ok=True)
+        logger.info("%s removed the unfinished file %s", LOG_PREFIX, safe_log_path(path))
+    except OSError as error:
+        logger.warning("%s could not remove the unfinished file %s: %s",
+                       LOG_PREFIX, safe_log_path(path), error)
+
+
+def _discard_sequence(files: list[Path], folder: Path | None) -> None:
+    """Убрать кадры недописанной секвенции. Никогда не бросает.
+
+    Args:
+        files: файлы, созданные ЭТОЙ записью; чужие сюда не попадают.
+        folder: папка, если её создала эта запись. Удаляется, только когда
+            после уборки в ней ничего не осталось.
+    """
+    removed = 0
+    for path in files:
+        try:
+            path.unlink(missing_ok=True)
+            removed += 1
+        except OSError as error:
+            logger.warning("%s could not remove the unfinished frame %s: %s",
+                           LOG_PREFIX, safe_log_path(path), error)
+    if folder is not None:
+        try:
+            folder.rmdir()                  # только пустую — rmdir иначе откажет
+        except OSError:
+            pass
+    if removed:
+        logger.info("%s removed %d frames of the unfinished EXR sequence", LOG_PREFIX, removed)
+
+
 def _apply_metadata(container, metadata: Mapping | None) -> None:
     """Вшить prompt и workflow в контейнер.
 
@@ -157,7 +261,9 @@ def write_video(
     """Записать кадры в видеофайл.
 
     Args:
-        frames: последовательность кадров ``[H,W,3]`` uint8.
+        frames: последовательность кадров ``[H,W,C]`` uint8, ``C`` от 1 до 4.
+            Альфа пишется, если её несёт выбранный формат (ProRes 4444 и
+            4444 XQ), иначе отбрасывается; серый размножается в RGB.
         path: куда писать; игнорируется, если задан ``to_memory``.
         format_key: ключ из реестра (``"H.264 / MP4"``).
         quality_key: уровень качества для форматов, где он есть.
@@ -186,11 +292,17 @@ def write_video(
     codec = fmt.codec
     options = dict(quality.options)
 
+    # Формат с прозрачностью, если выбранный вариант её действительно несёт:
+    # у ProRes это только 4444 и 4444 XQ, у форматов без профилей — наличие
+    # `alpha_pix_fmt` в реестре.
+    alpha_pix_fmt = fmt.alpha_pix_fmt
     if fmt.profiles:
         chosen = profile if profile in fmt.profiles else next(iter(fmt.profiles))
         options["profile"] = fmt.profiles[chosen]
         options.setdefault("vendor", "apl0")
         pix_fmt = fmt.profile_pix_fmt.get(chosen, pix_fmt)
+        if chosen not in _ALPHA_PROFILES:
+            alpha_pix_fmt = None
 
     hardware_used = None
     if use_hardware:
@@ -199,6 +311,7 @@ def write_video(
             codec, hw_options = picked
             options = dict(hw_options)
             hardware_used = codec
+            alpha_pix_fmt = None            # аппаратные кодировщики альфу не пишут
             logger.info("%s using hardware encoder %s", LOG_PREFIX, codec)
         else:
             logger.info("%s no hardware encoder available, writing in software", LOG_PREFIX)
@@ -208,83 +321,112 @@ def write_video(
 
     written = 0
     width = height = 0
+    keep_alpha = False
 
-    with _open_output(path, fmt, to_memory) as container:
-        _apply_metadata(container, metadata)
+    # ⚠️ Недописанный файл убирается — но ТОЛЬКО тот, которого до записи не
+    # было. Имя выдаёт `output_path` со свежим номером, так что на деле файл
+    # всегда новый; проверка страхует от совпадения, при котором удалился бы
+    # чужой результат.
+    owns_file = to_memory is None and path is not None and not os.path.exists(path)
 
-        video_stream = None
-        audio_stream = None
-        audio_cursor = 0
+    # ⚠️ BaseException, а не Exception: «Отмена» в ComfyUI — это
+    # InterruptProcessingException, и она наследует BaseException. Ловя одно
+    # Exception, мы оставляли бы половину ролика в output после каждой отмены.
+    # Удаление идёт ПОСЛЕ выхода из `with`: на Windows открытый контейнером
+    # файл не удаляется, пока его не закрыли.
+    try:
+        with _open_output(path, fmt, to_memory) as container:
+            _apply_metadata(container, metadata)
 
-        for array in frames:
+            video_stream = None
+            audio_stream = None
+            audio_cursor = 0
+
+            for array in frames:
+                if video_stream is None:
+                    height, width = int(array.shape[0]), int(array.shape[1])
+                    has_alpha = array.ndim == 3 and int(array.shape[2]) in (2, 4)
+                    keep_alpha = has_alpha and alpha_pix_fmt is not None
+                    if keep_alpha:
+                        pix_fmt = alpha_pix_fmt
+                    elif has_alpha:
+                        logger.info("%s %s keeps no alpha channel; transparency is "
+                                    "dropped.", LOG_PREFIX, fmt.key)
+                    video_stream = container.add_stream(codec, rate=rate)
+                    video_stream.width = width
+                    video_stream.height = height
+                    video_stream.pix_fmt = pix_fmt
+                    # Шкала времени — обратная частота целиком: метки кадров идут
+                    # 0,1,2…, значит один шаг обязан равняться одному кадру. Мукс
+                    # mp4 сегодня всё равно пересчитывает метки по объявленной
+                    # частоте (проверено: 23.976 и 29.97 выходят верными и без
+                    # этой строки), но полагаться на это незачем — у другого
+                    # контейнера своя воля.
+                    video_stream.time_base = Fraction(rate.denominator, rate.numerator)
+                    if options:
+                        video_stream.options = dict(options)
+                    if fmt.codec_tag:
+                        video_stream.codec_tag = fmt.codec_tag
+
+                    if samples is not None and fmt.audio_codec:
+                        audio_stream = container.add_stream(fmt.audio_codec, rate=sample_rate)
+                        layout = _audio_layout(samples.shape[0])
+                        try:
+                            audio_stream.layout = layout
+                        except Exception:   # noqa: BLE001 - старые сборки PyAV
+                            pass
+                        if fmt.audio_options:
+                            audio_stream.options = dict(fmt.audio_options)
+
+                frame = av.VideoFrame.from_ndarray(
+                    _fit_channels(array, keep_alpha), format="rgba" if keep_alpha else "rgb24")
+                frame.pts = written
+                for packet in video_stream.encode(frame):
+                    container.mux(packet)
+                written += 1
+                if on_frame is not None:
+                    on_frame(written)
+
+                # Звук доливается ровно до конца уже записанного видео: так
+                # дорожки остаются синхронными без отдельного прохода ремукса.
+                if audio_stream is not None:
+                    until = int(round(written / float(fps) * sample_rate))
+                    audio_cursor = _push_audio(container, audio_stream, samples,
+                                               audio_cursor, until, sample_rate)
+
             if video_stream is None:
-                height, width = int(array.shape[0]), int(array.shape[1])
-                video_stream = container.add_stream(codec, rate=rate)
-                video_stream.width = width
-                video_stream.height = height
-                video_stream.pix_fmt = pix_fmt
-                # Шкала времени — обратная частота целиком: метки кадров идут
-                # 0,1,2…, значит один шаг обязан равняться одному кадру. Мукс mp4
-                # сегодня всё равно пересчитывает метки по объявленной частоте
-                # (проверено: 23.976 и 29.97 выходят верными и без этой строки),
-                # но полагаться на это незачем — у другого контейнера своя воля.
-                video_stream.time_base = Fraction(rate.denominator, rate.numerator)
-                if options:
-                    video_stream.options = dict(options)
-                if fmt.codec_tag:
-                    video_stream.codec_tag = fmt.codec_tag
+                raise RuntimeError(f"{LOG_PREFIX} Nothing to save: no frames were produced.")
 
-                if samples is not None and fmt.audio_codec:
-                    audio_stream = container.add_stream(fmt.audio_codec, rate=sample_rate)
-                    layout = _audio_layout(samples.shape[0])
-                    try:
-                        audio_stream.layout = layout
-                    except Exception:       # noqa: BLE001 - старые сборки PyAV
-                        pass
-                    if fmt.audio_options:
-                        audio_stream.options = dict(fmt.audio_options)
+            if audio_stream is not None and samples is not None:
+                # ⚠️ Длина звука подгоняется под ФАКТИЧЕСКИ записанные кадры, а
+                # не под заявленные. `frame_count` для видео-источника — это
+                # оценка (`duration * fps`), и совпадать с реальностью она не
+                # обязана: у VFR, у контейнера без длительности, просто на
+                # округлении.
+                #
+                # Замерено на расхождении в 20 кадров: заявили 50, записали 30 —
+                # звук выходил на 0,8 с ДЛИННЕЕ картинки; заявили 30, записали
+                # 50 — на 0,8 с короче. Оба случая выглядят как брак, и оба
+                # лечатся тем, что мерка берётся с уже написанного видео.
+                wanted = (int(round(written / float(fps) * sample_rate)) if fps > 0
+                          else samples.shape[1])
+                if samples.shape[1] < wanted:
+                    import numpy as np
 
-            frame = av.VideoFrame.from_ndarray(array, format="rgb24")
-            frame.pts = written
-            for packet in video_stream.encode(frame):
+                    pad = np.zeros((samples.shape[0], wanted - samples.shape[1]),
+                                   dtype=np.float32)
+                    samples = np.concatenate([samples, pad], axis=1)
+                audio_cursor = _push_audio(container, audio_stream, samples, audio_cursor,
+                                           min(wanted, samples.shape[1]), sample_rate)
+                for packet in audio_stream.encode(None):
+                    container.mux(packet)
+
+            for packet in video_stream.encode(None):
                 container.mux(packet)
-            written += 1
-            if on_frame is not None:
-                on_frame(written)
-
-            # Звук доливается ровно до конца уже записанного видео: так дорожки
-            # остаются синхронными без отдельного прохода ремукса.
-            if audio_stream is not None:
-                until = int(round(written / float(fps) * sample_rate))
-                audio_cursor = _push_audio(container, audio_stream, samples,
-                                           audio_cursor, until, sample_rate)
-
-        if video_stream is None:
-            raise RuntimeError(f"{LOG_PREFIX} Nothing to save: no frames were produced.")
-
-        if audio_stream is not None and samples is not None:
-            # ⚠️ Длина звука подгоняется под ФАКТИЧЕСКИ записанные кадры, а не
-            # под заявленные. `frame_count` для видео-источника — это оценка
-            # (`duration * fps`), и совпадать с реальностью она не обязана:
-            # у VFR, у контейнера без длительности, просто на округлении.
-            #
-            # Замерено на расхождении в 20 кадров: заявили 50, записали 30 —
-            # звук выходил на 0,8 с ДЛИННЕЕ картинки; заявили 30, записали 50 —
-            # на 0,8 с короче. Оба случая выглядят как брак, и оба лечатся тем,
-            # что мерка берётся с уже написанного видео.
-            wanted = int(round(written / float(fps) * sample_rate)) if fps > 0 else samples.shape[1]
-            if samples.shape[1] < wanted:
-                import numpy as np
-
-                pad = np.zeros((samples.shape[0], wanted - samples.shape[1]), dtype=np.float32)
-                samples = np.concatenate([samples, pad], axis=1)
-            audio_cursor = _push_audio(container, audio_stream, samples,
-                                       audio_cursor, min(wanted, samples.shape[1]), sample_rate)
-            for packet in audio_stream.encode(None):
-                container.mux(packet)
-
-        for packet in video_stream.encode(None):
-            container.mux(packet)
+    except BaseException:
+        if owns_file:
+            _discard_partial(path)
+        raise
 
     size = 0
     if to_memory is None and path is not None:
@@ -398,20 +540,42 @@ def downscale_frames(frames: Iterable, max_width: int = 1280) -> Iterator:
 # `video/media` импортирует из `video/hdr`, обратно никогда.
 
 def _linear_frames(images) -> Iterator:
-    """Тензор ``[B,H,W,3]`` → кадры torch ``[H,W,3]`` float32, без зажима.
+    """Тензор ``[B,H,W,C]`` → кадры torch ``[H,W,3]`` float32, без зажима.
 
     Генератором: ролик 129×1920×1088 в float32 весит 3 ГиБ, и второй его копии
     в памяти быть не должно.
+
+    Запись EXR в паке трёхканальная, поэтому альфа отбрасывается, а серый
+    размножается в RGB — раньше RGBA на этом входе ронял запись на первом же
+    кадре.
     """
     import numpy as np
     import torch
 
+    warned = False
     for index in range(int(images.shape[0])):
         frame = images[index]
         if hasattr(frame, "detach"):
-            yield frame.detach().to(torch.float32)
+            frame = frame.detach().to(torch.float32)
         else:
-            yield torch.from_numpy(np.asarray(frame, dtype=np.float32))
+            frame = torch.from_numpy(np.asarray(frame, dtype=np.float32))
+        if frame.ndim == 2:
+            frame = frame.unsqueeze(-1)
+        channels = int(frame.shape[-1]) if frame.ndim == 3 else 0
+        if channels in (2, 4) and not warned:
+            logger.info("%s The EXR sequence is written as RGB; the alpha channel "
+                        "is dropped.", LOG_PREFIX)
+            warned = True
+        if channels in (1, 2):
+            # repeat — копия одного кадра, а не представление: вход не трогаем.
+            frame = frame[..., :1].repeat(1, 1, 3)
+        elif channels == 4:
+            frame = frame[..., :3]
+        elif channels != 3:
+            raise RuntimeError(
+                f"{LOG_PREFIX} Unsupported frame shape {tuple(frame.shape)} for EXR: "
+                "expected [H, W, C] with C from 1 to 4.")
+        yield frame
 
 
 def _uint8_to_linear(array):
@@ -457,28 +621,51 @@ def exr_sequence_pass(
     from ...video.hdr._exr_io import write_exr
     from ...video.hdr._tonemap import make_sdr_preview
 
+    folder_is_new = not folder.exists()
     folder.mkdir(parents=True, exist_ok=True)
     written = 0
     total_bytes = 0
     width = height = 0
+    # Только файлы, которых до этой записи НЕ было: их и только их убираем,
+    # если секвенция не дописалась.
+    created: list[Path] = []
 
-    for array in frames:
-        frame = _uint8_to_linear(array) if isinstance(array, np.ndarray) else array
-        if height == 0:
-            height, width = int(frame.shape[0]), int(frame.shape[1])
-        written += 1
-        total_bytes += write_exr(folder / f"{stem}.{written:06d}.exr", frame, half=half)
+    # ⚠️ BaseException: отмена в ComfyUI (InterruptProcessingException) —
+    # не Exception, и половина секвенции оставалась бы в output. Сюда же
+    # попадает GeneratorExit — генератор, брошенный на полпути, секвенцию не
+    # дописал.
+    try:
+        for array in frames:
+            # EXR пишется трёхканальным: кадр из файла приводится к RGB (для
+            # обычного RGB это тот же массив, без копии).
+            frame = (_uint8_to_linear(_fit_channels(array, False))
+                     if isinstance(array, np.ndarray) else array)
+            if height == 0:
+                height, width = int(frame.shape[0]), int(frame.shape[1])
+            written += 1
+            target = folder / f"{stem}.{written:06d}.exr"
+            if not target.exists():
+                created.append(target)
+            total_bytes += write_exr(target, frame, half=half)
 
-        preview = make_sdr_preview(frame.unsqueeze(0), exposure_ev=exposure_ev,
-                                   operator=tonemap, output_dtype=frame.dtype)
-        yield np.ascontiguousarray(
-            (np.clip(preview[0].cpu().numpy(), 0.0, 1.0) * 255.0 + 0.5).astype(np.uint8))
+            preview = make_sdr_preview(frame.unsqueeze(0), exposure_ev=exposure_ev,
+                                       operator=tonemap, output_dtype=frame.dtype)
+            yield np.ascontiguousarray(
+                (np.clip(preview[0].cpu().numpy(), 0.0, 1.0) * 255.0 + 0.5).astype(np.uint8))
 
-        if on_frame is not None:
-            on_frame(written)
+            if on_frame is not None:
+                on_frame(written)
 
-    if written == 0:
-        raise RuntimeError(f"{LOG_PREFIX} Nothing to save: no frames were produced.")
+        if written == 0:
+            raise RuntimeError(f"{LOG_PREFIX} Nothing to save: no frames were produced.")
+    except BaseException as error:
+        _discard_sequence(created, folder if folder_is_new else None)
+        if isinstance(error, Exception):
+            # Потребитель превью (запись прокси) глотает обычные ошибки как
+            # «превью не вышло». Кладём её сюда, чтобы сохранятель поднял
+            # настоящую причину, а не отчитался о нуле кадров.
+            result["failed"] = error
+        raise
 
     result.update({
         "frames": written,

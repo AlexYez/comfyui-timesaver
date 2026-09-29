@@ -24,6 +24,10 @@ huggingface_hub>=0.20.0
 # model does not load at all.
 einops>=0.7.0
 rotary-embedding-torch>=0.5.0
+# The vendored attend.py compares torch versions with `packaging` at import
+# time. It usually arrives with pip/setuptools/transformers, which is not a
+# promise — declared so the default stems model never fails on a lean env.
+packaging>=21.0
 # ⚠️ 5.2.0, а не 4.x. Модель по умолчанию у TS Super Prompt — Qwen3.5, а её
 # архитектуру (`qwen3_5`) transformers впервые понимает начиная с 5.2.0
 # (проверено по тегам репозитория: в 5.1.0 её ещё нет). На более старой

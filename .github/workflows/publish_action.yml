@@ -14,7 +14,46 @@ jobs:
     steps:
       - name: Check out code
         uses: actions/checkout@v4
+        with:
+          # Нужна история: версия сравнивается с состоянием ДО этого пуша.
+          fetch-depth: 0
+      - name: Did the version change?
+        # ⚠️ Триггер — любая правка pyproject.toml, а реестр не принимает одну
+        # версию дважды. Правка зависимостей без бампа запускала публикацию той
+        # же версии, и прогон краснел. Публикуем, только если `version` сменилась
+        # относительно состояния до пуша (`github.event.before`, а если его нет —
+        # предыдущий коммит). Ручной запуск (workflow_dispatch) публикует всегда:
+        # это осознанное действие владельца, например повтор упавшей выкладки.
+        id: version
+        shell: bash
+        env:
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          read_version() {
+            python3 -c 'import sys, tomllib; print(tomllib.loads(sys.stdin.read())["project"]["version"])'
+          }
+          now="$(read_version < pyproject.toml)"
+          if [ "$EVENT" != "push" ]; then
+            echo "Manual run: publishing $now"
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          base="$BEFORE"
+          if [ -z "$base" ] || [ "$base" = "0000000000000000000000000000000000000000" ] \
+              || ! git cat-file -e "${base}^{commit}" 2>/dev/null; then
+            base="HEAD^"
+          fi
+          before="$(git show "${base}:pyproject.toml" 2>/dev/null | read_version 2>/dev/null || true)"
+          if [ "$now" != "$before" ]; then
+            echo "Version ${before:-<none>} -> $now: publishing"
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Version is still $now: pyproject.toml changed without a bump, nothing to publish"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
       - name: Publish Custom Node
+        if: steps.version.outputs.changed == 'true'
         # ⚠️ Полный коммит, а не ветка: `@main` означает «выполнить то, что
         # окажется в чужом репозитории в момент публикации», причём с
         # доступом к токену реестра.

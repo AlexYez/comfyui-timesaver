@@ -2,7 +2,7 @@
 name = "comfyui-timesaver"
 description = "ComfyUI nodes from [Timesaver](https://github.com/AlexYez/comfyui-timesaver)."
 # ⚠️ Три составляющих: Comfy Registry принимает только SemVer.
-version = "12.11.8"
+version = "12.12.0"
 license = { file = "LICENSE.txt" }
 # Matches CI (.github/workflows/ci.yml) and the Python range ComfyUI itself
 # supports; >=3.12 wrongly blocked pip installs on 3.10/3.11.
@@ -32,6 +32,9 @@ dependencies = [
     # vendored architectures import these two. Pure Python, no build step.
     "einops>=0.7.0",
     "rotary-embedding-torch>=0.5.0",
+    # roformer_models/attend.py imports `packaging` at module level. It tends to
+    # arrive transitively (transformers, setuptools) — not a guarantee.
+    "packaging>=21.0",
     # Native OpenAI Whisper — the unified engine (nodes/_whisper_engine.py) used
     # by both TS Whisper and TS Super Prompt voice. Small package; pulls tiktoken
     # (already core) plus a couple of light native deps.

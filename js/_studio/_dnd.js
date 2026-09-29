@@ -61,7 +61,62 @@ export function registerDropSource(normalizer) {
     NORMALIZERS.push(normalizer);
 }
 
-/** @typedef {{type: "image", name: string, getBlob: () => Promise<Blob>}} DropItem */
+/** @typedef {{type: "image"|"video"|"audio", name: string, getBlob: () => Promise<Blob>}} DropItem */
+
+const IMAGE_EXTS = new Set(["png", "jpg", "jpeg", "webp", "gif", "bmp", "tif", "tiff", "avif", "heic", "heif", "exr"]);
+const VIDEO_EXTS = new Set(["mp4", "webm", "mov", "mkv", "avi", "m4v", "mpg", "mpeg", "wmv", "flv", "ts", "mts", "m2ts", "ogv", "3gp"]);
+const AUDIO_EXTS = new Set(["wav", "mp3", "flac", "ogg", "oga", "m4a", "aac", "opus", "wma", "aif", "aiff"]);
+
+function extensionOf(name) {
+    const text = String(name || "");
+    const dot = text.lastIndexOf(".");
+    return dot >= 0 ? text.slice(dot + 1).toLowerCase() : "";
+}
+
+/**
+ * Вид медиа: сперва по MIME, а если его нет — по расширению имени.
+ *
+ * Одно правило на все источники: файл с диска и ссылка на превью обязаны
+ * классифицироваться одинаково, иначе ролик, брошенный ссылкой, объявлялся
+ * картинкой, и загрузчик видео его отвергал.
+ *
+ * @param {string} mime
+ * @param {string} name
+ * @returns {"image"|"video"|"audio"|""}
+ */
+export function mediaKind(mime, name) {
+    const type = String(mime || "").toLowerCase();
+    for (const kind of ["image", "video", "audio"]) {
+        if (type.startsWith(`${kind}/`)) return kind;
+    }
+    const ext = extensionOf(name);
+    if (VIDEO_EXTS.has(ext)) return "video";
+    if (AUDIO_EXTS.has(ext)) return "audio";
+    if (IMAGE_EXTS.has(ext)) return "image";
+    return "";
+}
+
+/**
+ * Имя и вид файла по ссылке. У превью ComfyUI путь — `/view`, а имя лежит в
+ * параметре `filename`; параметр `format` (его ставят видеопревью) — подсказка
+ * вида, когда расширение ничего не говорит.
+ */
+function describeUri(uri) {
+    let url = null;
+    try {
+        url = new URL(uri, window.location.href);
+    } catch {
+        url = null;
+    }
+    const fromQuery = url?.searchParams.get("filename") || "";
+    const fromPath = (url ? url.pathname : uri.split("?")[0]).split("/").pop() || "";
+    let name = fromQuery || fromPath;
+    try {
+        name = decodeURIComponent(name);
+    } catch { /* уже раскодировано */ }
+    const kind = mediaKind("", name) || mediaKind(url?.searchParams.get("format") || "", "");
+    return { name, kind };
+}
 
 // ── built-in sources ────────────────────────────────────────────────────── //
 registerDropSource({
@@ -69,10 +124,10 @@ registerDropSource({
     sniff: (shot) => (shot?.types || []).includes("Files"),
     // Ролик тоже принимаем: студия спросит, какой кадр из него взять.
     extract: async (shot) => (shot.files || [])
-        .filter((file) => file.type.startsWith("image/")
-                          || file.type.startsWith("video/"))
-        .map((file) => ({
-            type: file.type.startsWith("video/") ? "video" : "image",
+        .map((file) => ({ file, kind: mediaKind(file.type, file.name) }))
+        .filter(({ kind }) => kind === "image" || kind === "video")
+        .map(({ file, kind }) => ({
+            type: kind,
             mime: file.type,
             name: file.name,
             getBlob: async () => file,
@@ -127,21 +182,31 @@ registerDropSource({
     },
 });
 
-// ComfyUI node previews drag as plain image URLs.
+// ComfyUI node previews drag as plain URLs — images, but also videos and audio.
+// The kind comes from the file name (or the preview's `format` hint); a link
+// that says nothing about itself stays an image, as it always was.
 registerDropSource({
     id: "uri-list",
     sniff: (shot) => (shot?.types || []).includes("text/uri-list"),
     extract: async (shot) => {
         const uri = (shot.data?.["text/uri-list"] || "").split("\n")[0]?.trim();
         if (!uri || !/^https?:|^\//.test(uri)) return [];
+        const { name, kind: guessed } = describeUri(uri);
+        const kind = guessed || "image";
         return [{
-            type: "image",
-            name: decodeURIComponent(uri.split("/").pop()?.split("?")[0] || "image.png"),
+            type: kind,
+            name: name || (kind === "image" ? "image.png" : `dropped.${kind === "video" ? "mp4" : "wav"}`),
             getBlob: async () => {
                 const response = await fetch(uri);
                 if (!response.ok) throw new Error(`HTTP ${response.status}`);
                 const blob = await response.blob();
-                if (!blob.type.startsWith("image/")) throw new Error("not an image");
+                const served = mediaKind(blob.type, "");
+                // Сервер может не знать тип ролика и отдать octet-stream —
+                // тогда верим имени. Картинка по-прежнему проверяется строго.
+                const untyped = !blob.type || blob.type === "application/octet-stream";
+                if (served !== kind && !(untyped && kind !== "image")) {
+                    throw new Error(kind === "image" ? "not an image" : `not ${kind}`);
+                }
                 return blob;
             },
         }];

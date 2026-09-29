@@ -301,27 +301,53 @@ class TS_RTX_Upscaler(IO.ComfyNode):
     @classmethod
     def _run_nvvfx_upscale(cls, images_rgb, output_width, output_height, quality_level, batch_size):
         device = model_management.get_torch_device()
+        total = int(images_rgb.shape[0])
         upscaled_batches = []
+        batch_cuda = frame_chw = dlpack_output = output = output_hwc = None
+        batch_outputs = []
+        # Полоса выполнения: длинный ролик идёт минутами, и без неё нода
+        # выглядит зависшей.
+        progress = comfy.utils.ProgressBar(total)
 
         # ⚠️ Замок держит ВЕСЬ проход по кадрам, а не только настройку: движок
         # в процессе один, и второй граф, дёрнувший `run()` посреди чужого
-        # прохода, получил бы гонку в нативном коде.
+        # прохода, получил бы гонку в нативном коде. `with` отпускает замок
+        # и при отмене — InterruptProcessingException проходит через него так
+        # же, как любая ошибка.
         with _state.lock:
-            super_res = cls._acquire_super_res(quality_level, output_width, output_height)
+            try:
+                super_res = cls._acquire_super_res(quality_level, output_width, output_height)
 
-            for start in range(0, images_rgb.shape[0], batch_size):
-                batch = images_rgb[start:start + batch_size]
-                batch_cuda = batch.to(device=device, dtype=torch.float32).permute(0, 3, 1, 2).contiguous()
+                for start in range(0, total, batch_size):
+                    batch = images_rgb[start:start + batch_size]
+                    batch_cuda = batch.to(device=device, dtype=torch.float32).permute(0, 3, 1, 2).contiguous()
 
+                    batch_outputs = []
+                    for frame_idx in range(batch_cuda.shape[0]):
+                        # ⚠️ Проверка отмены НА КАЖДОМ кадре: раньше её не было
+                        # вовсе, и «Отмена» на длинном ролике не делала ничего,
+                        # пока не дойдёт последний кадр. Между кадрами движок
+                        # в согласованном состоянии — прерывать здесь безопасно.
+                        model_management.throw_exception_if_processing_interrupted()
+                        frame_chw = batch_cuda[frame_idx]
+                        dlpack_output = super_res.run(frame_chw).image
+                        output = torch.from_dlpack(dlpack_output).clone()
+                        output_hwc = cls._to_hwc(output)
+                        batch_outputs.append(cls._normalize_output(output_hwc))
+                        progress.update(1)
+
+                    upscaled_batches.append(torch.stack(batch_outputs, dim=0).cpu())
+                    batch_cuda = None
+                    batch_outputs = []
+            except BaseException:
+                # Недособранный результат выбрасывается целиком, а тензоры на
+                # карте отпускаются сразу: трассировка исключения держит кадр
+                # этой функции, и без обнуления копия батча на GPU жила бы,
+                # пока ComfyUI не забудет ошибку.
+                upscaled_batches.clear()
+                batch_cuda = frame_chw = dlpack_output = output = output_hwc = None
                 batch_outputs = []
-                for frame_idx in range(batch_cuda.shape[0]):
-                    frame_chw = batch_cuda[frame_idx]
-                    dlpack_output = super_res.run(frame_chw).image
-                    output = torch.from_dlpack(dlpack_output).clone()
-                    output_hwc = cls._to_hwc(output)
-                    batch_outputs.append(cls._normalize_output(output_hwc))
-
-                upscaled_batches.append(torch.stack(batch_outputs, dim=0).cpu())
+                raise
 
         if not upscaled_batches:
             raise RuntimeError("[TS RTX Upscaler] Upscaler produced no output frames.")

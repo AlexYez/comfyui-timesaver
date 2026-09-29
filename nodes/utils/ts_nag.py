@@ -88,7 +88,7 @@ def apply_nag(x_positive, x_negative, *, scale: float, alpha: float, tau: float)
     return guidance * alpha + x_positive * (1.0 - alpha)
 
 
-def conditional_rows(batch: int, transformer_options: dict) -> slice | None:
+def conditional_rows(batch: int, transformer_options: dict) -> list[int] | None:
     """Какие строки батча — позитивные.
 
     ⚠️ Спрашиваем у ЯДРА, а не гадаем по форме. ComfyUI кладёт в
@@ -97,46 +97,49 @@ def conditional_rows(batch: int, transformer_options: dict) -> slice | None:
     при cfg = 1 неотличима от пары «позитив + негатив», и половина кадров
     осталась бы без направляющей.
 
-    Возвращает срез позитивных строк, или ``None``, когда позитив — весь батч.
+    Возвращает номера позитивных строк; ``None`` — позитив весь батч; пустой
+    список — в этом проходе позитива нет вовсе.
+
+    ⚠️ Пустой список — не «угадать нельзя»: когда позитив и негатив не влезают
+    в память вместе, ядро считает их РАЗНЫМИ проходами (``[0]``, потом ``[1]``),
+    и во втором NAG обязан молчать. Прежде такой проход считался «весь
+    позитивный», и направляющая ложилась на негатив — итог зависел от того,
+    сколько было свободной видеопамяти. Позитивных кусков может быть и
+    несколько (``[0, 0, 1, 1]`` при нескольких условиях) — отсюда список, а не
+    один срез.
     """
     layout = transformer_options.get("cond_or_uncond")
     if not layout or all(entry == 0 for entry in layout):
         return None
     chunk = batch // len(layout)
-    starts = [index for index, entry in enumerate(layout) if entry == 0]
-    if len(starts) != 1 or chunk <= 0:
-        # Несколько разрозненных позитивных кусков одним срезом не описать.
-        # Такой раскладки ядро не делает, но угадывать мы не станем.
+    if chunk <= 0:
         return None
-    first = starts[0]
-    return slice(first * chunk, (first + 1) * chunk)
-
-
-def _to_module(tensor, module):
-    """Привести тензор к устройству и типу модуля, который его сейчас считает."""
-    parameter = next(module.parameters(), None) if hasattr(module, "parameters") else None
-    if parameter is None:
-        return tensor
-    return tensor.to(parameter.device, parameter.dtype)
+    return [row for index, entry in enumerate(layout) if entry == 0
+            for row in range(index * chunk, (index + 1) * chunk)]
 
 
 class _NagContext:
     """Негативный контекст, приготовленный под модель и закэшированный.
 
-    Проекция текста дешёвая, но блоков десятки, а шагов ещё десятки — считать её
+    ⚠️ Готовится ЛЕНИВО, на первом вызове внимания, а не в ``execute``. Там
+    модель ещё может лежать не на своём устройстве, а тип брался с весов
+    модуля — у fp8-модели это float8, и GELU внутри проекции Wan падал
+    («not implemented for Float8_e4m3fn»). Здесь же под рукой настоящий
+    контекст позитива: его устройство и тип — ровно те, в которых ядро считает.
+
+    Подготовка дешёвая, но блоков десятки, а шагов ещё десятки — делать её
     заново в каждом вызове значит платить тысячи раз за одно и то же.
     """
 
-    def __init__(self, raw, project):
-        self._raw = raw
-        self._project = project
+    def __init__(self, prepare):
+        self._prepare = prepare
         self._cache: dict[tuple, torch.Tensor] = {}
 
     def get(self, reference: torch.Tensor) -> torch.Tensor:
         key = (reference.device, reference.dtype, reference.shape[-1])
         cached = self._cache.get(key)
         if cached is None:
-            cached = self._project(self._raw.to(reference.device, reference.dtype), reference)
+            cached = self._prepare(reference)
             self._cache[key] = cached
         if cached.shape[0] != reference.shape[0]:
             cached = cached.expand(reference.shape[0], -1, -1)
@@ -182,6 +185,9 @@ def _wan_forward(module, x, context, nag, params, transformer_options, context_i
             _wan_attention(module, query, nag.get(context), transformer_options),
             **params,
         )
+    elif not rows:
+        # Проход одного негатива: направлять нечего.
+        out = _wan_attention(module, query, context, transformer_options)
     else:
         out = _wan_attention(module, query, context, transformer_options)
         positive = out[rows]
@@ -207,8 +213,16 @@ def _wan_blocks(diffusion_model):
             for index, block in enumerate(blocks)]
 
 
-def _wan_project(raw, reference):
-    return raw
+def _wan_prepare(diffusion_model, raw, options):
+    """Как ``WanModel.forward_orig``: ``context = self.text_embedding(context)``, и всё."""
+    embedding = getattr(diffusion_model, "text_embedding", None)
+
+    def prepare(reference):
+        context = raw.to(reference.device, reference.dtype)
+        # У некоторых сборок проекции нет — тогда кондиционирование уже в нужном виде.
+        return embedding(context) if callable(embedding) else context
+
+    return prepare
 
 
 # ──────────────────────────────── LTX ────────────────────────────────────────
@@ -232,6 +246,8 @@ def _ltx_forward(module, x, context, nag, params, transformer_options, **kwargs)
 
     out = original(module, x, context=context,
                    transformer_options=transformer_options, **kwargs)
+    if not rows:
+        return out                      # проход одного негатива: направлять нечего
     negative = original(module, x[rows], context=nag.get(context[rows]),
                         transformer_options=transformer_options, **kwargs)
     out = out.clone()
@@ -249,18 +265,47 @@ def _ltx_blocks(diffusion_model):
             for index, block in enumerate(blocks)]
 
 
-def _ltx_project(raw, reference):
-    """Повторяет ``LTXBaseModel._prepare_context``: проекция и сборка в 3D."""
-    return raw.view(raw.shape[0], -1, reference.shape[-1])
+def _ltx_prepare(diffusion_model, raw, options):
+    """Негатив тем же путём, каким ядро ведёт позитив к ``attn2``.
+
+    LTX-Video 0.9 — ``LTXBaseModel._prepare_context``: ``caption_projection``
+    и сборка в 3D.
+
+    ⚠️ LTX-2 (``LTXAVModel``, в том числе 2.3 и 2.5) на этом не кончается. Текст
+    от энкодера приходит «необработанным» (``unprocessed_ltxav_embeds``), и до
+    модели ядро прогоняет его через ``preprocess_text_embeds`` — отдельный
+    трансформер-коннектор (``model_base.LTXAV.extra_conds``). Внутри модели
+    ``_prepare_context`` отрезает видеочасть и только её проецирует. Прежде
+    здесь была одна проекция: на 2.0 формы случайно сходились, и NAG отталкивал
+    от бессмысленного вектора; на 2.3 видео- и аудиопризнаки перемешивались.
+    Каждое действие ниже — строка ядра, и порядок тот же.
+    """
+    unprocessed = bool((options or {}).get("unprocessed_ltxav_embeds", False))
+
+    def prepare(reference):
+        context = raw.to(reference.device, reference.dtype)
+        before = getattr(diffusion_model, "caption_proj_before_connector", False)
+        preprocess = getattr(diffusion_model, "preprocess_text_embeds", None)
+        if callable(preprocess):
+            context = preprocess(context, unprocessed=unprocessed)
+            # LTXAVModel._prepare_context: видео — первые v_context_dim признаков.
+            video_dim = diffusion_model.caption_channels if before is False else reference.shape[-1]
+            context = context[..., :video_dim]
+        if before is False:
+            projection = getattr(diffusion_model, "caption_projection", None)
+            if callable(projection):
+                context = projection(context)
+        # LTXBaseModel._prepare_context: context.view(batch, -1, dim).
+        return context.reshape(context.shape[0], -1, reference.shape[-1])
+
+    return prepare
 
 
 # ─────────────────────────────── реестр ──────────────────────────────────────
 
 ADAPTERS = {
-    "ltx": {"blocks": _ltx_blocks, "forward": _ltx_forward, "project": _ltx_project,
-            "caption": "caption_projection"},
-    "wan": {"blocks": _wan_blocks, "forward": _wan_forward, "project": _wan_project,
-            "caption": "text_embedding"},
+    "ltx": {"blocks": _ltx_blocks, "forward": _ltx_forward, "prepare": _ltx_prepare},
+    "wan": {"blocks": _wan_blocks, "forward": _wan_forward, "prepare": _wan_prepare},
 }
 MODEL_TYPES = [AUTO, *ADAPTERS]
 
@@ -418,15 +463,9 @@ class TS_NAG(IO.ComfyNode):
                 "cross-attention. Leave model_type on 'auto' unless you know otherwise."
             )
 
-        # Текстовая проекция модели (у Wan это text_embedding, у LTX —
-        # caption_projection). Её у некоторых сборок нет вовсе — тогда негативное
-        # кондиционирование уже в нужном виде.
-        caption = getattr(diffusion_model, adapter["caption"], None)
-        raw = negative[0][0]
-        if callable(caption):
-            raw = caption(_to_module(raw, caption))
-
-        nag = _NagContext(raw, adapter["project"])
+        # Негатив готовится лениво, на первом вызове внимания — см. _NagContext.
+        raw, options = negative[0][0], negative[0][1]
+        nag = _NagContext(adapter["prepare"](diffusion_model, raw, options))
         params = {"scale": float(nag_scale), "alpha": float(nag_alpha), "tau": float(nag_tau)}
         patch = _Patch(adapter["forward"], nag, params)
 

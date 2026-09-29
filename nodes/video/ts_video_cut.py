@@ -29,6 +29,13 @@ LOG_PREFIX = "[TS Video Cut]"
 #: what ComfyUI's own audio nodes default to, so the silence mixes with anything.
 _SILENT_RATE = 44100
 
+#: Границы виджетов — ОБЯЗАНЫ совпадать с min/max в define_schema: ядро не
+#: проверяет min/max у входов, названных в сигнатуре validate_inputs, поэтому
+#: validate_inputs повторяет их сам (сверяет tests/test_video_cut.py).
+_FPS_MIN = 0.01
+_FPS_MAX = 1000.0
+_CUT_MAX = 1000000
+
 
 class TS_VideoCut(IO.ComfyNode):
     """Cut N frames off the start and M off the end, audio included."""
@@ -90,13 +97,31 @@ class TS_VideoCut(IO.ComfyNode):
         )
 
     @classmethod
-    def validate_inputs(cls, fps=24.0, start_cut=0, end_cut=0, **_kwargs) -> bool | str:
+    def validate_inputs(cls, fps=24.0, start_cut=0, end_cut=0) -> bool | str:
         # ⚠️ Число кадров здесь неизвестно (картинки приходят только в execute),
         # поэтому проверяем то, что можно: сами по себе бессмысленные значения.
-        if float(fps) <= 0:
-            return "fps must be greater than zero."
-        if int(start_cut) < 0 or int(end_cut) < 0:
-            return "start_cut and end_cut cannot be negative."
+        #
+        # ⚠️ Только ЯВНЫЕ параметры, никакого `**kwargs`. Ядро (execution.py,
+        # validate_has_kwargs) при `**kwargs` в сигнатуре отключает собственную
+        # проверку min/max и списков у ВСЕХ входов ноды, а не только у
+        # перечисленных. Входы, названные здесь, ядро тоже не проверяет — поэтому
+        # границы схемы для них повторены ниже.
+        #
+        # Вход, пришедший проводом (fps из TS Video Info), на этапе проверки ещё
+        # не вычислен и приходит как None — его проверит execute.
+        if fps is not None:
+            fps_value = float(fps)
+            if fps_value <= 0:
+                return "fps must be greater than zero."
+            if fps_value < _FPS_MIN or fps_value > _FPS_MAX:
+                return f"fps must be between {_FPS_MIN} and {_FPS_MAX}; got {fps_value}."
+        for name, value in (("start_cut", start_cut), ("end_cut", end_cut)):
+            if value is None:
+                continue
+            if int(value) < 0:
+                return "start_cut and end_cut cannot be negative."
+            if int(value) > _CUT_MAX:
+                return f"{name} must be at most {_CUT_MAX}; got {int(value)}."
         return True
 
     @classmethod

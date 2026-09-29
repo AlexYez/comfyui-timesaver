@@ -722,7 +722,15 @@ export function setupVideoLoader(node) {
             // Кнопка едет в оверлей вместе с панелью и встаёт ровно под общим
             // крестиком. Прячет её сам оверлей — одинаково для всех редакторов.
             trigger: fullscreenButton,
-            onKey: (event, { typing = false } = {}) => { if (!typing) dispatchKey(event); },
+            // ⚠️ Оверлей слушает window в фазе перехвата — РАНЬШЕ нашего
+            // постоянного слушателя на document. Обработанную клавишу здесь же
+            // и гасим, иначе document выполнит её второй раз: Space и L/M
+            // переключались туда-обратно, стрелки шагали на два кадра.
+            onKey: (event, { typing = false } = {}) => {
+                if (typing || !dispatchKey(event)) return;
+                event.preventDefault();
+                event.stopPropagation();
+            },
             onOpen: () => {
                 editor.timeline.style.height = "200px";
                 editor.scheduleDraw(editor.NEED_ALL);

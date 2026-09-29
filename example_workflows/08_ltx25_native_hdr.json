@@ -200,7 +200,7 @@
       "type": "TS_LTXHDRLoadEXR",
       "pos": [
         40,
-        400
+        470
       ],
       "size": [
         270,
@@ -328,7 +328,7 @@
       "type": "TS_LTXHDRLoadEXR",
       "pos": [
         40,
-        700
+        770
       ],
       "size": [
         270,
@@ -1084,7 +1084,7 @@
         "Node name for S&R": "TS_LTXHDRVAE"
       },
       "widgets_values": [
-        "acestep\\ace_1.5_vae.safetensors",
+        "ltx-2.5-video-vae-bf16.safetensors",
         "float32"
       ]
     },
@@ -1686,7 +1686,7 @@
       "type": "TS_VideoSaver",
       "pos": [
         1900,
-        800
+        880
       ],
       "size": [
         420,
@@ -1930,7 +1930,7 @@
       "type": "Note",
       "pos": [
         40,
-        250
+        300
       ],
       "size": [
         440,
@@ -2025,8 +2025,8 @@
       "id": 16,
       "type": "Note",
       "pos": [
-        1900,
-        560
+        2360,
+        320
       ],
       "size": [
         400,

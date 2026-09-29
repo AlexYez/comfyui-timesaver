@@ -20,6 +20,10 @@
  * забота `ts-angle-select.js`.
  */
 
+import { api } from "/scripts/api.js";
+
+// Путь маршрута. Полный адрес строит api.apiURL — иначе за обратным прокси в
+// подпапке динамический import шёл бы в корень сайта и получал 404.
 const THREE_URL = "/ts_angle_select/three.module.js";
 
 /** Высоты камеры в градусах — те же четыре, что понимает бэкенд. */
@@ -43,7 +47,7 @@ let threePromise = null;
 /** Один запрос на страницу, сколько бы нод ни стояло в графе. */
 export function loadThree() {
     if (!threePromise) {
-        threePromise = import(/* webpackIgnore: true */ THREE_URL).catch((error) => {
+        threePromise = import(/* webpackIgnore: true */ api.apiURL(THREE_URL)).catch((error) => {
             threePromise = null;
             throw error;
         });
@@ -308,12 +312,21 @@ export function createAngleScene({ container, THREE, colors, state }) {
             render();
         },
         dispose() {
-            renderer.dispose();
             scene.traverse((object) => {
                 object.geometry?.dispose?.();
                 if (Array.isArray(object.material)) object.material.forEach((m) => m.dispose?.());
                 else object.material?.dispose?.();
             });
+            renderer.dispose();
+            // ⚠️ dispose() освобождает ресурсы, но НЕ сам контекст WebGL: его
+            // держит холст, пока сборщик мусора не доберётся. Удалили и
+            // поставили ноду десяток раз — и браузер пишет «Too many active
+            // WebGL contexts», а самые старые контексты теряют и живые сцены.
+            try {
+                renderer.forceContextLoss?.();
+            } catch (error) {
+                console.warn("[TS Angle Select] WebGL context release failed", error);
+            }
             element.remove();
         },
     };

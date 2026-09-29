@@ -351,12 +351,20 @@ class TS_VideoSaver(IO.ComfyNode):
                          "format": "video/mp4",
                          "width": info["width"], "height": info["height"]}
             except Exception as error:      # noqa: BLE001 - превью не стоит прогона
+                # ⚠️ Упасть могла не копия, а САМА запись EXR: её генератор
+                # крутит запись прокси. Такую ошибку глотать нельзя — иначе
+                # нода отчитывалась бы о сохранении нуля кадров.
+                if "failed" in result:
+                    raise
                 logger.warning("%s could not build a preview: %s", LOG_PREFIX, error)
         if proxy is None:
             # Превью не нужно или не получилось — но кадры всё равно обязаны
             # быть записаны, а генератор без потребителя не выполнится.
             for _ in preview_frames:
                 pass
+        failure = result.get("failed")
+        if failure is not None:
+            raise failure
 
         payload = {
             "filename": (proxy or {}).get("filename", ""),

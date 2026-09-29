@@ -173,7 +173,7 @@ class TS_LoraLoader(IO.ComfyNode):
             # Разворачивается в цепочку родных загрузчиков — см. модуль сверху.
             enable_expand=True,
             inputs=[
-                IO.Model.Input("model"),
+                IO.Model.Input("model", tooltip="The model the LoRAs are applied to."),
                 IO.String.Input(
                     "loras_json",
                     default="[]",

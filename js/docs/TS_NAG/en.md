@@ -20,12 +20,14 @@ The clamp by `tau` is what the "normalized" is for: an extrapolation with a scal
 | model | |
 |---|---|
 | **Wan** | `blocks[i].cross_attn`, T2V and I2V alike — supported |
-| **LTX** | `transformer_blocks[i].attn2` — supported |
+| **LTX** | `transformer_blocks[i].attn2` — supported, LTX-Video 0.9 and LTX-2 (2.0 / 2.3 / 2.5) |
 | **Krea 2**, **MiniMax H3** | text and picture are joined into one sequence before the stack — **refused, with the reason** |
 
 On a single-stream model the negative variant would have to be carried through the whole stack, which is a second full forward — exactly what CFG does. The node says so and points you at `cfg` instead of pretending it saved you something.
 
-The family is recognised **by the structure of the blocks**, not by a file name: `model_type` = `auto`. Which rows of the batch are positive is asked of the core (`cond_or_uncond`) rather than guessed from the shape — otherwise a batch of two pictures at `cfg = 1` would be indistinguishable from a positive/negative pair.
+The family is recognised **by the structure of the blocks**, not by a file name: `model_type` = `auto`. Which rows of the batch are positive is asked of the core (`cond_or_uncond`) rather than guessed from the shape — otherwise a batch of two pictures at `cfg = 1` would be indistinguishable from a positive/negative pair. When the positive and the negative do not fit into memory together, the core runs them as separate passes; the negative-only pass is left alone.
+
+**The negative takes the same road as the positive.** It is prepared on the first attention call, in the dtype and on the device the model is actually computing in — so fp8 weights are no obstacle. On LTX-2 the text first goes through the model's text connector (`preprocess_text_embeds`, a small transformer of its own), then its video part is projected — exactly as the core does it for the positive; checked against the core's own `LTXAVModel`, with zero difference.
 
 > The idea and the defaults come from the `WanVideoNAG` node in [kijai/ComfyUI-KJNodes](https://github.com/kijai/ComfyUI-KJNodes). For Wan the maths is reproduced one to one, including where the two branches meet, so settings shared for it transfer as they are. For LTX the original `forward` is called twice and the combination happens after the output projection: duplicating LTX's internals (RoPE, guide masks, per-head gating) would mean breaking on every update to them.
 

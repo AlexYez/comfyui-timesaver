@@ -466,7 +466,7 @@
         "",
         true,
         "transcribed_audio",
-        "D:\\AiApps\\ComfyUI\\comfyui\\ComfyUI\\output"
+        ""
       ],
       "widgets_values_named": {
         "model": "large-v3",
@@ -484,7 +484,7 @@
         "initial_prompt": "",
         "save_srt_file": true,
         "output_filename_prefix": "transcribed_audio",
-        "output_dir": "D:\\AiApps\\ComfyUI\\comfyui\\ComfyUI\\output"
+        "output_dir": ""
       }
     },
     {

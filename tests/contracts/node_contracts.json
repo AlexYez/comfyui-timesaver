@@ -4,6 +4,19 @@
     "category": "TS/Files",
     "class_name": "TS_DownloadFilesNode",
     "display_name": "TS Files Downloader",
+    "effective_widget_order": [
+      "file_list",
+      "skip_existing",
+      "verify_size",
+      "chunk_size_kb",
+      "hf_token",
+      "hf_domain",
+      "proxy_url",
+      "modelscope_token",
+      "unzip_after_download",
+      "enable",
+      "integrity_mode"
+    ],
     "inputs": [
       {
         "index": 0,
@@ -118,6 +131,9 @@
     "category": "TS/Files",
     "class_name": "TS_EDLToYouTubeChaptersNode",
     "display_name": "TS YouTube Chapters",
+    "effective_widget_order": [
+      "edl_file_path"
+    ],
     "inputs": [
       {
         "index": 0,
@@ -146,6 +162,13 @@
     "category": "TS/Image/Tiles",
     "class_name": "TSAutoTileSize",
     "display_name": "TS Auto Tile Size",
+    "effective_widget_order": [
+      "tile_count",
+      "padding",
+      "divide_by",
+      "width",
+      "height"
+    ],
     "inputs": [
       {
         "index": 0,
@@ -228,6 +251,17 @@
     "category": "TS/Image/Tiles",
     "class_name": "TSCropToMask",
     "display_name": "TS Crop To Mask",
+    "effective_widget_order": [
+      "padding",
+      "divide_by",
+      "max_resolution",
+      "fixed_mask_frame_index",
+      "interpolation_window_size",
+      "force_gpu",
+      "fixed_crop_size",
+      "fixed_width",
+      "fixed_height"
+    ],
     "inputs": [
       {
         "index": 0,
@@ -372,6 +406,11 @@
     "category": "TS/Image/Tiles",
     "class_name": "TSRestoreFromCrop",
     "display_name": "TS Restore From Crop",
+    "effective_widget_order": [
+      "blur",
+      "blur_type",
+      "force_gpu"
+    ],
     "inputs": [
       {
         "index": 0,
@@ -433,6 +472,19 @@
     "category": "TS/Image/Retouch",
     "class_name": "TSSmartInpaint",
     "display_name": "TS Smart Inpaint",
+    "effective_widget_order": [
+      "replace",
+      "denoise",
+      "megapixels",
+      "context_pct",
+      "feather_pct",
+      "resize_method",
+      "seed",
+      "steps",
+      "cfg",
+      "sampler_name",
+      "scheduler"
+    ],
     "inputs": [
       {
         "index": 0,
@@ -595,6 +647,24 @@
     "category": "TS/Audio",
     "class_name": "TSWhisper",
     "display_name": "TS Whisper",
+    "effective_widget_order": [
+      "model",
+      "task",
+      "source_language",
+      "timestamps",
+      "precision",
+      "beam_size",
+      "temperature",
+      "temperature_fallbacks",
+      "condition_on_previous_text",
+      "compression_ratio_threshold",
+      "logprob_threshold",
+      "no_speech_threshold",
+      "initial_prompt",
+      "save_srt_file",
+      "output_filename_prefix",
+      "output_dir"
+    ],
     "inputs": [
       {
         "index": 0,
@@ -774,6 +844,12 @@
     "category": "TS/Text",
     "class_name": "TS_AngleSelect",
     "display_name": "TS Angle Select",
+    "effective_widget_order": [
+      "preset",
+      "azimuth",
+      "height",
+      "framing"
+    ],
     "inputs": [
       {
         "index": 0,
@@ -825,6 +901,9 @@
     "category": "TS/Video",
     "class_name": "TS_Animation_Preview",
     "display_name": "TS Animation Preview",
+    "effective_widget_order": [
+      "fps"
+    ],
     "inputs": [
       {
         "index": 0,
@@ -858,6 +937,12 @@
     "category": "TS/Audio",
     "class_name": "TS_AudioLoader",
     "display_name": "TS Audio Loader",
+    "effective_widget_order": [
+      "mode",
+      "source_path",
+      "crop_start_seconds",
+      "crop_end_seconds"
+    ],
     "inputs": [
       {
         "index": 0,
@@ -927,6 +1012,11 @@
     "category": "TS/Audio",
     "class_name": "TS_AudioPreview",
     "display_name": "TS Audio Preview",
+    "effective_widget_order": [
+      "crop_start_seconds",
+      "crop_end_seconds",
+      "preview_state_json"
+    ],
     "inputs": [
       {
         "index": 0,
@@ -976,6 +1066,24 @@
     "category": "TS/Audio",
     "class_name": "TS_AudioVisualizer",
     "display_name": "TS Audio Visualizer",
+    "effective_widget_order": [
+      "width",
+      "height",
+      "style",
+      "bar_width",
+      "bar_gap",
+      "color_preset",
+      "gradient_mode",
+      "background",
+      "bg_pattern",
+      "bg_intensity",
+      "glow",
+      "sensitivity",
+      "smoothing",
+      "height_scale",
+      "normalize",
+      "rounded_caps"
+    ],
     "inputs": [
       {
         "index": 0,
@@ -1161,6 +1269,20 @@
     "category": "TS/Image/Cutout",
     "class_name": "TS_BGRM_BiRefNet",
     "display_name": "TS Remove Background",
+    "effective_widget_order": [
+      "enable",
+      "model",
+      "use_custom_resolution",
+      "process_resolution",
+      "mask_blur",
+      "mask_offset",
+      "invert_output",
+      "background",
+      "background_color",
+      "precision",
+      "temporal_smooth",
+      "ema_alpha"
+    ],
     "inputs": [
       {
         "index": 0,
@@ -1315,6 +1437,9 @@
     "category": "TS/Image/Batch",
     "class_name": "TS_BatchLoadImage",
     "display_name": "TS Batch Load Image",
+    "effective_widget_order": [
+      "path"
+    ],
     "inputs": [
       {
         "index": 0,
@@ -1354,6 +1479,9 @@
     "category": "TS/Text",
     "class_name": "TS_BatchPromptLoader",
     "display_name": "TS Batch Prompt Loader",
+    "effective_widget_order": [
+      "text"
+    ],
     "inputs": [
       {
         "index": 0,
@@ -1389,6 +1517,15 @@
     "category": "TS/Utils",
     "class_name": "TS_BatchSource",
     "display_name": "TS Batch Source",
+    "effective_widget_order": [
+      "mode",
+      "path",
+      "count",
+      "start_at",
+      "limit",
+      "seed",
+      "one_per_run"
+    ],
     "inputs": [
       {
         "index": 0,
@@ -1494,6 +1631,14 @@
     "category": "TS/Files",
     "class_name": "TS_BatchWrite",
     "display_name": "TS Batch Write",
+    "effective_widget_order": [
+      "index",
+      "total",
+      "mode",
+      "output_path",
+      "name",
+      "prefix_with_name"
+    ],
     "inputs": [
       {
         "force_input": true,
@@ -1583,6 +1728,21 @@
     "category": "TS/Image/Color",
     "class_name": "TS_Color_Match",
     "display_name": "TS Color Match",
+    "effective_widget_order": [
+      "mode",
+      "device",
+      "strength",
+      "enable",
+      "match_mask",
+      "mask_size",
+      "compute_max_side",
+      "mkl_sample_points",
+      "sinkhorn_max_points",
+      "reuse_reference",
+      "temporal_smoothing",
+      "chunk_size",
+      "logging"
+    ],
     "inputs": [
       {
         "index": 0,
@@ -1734,6 +1894,11 @@
     "category": "TS/Utils",
     "class_name": "TS_Compare",
     "display_name": "TS Compare",
+    "effective_widget_order": [
+      "fps",
+      "label_a",
+      "label_b"
+    ],
     "inputs": [
       {
         "index": 0,
@@ -1782,6 +1947,26 @@
     "category": "TS/Video",
     "class_name": "TS_DLSSUpscaler",
     "display_name": "TS DLSS Upscaler",
+    "effective_widget_order": [
+      "upscaling_factor",
+      "dlss_model_preset",
+      "nr_style",
+      "nr_intensity",
+      "local_tone_strength",
+      "local_structure_strength",
+      "skin_structure_strength",
+      "automatic_mask",
+      "temporal",
+      "source_curve",
+      "dither",
+      "download_if_missing",
+      "nr_passes",
+      "nr_color_strength",
+      "tone_preservation",
+      "face_skin_protection",
+      "grain_preservation",
+      "shimmer_suppression"
+    ],
     "inputs": [
       {
         "index": 0,
@@ -1976,6 +2161,23 @@
     "category": "TS/Image/Color",
     "class_name": "TS_Film_Emulation",
     "display_name": "TS Film Emulation",
+    "effective_widget_order": [
+      "enable",
+      "film_preset",
+      "lut_choice",
+      "lut_strength",
+      "gamma_correction",
+      "film_strength",
+      "contrast_curve",
+      "warmth",
+      "grain_intensity",
+      "grain_size",
+      "fade",
+      "shadow_saturation",
+      "highlight_saturation",
+      "grain_speed",
+      "grain_seed"
+    ],
     "inputs": [
       {
         "index": 0,
@@ -2148,6 +2350,9 @@
     "category": "TS/Utils",
     "class_name": "TS_FloatSlider",
     "display_name": "TS Float Slider",
+    "effective_widget_order": [
+      "value"
+    ],
     "inputs": [
       {
         "index": 0,
@@ -2178,6 +2383,18 @@
     "category": "TS/Video",
     "class_name": "TS_Frame_Interpolation",
     "display_name": "TS Frame Interpolation",
+    "effective_widget_order": [
+      "model_name",
+      "mode",
+      "slowdown_factor",
+      "source_fps",
+      "target_fps",
+      "max_timestep_batch",
+      "tile_size",
+      "tile_overlap",
+      "target_frames",
+      "fill"
+    ],
     "inputs": [
       {
         "index": 0,
@@ -2359,6 +2576,9 @@
     "category": "TS/Image/Batch",
     "class_name": "TS_GetImageSizeSide",
     "display_name": "TS Get Image Size",
+    "effective_widget_order": [
+      "large_side"
+    ],
     "inputs": [
       {
         "index": 0,
@@ -2430,6 +2650,13 @@
     "category": "TS/Ideogram",
     "class_name": "TS_IdeogramDesigner",
     "display_name": "TS Ideogram Designer",
+    "effective_widget_order": [
+      "design_json",
+      "mode",
+      "auto_prompt",
+      "auto_caption",
+      "auto_seed"
+    ],
     "inputs": [
       {
         "index": 0,
@@ -2512,6 +2739,10 @@
     "category": "TS/Image/Batch",
     "class_name": "TS_ImageBatchCut",
     "display_name": "TS Image Batch Cut",
+    "effective_widget_order": [
+      "first_cut",
+      "last_cut"
+    ],
     "inputs": [
       {
         "index": 0,
@@ -2579,6 +2810,12 @@
     "category": "TS/Image/Depth",
     "class_name": "TS_ImageDepth",
     "display_name": "TS Image Depth",
+    "effective_widget_order": [
+      "model_filename",
+      "max_res",
+      "precision",
+      "colormap"
+    ],
     "inputs": [
       {
         "index": 0,
@@ -2660,6 +2897,9 @@
     "category": "TS/Image/Batch",
     "class_name": "TS_ImagePromptInjector",
     "display_name": "TS Image Prompt Injector",
+    "effective_widget_order": [
+      "prompt"
+    ],
     "inputs": [
       {
         "index": 0,
@@ -2693,6 +2933,18 @@
     "category": "TS/Image/Size",
     "class_name": "TS_ImageResize",
     "display_name": "TS Image Resize",
+    "effective_widget_order": [
+      "target_width",
+      "target_height",
+      "smaller_side",
+      "larger_side",
+      "scale_factor",
+      "keep_proportion",
+      "upscale_method",
+      "divisible_by",
+      "megapixels",
+      "dont_enlarge"
+    ],
     "inputs": [
       {
         "index": 0,
@@ -2869,6 +3121,12 @@
     "category": "TS/Image/Tiles",
     "class_name": "TS_ImageTileSplitter",
     "display_name": "TS Image Tile Splitter",
+    "effective_widget_order": [
+      "tile_width",
+      "tile_height",
+      "overlap",
+      "feather"
+    ],
     "inputs": [
       {
         "index": 0,
@@ -2943,6 +3201,9 @@
     "category": "TS/Utils",
     "class_name": "TS_Int_Slider",
     "display_name": "TS Int Slider",
+    "effective_widget_order": [
+      "value"
+    ],
     "inputs": [
       {
         "index": 0,
@@ -2973,6 +3234,9 @@
     "category": "TS/Utils",
     "class_name": "TS_Krea2TextFusion",
     "display_name": "TS Krea 2 Text Fusion",
+    "effective_widget_order": [
+      "strength"
+    ],
     "inputs": [
       {
         "index": 0,
@@ -3008,6 +3272,9 @@
     "category": null,
     "class_name": "TS_LTXFinalLatentSelector",
     "display_name": "TS LTX Final Latent Selector",
+    "effective_widget_order": [
+      "use_stage2"
+    ],
     "inputs": [
       {
         "index": 0,
@@ -3047,6 +3314,13 @@
     "category": null,
     "class_name": "TS_LTXHDRDecode",
     "display_name": "TS LTX HDR Decode",
+    "effective_widget_order": [
+      "tiled",
+      "tile_size",
+      "overlap",
+      "temporal_size",
+      "temporal_overlap"
+    ],
     "inputs": [
       {
         "index": 0,
@@ -3156,6 +3430,14 @@
     "category": null,
     "class_name": "TS_LTXHDRGuide",
     "display_name": "TS LTX HDR Guide",
+    "effective_widget_order": [
+      "stage1_width",
+      "stage1_height",
+      "stage2_width",
+      "stage2_height",
+      "fit_mode",
+      "interpolation"
+    ],
     "inputs": [
       {
         "index": 0,
@@ -3272,6 +3554,11 @@
     "category": null,
     "class_name": "TS_LTXHDRLoadEXR",
     "display_name": "TS LTX Load HDR EXR",
+    "effective_widget_order": [
+      "exr_file",
+      "path_override",
+      "backend"
+    ],
     "inputs": [
       {
         "index": 0,
@@ -3325,6 +3612,16 @@
     "category": null,
     "class_name": "TS_LTXHDRSettings",
     "display_name": "TS LTX HDR Settings",
+    "effective_widget_order": [
+      "enabled",
+      "input_color_space",
+      "output_color_space",
+      "strict_validation",
+      "preview_exposure_ev",
+      "preview_tonemap",
+      "preview_dtype",
+      "hdr_mode"
+    ],
     "inputs": [
       {
         "index": 0,
@@ -3415,6 +3712,9 @@
     "category": null,
     "class_name": "TS_LTXHDRStats",
     "display_name": "TS LTX HDR Stats",
+    "effective_widget_order": [
+      "raise_on_problem"
+    ],
     "inputs": [
       {
         "index": 0,
@@ -3465,6 +3765,10 @@
     "category": null,
     "class_name": "TS_LTXHDRVAE",
     "display_name": "TS LTX HDR VAE",
+    "effective_widget_order": [
+      "vae_name",
+      "precision"
+    ],
     "inputs": [
       {
         "index": 0,
@@ -3503,6 +3807,10 @@
     "category": "TS/Video",
     "class_name": "TS_LTX_FirstLastFrame",
     "display_name": "TS LTX First/Last Frame",
+    "effective_widget_order": [
+      "first_strength",
+      "last_strength"
+    ],
     "inputs": [
       {
         "index": 0,
@@ -3588,6 +3896,15 @@
     "category": "TS/Image/Retouch",
     "class_name": "TS_LamaCleanup",
     "display_name": "TS Lama Cleanup",
+    "effective_widget_order": [
+      "source_path",
+      "brush_size",
+      "max_resolution",
+      "mask_padding",
+      "feather",
+      "session_id",
+      "working_path"
+    ],
     "inputs": [
       {
         "index": 0,
@@ -3682,6 +3999,19 @@
     "category": "TS/Image/Retouch",
     "class_name": "TS_LangevinInpaint",
     "display_name": "TS Langevin Inpaint",
+    "effective_widget_order": [
+      "seed",
+      "steps",
+      "cfg",
+      "sampler_name",
+      "scheduler",
+      "denoise",
+      "think_steps",
+      "guidance",
+      "step_size",
+      "beta",
+      "friction"
+    ],
     "inputs": [
       {
         "index": 0,
@@ -3831,6 +4161,17 @@
     "category": "TS/Video",
     "class_name": "TS_LatentUpscale",
     "display_name": "TS Latent Upscale",
+    "effective_widget_order": [
+      "upscale_model",
+      "width",
+      "height",
+      "chunk_length",
+      "temporal_overlap",
+      "anchor_strength",
+      "precision",
+      "device",
+      "cfg"
+    ],
     "inputs": [
       {
         "index": 0,
@@ -3978,6 +4319,9 @@
     "category": "TS/Loaders",
     "class_name": "TS_LockedCheckpoint",
     "display_name": "TS Load Checkpoint",
+    "effective_widget_order": [
+      "ckpt_name"
+    ],
     "inputs": [
       {
         "index": 0,
@@ -4012,6 +4356,10 @@
     "category": "TS/Loaders",
     "class_name": "TS_LockedDiffusionModel",
     "display_name": "TS Load Diffusion Model",
+    "effective_widget_order": [
+      "unet_name",
+      "weight_dtype"
+    ],
     "inputs": [
       {
         "index": 0,
@@ -4045,6 +4393,10 @@
     "category": "TS/Loaders",
     "class_name": "TS_LockedLoraModelOnly",
     "display_name": "TS Load LoRA, model only",
+    "effective_widget_order": [
+      "lora_name",
+      "strength_model"
+    ],
     "inputs": [
       {
         "index": 0,
@@ -4085,6 +4437,9 @@
     "category": "TS/utils",
     "class_name": "TS_LoraLoader",
     "display_name": "TS LoRA Loader",
+    "effective_widget_order": [
+      "loras_json"
+    ],
     "inputs": [
       {
         "index": 0,
@@ -4113,11 +4468,60 @@
       }
     }
   },
+  "TS_LoraUnmerged": {
+    "api": "v3",
+    "category": "TS/Utils",
+    "class_name": "TS_LoraUnmerged",
+    "display_name": "TS LoRA Unmerged",
+    "effective_widget_order": [
+      "lora_name",
+      "strength"
+    ],
+    "inputs": [
+      {
+        "index": 0,
+        "name": "model",
+        "type": "Model"
+      },
+      {
+        "index": 1,
+        "name": "lora_name",
+        "type": "Combo"
+      },
+      {
+        "index": 2,
+        "name": "strength",
+        "type": "Float"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "model",
+        "index": 0,
+        "name": "model",
+        "type": "Model"
+      }
+    ],
+    "python_file": "nodes/utils/ts_lora_unmerged.py",
+    "widgets": {
+      "strength": {
+        "default": 1.0,
+        "max": 4.0,
+        "min": -4.0,
+        "step": 0.05
+      }
+    }
+  },
   "TS_Math_Int": {
     "api": "v3",
     "category": "TS/Utils",
     "class_name": "TS_Math_Int",
     "display_name": "TS Math Int",
+    "effective_widget_order": [
+      "a",
+      "b",
+      "operation"
+    ],
     "inputs": [
       {
         "index": 0,
@@ -4164,6 +4568,22 @@
     "category": "TS/Image/Cutout",
     "class_name": "TS_Matting_ViTMatte",
     "display_name": "TS Matting (ViTMatte)",
+    "effective_widget_order": [
+      "model",
+      "trimap_erode_px",
+      "trimap_dilate_px",
+      "max_resolution",
+      "auto_crop_by_mask",
+      "crop_padding_pct",
+      "precision",
+      "temporal_smooth",
+      "ema_alpha",
+      "mask_blur",
+      "mask_offset",
+      "invert_output",
+      "background",
+      "background_color"
+    ],
     "inputs": [
       {
         "index": 0,
@@ -4349,6 +4769,12 @@
     "category": "TS/Conditioning",
     "class_name": "TS_MultiReference",
     "display_name": "TS Multi Reference",
+    "effective_widget_order": [
+      "max_megapixels",
+      "divide_by",
+      "block_empty_slots",
+      "mask_orientation"
+    ],
     "inputs": [
       {
         "index": 0,
@@ -4473,6 +4899,14 @@
     "category": "TS/Audio",
     "class_name": "TS_MusicStems",
     "display_name": "TS Music Stems",
+    "effective_widget_order": [
+      "model_name",
+      "device",
+      "shifts",
+      "overlap",
+      "jobs",
+      "precision"
+    ],
     "inputs": [
       {
         "index": 0,
@@ -4585,6 +5019,12 @@
     "category": "TS/Utils",
     "class_name": "TS_NAG",
     "display_name": "TS NAG",
+    "effective_widget_order": [
+      "nag_scale",
+      "nag_alpha",
+      "nag_tau",
+      "model_type"
+    ],
     "inputs": [
       {
         "index": 0,
@@ -4656,6 +5096,10 @@
     "category": "TS/Text",
     "class_name": "TS_PromptBuilder",
     "display_name": "TS Prompt Builder",
+    "effective_widget_order": [
+      "seed",
+      "config_json"
+    ],
     "inputs": [
       {
         "index": 0,
@@ -4693,6 +5137,10 @@
     "category": "TS/Text",
     "class_name": "TS_PromptLibrary",
     "display_name": "TS Prompt Library",
+    "effective_widget_order": [
+      "preset",
+      "fields"
+    ],
     "inputs": [
       {
         "index": 0,
@@ -4727,6 +5175,22 @@
     "category": "TS/LLM",
     "class_name": "TS_Qwen3_VL_V3",
     "display_name": "TS Qwen 3",
+    "effective_widget_order": [
+      "model_name",
+      "custom_model_id",
+      "hf_token",
+      "system_preset",
+      "prompt",
+      "seed",
+      "max_new_tokens",
+      "precision",
+      "attention_mode",
+      "offline_mode",
+      "unload_after_generation",
+      "enable",
+      "max_image_size",
+      "video_max_frames"
+    ],
     "inputs": [
       {
         "index": 0,
@@ -4895,6 +5359,16 @@
     "category": "TS/LLM",
     "class_name": "TS_RTPromptEnhancer",
     "display_name": "TS RT Prompt Enhancer",
+    "effective_widget_order": [
+      "model",
+      "system_preset",
+      "prompt",
+      "seed",
+      "max_new_tokens",
+      "keep_loaded",
+      "enable",
+      "audio_mode"
+    ],
     "inputs": [
       {
         "index": 0,
@@ -4997,6 +5471,13 @@
     "category": "TS/Video",
     "class_name": "TS_RTX_Upscaler",
     "display_name": "TS RTX Upscaler",
+    "effective_widget_order": [
+      "resize_type",
+      "scale",
+      "width",
+      "height",
+      "quality"
+    ],
     "inputs": [
       {
         "index": 0,
@@ -5067,6 +5548,12 @@
     "category": "TS/Image/Size",
     "class_name": "TS_ResolutionSelector",
     "display_name": "TS Resolution Selector",
+    "effective_widget_order": [
+      "aspect_ratio",
+      "resolution",
+      "custom_ratio",
+      "original_aspect"
+    ],
     "inputs": [
       {
         "index": 0,
@@ -5127,6 +5614,15 @@
     "category": "TS/Image/Cutout",
     "class_name": "TS_SAM_MediaLoader",
     "display_name": "TS SAM Media Loader",
+    "effective_widget_order": [
+      "source_path",
+      "media_type",
+      "coordinates",
+      "neg_coordinates",
+      "sam3_checkpoint",
+      "max_frames",
+      "frame_stride"
+    ],
     "inputs": [
       {
         "index": 0,
@@ -5246,11 +5742,83 @@
       }
     }
   },
+  "TS_ShiftedSigmas": {
+    "api": "v3",
+    "category": "TS/Utils",
+    "class_name": "TS_ShiftedSigmas",
+    "display_name": "TS Shifted Sigmas",
+    "effective_widget_order": [
+      "nodes",
+      "base_shift",
+      "max_shift"
+    ],
+    "inputs": [
+      {
+        "index": 0,
+        "name": "latent",
+        "type": "Latent"
+      },
+      {
+        "index": 1,
+        "name": "nodes",
+        "type": "String"
+      },
+      {
+        "index": 2,
+        "name": "base_shift",
+        "type": "Float"
+      },
+      {
+        "index": 3,
+        "name": "max_shift",
+        "type": "Float"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "sigmas",
+        "index": 0,
+        "name": "sigmas",
+        "type": "Sigmas"
+      }
+    ],
+    "python_file": "nodes/utils/ts_shifted_sigmas.py",
+    "widgets": {
+      "base_shift": {
+        "default": 0.5,
+        "max": 5.0,
+        "min": 0.0,
+        "step": 0.01
+      },
+      "max_shift": {
+        "default": 0.9,
+        "max": 5.0,
+        "min": 0.0,
+        "step": 0.01
+      },
+      "nodes": {
+        "default": "1.0, 0.9375, 0.875, 0.75, 0.5, 0.25"
+      }
+    }
+  },
   "TS_SileroStress": {
     "api": "v3",
     "category": "TS/Text",
     "class_name": "TS_SileroStress",
     "display_name": "TS Silero Stress",
+    "effective_widget_order": [
+      "text",
+      "run_device",
+      "stress_marker",
+      "use_accentor",
+      "use_homosolver",
+      "put_stress",
+      "put_yo",
+      "put_stress_homo",
+      "put_yo_homo",
+      "stress_single_vowel",
+      "words_to_ignore"
+    ],
     "inputs": [
       {
         "index": 0,
@@ -5362,6 +5930,19 @@
     "category": "TS/Audio",
     "class_name": "TS_SileroTTS",
     "display_name": "TS Silero TTS",
+    "effective_widget_order": [
+      "text",
+      "input_format",
+      "speaker",
+      "run_device",
+      "enable_chunking",
+      "max_chunk_chars",
+      "chunk_pause_ms",
+      "put_accent",
+      "put_yo",
+      "put_stress_homo",
+      "put_yo_homo"
+    ],
     "inputs": [
       {
         "index": 0,
@@ -5499,6 +6080,10 @@
     "category": "TS/Utils",
     "class_name": "TS_Smart_Switch",
     "display_name": "TS Smart Switch",
+    "effective_widget_order": [
+      "data_type",
+      "switch"
+    ],
     "inputs": [
       {
         "index": 0,
@@ -5543,6 +6128,11 @@
     "category": "TS/Text",
     "class_name": "TS_SongCreator",
     "display_name": "TS Song Creator",
+    "effective_widget_order": [
+      "lyrics",
+      "style",
+      "preset"
+    ],
     "inputs": [
       {
         "index": 0,
@@ -5591,6 +6181,9 @@
     "category": "TS/Text",
     "class_name": "TS_StylePromptSelector",
     "display_name": "TS Style Prompt Selector",
+    "effective_widget_order": [
+      "style_id"
+    ],
     "inputs": [
       {
         "index": 0,
@@ -5618,6 +6211,15 @@
     "category": "TS/LLM",
     "class_name": "TS_SuperPrompt",
     "display_name": "TS Super Prompt",
+    "effective_widget_order": [
+      "text",
+      "high_quality",
+      "system_preset",
+      "attached_image",
+      "attached_image_2",
+      "bigger_model",
+      "enhance_prompt"
+    ],
     "inputs": [
       {
         "index": 0,
@@ -5707,6 +6309,15 @@
     "category": "TS/LLM",
     "class_name": "TS_SuperPromptRT",
     "display_name": "TS Super Prompt RT",
+    "effective_widget_order": [
+      "text",
+      "high_quality",
+      "system_preset",
+      "attached_image",
+      "attached_image_2",
+      "keep_loaded",
+      "enhance_prompt"
+    ],
     "inputs": [
       {
         "index": 0,
@@ -5802,6 +6413,10 @@
     "category": "TS/Image/Retouch",
     "class_name": "TS_UniversalInpaintSampler",
     "display_name": "TS Universal Inpaint Sampler",
+    "effective_widget_order": [
+      "think_steps",
+      "resample_strength"
+    ],
     "inputs": [
       {
         "index": 0,
@@ -5847,6 +6462,11 @@
     "category": "TS/Video",
     "class_name": "TS_VideoCut",
     "display_name": "TS Video Cut",
+    "effective_widget_order": [
+      "fps",
+      "start_cut",
+      "end_cut"
+    ],
     "inputs": [
       {
         "index": 0,
@@ -5914,6 +6534,24 @@
     "category": "TS/Video",
     "class_name": "TS_VideoDepth",
     "display_name": "TS Video Depth",
+    "effective_widget_order": [
+      "model_filename",
+      "input_size",
+      "max_res",
+      "precision",
+      "colormap",
+      "dithering_strength",
+      "apply_median_blur",
+      "upscale_algorithm",
+      "normalization_mode",
+      "denoise_method",
+      "dither_pattern",
+      "edge_aware_upscale",
+      "flicker_suppression",
+      "flicker_radius",
+      "window_length",
+      "window_overlap"
+    ],
     "inputs": [
       {
         "index": 0,
@@ -6186,6 +6824,19 @@
     "category": "TS/Video",
     "class_name": "TS_VideoLoader",
     "display_name": "TS Video Loader",
+    "effective_widget_order": [
+      "source_path",
+      "start_seconds",
+      "end_seconds",
+      "frame_rate",
+      "max_frames",
+      "longer_side",
+      "shorter_side",
+      "divisible_by",
+      "frame_step",
+      "resize_filter",
+      "when_too_large"
+    ],
     "inputs": [
       {
         "index": 0,
@@ -6342,6 +6993,14 @@
     "category": "TS/Video",
     "class_name": "TS_VideoSaver",
     "display_name": "TS Video Saver",
+    "effective_widget_order": [
+      "fps",
+      "filename_prefix",
+      "format",
+      "encoder",
+      "save_metadata",
+      "preview"
+    ],
     "inputs": [
       {
         "index": 0,

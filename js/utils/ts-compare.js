@@ -158,12 +158,18 @@ function setupCompare(node) {
     // Ручка открытого полноэкранного окна — ровно одно на ноду.
     let fullscreen = null;
 
+    // Какой payload сейчас на экране. По нему rehydrate отличает «ничего не
+    // менялось» от «из workflow приехал результат»: повторный show() с новым
+    // `rand` в адресе перезагрузил бы ролик и мигнул кадром.
+    let shown = null;
+
     const clear = () => {
         slot.textContent = "";
     };
 
     const apply = (payload) => {
         if (!payload) return;
+        shown = payload;
         node.properties ||= {};
         node.properties[PROP_PAYLOAD] = payload;
 
@@ -306,24 +312,55 @@ function setupCompare(node) {
     api.addEventListener("progress", onProgress);
     api.addEventListener("executed", onDone);
 
+    /**
+     * Показать сохранённый результат, НЕ пересобирая виджет (§12.5.12).
+     *
+     * ⚠️ Результат прошлого прогона переживает перезагрузку страницы: файл
+     * лежит в temp, а адрес — в properties ноды. Но setupCompare зовётся из
+     * onNodeCreated, когда properties из workflow ещё НЕ восстановлены, — там
+     * payload пуст, и после F5 или открытия сохранённого графа шторка стояла
+     * пустой, хотя ts_compare_payload лежал в файле. Поэтому то же самое
+     * повторяется позже: в onConfigure (properties уже на месте; сюда же
+     * попадают вставка и дублирование ноды) и в loadedGraphNode.
+     */
+    const rehydrate = () => {
+        const saved = node.properties?.[PROP_PAYLOAD];
+        if (!saved || typeof saved !== "object" || saved === shown) return;
+        apply(saved);
+    };
+
     // `element` наружу НАМЕРЕННО: запросы по всему документу цепляют элементы
     // удалённых нод, и проверки начинают врать (обжигались уже дважды).
-    node.__tsCompare = { apply, setProgress, element: root };
+    node.__tsCompare = { apply, rehydrate, setProgress, element: root };
+
+    const previousConfigure = node.onConfigure;
+    node.onConfigure = function tsCompareConfigure(...args) {
+        const result = previousConfigure?.apply(this, args);
+        try {
+            rehydrate();
+        } catch (error) {
+            console.warn("[TS Compare] could not restore the saved result", error);
+        }
+        return result;
+    };
 
     const previousRemoved = node.onRemoved;
     node.onRemoved = function tsCompareRemoved(...args) {
         api.removeEventListener("progress_state", onProgressState);
         api.removeEventListener("progress", onProgress);
         api.removeEventListener("executed", onDone);
+        // ⚠️ Нода удалена при открытом полном экране — окно не должно её
+        // пережить: иначе в нём остаётся шторка от уже снесённого плеера.
+        // Закрываем ДО teardown, чтобы onClose вернул элемент в свою ноду.
+        fullscreen?.close();
         clip?.teardown();
         stills?.teardown?.();
         return previousRemoved?.apply(this, args);
     };
 
-    // Результат прошлого прогона переживает перезагрузку страницы: файл лежит
-    // в temp, а адрес — в properties ноды.
-    const saved = node.properties?.[PROP_PAYLOAD];
-    if (saved) apply(saved);
+    // Для новой ноды и для случаев, когда properties уже на месте к моменту
+    // создания (например, сборки, где configure идёт раньше).
+    rehydrate();
 }
 
 app.registerExtension({
@@ -354,6 +391,9 @@ app.registerExtension({
     loadedGraphNode(node) {
         if (node?.comfyClass !== NODE_TYPE && node?.type !== NODE_TYPE) return;
         // Виджет не пересоздаём — в Nodes 2.0 это двоит шапку ноды (§12.5.12).
+        // Сохранённый результат досылаем здесь: к этому хуку properties из
+        // workflow уже восстановлены, а при создании ноды их ещё не было.
         if (!node.__tsCompare) setupCompare(node);
+        else node.__tsCompare.rehydrate();
     },
 });

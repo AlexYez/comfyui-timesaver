@@ -330,10 +330,10 @@
         "Node name for S&R": "CheckpointLoaderSimple"
       },
       "widgets_values": [
-        "sam3\\sam3.1_multiplex_fp16.safetensors"
+        "v1-5-pruned-emaonly-fp16.safetensors"
       ],
       "widgets_values_named": {
-        "ckpt_name": "sam3\\sam3.1_multiplex_fp16.safetensors"
+        "ckpt_name": "v1-5-pruned-emaonly-fp16.safetensors"
       }
     },
     {

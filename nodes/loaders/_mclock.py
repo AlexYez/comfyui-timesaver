@@ -26,11 +26,14 @@
 from __future__ import annotations
 
 import json
+import logging
 import mmap
 import os
 import struct
 import threading
 import warnings
+
+_LOGGER = logging.getLogger("comfyui_timesaver.ts_locked_loaders")
 
 MAGIC_HEAD = b"TSMODEL\x01"
 MAGIC_TAIL = b"TSMODELT"
@@ -210,7 +213,7 @@ def load_state_dict_comfy(path: str):
 
         if not getattr(memory_management, "aimdo_enabled", False) \
                 or not hasattr(memory_management, "TensorFileSlice"):
-            raise ImportError("aimdo is off")
+            raise _FastPathOff("comfy-aimdo is off in this ComfyUI")
         import comfy_aimdo.model_mmap
 
         locked = LockedFile(path)
@@ -240,15 +243,30 @@ def load_state_dict_comfy(path: str):
         return state, (locked.metadata if locked.metadata is not None else {})
     except LockedModelError:
         raise
+    except _FastPathOff as reason:
+        # ⚠️ Не поломка, а настройка: aimdo выключен (или его нет в этом
+        # ComfyUI), и штатный `load_safetensors` в этом случае тоже идёт мимо
+        # него. Предупреждение здесь печаталось на КАЖДУЮ загрузку и выглядело
+        # как сбой — поэтому только debug.
+        _LOGGER.debug("%s fast path off (%s), reading through plain mmap", LOG_PREFIX, reason)
     except Exception as error:                      # noqa: BLE001 - расхождение версий
         warnings.warn(f"{LOG_PREFIX} fast path unavailable "
                       f"({error.__class__.__name__}: {error}), falling back to plain mmap")
-        state, metadata = load_state_dict(path)
-        try:
-            import comfy.utils
+    return _load_plain_like_comfy(path)
 
-            if getattr(comfy.utils, "DISABLE_MMAP", False):
-                state = {name: tensor.to(copy=True) for name, tensor in state.items()}
-        except Exception:                           # noqa: BLE001 - старый ComfyUI
-            pass
-        return state, metadata
+
+class _FastPathOff(Exception):
+    """Быстрый путь выключен намеренно — не ошибка, предупреждать не о чем."""
+
+
+def _load_plain_like_comfy(path: str):
+    """Запасной ридер с той же политикой копирования, что у ядра."""
+    state, metadata = load_state_dict(path)
+    try:
+        import comfy.utils
+
+        if getattr(comfy.utils, "DISABLE_MMAP", False):
+            state = {name: tensor.to(copy=True) for name, tensor in state.items()}
+    except Exception:                               # noqa: BLE001 - старый ComfyUI
+        pass
+    return state, metadata

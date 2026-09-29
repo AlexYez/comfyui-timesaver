@@ -71,6 +71,8 @@ const STRINGS = {
         searchHint: "Every word must match: code, title, description or the prompt itself. ↑ / ↓ switch prompts outside this field",
         found: (n, total) => (n === total ? `${total} prompts` : `${n} of ${total}`),
         nothingFound: "Nothing matches the search.",
+        wired: "The preset comes from the wire. The card shows the node's own choice, which is not used while the wire is connected; the fields below are still applied.",
+        copyWired: "The preset comes from the wire — the node outputs that preset, not this card",
     },
     ru: {
         section: "Раздел",
@@ -103,6 +105,8 @@ const STRINGS = {
         searchHint: "Совпасть должно каждое слово: код, название, описание или сам промпт. ↑ / ↓ листают промпты вне этого поля",
         found: (n, total) => (n === total ? `Промптов: ${total}` : `${n} из ${total}`),
         nothingFound: "Ничего не нашлось.",
+        wired: "Пресет приходит по проводу. В карточке — собственный выбор ноды: пока провод подключён, он не используется; поля ниже по-прежнему применяются.",
+        copyWired: "Пресет приходит по проводу — с выхода уходит он, а не эта карточка",
     },
 };
 
@@ -154,6 +158,10 @@ function ensureStyles() {
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ts-plib__status--warn{color:var(--ts-warning)}
 .ts-plib__footer .ts-ui-launch{margin-left:auto}
+.ts-plib__wired{flex:0 0 auto;padding:6px 8px;line-height:1.45;font-size:var(--ts-fs-xs);
+  color:var(--ts-warning);border:1px dashed var(--ts-warning);border-radius:var(--ts-radius)}
+.ts-plib__wired[hidden]{display:none}
+.ts-plib__list.is-disabled{opacity:.5;pointer-events:none}
 
 /* Оболочка держит место в ноде, пока содержимое живёт в полноэкранном окне. */
 .ts-plib-shell{width:100%;height:100%;min-height:0;display:flex}
@@ -263,7 +271,9 @@ function setupPromptLibrary(node) {
     const t = pickLocaleStrings(STRINGS);
     const lang = getUiLanguage();
 
-    hideWidget(node, "preset");
+    // ⚠️ У `preset` гнездо остаётся: пресет можно подать проводом. Спрятан
+    // только ряд виджета — выбором ведает панель ниже.
+    hideWidget(node, "preset", { keepInput: true });
     hideWidget(node, "fields");
 
     const root = el("div", `${TS_UI_CLASS} ts-plib`);
@@ -316,7 +326,11 @@ function setupPromptLibrary(node) {
     });
     footer.append(copyButton, status, openButton);
 
-    root.append(rowTop, main, footer);
+    // Провод на `preset` отменяет выбор панели — говорим об этом прямо.
+    const wiredNote = el("div", "ts-plib__wired", t.wired);
+    wiredNote.hidden = true;
+
+    root.append(rowTop, wiredNote, main, footer);
 
     // Виджет держит оболочку, а переезжает наполнение: так закрытие окна
     // возвращает всё на место вместе с состоянием (приём TS Song Creator).
@@ -329,8 +343,27 @@ function setupPromptLibrary(node) {
 
     const currentKey = () => String(getWidget(node, "preset")?.value ?? "");
     const currentValues = () => parseFields(getWidget(node, "fields")?.value);
+    // Подключённый провод: сервер возьмёт пресет с него, а не из виджета.
+    const isWired = () => (node.inputs || []).some((i) => i?.name === "preset" && i.link != null);
+
+    /**
+     * Честная панель при проводе: карточка показывает выбор виджета, а с выхода
+     * уходит пресет с провода. Выбор и «Копировать» тогда вводили бы в
+     * заблуждение — они выключены, над карточкой пояснение. Поля остаются:
+     * сервер применяет их к пресету с провода.
+     */
+    function applyWiredState() {
+        const wired = isWired();
+        wiredNote.hidden = !wired;
+        for (const control of [sectionSelect, collectionSelect, presetSelect, prev, next, copyButton]) {
+            control.disabled = wired;
+        }
+        copyButton.title = wired ? t.copyWired : t.copyHint;
+        list.classList.toggle("is-disabled", wired);
+    }
 
     function setKey(key) {
+        if (isWired()) return;
         if (!key || key === currentKey()) return;
         writeWidget(node, "preset", key);
         render();
@@ -597,6 +630,7 @@ function setupPromptLibrary(node) {
     });
 
     function render() {
+        applyWiredState();
         if (state.error) return showMessage(t.failed);
         if (!state.catalog) return showMessage(t.loading);
         if (!state.catalog.sections?.length) return showMessage(t.empty);
@@ -646,6 +680,7 @@ function setupPromptLibrary(node) {
     next.addEventListener("click", () => stepKey(1));
 
     copyButton.addEventListener("click", async () => {
+        if (isWired()) return;
         const found = state.catalog && findPreset(state.catalog, currentKey());
         if (!found) return;
         const ok = await copyText(fillPrompt(found.preset.prompt, currentValues()));
@@ -675,6 +710,18 @@ function setupPromptLibrary(node) {
     node.__tsPromptLibrary = { render, refresh };
     // «R» в ComfyUI: библиотеку могли поправить на диске.
     node.refreshComboInNode = () => refresh(true);
+
+    // Провод подключили или сняли — панель тут же перестраивается.
+    const previousConnections = node.onConnectionsChange;
+    node.onConnectionsChange = function tsPromptLibraryConnections(...args) {
+        const result = previousConnections?.apply(this, args);
+        try {
+            applyWiredState();
+        } catch (error) {
+            console.warn("[TS PromptLibrary] wire state update failed", error);
+        }
+        return result;
+    };
 
     const previousRemoved = node.onRemoved;
     node.onRemoved = function tsPromptLibraryRemoved(...args) {

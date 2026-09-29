@@ -483,8 +483,11 @@ function setDirty(node) {
     app?.graph?.setDirtyCanvas?.(true, true);
 }
 
-async function fetchJson(url, options) {
-    const response = await fetch(url, options);
+// ⚠️ Через api.fetchApi, а не голый fetch: он добавляет префикс ComfyUI
+// (работа за обратным прокси в подпапке) и заголовок Comfy-User. `route` —
+// путь маршрута без /api, как его регистрирует сервер.
+async function fetchJson(route, options) {
+    const response = await api.fetchApi(route, options);
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
         throw new Error(data.error || response.statusText || `HTTP ${response.status}`);
@@ -581,7 +584,8 @@ function resolveAnnotatedThumbUrl(annotatedPath) {
     const params = new URLSearchParams({ filename, type });
     if (subfolder) params.set("subfolder", subfolder);
     params.set("t", String(Date.now()));
-    return `/view?${params.toString()}`;
+    // apiURL — чтобы миниатюра грузилась и за прокси в подпапке.
+    return api.apiURL(`/view?${params.toString()}`);
 }
 
 function fileExtensionOk(name) {

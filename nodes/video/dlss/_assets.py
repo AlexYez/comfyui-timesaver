@@ -18,8 +18,11 @@ sit in the same folder, which is the folder handed to ``dlss5nr_init``.
 
 ⚠️ Since the upstream v9 release the old v5 layout (``host/`` with ReShade and
 the worker executable, ``dlss/nvngx_dlss.dll``) is dead weight — nothing here
-reads it any more. It is left alone rather than deleted: those files are the
-user's, not ours.
+loads it any more. It is left alone rather than deleted: those files are the
+user's, not ours. Its presence still means one thing: the user once installed
+the runtime from this same upstream project, so ``ensure_runtime`` updates it to
+v9 even with ``download_if_missing`` off (see there why that switch is so often
+off without anybody choosing it).
 """
 
 from __future__ import annotations
@@ -130,7 +133,8 @@ LICENCE_NOTICE = "\n".join([
     "  binaries into the same folder.",
     "",
     "  Not what you want? Switch 'download_if_missing' off and place the files",
-    "  under models/DLSS yourself.",
+    "  under models/DLSS yourself. (A runtime you already installed from this",
+    "  project is updated even then.)",
     "  " + "-" * 74,
     "",
 ])
@@ -405,10 +409,42 @@ def ensure_runtime(
         require_known_runtime(root)
         return root
     if not download_if_missing:
-        raise RuntimeError(
+        # ⚠️ Выключатель «выключен» в графе чаще всего НЕ выбран человеком: в
+        # 12.10.0-12.11.2 это было умолчание, и граф несёт его в себе. Такой
+        # человек до обновления работал на v5 (файлы были — выключатель ни на
+        # что не влиял), а после перехода на v9 упирался в ошибку. v5 качался
+        # из того же проекта, так что его наличие — уже данное согласие на этот
+        # источник: обновляем то, что человек сам однажды поставил.
+        #
+        # ⚠️ Только ПЕРЕХОД, один раз: папки v9 ещё нет вовсе. Если `dlssnr/`
+        # уже есть и в ней чего-то не хватает — это ручная раскладка или
+        # удалённый файл, и выключатель снова значит ровно «не качать».
+        # Признак v5 — файлы `host/`: имя `dlss/nvngx_dlss.dll` слишком общее,
+        # папку models/DLSS может делить с нами другой пак.
+        missing_message = (
             f"{LOG_PREFIX} The DLSS runtime is missing from {root}: " + ", ".join(gaps)
-            + ". Nothing was downloaded because 'download_if_missing' is off. Switch it on, "
-            "or place the files there yourself — they are in the upstream release "
-            f"{RUNTIME_URL}, under bin/runtime/dlssnr/."
+            + ". Nothing was downloaded because 'download_if_missing' is off on this node. "
+            "If you did not switch it off yourself: workflows saved with pack versions "
+            "12.10.0 to 12.11.2 carry 'off', the default of those versions. Switch "
+            "'download_if_missing' on in the node and run again (~"
+            f"{RUNTIME_SIZE_MB} MB, once). Or place the files there yourself - they are in "
+            f"the upstream release {RUNTIME_URL}, under bin/runtime/dlssnr/."
         )
+        v5_marks = [name for name in obsolete_files(root) if name.startswith("host/")]
+        if v5_marks and not runtime_dir(root).exists():
+            logger.warning(
+                "%s 'download_if_missing' is off, but %s already holds the previous (v5) "
+                "DLSS runtime from the same upstream project (%s). The node needs its "
+                "v9 files since pack 12.11.3, so the runtime you installed is updated once.",
+                LOG_PREFIX, root, v5_marks[0])
+            try:
+                return download_runtime(root, progress=progress)
+            except OSError as error:
+                # Без сети — прежний понятный отказ, а не сырая ошибка requests
+                # (его исключения — OSError). Несовпадение сумм сюда НЕ попадает
+                # и проходит как есть.
+                raise RuntimeError(
+                    f"{missing_message} (Updating the v5 runtime failed: {error})"
+                ) from error
+        raise RuntimeError(missing_message)
     return download_runtime(root, progress=progress)

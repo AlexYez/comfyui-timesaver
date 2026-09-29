@@ -171,7 +171,8 @@ class TS_DLSSUpscaler(IO.ComfyNode):
                         "(~486 MB, once) from the upstream project's release. It contains "
                         "NVIDIA's proprietary DLSSNR runtime and the MIT-licensed engine; "
                         "this pack hosts none of it. Off, the node downloads nothing and "
-                        "you place the files yourself."
+                        "you place the files yourself - except that a runtime you already "
+                        "installed from the same project (the old v5) is still updated."
                     ),
                 ),
                 # ---------------------------------------------------- v9 controls

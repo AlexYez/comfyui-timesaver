@@ -184,17 +184,26 @@ class TS_LangevinInpaint(IO.ComfyNode):
                 "Works with any model family; feed it a latent carrying a noise mask."
             ),
             inputs=[
-                IO.Model.Input("model"),
-                IO.Conditioning.Input("positive"),
-                IO.Conditioning.Input("negative"),
+                IO.Model.Input("model", tooltip="The diffusion model to sample with. Any family works."),
+                IO.Conditioning.Input("positive", tooltip="What the repainted region should show."),
+                IO.Conditioning.Input("negative", tooltip="What the repainted region should avoid."),
                 IO.Latent.Input("latent_image", tooltip="Latent with a noise mask (white = repaint)."),
                 IO.Int.Input("seed", default=0, min=0, max=0xFFFFFFFFFFFFFFFF,
-                             control_after_generate=True),
-                IO.Int.Input("steps", default=20, min=1, max=200),
-                IO.Float.Input("cfg", default=1.0, min=0.0, max=100.0, step=0.1),
-                IO.Combo.Input("sampler_name", options=comfy.samplers.KSampler.SAMPLERS),
-                IO.Combo.Input("scheduler", options=comfy.samplers.KSampler.SCHEDULERS),
-                IO.Float.Input("denoise", default=1.0, min=0.0, max=1.0, step=0.01),
+                             control_after_generate=True,
+                             tooltip="Noise seed. The same seed and settings repeat the result."),
+                IO.Int.Input("steps", default=20, min=1, max=200,
+                             tooltip="Denoising steps, as in KSampler. Each one also runs "
+                                     "think_steps inner refinement steps."),
+                IO.Float.Input("cfg", default=1.0, min=0.0, max=100.0, step=0.1,
+                               tooltip="Classifier-free guidance scale, as in KSampler. "
+                                       "Distilled models want 1.0."),
+                IO.Combo.Input("sampler_name", options=comfy.samplers.KSampler.SAMPLERS,
+                               tooltip="Sampler for the outer denoising loop, as in KSampler."),
+                IO.Combo.Input("scheduler", options=comfy.samplers.KSampler.SCHEDULERS,
+                               tooltip="Noise schedule, as in KSampler."),
+                IO.Float.Input("denoise", default=1.0, min=0.0, max=1.0, step=0.01,
+                               tooltip="How much of the schedule to run. 1.0 repaints the "
+                                       "masked region from scratch; lower keeps more of it."),
                 IO.Int.Input(
                     "think_steps", default=5, min=0, max=20,
                     tooltip="Inner Langevin steps per noise level. 0 disables the "
