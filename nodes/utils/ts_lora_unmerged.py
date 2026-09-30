@@ -84,19 +84,55 @@ class _GateUpSlot(threading.local):
     Слот общий для всех экземпляров ноды: при двух LoRA подряд хуки на
     ``gate_up`` срабатывают в порядке установки, последняя запись несёт
     поправки обеих, и хуки MLP обеих LoRA читают её.
+
+    ⚠️⚠️ Тензор не переживает MLP СВОЕГО блока: последний читатель очищает слот
+    сразу. ComfyUI 0.38 записывает выделения видеопамяти по блокам (comfy_aimdo
+    malloc graph, ``iterate("block")``), а блоки префикса на первом шаге считает
+    при ПРИОСТАНОВЛЕННОЙ записи. Слот, державший выход прошлого блока до записи
+    следующего, освобождал его внутри паузы — и запись падала с «aimdo memory
+    compile error» (жалоба 30.09.2026, 0.37.4 работала). Теперь выделение и
+    освобождение всегда в одном и том же состоянии записи. Поэтому же слот пишут
+    только тогда, когда у этого MLP есть читатель: без него тензор лежал бы
+    зря и дожил бы до следующего блока.
     """
 
-    module = None
-    tensor = None
+    def __init__(self):
+        self.module = None
+        self.tensor = None
+        self.seen = 0
+        # gate_up -> сколько хуков-читателей на его MLP стоит в ЭТОМ потоке.
+        self.readers: dict = {}
+
+    def add_readers(self, module, count: int = 1) -> None:
+        self.readers[module] = self.readers.get(module, 0) + count
+
+    def remove_readers(self, module, count: int = 1) -> None:
+        left = self.readers.get(module, 0) - count
+        if left > 0:
+            self.readers[module] = left
+        else:
+            self.readers.pop(module, None)
+
+    def wanted(self, module) -> bool:
+        return self.readers.get(module, 0) > 0
 
     def remember(self, module, tensor) -> None:
-        self.module, self.tensor = module, tensor
+        self.module, self.tensor, self.seen = module, tensor, 0
 
     def recall(self, module):
         return self.tensor if self.module is module else None
 
+    def consumed(self, module) -> None:
+        """One reader is done; the last one releases the tensor right here."""
+        if self.module is not module:
+            return
+        self.seen += 1
+        if self.seen >= self.readers.get(module, 0):
+            self.forget()
+
     def forget(self) -> None:
         self.module = self.tensor = None
+        self.seen = 0
 
 
 _GATE_UP = _GateUpSlot()
@@ -350,8 +386,12 @@ class LoraBranch:
             logger.debug("%s %s: prefetch skipped: %s", LOG_PREFIX, self.label, error)
 
     def attach(self, diffusion_model: torch.nn.Module, device: torch.device, dtype: torch.dtype,
-               handles: list, fired: set) -> set:
-        """Register the hooks into ``handles``; return the layer names expected to fire."""
+               handles: list, fired: set, readers: list) -> set:
+        """Register the hooks into ``handles``; return the layer names expected to fire.
+
+        ``readers`` receives the ``gate_up`` of every MLP this LoRA reads from;
+        the caller unregisters them when the forward call is over.
+        """
         weights = self.weights_on(device, dtype)
         plain: dict[str, list[tuple[int | None, int | None, torch.Tensor, torch.Tensor]]] = {}
         mlp_down: dict[str, tuple[torch.Tensor, torch.Tensor]] = {}
@@ -363,9 +403,10 @@ class LoraBranch:
             else:
                 plain.setdefault(target.name, []).append((target.offset, target.size, down, up))
 
-        # Выход gate_up записывает КАЖДЫЙ наш хук на нём, а не только тот, чьей
+        # Выход gate_up может записать КАЖДЫЙ наш хук на нём, а не только тот, чьей
         # LoRA он нужен: срабатывают они в порядке установки, и последняя запись
-        # несёт поправки всех LoRA сразу.
+        # несёт поправки всех LoRA сразу. Пишут они лишь тогда, когда у MLP есть
+        # читатель (_GateUpSlot.wanted) — хоть от этой LoRA, хоть от соседней.
         recorders = {parent_name + ".gate_up" for parent_name in mlp_down}
         for name in plain:
             parent_name, _, leaf = name.rpartition(".")
@@ -381,6 +422,8 @@ class LoraBranch:
             parent = diffusion_model.get_submodule(parent_name)
             handles.append(parent.register_forward_hook(
                 _mlp_hook(parent_name + ".out", parent.gate_up, down, up, fired)))
+            _GATE_UP.add_readers(parent.gate_up)
+            readers.append(parent.gate_up)
         return set(plain) | {name + ".out" for name in mlp_down}
 
     def run(self, executor, *args, **kwargs):
@@ -390,16 +433,19 @@ class LoraBranch:
         # весов модели (fp8, int8) здесь ни при чём.
         dtype = branch_dtype(x.dtype, getattr(diffusion_model, "dtype", None))
         handles: list = []
+        readers: list = []
         fired: set[str] = set()
         expected: set[str] = set()
         try:
             # Регистрация — ВНУТРИ try: сбой посреди неё не должен оставить
             # хуки навсегда на общей для всех клонов модели.
-            expected = self.attach(diffusion_model, x.device, dtype, handles, fired)
+            expected = self.attach(diffusion_model, x.device, dtype, handles, fired, readers)
             return executor(*args, **kwargs)
         finally:
             for handle in handles:
                 handle.remove()
+            for module in readers:
+                _GATE_UP.remove_readers(module)
             _GATE_UP.forget()
             # Ни один хук не сработал — модель этот шаг не считала (EasyCache,
             # LazyCache отдают кэш, не вызывая её). Это не «слои мимо модулей».
@@ -433,7 +479,7 @@ def _linear_hook(name, branches, record, fired):
                 # Кусок слитого слоя: поправка только своей половине выхода.
                 # Выход — свежий тензор этого же вызова, править его на месте можно.
                 output[..., offset:offset + size] += delta
-        if record:
+        if record and _GATE_UP.wanted(module):
             _GATE_UP.remember(module, output)
         return output
     return hook
@@ -447,7 +493,10 @@ def _mlp_hook(name, gate_up, down, up, fired):
         fired.add(name)
         gate, value = hidden.chunk(2, dim=-1)
         # Тот же SwiGLU, что делает ядро перед out: silu(первая половина) * вторая.
-        return output + _branch(F.silu(gate) * value, down, up).to(output.dtype)
+        result = output + _branch(F.silu(gate) * value, down, up).to(output.dtype)
+        # Последний читатель отпускает тензор ЗДЕСЬ, внутри MLP своего блока.
+        _GATE_UP.consumed(gate_up)
+        return result
     return hook
 
 

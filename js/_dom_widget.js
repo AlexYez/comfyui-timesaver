@@ -143,6 +143,30 @@ function widgetAccepts(widget, value) {
     }
 }
 
+/**
+ * A value this widget can NEVER hold: a non-number in a number/slider, a
+ * non-boolean in a toggle. Strings and combos are not judged here — a string
+ * accepts anything, and a combo may legitimately carry a value its list lacks
+ * (a model file the machine does not have).
+ */
+function hardMismatch(widget, value) {
+    const kind = expectedKind(widget);
+    if (kind === "number") return typeof value !== "number";
+    if (kind === "boolean") return typeof value !== "boolean";
+    return false;
+}
+
+/** Does the positional array put an impossible value into the CURRENT layout? */
+function currentLayoutConflicts(node, names, values) {
+    const limit = Math.min(names.length, values.length);
+    for (let i = 0; i < limit; i += 1) {
+        const widget = resolveWidget(node, names[i]);
+        if (!widget || !isSerializableWidget(widget)) continue;
+        if (hardMismatch(widget, values[i])) return true;
+    }
+    return false;
+}
+
 function resolveWidget(node, name) {
     return node?.widgets?.find((w) => w?.name === name) || node?._tsHiddenWidgets?.[name] || null;
 }
@@ -216,14 +240,24 @@ function restoreLegacyWidgetValues(node, info) {
     // combo дают счёт 2:1 в пользу «старой» раскладки ВСЕГДА (строка принимает
     // любое значение), и текст песни после перезагрузки заменялся именем
     // пресета. Счёт по типам такую пару в принципе не различает.
+    //
+    // ⚠️⚠️ Но признак не окончательный. TS Resolution Selector писал
+    // `aspect_ratio` в properties И ДО перехода, так что его старые графы несут
+    // и свойство, и старый позиционный массив `["16:9", 1.5, "0:0", …]`. Для них
+    // короткий выход оставлял «16:9» в числовом `resolution`, и очередь падала с
+    // «couldn't be converted to FLOAT» (жалоба 30.09.2026; у владельца так
+    // сохранены 13 графов). Поэтому свойство решает только тогда, когда массив
+    // ЛОЖИТСЯ на нынешнюю раскладку без невозможных значений. Song Creator это
+    // не задевает: его строковые поля принимают что угодно, конфликта нет.
+    const currentWidgets = node.widgets || [];
+    const currentNames = currentWidgets.map((w) => w?.name);
     const savedProperties = info?.properties;
     if (savedProperties && Object.keys(stash).some(
-            (name) => savedProperties[name] !== undefined)) {
+            (name) => savedProperties[name] !== undefined)
+            && !currentLayoutConflicts(node, currentNames, values)) {
         return;
     }
 
-    const currentWidgets = node.widgets || [];
-    const currentNames = currentWidgets.map((w) => w?.name);
     const legacyScore = layoutFitScore(node, order, values);
     const currentScore = layoutFitScore(node, currentNames, values);
 
@@ -249,6 +283,10 @@ function restoreLegacyWidgetValues(node, info) {
         if (!name || value === undefined) continue;
         const widget = node.widgets?.find((w) => w?.name === name) || stash[name];
         if (!widget) continue;
+        // Слот, который в старой раскладке принадлежал другому виджету (чаще
+        // всего DOM-виджету со своим ""), не кладём в число или галочку: пусть
+        // поле останется со значением по умолчанию, а не с мусором.
+        if (hardMismatch(widget, value)) continue;
         try {
             widget.value = value;
         } catch {
