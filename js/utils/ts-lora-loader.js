@@ -36,6 +36,7 @@ import {
     removeAt,
     serialiseStack,
     setEnabled,
+    setUnmerged,
     setStrength,
     setStrengthSpec,
     shortName,
@@ -114,6 +115,16 @@ function ensureStyles() {
 .ts-lora__on:hover{border-color:var(--ts-accent)}
 .ts-lora__name{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;
     white-space:nowrap;font-size:var(--ts-fs-sm);color:var(--ts-text);cursor:pointer}
+/* Режим строки: «слияние» (штатно) или «ветка» (TS LoRA Unmerged). Словом, а не
+   значком: режим меняет и цену шага, и видеопамять — человек должен видеть,
+   какой из двух включён, не наводя мышь. Включённая «ветка» — акцентом. */
+.ts-lora__mode{flex:0 0 auto;height:18px;padding:0 5px;border-radius:var(--ts-radius-sm);
+    border:1px solid var(--ts-border);background:transparent;color:var(--ts-muted);
+    font-size:var(--ts-fs-xs);font-family:inherit;line-height:16px;cursor:pointer;
+    white-space:nowrap}
+.ts-lora__mode:hover{border-color:var(--ts-accent);color:var(--ts-text)}
+.ts-lora__mode[aria-pressed="true"]{border-color:var(--ts-accent);color:var(--ts-accent)}
+.ts-lora__row.is-off .ts-lora__mode{opacity:.45}
 /* Сила и стрелки — одним блоком, как числовой виджет самого ComfyUI. */
 .ts-lora__spin{flex:0 0 auto;display:flex;align-items:center;
     background:var(--ts-sunken);border:1px solid var(--ts-border);
@@ -184,6 +195,15 @@ const STRINGS = {
         turnOff: "Turn this LoRA off — it stays in the list with its strength",
         turnOn: "Turn this LoRA back on",
         missing: "This LoRA is not in the loras folder on this machine",
+        modeMerged: "merge",
+        modeUnmerged: "branch",
+        modeMergedHint: "Merged into the weights — the usual way, free at run time. "
+            + "Click for 'branch': the LoRA runs as a side branch without merging "
+            + "(lossless for small turbo LoRAs on bf16/int8 models, ~10-25% per step, "
+            + "its weights stay in VRAM while sampling).",
+        modeUnmergedHint: "Side branch without merging (TS LoRA Unmerged): nothing of "
+            + "the LoRA is lost to rounding, at ~10-25% per step. Plain linear LoRAs "
+            + "only — DoRA, LoKr, LoHa are refused. Click to merge instead.",
     },
     ru: {
         add: "+  Добавить LoRA",
@@ -204,6 +224,15 @@ const STRINGS = {
         turnOff: "Выключить эту LoRA — строка останется в списке вместе с силой",
         turnOn: "Включить эту LoRA обратно",
         missing: "Такой LoRA нет в папке loras на этой машине",
+        modeMerged: "слияние",
+        modeUnmerged: "ветка",
+        modeMergedHint: "Влита в веса — обычный способ, во время работы бесплатно. "
+            + "Нажмите для «ветки»: LoRA считается боковой веткой без слияния "
+            + "(без потерь для маленьких турбо-LoRA на моделях bf16/int8, ~10–25% "
+            + "времени шага, её веса лежат в видеопамяти, пока идёт выборка).",
+        modeUnmergedHint: "Боковая ветка без слияния (TS LoRA Unmerged): округление "
+            + "ничего из LoRA не съедает, цена — ~10–25% времени шага. Только обычные "
+            + "линейные LoRA — DoRA, LoKr, LoHa отклоняются. Нажмите, чтобы вернуть слияние.",
     },
 };
 
@@ -397,6 +426,21 @@ function setupLoraLoader(node) {
             commit();
         });
 
+        // Режим строки: слияние (штатный загрузчик) или боковая ветка
+        // (TS LoRA Unmerged). Хранится в той же строке JSON — схема ноды и
+        // позиции `widgets_values` от него не меняются.
+        const unmerged = entry.unmerged === true;
+        const mode = document.createElement("button");
+        mode.type = "button";
+        mode.className = "ts-lora__mode";
+        mode.setAttribute("aria-pressed", String(unmerged));
+        mode.textContent = unmerged ? t.modeUnmerged : t.modeMerged;
+        mode.title = unmerged ? t.modeUnmergedHint : t.modeMergedHint;
+        mode.addEventListener("click", () => {
+            stack = setUnmerged(stack, index, !unmerged);
+            commit();
+        });
+
         // Сила показана и управляется как у родной ноды: две цифры после
         // точки и стрелки по краям, шагающие на её же 0.01.
         const spin = document.createElement("div");
@@ -459,7 +503,7 @@ function setupLoraLoader(node) {
             commit();
         });
 
-        row.append(grip, power, name, spin, drop);
+        row.append(grip, power, name, mode, spin, drop);
         return row;
     }
 

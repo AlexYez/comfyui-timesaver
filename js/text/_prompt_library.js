@@ -112,37 +112,66 @@ export function switchKey(catalog, currentKey, sectionId, collectionId = null) {
     return (same || presets[0])?.key || currentKey;
 }
 
+/** Строчные, «ё» = «е»: человек пишет как привык, а не как в каталоге. */
+function normalise(text) {
+    return String(text || "").toLowerCase().replace(/ё/g, "е");
+}
+
+/** Слова запроса; пустой запрос — пустой список. */
+export function queryWords(query) {
+    return normalise(query).split(/\s+/).filter(Boolean);
+}
+
 /**
- * Подходит ли пресет под строку поиска полноэкранного каталога.
+ * Подходит ли пресет под строку поиска (и в ноде, и во весь экран).
  *
- * Ищем по коду, названию и описанию на ВСЕХ языках и по самому промпту: человек
- * помнит то «R02», то «раскрашивание», то «colorize». Несколько слов — все
- * должны найтись (порядок любой).
+ * Ищем по коду, названию и описанию на ВСЕХ языках, по самому промпту и по
+ * названию группы: человек помнит то «R02», то «раскрашивание», то «colorize»,
+ * то «удаление». Несколько слов — все должны найтись (порядок любой).
+ * Примечания не участвуют: в них упоминаются ДРУГИЕ коды («возьмите O12»), и
+ * поиск «o12» находил бы чужой пресет.
  */
-export function presetMatches(preset, query) {
-    const words = String(query || "").toLowerCase().split(/\s+/).filter(Boolean);
+export function presetMatches(preset, query, groupTitle = null) {
+    const words = queryWords(query);
     if (!words.length) return true;
     const texts = (value) => (typeof value === "string" ? [value]
         : value && typeof value === "object" ? Object.values(value) : []);
-    const haystack = [
+    const haystack = normalise([
         preset?.id, ...texts(preset?.title), ...texts(preset?.summary), preset?.prompt,
-    ].filter(Boolean).join("\n").toLowerCase();
+        ...texts(groupTitle),
+    ].filter(Boolean).join("\n"));
     return words.every((word) => haystack.includes(word));
 }
 
 /** Группы коллекции, в которых остались только подходящие пресеты. */
 export function filterGroups(collection, query) {
     return (collection?.groups || [])
-        .map((group) => ({ ...group, presets: (group.presets || []).filter((p) => presetMatches(p, query)) }))
+        .map((group) => ({
+            ...group,
+            presets: (group.presets || []).filter((p) => presetMatches(p, query, group.title)),
+        }))
         .filter((group) => group.presets.length);
 }
 
-/** Соседний пресет в пределах коллекции (стрелки ‹ ›), по кругу. */
-export function neighbourKey(catalog, currentKey, step) {
+/** Найденные пресеты коллекции одним списком, в порядке каталога. */
+export function searchPresets(collection, query) {
+    return filterGroups(collection, query).flatMap((group) => group.presets);
+}
+
+/**
+ * Соседний пресет в пределах коллекции (стрелки ‹ › и ↑ ↓), по кругу.
+ *
+ * С запросом листаются только найденные: иначе стрелка уводила бы на пресет,
+ * которого в списке нет. Текущий в найденное не входит — шаг вперёд ведёт на
+ * первый найденный, назад — на последний.
+ */
+export function neighbourKey(catalog, currentKey, step, query = "") {
     const found = findPreset(catalog, currentKey);
     if (!found) return currentKey;
-    const presets = (found.collection.groups || []).flatMap((g) => g.presets || []);
+    const presets = searchPresets(found.collection, query);
+    if (!presets.length) return currentKey;
     const index = presets.findIndex((p) => p.key === currentKey);
+    if (index < 0) return (step > 0 ? presets[0] : presets[presets.length - 1]).key;
     const next = presets[(index + step + presets.length) % presets.length];
     return next?.key || currentKey;
 }

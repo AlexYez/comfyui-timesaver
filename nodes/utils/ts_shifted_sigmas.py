@@ -45,22 +45,40 @@ BASE_SEQ_LEN = 256
 MAX_SEQ_LEN = 8192
 
 
+def _parse_number(part: str) -> float:
+    """``0.25`` or a fraction ``1 / 6`` — the way the model cards write their lists."""
+    numerator, slash, denominator = part.partition("/")
+    if not slash:
+        return float(part)
+    # Только одна черта: «1/2/3» — опечатка, а не число.
+    if "/" in denominator:
+        raise ValueError(part)
+    bottom = float(denominator.strip())
+    if bottom == 0.0:
+        raise ValueError(part)
+    return float(numerator.strip()) / bottom
+
+
 def parse_nodes(text: str) -> list[float]:
     """Parse the comma separated raw timesteps.
+
+    Accepts the list exactly as model cards print it: decimals or fractions
+    (``1 / 6``), optionally wrapped in square brackets.
 
     Raises:
         ValueError: on a non-number, a value outside ``(0, 1]`` or a list that
             does not strictly decrease — each of those would give the sampler a
             schedule it cannot follow (``t = 0`` divides by zero).
     """
-    parts = [part.strip() for part in str(text or "").replace(";", ",").split(",")]
+    cleaned = str(text or "").strip().removeprefix("[").removesuffix("]")
+    parts = [part.strip() for part in cleaned.replace(";", ",").split(",")]
     parts = [part for part in parts if part]
     if not parts:
         raise ValueError(f"{LOG_PREFIX} nodes is empty: give at least one timestep, e.g. {DEFAULT_NODES}")
     values = []
     for part in parts:
         try:
-            value = float(part)
+            value = _parse_number(part)
         except ValueError:
             raise ValueError(f"{LOG_PREFIX} '{part}' in nodes is not a number") from None
         if not (0.0 < value <= 1.0) or not math.isfinite(value):
@@ -130,9 +148,10 @@ class TS_ShiftedSigmas(IO.ComfyNode):
                     "nodes",
                     default=DEFAULT_NODES,
                     tooltip=(
-                        "Raw timesteps from noise (1.0) down, comma separated. The default "
-                        "is viggle-turbo v0.2.1, 6 steps. Add or drop steps at the noisy end "
-                        "only and keep 0.875, 0.75, 0.5, 0.25."
+                        "Raw timesteps from noise (1.0) down, comma separated; fractions "
+                        "like 1/6 and the model card's square brackets are fine. The default "
+                        "is viggle-turbo 6 steps (v0.2.1 and v0.3). Add or drop steps at the "
+                        "noisy end only and keep 0.875, 0.75, 0.5, 0.25."
                     ),
                 ),
                 IO.Float.Input(

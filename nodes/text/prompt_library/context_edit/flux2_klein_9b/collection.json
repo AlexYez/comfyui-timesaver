@@ -603,6 +603,23 @@
             "ru": "У FLUX.2 [klein] нет альфа-канала: промпт выводит объект на чистый белый фон. Прозрачность получите следующим шагом — нодой TS Remove Background или TS Matting (ViTMatte) из этого пака.",
             "en": "FLUX.2 [klein] has no alpha channel: the prompt puts the subject on a clean white background. Get transparency in a following step with TS Remove Background or TS Matting (ViTMatte) from this pack."
           }
+        },
+        {
+          "id": "O13",
+          "title": {
+            "ru": "Удаление фона: главный объект на прозрачном фоне",
+            "en": "Background removal: the main subject on transparency"
+          },
+          "inputs": 1,
+          "summary": {
+            "ru": "Модель сама находит главный объект кадра и выводит его на чистый белый фон — ничего описывать не нужно.",
+            "en": "The model finds the main subject of the picture itself and puts it on a clean white background — nothing to describe."
+          },
+          "prompt": "Find the main subject of the image, the person, animal or object the picture is about, and place it alone on a clean, pure white seamless studio background. Remove the entire original background along with its shadows. Keep everything that belongs to the subject, including clothing, accessories and held objects, with its identity, shape, proportions, colors, texture, shading and position in the frame exactly as they are. Keep fine hair, fur, threads and other delicate edges intact and clean, free of leftover background color. The result should look like a professional cutout on white, ready for masking.",
+          "note": {
+            "ru": "Если в кадре несколько равноправных объектов, возьмите O12 и назовите нужный. У FLUX.2 [klein] нет альфа-канала: промпт выводит объект на чистый белый фон. Прозрачность получите следующим шагом — нодой TS Remove Background или TS Matting (ViTMatte) из этого пака.",
+            "en": "With several equal subjects in the frame, use O12 and name the one you want. FLUX.2 [klein] has no alpha channel: the prompt puts the subject on a clean white background. Get transparency in a following step with TS Remove Background or TS Matting (ViTMatte) from this pack."
+          }
         }
       ]
     },

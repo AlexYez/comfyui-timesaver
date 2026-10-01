@@ -14,7 +14,9 @@ None of ComfyUI's schedulers produce this — they either space the steps themse
 
 The size is read from the latent **the way the sampler will see it**: an empty latent from the stock *Empty Latent Image* (grid /8) is resized by the sampler to Qwen's /16, so it is counted on /16; a latent with content is counted at the size it has.
 
-Wire it into `SamplerCustom` / `SamplerCustomAdvanced` with the `euler` sampler and no CFG (`BasicGuider`, or `cfg 1`). Add or drop steps **at the noisy end only** and keep `0.875, 0.75, 0.5, 0.25`: five steps are `1.0, 0.875, 0.75, 0.5, 0.25`, seven are `1.0, 0.9583, 0.9167, 0.875, 0.75, 0.5, 0.25`.
+Wire it into `SamplerCustom` / `SamplerCustomAdvanced` with the `euler` sampler and no CFG (`BasicGuider`, or `cfg 1`). Add or drop steps **at the noisy end only** and keep `0.875, 0.75, 0.5, 0.25`: five steps are `1.0, 0.875, 0.75, 0.5, 0.25`, seven are `1.0, 0.9583, 0.9167, 0.875, 0.75, 0.5, 0.25`. You can paste the list straight from the model card — fractions like `1 / 6` and square brackets are understood.
+
+**The 9-step mode (viggle-turbo v0.3)** — 7 steps with the turbo LoRA, the last 2 finished by the base model without it. It is built from stock nodes: TS Shifted Sigmas with `[1.0, 0.9583, 0.9167, 0.875, 0.75, 0.5, 0.25, 1 / 6, 1 / 12]` → `SplitSigmas` at `step = 7`; the high half goes into a first `SamplerCustomAdvanced` with the LoRA model and `RandomNoise`, the low half into a second one with the same model without the LoRA and `DisableNoise`, fed by the first one's `output` latent. The seam is exact: euler keeps no memory between steps, and ComfyUI resets Qwen 2.1's text-and-reference cache on every sampler run, so the second half rebuilds it without the LoRA — the same as Viggle's `kv_cache_mode` switch.
 
 **When to use it:** any few-step LoRA for Qwen Image 2.1 distilled on the diffusers schedule — together with TS LoRA Unmerged below.
 

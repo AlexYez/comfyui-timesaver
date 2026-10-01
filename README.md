@@ -8,7 +8,7 @@
 
 Resize, color, cut out, inpaint, transcribe, translate, prompt-build, manage models — without leaving the canvas.
 
-[![Version](https://img.shields.io/badge/version-12.12.1-blue.svg)](pyproject.toml)
+[![Version](https://img.shields.io/badge/version-12.12.2-blue.svg)](pyproject.toml)
 [![ComfyUI](https://img.shields.io/badge/ComfyUI-V3%20API-orange.svg)](https://github.com/comfyanonymous/ComfyUI)
 [![Python](https://img.shields.io/badge/python-3.10+-green.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-see%20LICENSE.txt-lightgrey.svg)](LICENSE.txt)
@@ -1452,16 +1452,20 @@ Presets are plain JSON in `nodes/text/song_presets/`, one file per model.
 
 A library of ready-made prompts. Pick a **section**, a **model** and a **prompt**: the node shows the prompt with a **Copy** button and sends the same text on as a `STRING`.
 
-**The first section is context editing** — 50 tasks for two models: restoration and colorization, removing and adding objects, face, head and hair swaps, clothing and pose, relighting, camera angle, framing and outpainting, background, time of day and weather, color, material, style, lettering and hands. Each prompt comes with a short explanation, the number of input images it expects and a note on its limits.
+**The first section is context editing** — 51 tasks for two models: restoration and colorization, removing and adding objects, background removal, face, head and hair swaps, clothing and pose, relighting, camera angle, framing and outpainting, background, time of day and weather, color, material, style, lettering and hands. Each prompt comes with a short explanation, the number of input images it expects and a note on its limits.
 
 - **Qwen Image 2.1** — an author's catalog written to the official PE-I2I instructions; inputs are named `<image1>`, `<image2>`.
-- **FLUX.2 Klein 9B** — the same 50 tasks, rewritten to Black Forest Labs' FLUX.2 guidance: inputs named in words (`image 1`, `image 2`), no prohibitions in the text — FLUX has no negative prompt and whatever the text names tends to appear — and an explicit list of what stays unchanged. Klein has no alpha channel, so its isolation prompt puts the subject on white for TS Remove Background to cut out.
+- **FLUX.2 Klein 9B** — the same 51 tasks, rewritten to Black Forest Labs' FLUX.2 guidance: inputs named in words (`image 1`, `image 2`), no prohibitions in the text — FLUX has no negative prompt and whatever the text names tends to appear — and an explicit list of what stays unchanged. Klein has no alpha channel, so its isolation prompt puts the subject on white for TS Remove Background to cut out.
 
 Task codes match across models, so switching from Qwen to Klein stays on the same task.
 
+**Background removal with real transparency (O13).** The model finds the main subject itself — nothing to describe — and removes the whole background; for a chosen object among several there is O12, where you name it. Qwen Image 2.1 works in RGBA natively: its VAE decodes four channels and the stock **Save Image** writes a PNG with alpha, so the cut-out arrives transparent with no separate matting step — as long as nothing between the VAE Decode and Save Image drops the fourth channel. An input that already has transparency is split by **Load Image** into IMAGE and MASK; join it back with **Join Image with Alpha** before the text encoder, or the model sees it as opaque. Klein has no alpha, so its O13 puts the subject on white.
+
 **Fields in braces are filled in on the node.** `{TARGET}`, `{POSITION}`, `{LIGHTING}` and the rest appear as input rows with an explanation and an example (one click puts the example in). The prompt highlights each field — filled or still empty — and the output is the finished text, not a template with braces. An empty field is left in braces and named under the prompt.
 
-**Full screen.** The **Open interface** button turns the node into a catalog: every prompt of the chosen model in a list on the left — grouped, with a search over code, title and the prompt text itself, and with thumbnails once presets have previews — and the chosen prompt on the right with a large preview. ↑ / ↓ step through the prompts, Esc closes. Thumbnails load only there, so the compact node never fetches them.
+**Search — on the node and full screen.** The search field sits right on the node, above the prompt. It looks through the code, title, group, description and the prompt text itself in both languages; every word must match, in any order, and «ё» counts as «е». While you type, the matches take the card's place: ↑ / ↓ move through them, **Enter** or a click picks one and brings the card back, **Esc** clears the search. With a search active the ‹ › buttons step only through what it found.
+
+**Full screen.** The **Open interface** button turns the node into a catalog: every prompt of the chosen model in a list on the left — grouped, under the same search field (the query comes along), and with thumbnails once presets have previews — and the chosen prompt on the right with a large preview. ↑ / ↓ step through the prompts — through the matches while a search is active, from the search field too — and Esc closes. Thumbnails load only there, so the compact node never fetches them.
 
 **The library is data, not code.** It lives in `nodes/text/prompt_library/` as `section/model/collection.json`: a new model or a whole new section — video prompts, say — is a new folder. Each preset may carry a picture in the collection's `previews/` folder, shown above the prompt. The format is described in the folder's own README. A preset that uses an undeclared field, or a preview that points outside its collection, is skipped with a line in the log.
 
@@ -1694,6 +1698,8 @@ A stack of model-only LoRAs in one node. The plus button opens a search box over
 
 The node does not load anything itself — it expands into a chain of **native `LoraLoaderModelOnly` nodes**. Two consequences, and they are the whole point: the result is identical to a hand-built chain, and ComfyUI caches each link separately, so changing the last LoRA's strength does not recompute the ones before it. A LoRA missing on this machine costs its own row and not the run, which matters for workflows that arrive from someone else.
 
+**Each row can also be switched from `merge` to `branch`.** `merge` is the native loader, as above. `branch` applies that one LoRA as a side branch without merging it into the weights — the same thing [TS LoRA Unmerged](#ts-lora-unmerged) does, and in its place in the chain: nothing of the LoRA is lost to rounding on bf16 or int8 weights, at about 10–25% per step and the LoRA's own weights in VRAM while sampling. Worth it for small few-step turbo LoRAs; for ordinary style LoRAs `merge` is free and good enough. Plain linear LoRAs only — a DoRA, LoKr or LoHa in `branch` is refused with a message. The mode is stored inside the same list, so the node's inputs do not change, and a workflow saved before the switch existed opens with every row on `merge`, exactly as before.
+
 Model only, no CLIP — modern families keep the text encoder separate, and most LoRAs in circulation are model-side anyway.
 
 **Use when:** more than one LoRA, or any time you expect to be reordering them.
@@ -1785,7 +1791,9 @@ None of ComfyUI's schedulers produce this — they either space the steps themse
 
 The size is read from the latent **the way the sampler will see it**: an empty latent from the stock *Empty Latent Image* (grid /8) is resized by the sampler to Qwen's /16, so it is counted on /16; a latent with content is counted at the size it has.
 
-Wire it into `SamplerCustom` / `SamplerCustomAdvanced` with the `euler` sampler and no CFG (`BasicGuider`, or `cfg 1`). Add or drop steps **at the noisy end only** and keep `0.875, 0.75, 0.5, 0.25`: five steps are `1.0, 0.875, 0.75, 0.5, 0.25`, seven are `1.0, 0.9583, 0.9167, 0.875, 0.75, 0.5, 0.25`.
+Wire it into `SamplerCustom` / `SamplerCustomAdvanced` with the `euler` sampler and no CFG (`BasicGuider`, or `cfg 1`). Add or drop steps **at the noisy end only** and keep `0.875, 0.75, 0.5, 0.25`: five steps are `1.0, 0.875, 0.75, 0.5, 0.25`, seven are `1.0, 0.9583, 0.9167, 0.875, 0.75, 0.5, 0.25`. You can paste the list straight from the model card — fractions like `1 / 6` and square brackets are understood.
+
+**The 9-step mode (viggle-turbo v0.3)** — 7 steps with the turbo LoRA, the last 2 finished by the base model without it. It is built from stock nodes: TS Shifted Sigmas with `[1.0, 0.9583, 0.9167, 0.875, 0.75, 0.5, 0.25, 1 / 6, 1 / 12]` → `SplitSigmas` at `step = 7`; the high half goes into a first `SamplerCustomAdvanced` with the LoRA model and `RandomNoise`, the low half into a second one with the same model without the LoRA and `DisableNoise`, fed by the first one's `output` latent. The seam is exact: euler keeps no memory between steps, and ComfyUI resets Qwen 2.1's text-and-reference cache on every sampler run, so the second half rebuilds it without the LoRA — the same as Viggle's `kv_cache_mode` switch.
 
 **When to use it:** any few-step LoRA for Qwen Image 2.1 distilled on the diffusers schedule — together with TS LoRA Unmerged below.
 

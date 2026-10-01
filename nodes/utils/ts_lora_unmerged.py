@@ -557,7 +557,10 @@ class TS_LoraUnmerged(IO.ComfyNode):
                 ),
                 IO.Float.Input(
                     "strength",
-                    default=1.0, min=-4.0, max=4.0, step=0.05,
+                    # Границы и шаг — как у штатного LoraLoaderModelOnly: TS LoRA
+                    # Loader разворачивает строку списка то в него, то в эту ноду,
+                    # и сила, принятая одним, не должна отвергаться другой.
+                    default=1.0, min=-100.0, max=100.0, step=0.01,
                     tooltip="Multiplier on top of the file's own alpha / rank. Turbo LoRAs want 1.0.",
                 ),
             ],

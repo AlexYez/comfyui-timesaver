@@ -615,6 +615,29 @@
               "url": "https://github.com/QwenLM/Qwen-Image-2.1"
             }
           ]
+        },
+        {
+          "id": "O13",
+          "title": {
+            "ru": "Удаление фона: главный объект на прозрачном фоне",
+            "en": "Background removal: the main subject on transparency"
+          },
+          "inputs": 1,
+          "summary": {
+            "ru": "Модель сама находит главный объект кадра и удаляет весь фон до настоящей прозрачности — ничего описывать не нужно.",
+            "en": "The model finds the main subject of the picture itself and removes the whole background to real transparency — nothing to describe."
+          },
+          "prompt": "This is an RGBA image with transparency. Identify the main subject of the image, the person, animal or object the picture is about, and keep only it, removing the entire background to genuine transparency. Preserve the subject's original identity, shape, proportions, colors, texture, internal shading and position within the existing canvas. Keep everything that belongs to the subject, including clothing, accessories and held objects, and retain fine hair, fur, threads and other delicate edges with appropriate partial transparency. Remove background color contamination and detached background shadows without erasing subject detail. The image has alpha channel and the background is transparent.",
+          "note": {
+            "ru": "Не из авторского каталога: собрано по O12 и официальной формуле Qwen для прозрачности («This is an RGBA image with transparency… The image has alpha channel and the background is transparent»). Если в кадре несколько равноправных объектов, возьмите O12 и назовите нужный. Прозрачность в ComfyUI: VAE Qwen Image 2.1 декодирует RGBA, и штатный Save Image пишет PNG с альфой — не ставьте между ними ноды, которые отбрасывают четвёртый канал. Вход с прозрачностью Load Image делит на IMAGE и MASK: соберите его обратно нодой Join Image with Alpha, иначе модель увидит картинку непрозрачной.",
+            "en": "Not from the author's catalogue: built from O12 and Qwen's official transparency wording (\"This is an RGBA image with transparency… The image has alpha channel and the background is transparent\"). With several equal subjects in the frame, use O12 and name the one you want. Transparency in ComfyUI: the Qwen Image 2.1 VAE decodes RGBA and the stock Save Image writes a PNG with alpha — keep nodes that drop the fourth channel out from between them. An input with transparency is split by Load Image into IMAGE and MASK: join it back with Join Image with Alpha, or the model sees it as opaque."
+          },
+          "links": [
+            {
+              "title": "Qwen Image 2.1",
+              "url": "https://github.com/QwenLM/Qwen-Image-2.1"
+            }
+          ]
         }
       ]
     },

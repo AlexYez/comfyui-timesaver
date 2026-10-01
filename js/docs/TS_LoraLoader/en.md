@@ -10,6 +10,8 @@ A stack of model-only LoRAs in one node. The plus button opens a search box over
 
 The node does not load anything itself — it expands into a chain of **native `LoraLoaderModelOnly` nodes**. Two consequences, and they are the whole point: the result is identical to a hand-built chain, and ComfyUI caches each link separately, so changing the last LoRA's strength does not recompute the ones before it. A LoRA missing on this machine costs its own row and not the run, which matters for workflows that arrive from someone else.
 
+**Each row can also be switched from `merge` to `branch`.** `merge` is the native loader, as above. `branch` applies that one LoRA as a side branch without merging it into the weights — the same thing [TS LoRA Unmerged](#ts-lora-unmerged) does, and in its place in the chain: nothing of the LoRA is lost to rounding on bf16 or int8 weights, at about 10–25% per step and the LoRA's own weights in VRAM while sampling. Worth it for small few-step turbo LoRAs; for ordinary style LoRAs `merge` is free and good enough. Plain linear LoRAs only — a DoRA, LoKr or LoHa in `branch` is refused with a message. The mode is stored inside the same list, so the node's inputs do not change, and a workflow saved before the switch existed opens with every row on `merge`, exactly as before.
+
 Model only, no CLIP — modern families keep the text encoder separate, and most LoRAs in circulation are model-side anyway.
 
 **Use when:** more than one LoRA, or any time you expect to be reordering them.

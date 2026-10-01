@@ -34,6 +34,10 @@ logger = logging.getLogger("comfyui_timesaver.ts_lora_loader")
 LOG_PREFIX = "[TS LoRA Loader]"
 
 NATIVE_LOADER = "LoraLoaderModelOnly"
+#: Режим «без слияния» у отдельной строки: LoRA боковой веткой W·x + B·A·x
+#: (nodes/utils/ts_lora_unmerged.py). Флаг живёт в той же строке JSON — схема
+#: ноды и `widgets_values` от него не меняются.
+UNMERGED_LOADER = "TS_LoraUnmerged"
 
 # ⚠️ Запасные границы, а НЕ источник истины. Настоящие спрашиваются у родной
 # ноды (`strength_bounds`): нода разворачивается именно в неё, и значение,
@@ -100,7 +104,10 @@ def strength_bounds() -> tuple[float, float]:
 def parse_stack(raw: str) -> list[dict]:
     """Разобрать список LoRA из строки JSON.
 
-    Формат: ``[{"name": "x.safetensors", "strength": 0.8, "on": true}, ...]``.
+    Формат: ``[{"name": "x.safetensors", "strength": 0.8, "on": true}, ...]``;
+    необязательное ``"unmerged": true`` — эта LoRA применяется боковой веткой,
+    без вливания в веса. Нет поля — обычное слияние, как во всех графах до
+    появления режима.
 
     Битую строку не считаем ошибкой прогона: workflow мог прийти от чужой
     сборки или из более новой версии пака. Пустой список означает «просто
@@ -142,7 +149,7 @@ def parse_stack(raw: str) -> list[dict]:
         # загружать файл вовсе: заметно быстрее и ровно то же самое на выходе.
         if strength == 0.0:
             continue
-        stack.append({"name": name, "strength": strength})
+        stack.append({"name": name, "strength": strength, "unmerged": entry.get("unmerged") is True})
     return stack
 
 
@@ -168,7 +175,10 @@ class TS_LoraLoader(IO.ComfyNode):
                 "A stack of model-only LoRAs in one node: add with the plus "
                 "button, drag to reorder, set strength (negative allowed). "
                 "Expands into a chain of native LoraLoaderModelOnly nodes, so "
-                "behaviour and caching match a hand-built chain exactly."
+                "behaviour and caching match a hand-built chain exactly. Each row "
+                "can switch to 'branch' mode — applied as a side branch without "
+                "merging (TS LoRA Unmerged), lossless for small turbo LoRAs on "
+                "bf16/int8 models at ~10-25% per step."
             ),
             # Разворачивается в цепочку родных загрузчиков — см. модуль сверху.
             enable_expand=True,
@@ -201,6 +211,7 @@ class TS_LoraLoader(IO.ComfyNode):
         graph = GraphBuilder()
         current = model
         used = 0
+        unmerged = 0
         for entry in stack:
             if available and entry["name"] not in available:
                 # Файла нет на этой машине. Пропускаем именно эту LoRA, а не
@@ -208,18 +219,29 @@ class TS_LoraLoader(IO.ComfyNode):
                 logger.warning("%s '%s' is not in the loras folder — skipped",
                                LOG_PREFIX, entry["name"])
                 continue
-            loader = graph.node(
-                NATIVE_LOADER,
-                model=current,
-                lora_name=entry["name"],
-                strength_model=entry["strength"],
-            )
+            if entry["unmerged"]:
+                # Боковая ветка вместо слияния: точнее для маленьких (турбо)
+                # LoRA на bf16/int8, но ~10-25% времени шага и веса в VRAM.
+                loader = graph.node(
+                    UNMERGED_LOADER,
+                    model=current,
+                    lora_name=entry["name"],
+                    strength=entry["strength"],
+                )
+                unmerged += 1
+            else:
+                loader = graph.node(
+                    NATIVE_LOADER,
+                    model=current,
+                    lora_name=entry["name"],
+                    strength_model=entry["strength"],
+                )
             current = loader.out(0)
             used += 1
 
         if not used:
             return IO.NodeOutput(model)
-        logger.info("%s %d LoRA(s) applied", LOG_PREFIX, used)
+        logger.info("%s %d LoRA(s) applied (%d unmerged)", LOG_PREFIX, used, unmerged)
         return IO.NodeOutput(current, expand=graph.finalize())
 
 

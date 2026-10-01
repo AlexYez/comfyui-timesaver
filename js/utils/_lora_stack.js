@@ -9,6 +9,11 @@
 //
 //     [{"name": "detail.safetensors", "strength": 0.8, "on": true}, ...]
 //
+// Необязательное `"unmerged": true` — строка в режиме «ветка»: LoRA применяется
+// боковой веткой без слияния (TS LoRA Unmerged). Пишется ТОЛЬКО когда включено:
+// у строк в обычном режиме и у всех старых графов сохранённая строка остаётся
+// ровно прежней, символ в символ.
+//
 // Почему строка, а не набор виджетов: `widgets_values` в ComfyUI позиционный, и
 // виджеты, приходящие и уходящие вместе со строками списка, сдвигали бы
 // значения соседей в каждом сохранённом workflow. Одна строка — одна позиция,
@@ -113,17 +118,24 @@ export function parseStack(raw) {
             name: String(entry.name || "").trim(),
             strength: clampStrength(entry.strength ?? spec.default),
             on: entry.on !== false,
+            unmerged: entry.unmerged === true,
         } : null))
         .filter((entry) => entry && entry.name);
 }
 
 /** Записать список в строку — ровно в том виде, в каком его читает нода. */
 export function serialiseStack(stack) {
-    return JSON.stringify((stack || []).map((entry) => ({
-        name: entry.name,
-        strength: clampStrength(entry.strength),
-        on: entry.on !== false,
-    })));
+    return JSON.stringify((stack || []).map((entry) => {
+        const out = {
+            name: entry.name,
+            strength: clampStrength(entry.strength),
+            on: entry.on !== false,
+        };
+        // Только включённый режим: иначе каждый старый граф после первого
+        // сохранения менялся бы без всякой причины.
+        if (entry.unmerged === true) out.unmerged = true;
+        return out;
+    }));
 }
 
 /**
@@ -178,6 +190,14 @@ export function setEnabled(stack, index, on) {
     if (!(index >= 0 && index < stack.length)) return stack.slice();
     const out = stack.slice();
     out[index] = { ...out[index], on: Boolean(on) };
+    return out;
+}
+
+/** Слияние или боковая ветка — для одной строки. */
+export function setUnmerged(stack, index, unmerged) {
+    if (!(index >= 0 && index < stack.length)) return stack.slice();
+    const out = stack.slice();
+    out[index] = { ...out[index], unmerged: Boolean(unmerged) };
     return out;
 }
 

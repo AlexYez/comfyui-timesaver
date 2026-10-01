@@ -1,6 +1,6 @@
 // TS Prompt Library — выбор промпта из библиотеки, показ и копирование.
 //
-// Сверху раздел и модель, ниже пресет со стрелками; в карточке — превью (если
+// Сверху раздел и модель, ниже поиск и пресет со стрелками; в карточке — превью (если
 // оно есть у пресета), описание, сам промпт с подсвеченными полями, поля для
 // подстановки, примечание и кнопка «Копировать». Выход ноды — тот же текст,
 // что копирует кнопка: подстановка общая (`_prompt_library.js`) и совпадает с
@@ -31,6 +31,8 @@ import {
     parseFields,
     pickText,
     promptSegments,
+    queryWords,
+    searchPresets,
     switchKey,
 } from "./_prompt_library.js";
 
@@ -68,7 +70,8 @@ const STRINGS = {
         fullscreenTitle: "Prompt library",
         close: "Close (Esc)",
         search: "Search: code, title or prompt text",
-        searchHint: "Every word must match: code, title, description or the prompt itself. ↑ / ↓ switch prompts outside this field",
+        searchHint: "Every word must match: code, title, group, description or the prompt itself. ↑ / ↓ move through the results, Enter picks, Esc clears",
+        searchKeys: "↑ / ↓ — move, Enter — pick, Esc — clear the search",
         found: (n, total) => (n === total ? `${total} prompts` : `${n} of ${total}`),
         nothingFound: "Nothing matches the search.",
         wired: "The preset comes from the wire. The card shows the node's own choice, which is not used while the wire is connected; the fields below are still applied.",
@@ -102,7 +105,8 @@ const STRINGS = {
         fullscreenTitle: "Библиотека промптов",
         close: "Закрыть (Esc)",
         search: "Поиск: код, название или текст промпта",
-        searchHint: "Совпасть должно каждое слово: код, название, описание или сам промпт. ↑ / ↓ листают промпты вне этого поля",
+        searchHint: "Совпасть должно каждое слово: код, название, группа, описание или сам промпт. ↑ / ↓ — по найденному, Enter — выбрать, Esc — сбросить",
+        searchKeys: "↑ / ↓ — листать, Enter — выбрать, Esc — сбросить поиск",
         found: (n, total) => (n === total ? `Промптов: ${total}` : `${n} из ${total}`),
         nothingFound: "Ничего не нашлось.",
         wired: "Пресет приходит по проводу. В карточке — собственный выбор ноды: пока провод подключён, он не используется; поля ниже по-прежнему применяются.",
@@ -168,9 +172,16 @@ function ensureStyles() {
 .ts-plib-shell > .ts-plib{flex:1 1 auto;min-width:0}
 .ts-plib__main{display:flex;gap:12px;flex:1 1 0;min-height:0;min-width:0}
 .ts-plib__content{display:flex;flex-direction:column;gap:6px;flex:1 1 0;min-width:0;min-height:0}
-/* Список с поиском — только во весь экран: в ноде ему нет места, и миниатюры
-   там не должны грузиться вовсе. */
+/* Колонка списка — только во весь экран: в ноде ей нет места, и миниатюры
+   там не должны грузиться вовсе. Строка поиска одна на оба режима и
+   переезжает: в ноде она над пресетом, во весь экран — над списком. */
 .ts-plib__side{display:none}
+.ts-plib__search .ts-ui-input{flex:1 1 0;min-width:0}
+.ts-plib__search .ts-plib__count{flex:0 0 auto;white-space:nowrap}
+.ts-plib__count:empty{display:none}
+/* Найденное в ноде показывается на месте карточки, прокручивает его она. */
+.ts-plib__list--inline{flex:0 0 auto;overflow:visible}
+.ts-plib__item.is-highlight{border-color:var(--ts-accent)}
 
 .ts-plib.is-fullscreen{height:100%;padding:10px 16px 14px;font-size:var(--ts-fs);gap:10px}
 .ts-plib.is-fullscreen .ts-plib__side{display:flex;flex-direction:column;gap:6px;
@@ -299,19 +310,24 @@ function setupPromptLibrary(node) {
     const scroll = el("div", "ts-plib__scroll");
     body.appendChild(scroll);
 
-    // Колонка каталога — видна только во весь экран (см. стили).
-    const side = el("div", "ts-plib__side");
+    // Поиск один на оба режима: в ноде он над пресетом, во весь экран
+    // переезжает в колонку каталога (openFullscreen / onClose).
+    const searchRow = el("div", "ts-plib__row ts-plib__search");
     const search = el("input", "ts-ui-input");
     search.type = "search";
     search.placeholder = t.search;
     search.title = t.searchHint;
     search.spellcheck = false;
     const count = el("div", "ts-plib__count");
+    searchRow.append(search, count);
+
+    // Колонка каталога — видна только во весь экран (см. стили).
+    const side = el("div", "ts-plib__side");
     const list = el("div", "ts-plib__list");
-    side.append(search, count, list);
+    side.append(list);
 
     const content = el("div", "ts-plib__content");
-    content.append(rowPreset, body);
+    content.append(searchRow, rowPreset, body);
     const main = el("div", "ts-plib__main");
     main.append(side, content);
 
@@ -337,7 +353,9 @@ function setupPromptLibrary(node) {
     const shell = el("div", "ts-plib-shell");
     shell.appendChild(root);
 
-    const state = { catalog: null, error: null, fullscreen: null, query: "" };
+    // picking — в ноде вместо карточки показан список найденного;
+    // highlight — подсвеченная в нём строка (Enter выбирает её).
+    const state = { catalog: null, error: null, fullscreen: null, query: "", picking: false, highlight: 0 };
     let promptBlock = null;
     let copyTimer = null;
 
@@ -345,6 +363,10 @@ function setupPromptLibrary(node) {
     const currentValues = () => parseFields(getWidget(node, "fields")?.value);
     // Подключённый провод: сервер возьмёт пресет с него, а не из виджета.
     const isWired = () => (node.inputs || []).some((i) => i?.name === "preset" && i.link != null);
+    // Флаг — класс, а не state.fullscreen: onOpen зовётся ИЗНУТРИ
+    // openFullscreenOverlay, когда его результат ещё не присвоен.
+    const isFullscreen = () => root.classList.contains("is-fullscreen");
+    const searching = () => queryWords(state.query).length > 0;
 
     /**
      * Честная панель при проводе: карточка показывает выбор виджета, а с выхода
@@ -372,10 +394,14 @@ function setupPromptLibrary(node) {
     // Шаг по списку. Сохранённого пресета может не быть (граф из другой версии
     // библиотеки) — тогда соседа не найти, и кнопки со стрелками молчали бы.
     // Шаг из «ниоткуда» приводит к показанному первому пресету.
+    // С поиском листается только найденное (neighbourKey).
     function stepKey(step) {
         if (!state.catalog) return;
+        state.picking = false;
         if (findPreset(state.catalog, currentKey())) {
-            setKey(neighbourKey(state.catalog, currentKey(), step));
+            const key = neighbourKey(state.catalog, currentKey(), step, state.query);
+            if (key === currentKey()) render();
+            else setKey(key);
             return;
         }
         const first = state.catalog.sections?.[0]?.collections?.[0]?.groups?.[0]?.presets?.[0];
@@ -561,22 +587,38 @@ function setupPromptLibrary(node) {
         // openFullscreenOverlay, когда его результат ещё не присвоен.
         if (!root.classList.contains("is-fullscreen") || !found) return;
         list.textContent = "";
-        const total = found.collection.groups.reduce((sum, g) => sum + g.presets.length, 0);
-        const groups = filterGroups(found.collection, state.query);
-        const shown = groups.reduce((sum, g) => sum + g.presets.length, 0);
-        count.textContent = t.found(shown, total);
+        const shown = updateCount(found);
         if (!shown) {
             list.appendChild(el("div", "ts-plib__message", t.nothingFound));
             return;
         }
+        const active = renderItems(list, found, { thumbs: true });
+        active?.scrollIntoView({ block: "nearest" });
+    }
+
+    /** «N из M» — во весь экран всегда, в ноде только пока идёт поиск. */
+    function updateCount(found) {
+        const total = found.collection.groups.reduce((sum, g) => sum + g.presets.length, 0);
+        const shown = searchPresets(found.collection, state.query).length;
+        count.textContent = isFullscreen() || searching() ? t.found(shown, total) : "";
+        return shown;
+    }
+
+    /**
+     * Строки найденного по группам. Возвращает строку, которую надо держать в
+     * поле зрения: подсвеченную, иначе текущий пресет.
+     */
+    function renderItems(container, found, { thumbs = false, highlightKey = null } = {}) {
         let active = null;
-        for (const group of groups) {
-            list.appendChild(el("div", "ts-plib__group-title", pickText(group.title, lang)));
+        let lit = null;
+        for (const group of filterGroups(found.collection, state.query)) {
+            container.appendChild(el("div", "ts-plib__group-title", pickText(group.title, lang)));
             for (const preset of group.presets) {
                 const item = el("button", "ts-plib__item");
                 item.type = "button";
                 item.title = pickText(preset.summary, lang);
-                if (preset.preview) {
+                // Миниатюры — только во весь экран: компактная нода превью не грузит.
+                if (thumbs && preset.preview) {
                     const thumb = el("img", "ts-plib__thumb");
                     thumb.loading = "lazy";
                     thumb.alt = "";
@@ -589,16 +631,63 @@ function setupPromptLibrary(node) {
                     item.classList.add("is-active");
                     active = item;
                 }
-                item.addEventListener("click", () => setKey(preset.key));
-                list.appendChild(item);
+                if (preset.key === highlightKey) {
+                    item.classList.add("is-highlight");
+                    lit = item;
+                }
+                item.addEventListener("click", () => choose(preset.key));
+                container.appendChild(item);
             }
         }
-        active?.scrollIntoView({ block: "nearest" });
+        return lit || active;
+    }
+
+    /** Найденное на месте карточки — поиск в ноде. */
+    function renderResults(found) {
+        scroll.textContent = "";
+        promptBlock = null;
+        const presets = searchPresets(found.collection, state.query);
+        updateCount(found);
+        status.textContent = presets.length ? t.searchKeys : "";
+        status.classList.remove("ts-plib__status--warn");
+        if (!presets.length) {
+            scroll.appendChild(el("div", "ts-plib__message", t.nothingFound));
+            return;
+        }
+        state.highlight = Math.min(Math.max(state.highlight, 0), presets.length - 1);
+        const box = el("div", "ts-plib__list ts-plib__list--inline");
+        box.classList.toggle("is-disabled", isWired());
+        const lit = renderItems(box, found, { highlightKey: presets[state.highlight].key });
+        scroll.appendChild(box);
+        lit?.scrollIntoView({ block: "nearest" });
+    }
+
+    /** Выбор из найденного: карточка возвращается, запрос остаётся в поле. */
+    function choose(key) {
+        if (isWired() || !key) return;
+        state.picking = false;
+        if (key === currentKey()) render();
+        else setKey(key);
+    }
+
+    /**
+     * Найденное сейчас, по порядку каталога. Сохранённого пресета может не
+     * быть — тогда ищем по показанной коллекции, как и render().
+     */
+    function currentResults() {
+        if (!state.catalog?.sections?.length) return [];
+        const first = state.catalog.sections[0].collections[0].groups[0].presets[0];
+        const found = findPreset(state.catalog, currentKey()) || findPreset(state.catalog, first.key);
+        return found ? searchPresets(found.collection, state.query) : [];
     }
 
     function openFullscreen() {
         if (state.fullscreen?.isOpen()) return;
         root.classList.add("is-fullscreen");
+        // Во весь экран найденное — в колонке слева, карточка остаётся видна.
+        state.picking = false;
+        side.insertBefore(searchRow, list);
+        render();
         state.fullscreen = openFullscreenOverlay(root, {
             label: t.fullscreenTitle,
             closeTitle: t.close,
@@ -618,7 +707,9 @@ function setupPromptLibrary(node) {
                 root.classList.remove("is-fullscreen");
                 state.fullscreen = null;
                 list.textContent = "";
+                content.insertBefore(searchRow, rowPreset);
                 shell.appendChild(root);
+                render();
                 node.setDirtyCanvas?.(true, true);
             },
         });
@@ -626,7 +717,59 @@ function setupPromptLibrary(node) {
 
     search.addEventListener("input", () => {
         state.query = search.value;
-        renderList(state.catalog && findPreset(state.catalog, currentKey()));
+        state.highlight = 0;
+        // В ноде найденное встаёт на место карточки; во весь экран — в колонку.
+        state.picking = !isFullscreen() && searching();
+        // Во весь экран карточка от запроса не зависит — перестраиваем только
+        // колонку, иначе превью мигало бы на каждой букве.
+        if (isFullscreen()) renderList(state.catalog && findPreset(state.catalog, currentKey()));
+        else render();
+    });
+
+    search.addEventListener("focus", () => {
+        if (isFullscreen() || state.picking || !searching()) return;
+        state.picking = true;
+        render();
+    });
+
+    // Клавиши поля поиска. Во весь экран стрелки сразу листают найденное
+    // (карточка рядом), в ноде — двигают подсветку в списке, Enter выбирает.
+    // ⚠️ Esc во весь экран закрывает окно раньше нас (общий обработчик в фазе
+    // перехвата) — так и задумано: «Закрыть (Esc)» обещано на кнопке.
+    search.addEventListener("keydown", (event) => {
+        const step = { ArrowDown: 1, ArrowUp: -1 }[event.key];
+        if (event.key === "Escape") {
+            if (!state.query) return;
+            event.preventDefault();
+            event.stopPropagation();
+            search.value = "";
+            state.query = "";
+            state.picking = false;
+            render();
+            return;
+        }
+        if (!step && event.key !== "Enter") return;
+        event.preventDefault();
+        event.stopPropagation();
+        const results = currentResults();
+        if (isFullscreen()) {
+            if (step) stepKey(step);
+            else if (results.length && !results.some((p) => p.key === currentKey())) choose(results[0].key);
+            return;
+        }
+        if (!searching()) return;
+        if (!state.picking) {
+            state.picking = true;
+            render();
+            return;
+        }
+        if (!results.length) return;
+        if (step) {
+            state.highlight = (state.highlight + step + results.length) % results.length;
+            render();
+        } else {
+            choose(results[Math.min(state.highlight, results.length - 1)].key);
+        }
     });
 
     function render() {
@@ -645,14 +788,25 @@ function setupPromptLibrary(node) {
             // Ничего не выделено: иначе выбор именно первого пункта не дал бы
             // события change, и выйти из этого состояния было бы нечем.
             presetSelect.selectedIndex = -1;
-            showMessage(t.missing(currentKey()));
+            // Поиск выводит и отсюда: найденное — по показанной коллекции.
+            if (state.picking) renderResults(found);
+            else {
+                showMessage(t.missing(currentKey()));
+                updateCount(found);
+            }
+            renderList(found);
             return;
         }
         fillSelects(found);
+        if (state.picking) {
+            renderResults(found);
+            return;
+        }
         scroll.textContent = "";
         renderCard(found);
         paintPrompt();
         scroll.scrollTop = 0;
+        updateCount(found);
         renderList(found);
     }
 
@@ -675,7 +829,7 @@ function setupPromptLibrary(node) {
         setKey(switchKey(state.catalog, currentKey(), sectionSelect.value)));
     collectionSelect.addEventListener("change", () =>
         setKey(switchKey(state.catalog, currentKey(), sectionSelect.value, collectionSelect.value)));
-    presetSelect.addEventListener("change", () => setKey(presetSelect.value));
+    presetSelect.addEventListener("change", () => choose(presetSelect.value));
     prev.addEventListener("click", () => stepKey(-1));
     next.addEventListener("click", () => stepKey(1));
 
