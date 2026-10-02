@@ -1,7 +1,8 @@
 """The Neuroframe Engine: one DLL loaded into this process, frame ABI 6.
 
 Since the upstream v9 runtime there is no worker process and no pipe protocol.
-``neuroframe_engine.dll`` owns the D3D12 device, the NGX feature instances, the
+The engine (``neuroframe_engine_neural_rendering.dll`` from v11,
+``neuroframe_engine.dll`` in v9) owns the D3D12 device, the NGX feature instances, the
 CUDA/D3D12 shared path, NVIDIA optical flow and the GPU temporal stabiliser; we
 hand it one frame and take one frame back. NVIDIA's signed snippet checks the
 image that calls it, which is why ``neuroframe_caller.dll`` has to sit next to
@@ -55,6 +56,18 @@ FORMAT_RGBA8 = 1
 #: ``CU_CTX_SCHED_BLOCKING_SYNC`` — the one flag the engine insists on before it
 #: will share memory with us. See ``enable_blocking_sync``.
 CU_CTX_SCHED_BLOCKING_SYNC = 0x04
+
+#: Words in an engine error after which nothing may run in this process again.
+RESTART_MARKERS = (
+    "corrupt",
+    "access violation",
+    "restart the application",
+    "restart comfyui",
+    "device recovery",
+    "native fence wait failed",
+    "cuda context is poisoned",
+    "gpu completion was not confirmed",
+)
 
 #: Выключатель для того, кто не хочет, чтобы пак трогал контекст CUDA.
 KEEP_CUDA_FLAGS_ENV = "TS_DLSS_KEEP_CUDA_FLAGS"
@@ -643,17 +656,29 @@ class NeuralBridge:
 
     def _raise_for(self, error: Any, what: str) -> None:
         """Turn the engine's error buffer into the right kind of refusal."""
-        detail = _text(error.value) or "unknown feature-18 failure"
+        raise self._failure(_text(error.value) or "unknown feature-18 failure", what)
+
+    def _failure(self, detail: str, what: str) -> NeuralBridgeError:
+        """The exception for a failed frame; one the engine cannot survive poisons it."""
         lowered = detail.lower()
-        # ⚠️ These two words mean the native heap is already damaged; anything
-        # run after them is undefined, so the engine is shut out until the
-        # process restarts.
-        if "corrupt" in lowered or "access violation" in lowered:
+        # ⚠️ After these the native state is not reusable in this process: a
+        # damaged heap, a D3D12 device the driver removed and could not give
+        # back (the v11 engine says "Restart the application" itself), a fence
+        # that never signalled. Anything run after them is undefined.
+        if any(marker in lowered for marker in RESTART_MARKERS):
             self._poisoned_reason = detail
-            raise NeuralBridgePoisonedError(
+            return NeuralBridgePoisonedError(
                 f"{LOG_PREFIX} {detail}. Restart ComfyUI before rendering again."
             )
-        raise NeuralBridgeError(f"{LOG_PREFIX} {what}: {detail}")
+        # ⚠️ The engine gave up waiting for its own GPU work: in ComfyUI that is
+        # almost always another job on the same card, not a broken engine.
+        if "timed out waiting" in lowered:
+            return NeuralBridgeError(
+                f"{LOG_PREFIX} {what}: the GPU did not finish in time ({detail}). Another "
+                "program, or another ComfyUI job, is probably keeping the card busy; let it "
+                "finish and run again."
+            )
+        return NeuralBridgeError(f"{LOG_PREFIX} {what}: {detail}")
 
 
 #: One engine per process, like the runtime it wraps.

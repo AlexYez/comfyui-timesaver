@@ -9,31 +9,49 @@ next to the binaries.
 ⚠️ The layout is dictated by the engine and must NOT be flattened::
 
     models/DLSS/
-      dlssnr/  neuroframe_engine.dll  neuroframe_caller.dll  nvngx_dlssnr.dll
-               LICENSE-Merserk.txt    LICENSE-NVIDIA-DLSS.txt
+      dlssnr/  neuroframe_engine_neural_rendering.dll  neuroframe_caller.dll
+               nvngx_dlssnr.dll  LICENSE-Merserk.txt  LICENSE-NVIDIA-DLSS.txt
 
 ⚠️ ``neuroframe_caller.dll`` is not optional decoration: NVIDIA's signed snippet
 checks the image that calls it, and it only accepts that shim. Both DLLs have to
 sit in the same folder, which is the folder handed to ``dlss5nr_init``.
 
-⚠️ Since the upstream v9 release the old v5 layout (``host/`` with ReShade and
-the worker executable, ``dlss/nvngx_dlss.dll``) is dead weight — nothing here
-loads it any more. It is left alone rather than deleted: those files are the
-user's, not ours. Its presence still means one thing: the user once installed
-the runtime from this same upstream project, so ``ensure_runtime`` updates it to
-v9 even with ``download_if_missing`` off (see there why that switch is so often
-off without anybody choosing it).
+⚠️ WHY v11 AND NOT NEWER (decided by the pack owner, 02.10.2026). From upstream
+v12 on the engine is no longer MIT: its MIT notice is gone from ``dlssnr/`` and
+the project's "Merserk Source License 1.0" (proprietary, source-available) covers
+it — §5f forbids providing it "as part of another product or bundle" without
+written permission. v11.0 is the last release whose engine still carries its MIT
+licence file. The network (``nvngx_dlssnr.dll``) is the same file in v9, v11 and
+v14. What v11 brings over v9: recovery after the driver removes the D3D12 device,
+retries when the adapter is created, and a build against CUDA 13.0 instead of
+13.4 (older drivers can run it). Same algorithm, same frame ABI 6.
+
+⚠️ A v9 runtime (``neuroframe_engine.dll``) still runs: with
+``download_if_missing`` off it is used as it is, verified against its own pins.
+With the switch on it is updated, and the update fetches only what differs —
+the engine and the caller, ~240 KB — not the whole release.
+
+⚠️ The old v5 layout (``host/`` with ReShade and the worker executable,
+``dlss/nvngx_dlss.dll``) is dead weight — nothing here loads it any more. It is
+left alone rather than deleted: those files are the user's, not ours. Its
+presence still means one thing: the user once installed the runtime from this
+same upstream project, so ``ensure_runtime`` updates it even with
+``download_if_missing`` off (see there why that switch is so often off without
+anybody choosing it).
 """
 
 from __future__ import annotations
 
 import hashlib
+import io
 import logging
 import os
 import shutil
+import struct
 import zipfile
+import zlib
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable
 
 from ..._deps import TSDependencyManager
 
@@ -46,28 +64,34 @@ MODEL_FOLDER_NAME = "DLSS"
 #: The folder the engine is told about, under the runtime root.
 RUNTIME_SUBDIR = "dlssnr"
 
-#: Upstream release the runtime is taken from (486 MB; only five entries are kept).
+#: Upstream release the runtime is taken from — the last one with an MIT engine.
 RUNTIME_URL = (
-    "https://github.com/Merserk/dlss5-visual-enhancer/releases/download/v9.0/"
-    "DLSS.5.Visual.Enhancer.v9.0.zip"
+    "https://github.com/Merserk/dlss5-visual-enhancer/releases/download/v11.0/"
+    "Visual.Enhancer.v11.0.zip"
 )
-RUNTIME_SIZE_MB = 486
+#: The whole archive — fetched only when the server refuses partial downloads.
+RUNTIME_SIZE_MB = 663
+#: What a first install actually fetches from it: the five entries, compressed.
+RUNTIME_FETCH_MB = 112
+
+ENGINE = "dlssnr/neuroframe_engine_neural_rendering.dll"
+CALLER = "dlssnr/neuroframe_caller.dll"
+NETWORK = "dlssnr/nvngx_dlssnr.dll"
+
+#: The v9 engine. Still loaded when it is all there is (download switched off).
+LEGACY_ENGINE = "dlssnr/neuroframe_engine.dll"
 
 #: zip entry -> path relative to the runtime root.
 EXTRACT = {
-    "bin/runtime/dlssnr/neuroframe_engine.dll": "dlssnr/neuroframe_engine.dll",
-    "bin/runtime/dlssnr/neuroframe_caller.dll": "dlssnr/neuroframe_caller.dll",
-    "bin/runtime/dlssnr/nvngx_dlssnr.dll": "dlssnr/nvngx_dlssnr.dll",
+    "bin/runtime/dlssnr/neuroframe_engine_neural_rendering.dll": ENGINE,
+    "bin/runtime/dlssnr/neuroframe_caller.dll": CALLER,
+    "bin/runtime/dlssnr/nvngx_dlssnr.dll": NETWORK,
     "bin/runtime/dlssnr/LICENSE-Merserk.txt": "dlssnr/LICENSE-Merserk.txt",
     "bin/runtime/dlssnr/LICENSE-NVIDIA-DLSS.txt": "dlssnr/LICENSE-NVIDIA-DLSS.txt",
 }
 
 #: Without these the node cannot run; their absence triggers the download.
-REQUIRED = (
-    "dlssnr/neuroframe_engine.dll",
-    "dlssnr/neuroframe_caller.dll",
-    "dlssnr/nvngx_dlssnr.dll",
-)
+REQUIRED = (ENGINE, CALLER, NETWORK)
 
 #: The v5 runtime this node used until 17.09.2026. Nothing loads it any more.
 OBSOLETE = (
@@ -78,22 +102,27 @@ OBSOLETE = (
 )
 
 # ⚠️ Несовпадение суммы ОСТАНАВЛИВАЕТ работу, и это не перестраховка. Движок
-# грузится В НАШ процесс: подменённый `neuroframe_engine.dll` — это чужой код с
-# правами ComfyUI, и никакая песочница его уже не сдержит. Релиз на GitHub
-# можно удалить и залить под тем же тегом что угодно, адрес этого не заметит.
-# Пересборка апстрима лечится обновлением таблицы (или выключателем ниже);
-# подменённый бинарник не лечится ничем.
+# грузится В НАШ процесс: подменённый движок — это чужой код с правами ComfyUI,
+# и никакая песочница его уже не сдержит. Релиз на GitHub можно удалить и
+# залить под тем же тегом что угодно, адрес этого не заметит. Пересборка
+# апстрима лечится обновлением таблицы (или выключателем ниже); подменённый
+# бинарник не лечится ничем.
 #
-# ⚠️ Суммы сверены 17.09.2026 с установленным рантаймом v9.0 и совпали со всеми
-# тремя источниками: таблицей `bin/runtime/BINARIES.md` эталонного приложения,
-# его `installer/manifest.json` и файлами на диске.
+# ⚠️ Суммы v11 посчитаны 02.10.2026 с файлов, вынутых из архива v11.0;
+# `nvngx_dlssnr.dll` в v11 тот же, что в v9 и v14 (совпали размер и CRC архива,
+# а сумма — с манифестом эталонного приложения для v14).
 SHA256 = {
-    "dlssnr/neuroframe_engine.dll":
-        "2BDC5BFD59906DF7CB6DF98F78339D68F741B11256A26927A4C107425E7F46D4",
-    "dlssnr/neuroframe_caller.dll":
-        "58E2850F96FC1B81A9154E059E3F3A42239440280C79E1CE41F6142CA9F1BAD4",
-    "dlssnr/nvngx_dlssnr.dll":
-        "6EB209E764F39872625DEBD6ABAF45E2BB6322F6F270F781F70C059AE30B3927",
+    ENGINE: "F657D20E569F97DEC25E02141F64354CD4B3E1DC51FA1DFE48ACEEBCC3CC43D5",
+    CALLER: "B3611046837BC2F2E957A694CE0817E3C1B304BD653D0C7A193148E5BDD02437",
+    NETWORK: "6EB209E764F39872625DEBD6ABAF45E2BB6322F6F270F781F70C059AE30B3927",
+}
+
+#: The v9 build, sums checked 17.09.2026. ``neuroframe_caller.dll`` has the same
+#: NAME in both builds and a different body: v9's caller goes with v9's engine.
+LEGACY_SHA256 = {
+    LEGACY_ENGINE: "2BDC5BFD59906DF7CB6DF98F78339D68F741B11256A26927A4C107425E7F46D4",
+    CALLER: "58E2850F96FC1B81A9154E059E3F3A42239440280C79E1CE41F6142CA9F1BAD4",
+    NETWORK: SHA256[NETWORK],
 }
 
 #: Выключатель проверки — для того, кто СОЗНАТЕЛЬНО поставил другую сборку
@@ -105,14 +134,15 @@ _SKIP_VERIFY_ENV = "TS_DLSS_SKIP_VERIFY"
 COMPONENT_LICENCES = (
     ("dlssnr/nvngx_dlssnr.dll",
      "NVIDIA, proprietary (NVIDIA RTX SDKs License)"),
-    ("dlssnr/neuroframe_engine.dll", "Neuroframe Engine, MIT (upstream author)"),
+    ("dlssnr/neuroframe_engine_neural_rendering.dll",
+     "Neuroframe Engine, MIT (upstream author)"),
     ("dlssnr/neuroframe_caller.dll", "caller shim, MIT (upstream author)"),
 )
 
-# ⚠️ Печатается ПЕРЕД первым сетевым запросом, а не после. Полгигабайта чужих
-# файлов, из которых один проприетарный, не должны приезжать на машину молча:
-# человек обязан увидеть, что именно качается, откуда и на чьих условиях.
-# Выключатель `download_if_missing` оставляет раскладку файлов ему самому.
+# ⚠️ Печатается ПЕРЕД первым сетевым запросом, а не после. Чужие файлы, из
+# которых один проприетарный, не должны приезжать на машину молча: человек
+# обязан увидеть, что именно качается, откуда и на чьих условиях. Выключатель
+# `download_if_missing` оставляет раскладку файлов ему самому.
 LICENCE_NOTICE = "\n".join([
     "",
     "  " + "-" * 74,
@@ -120,11 +150,12 @@ LICENCE_NOTICE = "\n".join([
     "  redistributed by it. It is about to be downloaded from a third party:",
     "",
     "      {url}",
-    "      (~{size} MB, once, into {root})",
+    "      (only the files below, ~{fetch} MB at most, once, into {root};",
+    "       the whole ~{size} MB archive only if the server refuses partial downloads)",
     "",
-    "  What that archive contains, and under whose terms:",
+    "  What it contains, and under whose terms:",
 ] + [
-    f"      {names:<32} {owner}" for names, owner in COMPONENT_LICENCES
+    f"      {names:<46} {owner}" for names, owner in COMPONENT_LICENCES
 ] + [
     "",
     "  This pack hosts none of it and is not affiliated with or endorsed by NVIDIA",
@@ -145,6 +176,7 @@ def licence_notice(url: str = RUNTIME_URL, root: Path | None = None) -> str:
     return LICENCE_NOTICE.format(
         url=url,
         size=RUNTIME_SIZE_MB,
+        fetch=RUNTIME_FETCH_MB,
         root=root if root is not None else runtime_root(),
     )
 
@@ -182,9 +214,21 @@ def runtime_dir(root: Path | None = None) -> Path:
     return base / RUNTIME_SUBDIR
 
 
+def _uses_legacy(base: Path) -> bool:
+    """Whether this folder runs on the v9 engine: it has that one and not v11's."""
+    return not (base / ENGINE).is_file() and (base / LEGACY_ENGINE).is_file()
+
+
 def engine_path(root: Path | None = None) -> Path:
-    """The DLL this process loads."""
-    return runtime_dir(root) / "neuroframe_engine.dll"
+    """The DLL this process loads: v11's, or v9's when it is all there is."""
+    base = Path(root) if root is not None else runtime_root()
+    return base / (LEGACY_ENGINE if _uses_legacy(base) else ENGINE)
+
+
+def pinned_sums(root: Path | None = None) -> dict[str, str]:
+    """The sums of the build this folder runs on."""
+    base = Path(root) if root is not None else runtime_root()
+    return LEGACY_SHA256 if _uses_legacy(base) else SHA256
 
 
 def register_model_folder() -> None:
@@ -202,9 +246,15 @@ def register_model_folder() -> None:
 
 
 def missing_files(root: Path | None = None) -> list[str]:
-    """Which of the required files are not on disk, in layout order."""
+    """Which of the required (v11) files are not on disk, in layout order."""
     base = Path(root) if root is not None else runtime_root()
     return [name for name in REQUIRED if not (base / name).is_file()]
+
+
+def legacy_complete(root: Path | None = None) -> bool:
+    """Whether a whole v9 runtime is there to fall back on."""
+    base = Path(root) if root is not None else runtime_root()
+    return all((base / name).is_file() for name in LEGACY_SHA256)
 
 
 def obsolete_files(root: Path | None = None) -> list[str]:
@@ -221,15 +271,16 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest().upper()
 
 
-#: Что уже сверено в этом процессе: путь -> (размер, время правки).
+#: Что уже сверено в этом процессе: путь -> (размер, время правки, сумма).
 #: ⚠️ Проверка обязана идти перед КАЖДЫМ прогоном — файл мог смениться, — но
 #: пересчитывать при этом 166 МБ каждый раз незачем: замерено 130 мс на прогон,
 #: то есть на коротком батче это заметная часть всей работы. Кэш держится за
-#: размер и время правки файла: подменённый файл их не сохранит.
-_verified: dict[str, tuple[int, int]] = {}
+#: размер и время правки файла: подменённый файл их не сохранит. Сумма в ключе:
+#: у caller'а одно имя и две сборки, и сверенный против v9 не годится для v11.
+_verified: dict[str, tuple[int, int, str]] = {}
 
 
-def _unchanged_since_check(path: Path) -> bool:
+def _unchanged_since_check(path: Path, expected: str) -> bool:
     stamp = _verified.get(str(path))
     if stamp is None:
         return False
@@ -237,15 +288,15 @@ def _unchanged_since_check(path: Path) -> bool:
         info = path.stat()
     except OSError:
         return False
-    return stamp == (info.st_size, info.st_mtime_ns)
+    return stamp == (info.st_size, info.st_mtime_ns, expected)
 
 
-def _remember_check(path: Path) -> None:
+def _remember_check(path: Path, expected: str) -> None:
     try:
         info = path.stat()
     except OSError:
         return
-    _verified[str(path)] = (info.st_size, info.st_mtime_ns)
+    _verified[str(path)] = (info.st_size, info.st_mtime_ns, expected)
 
 
 def verify_is_off() -> bool:
@@ -276,30 +327,34 @@ def require_known_runtime(root: Path) -> None:
     raise RuntimeError(
         f"{LOG_PREFIX} The DLSS runtime on disk is not the build this node pins:\n  "
         + "\n  ".join(problems)
-        + f"\n  This node LOADS neuroframe_engine.dll into the ComfyUI process, so it "
+        + f"\n  This node LOADS {engine_path(root).name} into the ComfyUI process, so it "
         f"refuses to run an unknown build. Delete {root / RUNTIME_SUBDIR} and let the node "
         f"fetch it again, or set {_SKIP_VERIFY_ENV}=1 if you installed a different build "
         "on purpose."
     )
 
 
+def _file_matches(path: Path, expected: str) -> bool:
+    if _unchanged_since_check(path, expected):
+        return True
+    if _sha256(path) != expected:
+        return False
+    _remember_check(path, expected)
+    return True
+
+
 def verify(root: Path) -> list[str]:
-    """Файлы, которые на месте, но не те, что мы закрепили."""
+    """Файлы той сборки, на которой работает папка, — на месте, но не те."""
     warnings: list[str] = []
-    for name, expected in SHA256.items():
+    for name, expected in pinned_sums(root).items():
         path = root / name
         if not path.is_file():
             continue
-        if _unchanged_since_check(path):
-            continue
-        actual = _sha256(path)
-        if actual != expected:
+        if not _file_matches(path, expected):
             warnings.append(
-                f"{name} has SHA-256 {actual}, expected {expected} — the upstream release "
-                "was probably rebuilt."
+                f"{name} has SHA-256 {_sha256(path)}, expected {expected} — the upstream "
+                "release was probably rebuilt."
             )
-        else:
-            _remember_check(path)
     return warnings
 
 
@@ -315,21 +370,249 @@ def extract_from_zip(archive: Path, root: Path) -> list[str]:
         available = set(bundle.namelist())
         for entry, relative in EXTRACT.items():
             if entry not in available:
-                if relative.replace("/", os.sep) in {name.replace("/", os.sep)
-                                                     for name in REQUIRED}:
+                if relative in REQUIRED:
                     raise RuntimeError(
                         f"{LOG_PREFIX} The release archive has no '{entry}'. "
                         "The upstream layout changed; update the node."
                     )
                 continue
-            target = (root / relative).resolve()
-            if not str(target).startswith(str(root.resolve())):
-                raise RuntimeError(f"{LOG_PREFIX} Refusing to write outside {root}.")
+            target = _target(root, relative)
             target.parent.mkdir(parents=True, exist_ok=True)
             with bundle.open(entry) as source, target.open("wb") as sink:
                 shutil.copyfileobj(source, sink, 1024 * 1024)
             written.append(relative)
     return written
+
+
+def _target(root: Path, relative: str) -> Path:
+    target = (root / relative).resolve()
+    if not str(target).startswith(str(root.resolve())):
+        raise RuntimeError(f"{LOG_PREFIX} Refusing to write outside {root}.")
+    return target
+
+
+# ── частичная загрузка ─────────────────────────────────────────────────────
+#
+# ⚠️ Зачем. Архив релиза — это целое настольное приложение на 663 МБ (Python,
+# Qt, FFmpeg), а ноде из него нужны пять файлов. Тому, у кого уже стоит v9,
+# переход на v11 стоит ~240 КБ: сеть NVIDIA та же самая. Zip позволяет взять
+# файл по отдельности — оглавление лежит в конце, у каждого файла известны
+# смещение и размер, — а GitHub отдаёт части файла по заголовку Range.
+#
+# ⚠️ Сервер, не отдавший часть (ответ не 206), — не ошибка: тогда качается
+# весь архив, как раньше. А вот файл, не сошедшийся по CRC или длине, —
+# ошибка, и обходом она не прячется.
+
+class PartialDownloadUnsupported(RuntimeError):
+    """The server will not hand out byte ranges; the whole archive is the way."""
+
+
+class _RemoteArchive(io.RawIOBase):
+    """A release zip read by byte ranges: enough for zipfile to list it."""
+
+    def __init__(self, requests: Any, url: str) -> None:
+        self._requests = requests
+        probe = requests.get(url, headers={"Range": "bytes=0-0"}, stream=True,
+                             timeout=(15, 60), allow_redirects=True)
+        try:
+            span = probe.headers.get("Content-Range", "")
+            if probe.status_code != 206 or "/" not in span:
+                raise PartialDownloadUnsupported(
+                    f"the server answered {probe.status_code} to a range request")
+            self.size = int(span.rsplit("/", 1)[1])
+            self.url = probe.url
+        finally:
+            probe.close()
+        self._position = 0
+
+    def readable(self) -> bool:
+        return True
+
+    def seekable(self) -> bool:
+        return True
+
+    def tell(self) -> int:
+        return self._position
+
+    def seek(self, offset: int, whence: int = 0) -> int:
+        base = {0: 0, 1: self._position, 2: self.size}[whence]
+        self._position = base + offset
+        return self._position
+
+    def fetch(self, start: int, length: int) -> bytes:
+        end = min(self.size, start + length) - 1
+        if end < start:
+            return b""
+        response = self._requests.get(self.url, headers={"Range": f"bytes={start}-{end}"},
+                                      timeout=(15, 60))
+        if response.status_code != 206:
+            raise PartialDownloadUnsupported(
+                f"the server answered {response.status_code} to a range request")
+        return response.content
+
+    def readinto(self, buffer) -> int:
+        if self._position >= self.size:
+            return 0
+        data = self.fetch(self._position, len(buffer))
+        buffer[: len(data)] = data
+        self._position += len(data)
+        return len(data)
+
+    def stream(self, start: int, length: int):
+        """The bytes [start, start+length) as one streamed response."""
+        response = self._requests.get(
+            self.url, headers={"Range": f"bytes={start}-{start + length - 1}"},
+            stream=True, timeout=(15, 120))
+        if response.status_code != 206:
+            response.close()
+            raise PartialDownloadUnsupported(
+                f"the server answered {response.status_code} to a range request")
+        return response
+
+
+def _crc32(path: Path) -> int:
+    crc = 0
+    with path.open("rb") as stream:
+        for block in iter(lambda: stream.read(1024 * 1024), b""):
+            crc = zlib.crc32(block, crc)
+    return crc & 0xFFFFFFFF
+
+
+def _already_there(path: Path, info: zipfile.ZipInfo) -> bool:
+    """Whether the file on disk is byte for byte the archive's entry."""
+    try:
+        return path.is_file() and path.stat().st_size == info.file_size \
+            and _crc32(path) == info.CRC
+    except OSError:
+        return False
+
+
+def _fetch_entry(remote: _RemoteArchive, info: zipfile.ZipInfo, target: Path,
+                 advance: Callable[[int], None]) -> Path:
+    """One entry out of the remote archive into ``<target>.part``, checked.
+
+    Returns the ``.part`` file; putting it in place is the caller's job, done
+    only once EVERY entry has arrived — see ``fetch_entries``.
+    """
+    header = remote.fetch(info.header_offset, 30)
+    if len(header) != 30 or header[:4] != b"PK\x03\x04":
+        raise RuntimeError(f"{LOG_PREFIX} {info.filename}: no local header in the archive.")
+    name_length, extra_length = struct.unpack_from("<HH", header, 26)
+    start = info.header_offset + 30 + name_length + extra_length
+    if info.compress_type == zipfile.ZIP_DEFLATED:
+        inflate = zlib.decompressobj(-15)
+    elif info.compress_type == zipfile.ZIP_STORED:
+        inflate = None
+    else:
+        raise PartialDownloadUnsupported(f"compression method {info.compress_type}")
+
+    partial = target.with_name(target.name + ".part")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    crc = 0
+    written = 0
+    try:
+        with remote.stream(start, info.compress_size) as response, partial.open("wb") as sink:  # noqa: E501
+            for chunk in response.iter_content(chunk_size=1024 * 1024):
+                if not chunk:
+                    continue
+                advance(len(chunk))
+                data = inflate.decompress(chunk) if inflate is not None else chunk
+                crc = zlib.crc32(data, crc)
+                written += len(data)
+                sink.write(data)
+            if inflate is not None:
+                tail = inflate.flush()
+                crc = zlib.crc32(tail, crc)
+                written += len(tail)
+                sink.write(tail)
+        if written != info.file_size or (crc & 0xFFFFFFFF) != info.CRC:
+            raise RuntimeError(
+                f"{LOG_PREFIX} {info.filename} arrived damaged ({written} bytes, CRC "
+                f"{crc & 0xFFFFFFFF:08X}; expected {info.file_size}, {info.CRC:08X}).")
+    except BaseException:
+        partial.unlink(missing_ok=True)
+        raise
+    return partial
+
+
+def fetch_entries(requests: Any, url: str, root: Path,
+                  progress: Callable[[int, int], None] | None = None) -> list[str]:
+    """Take the known entries out of the remote archive, skipping what is already here.
+
+    Returns the relative paths written. Raises ``PartialDownloadUnsupported`` when
+    the server will not hand out ranges — the caller then fetches the archive.
+    """
+    remote = _RemoteArchive(requests, url)
+    try:
+        bundle = zipfile.ZipFile(io.BufferedReader(remote, buffer_size=1024 * 1024))
+    except zipfile.BadZipFile as error:
+        raise PartialDownloadUnsupported(f"the archive directory is unreadable: {error}") from error
+    with bundle:
+        listed = {info.filename: info for info in bundle.infolist()}
+        wanted: list[tuple[zipfile.ZipInfo, str]] = []
+        for entry, relative in EXTRACT.items():
+            info = listed.get(entry)
+            if info is None:
+                if relative in REQUIRED:
+                    raise RuntimeError(
+                        f"{LOG_PREFIX} The release archive has no '{entry}'. "
+                        "The upstream layout changed; update the node.")
+                continue
+            if not _already_there(_target(root, relative), info):
+                wanted.append((info, relative))
+        total = sum(info.compress_size for info, _ in wanted)
+        done = 0
+
+        def advance(count: int) -> None:
+            nonlocal done
+            done += count
+            if progress is not None:
+                progress(done, total)
+
+        if wanted:
+            logger.info("%s Fetching %d file(s), %.1f MB, out of the release archive.",
+                        LOG_PREFIX, len(wanted), total / (1024 * 1024))
+        # ⚠️ Всё качается рядом, в `.part`, и встаёт на место только целиком:
+        # оборванное посередине обновление не должно оставить новый движок
+        # рядом со старым caller'ом — такая пара не запустится, а сумма caller'а
+        # укажет не на настоящую причину.
+        arrived: list[tuple[Path, Path, str]] = []
+        try:
+            for info, relative in wanted:
+                target = _target(root, relative)
+                arrived.append((_fetch_entry(remote, info, target, advance), target, relative))
+        except BaseException:
+            for partial, _, _ in arrived:
+                partial.unlink(missing_ok=True)
+            raise
+        for partial, target, _ in arrived:
+            os.replace(partial, target)
+        return [relative for _, _, relative in arrived]
+
+
+def _fetch_whole_archive(requests: Any, url: str, base: Path,
+                         progress: Callable[[int, int], None] | None) -> list[str]:
+    archive = base / "_runtime_download.zip.part"
+    logger.info("%s Downloading the whole DLSS runtime archive (~%d MB) from %s",
+                LOG_PREFIX, RUNTIME_SIZE_MB, url)
+    try:
+        with requests.get(url, stream=True, timeout=(15, 120)) as response:
+            response.raise_for_status()
+            total = int(response.headers.get("Content-Length") or 0)
+            done = 0
+            with archive.open("wb") as sink:
+                for chunk in response.iter_content(chunk_size=4 * 1024 * 1024):
+                    if not chunk:
+                        continue
+                    sink.write(chunk)
+                    done += len(chunk)
+                    if progress is not None:
+                        progress(done, total)
+        return extract_from_zip(archive, base)
+    finally:
+        # ⚠️ Полгигабайта не остаются на диске после распаковки — и после
+        # сбоя тоже.
+        archive.unlink(missing_ok=True)
 
 
 def download_runtime(
@@ -338,10 +621,10 @@ def download_runtime(
     progress: Callable[[int, int], None] | None = None,
     url: str = RUNTIME_URL,
 ) -> Path:
-    """Fetch the release archive and lay the runtime out under ``root``.
+    """Fetch what is missing from the release and lay the runtime out under ``root``.
 
-    ``progress(done_bytes, total_bytes)`` is called while the archive streams in;
-    ``total_bytes`` is 0 when the server does not say how big it is.
+    ``progress(done_bytes, total_bytes)`` is called while bytes stream in;
+    ``total_bytes`` is 0 when the server does not say how much is coming.
     """
     base = Path(root) if root is not None else runtime_root()
 
@@ -357,28 +640,12 @@ def download_runtime(
         )
 
     base.mkdir(parents=True, exist_ok=True)
-    archive = base / "_runtime_download.zip.part"
-    logger.info("%s Downloading the DLSS runtime (~%d MB) from %s",
-                LOG_PREFIX, RUNTIME_SIZE_MB, url)
     try:
-        with requests.get(url, stream=True, timeout=(15, 120)) as response:
-            response.raise_for_status()
-            total = int(response.headers.get("Content-Length") or 0)
-            done = 0
-            with archive.open("wb") as sink:
-                for chunk in response.iter_content(chunk_size=4 * 1024 * 1024):
-                    if not chunk:
-                        continue
-                    sink.write(chunk)
-                    done += len(chunk)
-                    if progress is not None:
-                        progress(done, total)
-        written = extract_from_zip(archive, base)
-        logger.info("%s Runtime ready in %s (%d files).", LOG_PREFIX, base, len(written))
-    finally:
-        # ⚠️ Half a gigabyte does not stay on the user's disk after extraction,
-        # and it does not stay there after a failure either.
-        archive.unlink(missing_ok=True)
+        written = fetch_entries(requests, url, base, progress)
+    except PartialDownloadUnsupported as reason:
+        logger.info("%s Partial download unavailable (%s).", LOG_PREFIX, reason)
+        written = _fetch_whole_archive(requests, url, base, progress)
+    logger.info("%s Runtime ready in %s (%d file(s) written).", LOG_PREFIX, base, len(written))
 
     still_missing = missing_files(base)
     if still_missing:
@@ -408,43 +675,51 @@ def ensure_runtime(
         # диске могли смениться после неё, а движок мы грузим заново.
         require_known_runtime(root)
         return root
-    if not download_if_missing:
-        # ⚠️ Выключатель «выключен» в графе чаще всего НЕ выбран человеком: в
-        # 12.10.0-12.11.2 это было умолчание, и граф несёт его в себе. Такой
-        # человек до обновления работал на v5 (файлы были — выключатель ни на
-        # что не влиял), а после перехода на v9 упирался в ошибку. v5 качался
-        # из того же проекта, так что его наличие — уже данное согласие на этот
-        # источник: обновляем то, что человек сам однажды поставил.
-        #
-        # ⚠️ Только ПЕРЕХОД, один раз: папки v9 ещё нет вовсе. Если `dlssnr/`
-        # уже есть и в ней чего-то не хватает — это ручная раскладка или
-        # удалённый файл, и выключатель снова значит ровно «не качать».
-        # Признак v5 — файлы `host/`: имя `dlss/nvngx_dlss.dll` слишком общее,
-        # папку models/DLSS может делить с нами другой пак.
-        missing_message = (
-            f"{LOG_PREFIX} The DLSS runtime is missing from {root}: " + ", ".join(gaps)
-            + ". Nothing was downloaded because 'download_if_missing' is off on this node. "
-            "If you did not switch it off yourself: workflows saved with pack versions "
-            "12.10.0 to 12.11.2 carry 'off', the default of those versions. Switch "
-            "'download_if_missing' on in the node and run again (~"
-            f"{RUNTIME_SIZE_MB} MB, once). Or place the files there yourself - they are in "
-            f"the upstream release {RUNTIME_URL}, under bin/runtime/dlssnr/."
-        )
-        v5_marks = [name for name in obsolete_files(root) if name.startswith("host/")]
-        if v5_marks and not runtime_dir(root).exists():
-            logger.warning(
-                "%s 'download_if_missing' is off, but %s already holds the previous (v5) "
-                "DLSS runtime from the same upstream project (%s). The node needs its "
-                "v9 files since pack 12.11.3, so the runtime you installed is updated once.",
-                LOG_PREFIX, root, v5_marks[0])
-            try:
-                return download_runtime(root, progress=progress)
-            except OSError as error:
-                # Без сети — прежний понятный отказ, а не сырая ошибка requests
-                # (его исключения — OSError). Несовпадение сумм сюда НЕ попадает
-                # и проходит как есть.
-                raise RuntimeError(
-                    f"{missing_message} (Updating the v5 runtime failed: {error})"
-                ) from error
-        raise RuntimeError(missing_message)
-    return download_runtime(root, progress=progress)
+    if download_if_missing:
+        return download_runtime(root, progress=progress)
+    if legacy_complete(root):
+        # ⚠️ Выключатель выключен, а v9 стоит целиком — работаем на нём, а не
+        # падаем: сеть та же, движок отличается живучестью, не картинкой.
+        require_known_runtime(root)
+        logger.info(
+            "%s Running on the v9 engine: 'download_if_missing' is off. Switch it on once "
+            "to update to v11 (~240 KB; better recovery after a GPU driver reset).", LOG_PREFIX)
+        return root
+    # ⚠️ Выключатель «выключен» в графе чаще всего НЕ выбран человеком: в
+    # 12.10.0-12.11.2 это было умолчание, и граф несёт его в себе. Такой
+    # человек до обновления работал на v5 (файлы были — выключатель ни на что
+    # не влиял), а после перехода на новый движок упирался в ошибку. v5 качался
+    # из того же проекта, так что его наличие — уже данное согласие на этот
+    # источник: обновляем то, что человек сам однажды поставил.
+    #
+    # ⚠️ Только ПЕРЕХОД, один раз: папки `dlssnr/` ещё нет вовсе. Если она уже
+    # есть и в ней чего-то не хватает — это ручная раскладка или удалённый
+    # файл, и выключатель снова значит ровно «не качать». Признак v5 — файлы
+    # `host/`: имя `dlss/nvngx_dlss.dll` слишком общее, папку models/DLSS может
+    # делить с нами другой пак.
+    missing_message = (
+        f"{LOG_PREFIX} The DLSS runtime is missing from {root}: " + ", ".join(gaps)
+        + ". Nothing was downloaded because 'download_if_missing' is off on this node. "
+        "If you did not switch it off yourself: workflows saved with pack versions "
+        "12.10.0 to 12.11.2 carry 'off', the default of those versions. Switch "
+        "'download_if_missing' on in the node and run again (~"
+        f"{RUNTIME_FETCH_MB} MB, once). Or place the files there yourself - they are in "
+        f"the upstream release {RUNTIME_URL}, under bin/runtime/dlssnr/."
+    )
+    v5_marks = [name for name in obsolete_files(root) if name.startswith("host/")]
+    if v5_marks and not runtime_dir(root).exists():
+        logger.warning(
+            "%s 'download_if_missing' is off, but %s already holds the previous (v5) "
+            "DLSS runtime from the same upstream project (%s). The node needs its "
+            "newer files since pack 12.11.3, so the runtime you installed is updated once.",
+            LOG_PREFIX, root, v5_marks[0])
+        try:
+            return download_runtime(root, progress=progress)
+        except OSError as error:
+            # Без сети — прежний понятный отказ, а не сырая ошибка requests
+            # (его исключения — OSError). Несовпадение сумм сюда НЕ попадает
+            # и проходит как есть.
+            raise RuntimeError(
+                f"{missing_message} (Updating the v5 runtime failed: {error})"
+            ) from error
+    raise RuntimeError(missing_message)
