@@ -428,7 +428,7 @@ class LoraBranch:
 
     def run(self, executor, *args, **kwargs):
         diffusion_model = executor.class_obj
-        x = args[0] if args else kwargs.get("x")
+        x = _reference_tensor(args[0] if args else kwargs.get("x"))
         # x уже приведён ядром к типу вычислений (get_dtype_inference); тип
         # весов модели (fp8, int8) здесь ни при чём.
         dtype = branch_dtype(x.dtype, getattr(diffusion_model, "dtype", None))
@@ -458,6 +458,20 @@ class LoraBranch:
                         "%s %s: %d of %d layers were never called through their module, so their "
                         "LoRA branch was not applied (first: %s). The model runs them another way.",
                         LOG_PREFIX, self.label, len(silent), len(expected), sorted(silent)[0])
+
+
+def _reference_tensor(x):
+    """The tensor whose device and dtype the branch follows.
+
+    Audio-video models hand the diffusion model a LIST of latents: MiniMax H3
+    in ComfyUI 0.38.2 passes ``[video, audio]``. Both streams share one device
+    and the inference dtype, so the first one stands for all of them.
+    """
+    while isinstance(x, (list, tuple)):
+        if not x:
+            raise TypeError(f"{LOG_PREFIX} the diffusion model received an empty latent list")
+        x = x[0]
+    return x
 
 
 def _branch(x: torch.Tensor, down: torch.Tensor, up: torch.Tensor) -> torch.Tensor:

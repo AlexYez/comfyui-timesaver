@@ -36,6 +36,7 @@ import {
     removeAt,
     serialiseStack,
     setEnabled,
+    setName,
     setUnmerged,
     setStrength,
     setStrengthSpec,
@@ -191,7 +192,7 @@ const STRINGS = {
         stepDown: "Step down",
         stepUp: "Step up",
         grip: "Drag to reorder. Order matters: LoRAs apply one after another.",
-        toggle: "Click the name to set the row aside without removing it",
+        replace: "Click to pick another LoRA for this row — strength and mode stay",
         turnOff: "Turn this LoRA off — it stays in the list with its strength",
         turnOn: "Turn this LoRA back on",
         missing: "This LoRA is not in the loras folder on this machine",
@@ -220,7 +221,7 @@ const STRINGS = {
         stepUp: "Шаг вверх",
         grip: "Перетащите, чтобы изменить порядок. Порядок важен: LoRA "
             + "накладываются одна за другой.",
-        toggle: "Нажмите на имя, чтобы отложить строку, не удаляя её",
+        replace: "Нажмите, чтобы выбрать для этой строки другую LoRA — сила и режим останутся",
         turnOff: "Выключить эту LoRA — строка останется в списке вместе с силой",
         turnOn: "Включить эту LoRA обратно",
         missing: "Такой LoRA нет в папке loras на этой машине",
@@ -380,6 +381,10 @@ function setupLoraLoader(node) {
     let stack = [];
     let names = [];
     let dragFrom = -1;
+    // Открытый список либо добавляет новую строку (-1), либо заменяет LoRA в
+    // строке с этим номером. Якорь — элемент, у которого список раскрыт.
+    let replaceIndex = -1;
+    let anchor = addButton;
 
     const commit = () => {
         writeStack(node, stack);
@@ -418,12 +423,20 @@ function setupLoraLoader(node) {
         const name = document.createElement("span");
         name.className = "ts-lora__name";
         name.textContent = shortName(entry.name);
-        name.title = names.length && !names.includes(entry.name)
-            ? `${entry.name}\n${t.missing}` : `${entry.name}\n${t.toggle}`;
-        if (names.length && !names.includes(entry.name)) name.style.color = "var(--ts-warning)";
-        name.addEventListener("click", () => {
-            stack = setEnabled(stack, index, entry.on === false);
-            commit();
+        const missing = names.length && !names.includes(entry.name);
+        name.title = missing
+            ? `${entry.name}\n${t.missing}\n${t.replace}` : `${entry.name}\n${t.replace}`;
+        if (missing) name.style.color = "var(--ts-warning)";
+        // Как у родной Load LoRA: щелчок по выбранной LoRA открывает весь список,
+        // чтобы заменить её. Раньше щелчок по имени откладывал строку — это
+        // осталось с тех времён, когда выключателя не было; теперь он есть.
+        name.addEventListener("click", async () => {
+            if (!picker.hidden && replaceIndex === index) {
+                closePicker();
+                return;
+            }
+            if (!names.length) names = await nativeSpec();
+            openPicker(name, index);
         });
 
         // Режим строки: слияние (штатный загрузчик) или боковая ветка
@@ -672,8 +685,11 @@ function setupLoraLoader(node) {
     }
 
     // ── добавление ───────────────────────────────────────────────────────── #
+    // Весь список, без обрезки: у родной Load LoRA видно всё, что лежит в папке,
+    // и замена обязана давать тот же выбор.
     function renderFound() {
-        const matches = filterNames(names, search.value).slice(0, 200);
+        const matches = filterNames(names, search.value);
+        const current = replaceIndex >= 0 ? stack[replaceIndex]?.name : null;
         found.textContent = "";
         if (!matches.length) {
             const none = document.createElement("div");
@@ -682,18 +698,27 @@ function setupLoraLoader(node) {
             found.appendChild(none);
             return;
         }
+        let active = null;
         for (const name of matches) {
             const button = document.createElement("button");
             button.type = "button";
             button.textContent = name;
             button.title = name;
+            if (name === current) {
+                button.classList.add("is-active");
+                active = button;
+            }
             button.addEventListener("click", () => {
-                stack = addLora(stack, name);
+                stack = replaceIndex >= 0
+                    ? setName(stack, replaceIndex, name)
+                    : addLora(stack, name);
                 closePicker();
                 commit();
             });
             found.appendChild(button);
         }
+        // Текущая LoRA — перед глазами, а не где-то в середине длинного списка.
+        if (active && !search.value) active.scrollIntoView({ block: "center" });
     }
 
     /**
@@ -704,34 +729,55 @@ function setupLoraLoader(node) {
      * нода часто стоит у нижнего края окна.
      */
     function positionPicker() {
-        const anchor = addButton.getBoundingClientRect();
+        const box = anchor.getBoundingClientRect();
+        // Ширина — по ноде: имя в строке узкое, а длинные имена файлов должны
+        // читаться целиком.
+        const widthSource = container.getBoundingClientRect().width || box.width;
         const margin = 8;
-        const width = Math.max(240, Math.min(420, anchor.width));
-        const below = window.innerHeight - anchor.bottom - margin;
-        const above = anchor.top - margin;
+        const width = Math.max(240, Math.min(420, widthSource));
+        const below = window.innerHeight - box.bottom - margin;
+        const above = box.top - margin;
         const up = below < 180 && above > below;
         const height = Math.max(120, Math.min(360, up ? above : below));
         picker.style.width = `${width}px`;
         picker.style.height = `${height}px`;
         picker.style.left =
-            `${Math.max(margin, Math.min(window.innerWidth - width - margin, anchor.left))}px`;
+            `${Math.max(margin, Math.min(window.innerWidth - width - margin, box.left))}px`;
         picker.style.top = up
-            ? `${Math.max(margin, anchor.top - height - 4)}px`
-            : `${anchor.bottom + 4}px`;
+            ? `${Math.max(margin, box.top - height - 4)}px`
+            : `${box.bottom + 4}px`;
     }
 
     // Список лежит вне ноды и потому обязан закрываться сам: по нажатию мимо, по
     // прокрутке холста (нода уезжает из-под него) и по смене размера окна.
     const onOutside = (event) => {
         if (picker.hidden) return;
-        if (picker.contains(event.target) || addButton.contains(event.target)) return;
+        if (picker.contains(event.target) || anchor.contains(event.target)) return;
         closePicker();
     };
-    const onScrollAway = () => { if (!picker.hidden) closePicker(); };
+    // ⚠️ Колёсико НАД САМИМ списком — это его прокрутка, а не холста. Раньше
+    // слушатель на окне закрывал список от любого колёсика, и пролистать
+    // длинный список было нельзя вовсе. Холст это колёсико не получает: список
+    // лежит в корне документа, а не над элементом холста.
+    const onScrollAway = (event) => {
+        if (picker.hidden) return;
+        if (event?.target instanceof Node && picker.contains(event.target)) return;
+        closePicker();
+    };
 
-    function openPicker() {
+    /**
+     * Открыть список.
+     *
+     * @param {HTMLElement} [at] элемент, у которого раскрыть: кнопка «добавить»
+     *   или имя строки.
+     * @param {number} [index] номер строки для замены; -1 — добавить новую.
+     */
+    function openPicker(at = addButton, index = -1) {
+        if (!picker.hidden) closePicker();
+        anchor = at;
+        replaceIndex = index;
         picker.hidden = false;
-        addButton.textContent = t.cancel;
+        if (index < 0) addButton.textContent = t.cancel;
         search.value = "";
         renderFound();
         positionPicker();
@@ -743,6 +789,8 @@ function setupLoraLoader(node) {
 
     function closePicker() {
         picker.hidden = true;
+        replaceIndex = -1;
+        anchor = addButton;
         addButton.textContent = t.add;
         document.removeEventListener("pointerdown", onOutside, true);
         window.removeEventListener("wheel", onScrollAway, true);
@@ -751,7 +799,8 @@ function setupLoraLoader(node) {
 
     addButton.addEventListener("click", async () => {
         if (!names.length) names = await nativeSpec();
-        if (picker.hidden) openPicker();
+        // Открыт на замене строки — кнопка переключает его на добавление.
+        if (picker.hidden || replaceIndex >= 0) openPicker(addButton, -1);
         else closePicker();
     });
 

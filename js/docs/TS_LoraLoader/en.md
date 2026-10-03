@@ -2,7 +2,9 @@
 
 A stack of model-only LoRAs in one node. The plus button opens a search box over the LoRAs this install actually has; a chosen one drops in as a row with its own strength field, and the plus stays where it is for the next one. Rows are reordered by dragging the grip — order matters, because LoRAs are applied one after another.
 
-**Each row has a switch.** Turn a LoRA off and it stays in the list with its strength and its place; the run simply goes without it, and one click brings it back. That is what an A/B comparison should cost — nothing. Clicking the row's name does the same thing, for whoever finds that quicker.
+**Each row has a switch.** Turn a LoRA off and it stays in the list with its strength and its place; the run simply goes without it, and one click brings it back. That is what an A/B comparison should cost — nothing.
+
+**Click a row's name to swap the LoRA**, as in the native Load LoRA: the full list opens with the current one highlighted, the mouse wheel scrolls it, and the pick replaces the file while the row keeps its strength, switch and mode.
 
 **Strength may be negative** (down to −10): that is how you damp a LoRA baked into the checkpoint, or run one in reverse. Dragging left and right over the strength field scrubs the value.
 

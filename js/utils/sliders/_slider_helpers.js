@@ -8,6 +8,28 @@ export const TS_PROPERTY_MAX = "max";
 export const TS_PROPERTY_STEP = "step";
 export const TS_PROPERTY_DEFAULT = "default";
 
+// `limits` mirror the Python schema (ts_float_slider.py / ts_int_slider.py):
+// ComfyUI rejects a value outside them at queue time, so the editable range
+// never leaves them. `range` is what a NEW node starts with — the knobs these
+// sliders drive (steps, fps, megapixels, resolution) are small and positive.
+export const TS_SLIDER_SPECS = {
+    float: { limits: { min: 0, max: 10000 }, range: { min: 0, max: 10 } },
+    int: { limits: { min: 0, max: 100000 }, range: { min: 0, max: 2048 } },
+};
+
+// Bounds of the schema before 12.12.4. A new node copied them into its
+// properties, so the Properties panel showed −1e9…1e9 / ±2³¹ and the slider
+// spanned all of it. Nobody picks these by hand: on sight they are replaced.
+const TS_LEGACY_BOUNDS = new Set([-1e9, 1e9, -2147483648, 2147483647]);
+
+function tsSpec(tsType) {
+    return TS_SLIDER_SPECS[tsType === "int" ? "int" : "float"];
+}
+
+function tsClamp(tsValue, tsLimits) {
+    return Math.min(tsLimits.max, Math.max(tsLimits.min, tsValue));
+}
+
 export function tsGetWidget(tsNode) {
     return tsNode?.widgets?.find((tsWidget) => tsWidget?.name === TS_WIDGET_NAME) || null;
 }
@@ -44,9 +66,10 @@ export function tsReadRealStep(tsOptions, tsType) {
 
 export function tsSnapToStep(tsValue, tsMin, tsStep, tsType, tsAnchor) {
     if (!Number.isFinite(tsStep) || tsStep <= 0) return tsValue;
-    // Anchor on default (when supplied) instead of min. With min=-1e9 and
-    // step=1, snapping relative to min loses sub-step precision in float64
-    // (default 0.5 collapses to 1). Snapping relative to default keeps the
+    // Anchor on default (when supplied) instead of min. With a min far from the
+    // value (old nodes had -1e9) and step=1, snapping relative to min loses
+    // sub-step precision in float64 (default 0.5 collapses to 1). Snapping
+    // relative to default keeps the
     // default exact and lets neighbours grid by `step`. Falls back to min
     // when no usable anchor is provided.
     const anchor = Number.isFinite(tsAnchor) ? tsAnchor : tsMin;
@@ -92,12 +115,16 @@ export function tsEnsureProperties(tsNode, tsWidget, tsType) {
     if (!tsNode || !tsWidget) return;
     tsNode.properties = tsNode.properties || {};
     const tsOptions = tsWidget.options || {};
+    const tsRange = tsSpec(tsType).range;
 
+    // A new node starts on the working range, NOT on the schema bounds in
+    // `options`: those are the hard limits and were what made the Properties
+    // panel show billions.
     if (tsNode.properties[TS_PROPERTY_MIN] === undefined) {
-        tsNode.properties[TS_PROPERTY_MIN] = tsOptions.min ?? (tsType === "int" ? 0 : 0.0);
+        tsNode.properties[TS_PROPERTY_MIN] = tsRange.min;
     }
     if (tsNode.properties[TS_PROPERTY_MAX] === undefined) {
-        tsNode.properties[TS_PROPERTY_MAX] = tsOptions.max ?? (tsType === "int" ? 1 : 1.0);
+        tsNode.properties[TS_PROPERTY_MAX] = tsRange.max;
     }
     if (tsNode.properties[TS_PROPERTY_STEP] === undefined) {
         tsNode.properties[TS_PROPERTY_STEP] = tsReadRealStep(tsOptions, tsType);
@@ -114,19 +141,32 @@ export function tsEnsureProperties(tsNode, tsWidget, tsType) {
 
 export function tsGetSanitizedConfig(tsNode, tsWidget, tsType) {
     const tsOptions = tsWidget.options || {};
+    const { limits: tsLimits, range: tsRange } = tsSpec(tsType);
     let tsMin = tsNormalizeNumber(tsNode.properties?.[TS_PROPERTY_MIN]);
     let tsMax = tsNormalizeNumber(tsNode.properties?.[TS_PROPERTY_MAX]);
     let tsStep = tsNormalizeNumber(tsNode.properties?.[TS_PROPERTY_STEP]);
     let tsDefault = tsNormalizeNumber(tsNode.properties?.[TS_PROPERTY_DEFAULT]);
+    const tsCurrent = tsNormalizeNumber(tsWidget.value);
 
     let tsChanged = false;
 
     if (!Number.isFinite(tsMin)) {
-        tsMin = tsNormalizeNumber(tsOptions.min) ?? (tsType === "int" ? 0 : 0.0);
+        tsMin = tsRange.min;
         tsChanged = true;
     }
     if (!Number.isFinite(tsMax)) {
-        tsMax = tsNormalizeNumber(tsOptions.max) ?? (tsType === "int" ? 1 : 1.0);
+        tsMax = tsRange.max;
+        tsChanged = true;
+    }
+    // A bound left at the old schema extreme becomes the working range — but
+    // widened to keep the current value inside, or the slider would throw the
+    // user's setting away for the default.
+    if (TS_LEGACY_BOUNDS.has(tsMin)) {
+        tsMin = Number.isFinite(tsCurrent) ? Math.min(tsRange.min, tsCurrent) : tsRange.min;
+        tsChanged = true;
+    }
+    if (TS_LEGACY_BOUNDS.has(tsMax)) {
+        tsMax = Number.isFinite(tsCurrent) ? Math.max(tsRange.max, tsCurrent) : tsRange.max;
         tsChanged = true;
     }
     if (!Number.isFinite(tsStep) || tsStep <= 0) {
@@ -140,8 +180,21 @@ export function tsGetSanitizedConfig(tsNode, tsWidget, tsType) {
         tsStep = Math.max(1, Math.round(tsStep));
     }
 
+    // Never outside the schema: no negatives, nothing ComfyUI would reject.
+    const tsClampedMin = tsClamp(tsMin, tsLimits);
+    const tsClampedMax = tsClamp(tsMax, tsLimits);
+    if (tsClampedMin !== tsMin || tsClampedMax !== tsMax) {
+        tsMin = tsClampedMin;
+        tsMax = tsClampedMax;
+        tsChanged = true;
+    }
+
     if (tsMin >= tsMax) {
         tsMax = tsMin + tsStep;
+        if (tsMax > tsLimits.max) {
+            tsMax = tsLimits.max;
+            tsMin = Math.max(tsLimits.min, tsMax - tsStep);
+        }
         tsChanged = true;
     }
 
@@ -259,8 +312,21 @@ export function tsRegisterSliderExtension(app, { extensionId, nodeName, sliderTy
             };
 
             const tsOnConfigure = tsNodeType.prototype.onConfigure;
-            tsNodeType.prototype.onConfigure = function () {
+            tsNodeType.prototype.onConfigure = function (tsInfo) {
                 const tsResult = tsOnConfigure ? tsOnConfigure.apply(this, arguments) : undefined;
+                // While a graph loads, the saved properties arrive one by one
+                // and each fires onPropertyChanged BEFORE the widget holds its
+                // saved value — so those syncs judged the range against the
+                // default value and could rewrite it (an old ±1e9 node with
+                // value 24 ended up on 0…10 and lost the 24). Start over from
+                // what was saved; the widget now has its real value.
+                const tsSaved = tsInfo?.properties;
+                if (tsSaved && typeof tsSaved === "object") {
+                    this.properties = this.properties || {};
+                    for (const tsKey of [TS_PROPERTY_MIN, TS_PROPERTY_MAX, TS_PROPERTY_STEP, TS_PROPERTY_DEFAULT]) {
+                        if (tsSaved[tsKey] !== undefined) this.properties[tsKey] = tsSaved[tsKey];
+                    }
+                }
                 tsSyncFromProperties(this, sliderType, false);
                 return tsResult;
             };

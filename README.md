@@ -8,7 +8,7 @@
 
 Resize, color, cut out, inpaint, transcribe, translate, prompt-build, manage models — without leaving the canvas.
 
-[![Version](https://img.shields.io/badge/version-12.12.3-blue.svg)](pyproject.toml)
+[![Version](https://img.shields.io/badge/version-12.12.4-blue.svg)](pyproject.toml)
 [![ComfyUI](https://img.shields.io/badge/ComfyUI-V3%20API-orange.svg)](https://github.com/comfyanonymous/ComfyUI)
 [![Python](https://img.shields.io/badge/python-3.10+-green.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-see%20LICENSE.txt-lightgrey.svg)](LICENSE.txt)
@@ -1700,7 +1700,9 @@ A wire looks for the socket with the same name on the new node, and — if the i
 
 A stack of model-only LoRAs in one node. The plus button opens a search box over the LoRAs this install actually has; a chosen one drops in as a row with its own strength field, and the plus stays where it is for the next one. Rows are reordered by dragging the grip — order matters, because LoRAs are applied one after another.
 
-**Each row has a switch.** Turn a LoRA off and it stays in the list with its strength and its place; the run simply goes without it, and one click brings it back. That is what an A/B comparison should cost — nothing. Clicking the row's name does the same thing, for whoever finds that quicker.
+**Each row has a switch.** Turn a LoRA off and it stays in the list with its strength and its place; the run simply goes without it, and one click brings it back. That is what an A/B comparison should cost — nothing.
+
+**Click a row's name to swap the LoRA**, as in the native Load LoRA: the full list opens with the current one highlighted, the mouse wheel scrolls it, and the pick replaces the file while the row keeps its strength, switch and mode.
 
 **Strength may be negative** (down to −10): that is how you damp a LoRA baked into the checkpoint, or run one in reverse. Dragging left and right over the strength field scrubs the value.
 
@@ -1719,14 +1721,14 @@ Model only, no CLIP — modern families keep the text encoder separate, and most
 #### TS Int Slider
 <img src="doc/screenshots/ts_int_slider.png" alt="TS Int Slider" width="450" />
 
-A pure integer slider that returns an `INT`. Custom-widget UI optimised for resolution / count knobs.
+A pure integer slider that returns an `INT`: sampler steps, seconds, resolution. A new node spans 0 to 2048 in steps of 8; set your own range and step in the node's properties (`min`, `max`, `step`, `default`). Values are non-negative, capped at 100,000.
 
 ---
 
 #### TS Float Slider
 <img src="doc/screenshots/ts_float_slider.png" alt="TS Float Slider" width="450" />
 
-The float counterpart, range −1e9 to +1e9 with 0.01 precision by default.
+The float counterpart for fps, megapixels or strength. A new node spans 0 to 10 in steps of 0.1; range and step are set in the node's properties. Values are non-negative, capped at 10,000. Older nodes stuck on −1e9 to +1e9 get the working range when opened, and keep their current value.
 
 **Use the pair when:** you need a clean parameter widget without dragging a full math node onto the graph.
 

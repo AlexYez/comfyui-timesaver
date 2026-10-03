@@ -15,13 +15,18 @@ class TS_Int_Slider(IO.ComfyNode):
             node_id="TS_Int_Slider",
             display_name="TS Int Slider",
             category="TS/Utils",
-            description="Int slider (320 - 2048)",
+            description=(
+                "Integer slider for positive settings such as steps, seconds or resolution. "
+                "A new node spans 0 - 2048; set min, max and step in the node's properties."
+            ),
             inputs=[
                 IO.Int.Input(
                     "value",
                     default=512,
-                    min=-2147483648,
-                    max=2147483647,
+                    # Hard limits only; the working range lives in node.properties
+                    # (js/utils/sliders/_slider_helpers.js, TS_SLIDER_SPECS.limits).
+                    min=0,
+                    max=100000,
                     step=8,
                     display_mode=IO.NumberDisplay.slider,
                     tooltip="Integer value emitted by the slider.",

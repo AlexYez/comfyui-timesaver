@@ -185,6 +185,20 @@ export function setStrength(stack, index, value) {
     return out;
 }
 
+/**
+ * Заменить LoRA в строке на другую.
+ *
+ * Сила, выключатель и режим остаются: человек меняет файл, а не настройку —
+ * подобранную силу терять при замене нельзя.
+ */
+export function setName(stack, index, name) {
+    const clean = String(name || "").trim();
+    if (!clean || !(index >= 0 && index < stack.length)) return stack.slice();
+    const out = stack.slice();
+    out[index] = { ...out[index], name: clean };
+    return out;
+}
+
 /** Включить или отложить строку, не удаляя её. */
 export function setEnabled(stack, index, on) {
     if (!(index >= 0 && index < stack.length)) return stack.slice();

@@ -15,13 +15,18 @@ class TS_FloatSlider(IO.ComfyNode):
             node_id="TS_FloatSlider",
             display_name="TS Float Slider",
             category="TS/Utils",
-            description="Float slider (0.0 - 1.0)",
+            description=(
+                "Float slider for positive settings such as fps, megapixels or strength. "
+                "A new node spans 0 - 10; set min, max and step in the node's properties."
+            ),
             inputs=[
                 IO.Float.Input(
                     "value",
                     default=0.5,
-                    min=-1000000000.0,
-                    max=1000000000.0,
+                    # Hard limits only; the working range lives in node.properties
+                    # (js/utils/sliders/_slider_helpers.js, TS_SLIDER_SPECS.limits).
+                    min=0.0,
+                    max=10000.0,
                     step=0.1,
                     round=0.01,
                     display_mode=IO.NumberDisplay.slider,
