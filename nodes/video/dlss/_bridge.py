@@ -1,8 +1,8 @@
 """The Neuroframe Engine: one DLL loaded into this process, frame ABI 6.
 
 Since the upstream v9 runtime there is no worker process and no pipe protocol.
-The engine (``neuroframe_engine_neural_rendering.dll`` from v11,
-``neuroframe_engine.dll`` in v9) owns the D3D12 device, the NGX feature instances, the
+The engine (``neuroframe_engine.dll`` of upstream v9) owns the D3D12 device, the NGX
+feature instances, the
 CUDA/D3D12 shared path, NVIDIA optical flow and the GPU temporal stabiliser; we
 hand it one frame and take one frame back. NVIDIA's signed snippet checks the
 image that calls it, which is why ``neuroframe_caller.dll`` has to sit next to
@@ -49,9 +49,6 @@ WATCHDOG_CEILING_SECONDS = 180.0
 MEMORY_HOST = 0
 MEMORY_CUDA = 1
 MEMORY_NONE = 2
-
-#: ``pixel_format`` of a frame descriptor. Only RGBA8 is used from here.
-FORMAT_RGBA8 = 1
 
 #: ``CU_CTX_SCHED_BLOCKING_SYNC`` — the one flag the engine insists on before it
 #: will share memory with us. See ``enable_blocking_sync``.
@@ -110,75 +107,6 @@ class RenderParametersV6(ctypes.Structure):
         ("shimmer_suppression", ctypes.c_float),
         ("prefer_nvof", ctypes.c_int32),
     ]
-
-
-class FrameDescriptorV1(ctypes.Structure):
-    """One frame handed to the engine by description instead of by pointer alone.
-
-    ⚠️ This is the path that lets the GPU do the resizing: the engine accepts a
-    frame at ITS OWN size and renders at the destination's size, Lanczos and all,
-    without the host ever building the big picture.
-    """
-
-    _fields_ = [
-        ("struct_size", ctypes.c_uint32),
-        ("abi_version", ctypes.c_uint32),
-        ("memory_type", ctypes.c_uint32),
-        ("pixel_format", ctypes.c_uint32),
-        ("width", ctypes.c_uint32),
-        ("height", ctypes.c_uint32),
-        ("planes", ctypes.c_uint64 * 3),
-        ("strides", ctypes.c_uint32 * 3),
-        ("color_matrix", ctypes.c_uint32),
-        ("color_range", ctypes.c_uint32),
-        ("rotation", ctypes.c_uint32),
-        ("reserved", ctypes.c_uint32),
-        ("timestamp", ctypes.c_int64),
-    ]
-
-    @classmethod
-    def host_rgba8(cls, frame: np.ndarray, timestamp: int = 0) -> FrameDescriptorV1:
-        """Describe a contiguous RGBA8 array that lives in this process's memory."""
-        value = cls()
-        value.struct_size = ctypes.sizeof(cls)
-        value.abi_version = FRAME_ABI_VERSION
-        value.memory_type = MEMORY_HOST
-        value.pixel_format = FORMAT_RGBA8
-        value.width = int(frame.shape[1])
-        value.height = int(frame.shape[0])
-        value.planes[0] = int(frame.ctypes.data)
-        value.strides[0] = int(frame.strides[0])
-        # BT.709 full range: an RGBA8 frame carries no matrix of its own, and
-        # this is what the reference application passes for host frames.
-        value.color_matrix = 1
-        value.color_range = 1
-        value.timestamp = int(timestamp)
-        return value
-
-
-class FrameResultV1(ctypes.Structure):
-    """What the engine reports about the frame it just rendered."""
-
-    _fields_ = [
-        ("struct_size", ctypes.c_uint32),
-        ("abi_version", ctypes.c_uint32),
-        ("ngx_create_result", ctypes.c_int32),
-        ("ngx_evaluate_result", ctypes.c_int32),
-        ("cuda_result", ctypes.c_int32),
-        ("scene_reset", ctypes.c_int32),
-        ("scene_score", ctypes.c_float),
-        ("reserved", ctypes.c_uint32),
-        ("upload_bytes", ctypes.c_uint64),
-        ("download_bytes", ctypes.c_uint64),
-        ("timestamp", ctypes.c_int64),
-    ]
-
-    @classmethod
-    def empty(cls) -> FrameResultV1:
-        value = cls()
-        value.struct_size = ctypes.sizeof(cls)
-        value.abi_version = FRAME_ABI_VERSION
-        return value
 
 
 def _text(value: bytes | None) -> str:
@@ -362,20 +290,24 @@ class NeuralBridge:
             library.dlss5nr_rebind.restype = ctypes.c_int
             library.dlss5nr_cuda_status.argtypes = [ctypes.c_char_p, ctypes.c_int]
             library.dlss5nr_cuda_status.restype = ctypes.c_int
-            # ⚠️ Кадр ходит ТОЛЬКО по дескрипторам (`dlss5nr_process_frame_v6`).
-            # Простой `dlss5nr_process_v6` принимает float32 на выходном размере,
-            # то есть заставляет хост строить картину на 100 МБ и разбирать
-            # такую же обратно — 98 мс на кадр в 4K за работу, которую карта
-            # делает у себя. Второго пути в паке нет намеренно.
-            library.dlss5nr_process_frame_v6.argtypes = [
-                ctypes.POINTER(FrameDescriptorV1),
-                ctypes.POINTER(FrameDescriptorV1),
+            # ⚠️ ОСНОВНОЙ путь с 05.10.2026 — `dlss5nr_process_v6`: float32 RGB
+            # на выходном размере в памяти хоста, туда и обратно. Он дороже
+            # дескрипторного по хосту, зато (1) без восьмибитного круга с обеих
+            # сторон и (2) без общей с движком видеопамяти, на которой при
+            # почти полной карте вылезали битые плитки (см. `process_float`).
+            library.dlss5nr_process_v6.argtypes = [
+                ctypes.POINTER(ctypes.c_float),
+                ctypes.POINTER(ctypes.c_float),
+                ctypes.c_int,
+                ctypes.c_int,
                 ctypes.POINTER(RenderParametersV6),
-                ctypes.POINTER(FrameResultV1),
                 ctypes.c_char_p,
                 ctypes.c_int,
             ]
-            library.dlss5nr_process_frame_v6.restype = ctypes.c_int
+            library.dlss5nr_process_v6.restype = ctypes.c_int
+            # ⚠️ Дескрипторный `dlss5nr_process_frame_v6` (RGBA8 туда и обратно)
+            # снят 05.10.2026: восьмибитный с обеих сторон, он делал градиенты
+            # ступенчатыми, а быстрее был лишь на хостовой перекладке кадра.
             library.dlss5nr_process_cuda_v6.argtypes = [
                 ctypes.c_uint64,
                 ctypes.c_uint64,
@@ -543,45 +475,52 @@ class NeuralBridge:
                 self._call_with_watchdog("session release", release)
 
     # --------------------------------------------------------------- the work
-    def process_frame_host(
+    def process_float(
         self,
         source: np.ndarray,
         destination: np.ndarray,
         settings: dict[str, Any],
         reset: bool,
-        *,
-        timestamp: int = 0,
-    ) -> tuple[float, dict[str, Any]]:
-        """One RGBA8 frame in at its own size, one RGBA8 frame out at the wanted one.
+    ) -> float:
+        """One float32 RGB frame in, one out, both at the output size, both on the host.
 
-        ⚠️ This is the fast path and the reason the card stops waiting: the
-        engine takes the small frame, uploads it, resizes it (Lanczos) and
-        renders — all on the GPU. The host never builds the big float picture,
-        which at 4K was three copies of ~100 MB per frame.
+        ⚠️ Почему это основной путь (замерено 05.10.2026 на RTX 3080 Ti Laptop,
+        ComfyUI держал 15 из 16 ГБ видеопамяти). Путь через общую видеопамять
+        (`process_cuda`) давал на кадре 1632×928 → 2× битые плитки 16×16 в
+        одном прогоне из двенадцати и зависал — и на движке v11, и на v9 со
+        своим caller'ом. Хостовые пути на том же кадре чистые. А float32 вместо
+        RGBA8 убирает восьмибитный круг: движок держит больше 8 бит, и
+        градиент выходит без ступенек.
 
-        Returns the seconds the call took and what the engine reported.
+        Returns the seconds the call took.
         """
         with self._lock:
             self._guard_poison()
             if self._library is None:
                 raise NeuralBridgeError(f"{LOG_PREFIX} The engine is not loaded.")
-            incoming = FrameDescriptorV1.host_rgba8(source, timestamp)
-            outgoing = FrameDescriptorV1.host_rgba8(destination, timestamp)
+            for name, frame in (("source", source), ("destination", destination)):
+                if frame.dtype != np.float32 or frame.ndim != 3 or frame.shape[2] != 3 \
+                        or not frame.flags.c_contiguous:
+                    raise ValueError(
+                        f"{LOG_PREFIX} The {name} frame must be contiguous float32 RGB."
+                    )
+            if source.shape != destination.shape:
+                raise ValueError(f"{LOG_PREFIX} Source and destination sizes differ.")
             params = render_parameters(settings, reset)
-            report = FrameResultV1.empty()
             error = ctypes.create_string_buffer(4096)
             started = time.perf_counter()
             ok = self._call_with_watchdog(
                 "feature-18 frame evaluation",
-                lambda: self._library.dlss5nr_process_frame_v6(
-                    ctypes.byref(incoming),
-                    ctypes.byref(outgoing),
+                lambda: self._library.dlss5nr_process_v6(
+                    source.ctypes.data_as(ctypes.POINTER(ctypes.c_float)),
+                    destination.ctypes.data_as(ctypes.POINTER(ctypes.c_float)),
+                    int(source.shape[1]),
+                    int(source.shape[0]),
                     ctypes.byref(params),
-                    ctypes.byref(report),
                     error,
                     len(error),
                 ),
-                (source, destination, incoming, outgoing, params, report, error),
+                (source, destination, params, error),
                 timeout_seconds=min(
                     WATCHDOG_CEILING_SECONDS, WATCHDOG_SECONDS * max(1, params.nr_passes)
                 ),
@@ -589,15 +528,7 @@ class NeuralBridge:
             elapsed = time.perf_counter() - started
             if not ok:
                 self._raise_for(error, "Neural Rendering failed")
-            return elapsed, {
-                "ngx_create_result": f"0x{int(report.ngx_create_result) & 0xFFFFFFFF:08X}",
-                "ngx_evaluate_result": f"0x{int(report.ngx_evaluate_result) & 0xFFFFFFFF:08X}",
-                "cuda_result": int(report.cuda_result),
-                "scene_reset": bool(report.scene_reset),
-                "scene_score": float(report.scene_score),
-                "upload_bytes": int(report.upload_bytes),
-                "download_bytes": int(report.download_bytes),
-            }
+            return elapsed
 
     def process_cuda(
         self,
@@ -663,7 +594,7 @@ class NeuralBridge:
         lowered = detail.lower()
         # ⚠️ After these the native state is not reusable in this process: a
         # damaged heap, a D3D12 device the driver removed and could not give
-        # back (the v11 engine says "Restart the application" itself), a fence
+        # back (newer engines say "Restart the application" themselves), a fence
         # that never signalled. Anything run after them is undefined.
         if any(marker in lowered for marker in RESTART_MARKERS):
             self._poisoned_reason = detail

@@ -13,8 +13,11 @@
 import { api } from "/scripts/api.js";
 
 import {
+    BIGGER_MODEL_INPUT,
     CASES,
     DEFAULT_LANG,
+    setWidgetValue,
+    wantsBiggerModel,
     ELEMENT_PALETTE_CAP,
     IMAGE_PALETTE_CAP,
     LANGS,
@@ -1393,6 +1396,10 @@ export function openIdeogramEditor(node, { design, presets, onSave, graphRef }) 
                     system_preset: preset,
                     operation_id: autoOperationId,
                     attached_image: image || "",
+                    // The node's "bigger model" checkbox (default ON = 4B): a
+                    // structured caption with bboxes and style is where the
+                    // 2B falls short, and the caption quality IS the picture.
+                    bigger_model: wantsBiggerModel(node),
                     // A fresh sample each press; the engine keeps its fixed seed
                     // when none is sent, which would return the same caption.
                     seed: Math.floor(Math.random() * 0x7fffffff),
@@ -1466,6 +1473,19 @@ export function openIdeogramEditor(node, { design, presets, onSave, graphRef }) 
         const row = el("div", "ts-ideoe-btnrow");
         row.append(generateBtn, fromImageBtn);
         card.appendChild(row);
+
+        // Mirrors the node's own "bigger model" widget: one switch for the
+        // editor's buttons and for the node's Prompt mode.
+        const bigger = tip(el("label", "ts-ideoe-check"), "tip_auto_bigger");
+        const biggerBox = el("input");
+        biggerBox.type = "checkbox";
+        biggerBox.checked = wantsBiggerModel(node);
+        biggerBox.addEventListener("change", () => {
+            setWidgetValue(node, BIGGER_MODEL_INPUT, biggerBox.checked);
+            node.setDirtyCanvas?.(true, true);
+        });
+        bigger.append(biggerBox, document.createTextNode(tr("auto_bigger")));
+        card.appendChild(bigger);
 
         autoStatusEl = el("div", "ts-ideoe-auto__status");
         card.appendChild(autoStatusEl);

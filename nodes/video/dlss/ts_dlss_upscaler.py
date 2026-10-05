@@ -8,6 +8,12 @@ feature is evaluated in this process through a C ABI, not by a worker process
 over a pipe. The picture is resized to the output size first and the network
 re-renders it there — the factor chooses a size, the network adds the detail.
 
+⚠️ Since 05.10.2026 (pack 12.12.5): upstream v9 again (the last release that is
+MIT throughout), and frames travel as float32 through host memory. Frames in
+video memory shared with the engine produced corrupted 16×16 tiles and stalls on
+a card ComfyUI keeps nearly full (v11 and v9 alike), so that road is now opt-in
+(``TS_DLSS_CUDA_INTEROP=1``).
+
 ⚠️ This is a TEMPORAL renderer. A batch of consecutive video frames shares one
 temporal history, so detail is carried across frames — that is where the quality
 above a still upscaler comes from. A batch of unrelated pictures must be run
@@ -27,7 +33,6 @@ from comfy_api.v0_0_2 import IO
 
 from ..._deps import TSDependencyManager
 from . import _assets
-from ._dither import quantise_float_to_rgba8
 from ._session import (
     DLSSFrameSession,
     NR_STYLES,
@@ -151,9 +156,12 @@ class TS_DLSSUpscaler(IO.ComfyNode):
                 IO.Boolean.Input(
                     "dither",
                     default=True,
+                    # ⚠️ Мёртвый с 05.10.2026, оставлен ради `widgets_values`: кадр
+                    # идёт в движок float32, восьмибитного шага больше нет.
                     tooltip=(
-                        "Blue-noise dither on the way down to 8 bits, so gradients reach the "
-                        "network as detail instead of steps."
+                        "No effect any more: frames reach the engine as 32-bit float, so there "
+                        "is no 8-bit step to dither. Kept so older workflows keep their other "
+                        "settings lined up."
                     ),
                 ),
                 # ⚠️ Умолчание снова ON — по прямому решению владельца пака
@@ -169,9 +177,10 @@ class TS_DLSSUpscaler(IO.ComfyNode):
                     tooltip=(
                         "Fetch the runtime into models/DLSS when it is not there "
                         "(~112 MB, once; only the needed files are taken out of the "
-                        "upstream project's v11 release). It contains NVIDIA's proprietary "
-                        "DLSSNR runtime and the MIT-licensed engine; this pack hosts none of "
-                        "it. On, an existing v9 runtime is updated (~240 KB). Off, the node "
+                        "upstream project's v9 release, the last one that is MIT throughout). "
+                        "It contains NVIDIA's proprietary DLSSNR runtime and the MIT-licensed "
+                        "engine; this pack hosts none of it. On, a v11 runtime left by pack "
+                        "12.12.3-12.12.4 is replaced by v9 (~240 KB). Off, the node "
                         "downloads nothing and runs on what is there - except that a runtime "
                         "you already installed from the same project (the old v5) is still "
                         "updated."
@@ -252,13 +261,16 @@ class TS_DLSSUpscaler(IO.ComfyNode):
 
     # ------------------------------------------------------------------- frames
     @classmethod
-    def _to_rgba8(cls, np, frame, tone_map, dither: bool):
-        """One IMAGE frame -> the RGBA8 bytes the network is fed."""
+    def _to_network(cls, np, frame, tone_map):
+        """One IMAGE frame -> the float32 RGB the network is fed, in 0..1.
+
+        ⚠️ Без восьмибитного шага: движок принимает float и держит больше 8 бит,
+        поэтому квантование здесь только добавило бы ступеньки на градиентах.
+        """
         rgb = np.asarray(frame[..., :3], dtype=np.float32)
         if tone_map is not None:
             rgb = tone_map.forward(rgb)
-        alpha = np.asarray(frame[..., 3], dtype=np.float32) if frame.shape[-1] >= 4 else None
-        return np.ascontiguousarray(quantise_float_to_rgba8(rgb, alpha, dither=dither))
+        return np.clip(rgb, 0.0, 1.0)
 
     @classmethod
     def _undo_curve(cls, np, tone_map, into):
@@ -307,6 +319,7 @@ class TS_DLSSUpscaler(IO.ComfyNode):
         import torch  # noqa: PLC0415 - always present in ComfyUI, never at import time
 
         del dlss_model_preset  # the v9 engine picks the network itself
+        del dither  # frames go to the engine as float32: nothing to dither
         cls._require_platform()
         np = cls._require_numpy()
 
@@ -395,13 +408,13 @@ class TS_DLSSUpscaler(IO.ComfyNode):
                 cls._raise_if_interrupted()
                 mark = time.perf_counter()
                 frame = source[index].numpy()
-                rgba8 = cls._to_rgba8(np, frame, tone_map, dither)
-                rgba8 = resize_fit(rgba8, output_width, output_height)
-                reset = True if guides is None else guides.process(rgba8).reset
+                rgb = resize_fit(cls._to_network(np, frame, tone_map),
+                                 output_width, output_height)
+                reset = True if guides is None else guides.process(rgb).reset
                 prepare_seconds += time.perf_counter() - mark
 
                 target = results[index] if scratch is None else scratch
-                session.render_into(index=index, rgba=rgba8, reset=reset,
+                session.render_into(index=index, frame=rgb, reset=reset,
                                     destination=target)
 
                 mark = time.perf_counter()
@@ -457,6 +470,12 @@ class TS_DLSSUpscaler(IO.ComfyNode):
                 "%s The old v5 runtime is still in %s (%s). Nothing reads it since the v9 "
                 "engine; you can delete host/ and dlss/ to get ~180 MB back.",
                 LOG_PREFIX, root, ", ".join(leftovers),
+            )
+        unused = _assets.unused_v11_engine(root)
+        if unused is not None:
+            logger.info(
+                "%s %s is the v11 engine of pack 12.12.3-12.12.4; the node runs on v9 now "
+                "and never loads it. You can delete it.", LOG_PREFIX, unused,
             )
 
     @classmethod

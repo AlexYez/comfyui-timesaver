@@ -9,27 +9,27 @@ next to the binaries.
 ⚠️ The layout is dictated by the engine and must NOT be flattened::
 
     models/DLSS/
-      dlssnr/  neuroframe_engine_neural_rendering.dll  neuroframe_caller.dll
+      dlssnr/  neuroframe_engine.dll  neuroframe_caller.dll
                nvngx_dlssnr.dll  LICENSE-Merserk.txt  LICENSE-NVIDIA-DLSS.txt
 
 ⚠️ ``neuroframe_caller.dll`` is not optional decoration: NVIDIA's signed snippet
 checks the image that calls it, and it only accepts that shim. Both DLLs have to
 sit in the same folder, which is the folder handed to ``dlss5nr_init``.
 
-⚠️ WHY v11 AND NOT NEWER (decided by the pack owner, 02.10.2026). From upstream
-v12 on the engine is no longer MIT: its MIT notice is gone from ``dlssnr/`` and
-the project's "Merserk Source License 1.0" (proprietary, source-available) covers
-it — §5f forbids providing it "as part of another product or bundle" without
-written permission. v11.0 is the last release whose engine still carries its MIT
-licence file. The network (``nvngx_dlssnr.dll``) is the same file in v9, v11 and
-v14. What v11 brings over v9: recovery after the driver removes the D3D12 device,
-retries when the adapter is created, and a build against CUDA 13.0 instead of
-13.4 (older drivers can run it). Same algorithm, same frame ABI 6.
+⚠️ WHY v9 (decided by the pack owner, 05.10.2026). Upstream v9.0 is the last
+release that is MIT as a whole: its root LICENSE and ``dlssnr/LICENSE-Merserk.txt``
+both. From v10.0 the releases carry the "Merserk Source License 1.0"
+(proprietary, source-available); their THIRD-PARTY-NOTICES name the engine and
+the caller as Merserk components, and §6(g) forbids bundling them with another
+product. v10/v11 still had the old MIT file next to the engine, but the notices
+contradict it — so it is not something to rely on. The owner's own application
+DLSS-Video took the same decision (its commit bed0a85).
 
-⚠️ A v9 runtime (``neuroframe_engine.dll``) still runs: with
-``download_if_missing`` off it is used as it is, verified against its own pins.
-With the switch on it is updated, and the update fetches only what differs —
-the engine and the caller, ~240 KB — not the whole release.
+⚠️ v11 was used from 02.10 to 05.10.2026. A folder that holds it is updated by
+``ensure_runtime``: the network is the same file, so only the engine and the
+caller differ, and only what does not match is fetched. v11's
+``neuroframe_engine_neural_rendering.dll`` stays on disk (the user's file) and is
+mentioned in the log as unused.
 
 ⚠️ The old v5 layout (``host/`` with ReShade and the worker executable,
 ``dlss/nvngx_dlss.dll``) is dead weight — nothing here loads it any more. It is
@@ -64,26 +64,23 @@ MODEL_FOLDER_NAME = "DLSS"
 #: The folder the engine is told about, under the runtime root.
 RUNTIME_SUBDIR = "dlssnr"
 
-#: Upstream release the runtime is taken from — the last one with an MIT engine.
+#: Upstream release the runtime is taken from — the last one that is MIT throughout.
 RUNTIME_URL = (
-    "https://github.com/Merserk/dlss5-visual-enhancer/releases/download/v11.0/"
-    "Visual.Enhancer.v11.0.zip"
+    "https://github.com/Merserk/dlss5-visual-enhancer/releases/download/v9.0/"
+    "DLSS.5.Visual.Enhancer.v9.0.zip"
 )
 #: The whole archive — fetched only when the server refuses partial downloads.
-RUNTIME_SIZE_MB = 663
+RUNTIME_SIZE_MB = 486
 #: What a first install actually fetches from it: the five entries, compressed.
 RUNTIME_FETCH_MB = 112
 
-ENGINE = "dlssnr/neuroframe_engine_neural_rendering.dll"
+ENGINE = "dlssnr/neuroframe_engine.dll"
 CALLER = "dlssnr/neuroframe_caller.dll"
 NETWORK = "dlssnr/nvngx_dlssnr.dll"
 
-#: The v9 engine. Still loaded when it is all there is (download switched off).
-LEGACY_ENGINE = "dlssnr/neuroframe_engine.dll"
-
 #: zip entry -> path relative to the runtime root.
 EXTRACT = {
-    "bin/runtime/dlssnr/neuroframe_engine_neural_rendering.dll": ENGINE,
+    "bin/runtime/dlssnr/neuroframe_engine.dll": ENGINE,
     "bin/runtime/dlssnr/neuroframe_caller.dll": CALLER,
     "bin/runtime/dlssnr/nvngx_dlssnr.dll": NETWORK,
     "bin/runtime/dlssnr/LICENSE-Merserk.txt": "dlssnr/LICENSE-Merserk.txt",
@@ -101,6 +98,9 @@ OBSOLETE = (
     "dlss/nvngx_dlss.dll",
 )
 
+#: The v11 engine (02.10–05.10.2026). Not loaded any more; left to the user.
+UNUSED_V11_ENGINE = "dlssnr/neuroframe_engine_neural_rendering.dll"
+
 # ⚠️ Несовпадение суммы ОСТАНАВЛИВАЕТ работу, и это не перестраховка. Движок
 # грузится В НАШ процесс: подменённый движок — это чужой код с правами ComfyUI,
 # и никакая песочница его уже не сдержит. Релиз на GitHub можно удалить и
@@ -108,21 +108,15 @@ OBSOLETE = (
 # апстрима лечится обновлением таблицы (или выключателем ниже); подменённый
 # бинарник не лечится ничем.
 #
-# ⚠️ Суммы v11 посчитаны 02.10.2026 с файлов, вынутых из архива v11.0;
-# `nvngx_dlssnr.dll` в v11 тот же, что в v9 и v14 (совпали размер и CRC архива,
-# а сумма — с манифестом эталонного приложения для v14).
+# ⚠️ Суммы v9 сверены 17.09.2026 с установленным рантаймом и 05.10.2026 ещё раз —
+# с закреплённой копией эталонного приложения (`release/pinned-runtime/v9.0`,
+# вынута из официального архива и проверена там же). `nvngx_dlssnr.dll` один и
+# тот же в v9, v11 и v14. ⚠️ У caller'а одно ИМЯ в v9 и v11 и разное тело:
+# движок идёт только со своим caller'ом, и сверяется пара целиком.
 SHA256 = {
-    ENGINE: "F657D20E569F97DEC25E02141F64354CD4B3E1DC51FA1DFE48ACEEBCC3CC43D5",
-    CALLER: "B3611046837BC2F2E957A694CE0817E3C1B304BD653D0C7A193148E5BDD02437",
-    NETWORK: "6EB209E764F39872625DEBD6ABAF45E2BB6322F6F270F781F70C059AE30B3927",
-}
-
-#: The v9 build, sums checked 17.09.2026. ``neuroframe_caller.dll`` has the same
-#: NAME in both builds and a different body: v9's caller goes with v9's engine.
-LEGACY_SHA256 = {
-    LEGACY_ENGINE: "2BDC5BFD59906DF7CB6DF98F78339D68F741B11256A26927A4C107425E7F46D4",
+    ENGINE: "2BDC5BFD59906DF7CB6DF98F78339D68F741B11256A26927A4C107425E7F46D4",
     CALLER: "58E2850F96FC1B81A9154E059E3F3A42239440280C79E1CE41F6142CA9F1BAD4",
-    NETWORK: SHA256[NETWORK],
+    NETWORK: "6EB209E764F39872625DEBD6ABAF45E2BB6322F6F270F781F70C059AE30B3927",
 }
 
 #: Выключатель проверки — для того, кто СОЗНАТЕЛЬНО поставил другую сборку
@@ -134,8 +128,7 @@ _SKIP_VERIFY_ENV = "TS_DLSS_SKIP_VERIFY"
 COMPONENT_LICENCES = (
     ("dlssnr/nvngx_dlssnr.dll",
      "NVIDIA, proprietary (NVIDIA RTX SDKs License)"),
-    ("dlssnr/neuroframe_engine_neural_rendering.dll",
-     "Neuroframe Engine, MIT (upstream author)"),
+    ("dlssnr/neuroframe_engine.dll", "Neuroframe Engine, MIT (upstream author)"),
     ("dlssnr/neuroframe_caller.dll", "caller shim, MIT (upstream author)"),
 )
 
@@ -214,21 +207,10 @@ def runtime_dir(root: Path | None = None) -> Path:
     return base / RUNTIME_SUBDIR
 
 
-def _uses_legacy(base: Path) -> bool:
-    """Whether this folder runs on the v9 engine: it has that one and not v11's."""
-    return not (base / ENGINE).is_file() and (base / LEGACY_ENGINE).is_file()
-
-
 def engine_path(root: Path | None = None) -> Path:
-    """The DLL this process loads: v11's, or v9's when it is all there is."""
+    """The DLL this process loads."""
     base = Path(root) if root is not None else runtime_root()
-    return base / (LEGACY_ENGINE if _uses_legacy(base) else ENGINE)
-
-
-def pinned_sums(root: Path | None = None) -> dict[str, str]:
-    """The sums of the build this folder runs on."""
-    base = Path(root) if root is not None else runtime_root()
-    return LEGACY_SHA256 if _uses_legacy(base) else SHA256
+    return base / ENGINE
 
 
 def register_model_folder() -> None:
@@ -246,21 +228,22 @@ def register_model_folder() -> None:
 
 
 def missing_files(root: Path | None = None) -> list[str]:
-    """Which of the required (v11) files are not on disk, in layout order."""
+    """Which of the required files are not on disk, in layout order."""
     base = Path(root) if root is not None else runtime_root()
     return [name for name in REQUIRED if not (base / name).is_file()]
-
-
-def legacy_complete(root: Path | None = None) -> bool:
-    """Whether a whole v9 runtime is there to fall back on."""
-    base = Path(root) if root is not None else runtime_root()
-    return all((base / name).is_file() for name in LEGACY_SHA256)
 
 
 def obsolete_files(root: Path | None = None) -> list[str]:
     """Leftovers of the v5 runtime, if the user still has them."""
     base = Path(root) if root is not None else runtime_root()
     return [name for name in OBSOLETE if (base / name).is_file()]
+
+
+def unused_v11_engine(root: Path | None = None) -> Path | None:
+    """The v11 engine, if it is still on disk; nothing loads it any more."""
+    base = Path(root) if root is not None else runtime_root()
+    path = base / UNUSED_V11_ENGINE
+    return path if path.is_file() else None
 
 
 def _sha256(path: Path) -> str:
@@ -276,7 +259,8 @@ def _sha256(path: Path) -> str:
 #: пересчитывать при этом 166 МБ каждый раз незачем: замерено 130 мс на прогон,
 #: то есть на коротком батче это заметная часть всей работы. Кэш держится за
 #: размер и время правки файла: подменённый файл их не сохранит. Сумма в ключе:
-#: у caller'а одно имя и две сборки, и сверенный против v9 не годится для v11.
+#: у caller'а одно имя в v9 и v11, и сверенный против одной сборки не годится
+#: для другой.
 _verified: dict[str, tuple[int, int, str]] = {}
 
 
@@ -343,10 +327,18 @@ def _file_matches(path: Path, expected: str) -> bool:
     return True
 
 
+def stale_files(root: Path) -> list[str]:
+    """Закреплённые файлы, которые на месте, но не той сборки (например, от v11)."""
+    return [
+        name for name, expected in SHA256.items()
+        if (root / name).is_file() and not _file_matches(root / name, expected)
+    ]
+
+
 def verify(root: Path) -> list[str]:
-    """Файлы той сборки, на которой работает папка, — на месте, но не те."""
+    """Файлы закреплённой сборки — на месте, но не те."""
     warnings: list[str] = []
-    for name, expected in pinned_sums(root).items():
+    for name, expected in SHA256.items():
         path = root / name
         if not path.is_file():
             continue
@@ -393,9 +385,9 @@ def _target(root: Path, relative: str) -> Path:
 
 # ── частичная загрузка ─────────────────────────────────────────────────────
 #
-# ⚠️ Зачем. Архив релиза — это целое настольное приложение на 663 МБ (Python,
-# Qt, FFmpeg), а ноде из него нужны пять файлов. Тому, у кого уже стоит v9,
-# переход на v11 стоит ~240 КБ: сеть NVIDIA та же самая. Zip позволяет взять
+# ⚠️ Зачем. Архив релиза — это целое настольное приложение на ~500 МБ (Python,
+# Qt, FFmpeg), а ноде из него нужны пять файлов. Тому, у кого стоит другая
+# сборка (v11), смена стоит ~240 КБ: сеть NVIDIA та же самая. Zip позволяет взять
 # файл по отдельности — оглавление лежит в конце, у каждого файла известны
 # смещение и размер, — а GitHub отдаёт части файла по заголовку Range.
 #
@@ -671,20 +663,21 @@ def ensure_runtime(
     root = runtime_root()
     gaps = missing_files(root)
     if not gaps:
+        # ⚠️ Файлы на месте, но не той сборки — это почти всегда рантайм v11,
+        # поставленный паком 12.12.3–12.12.4. Заменяется только то, что не
+        # сходится (движок и caller, ~240 КБ): сеть NVIDIA в v9 та же.
+        stale = [] if verify_is_off() else stale_files(root)
+        if stale and download_if_missing:
+            logger.info(
+                "%s %s do not match the pinned v9 build (probably the v11 runtime of pack "
+                "12.12.3-12.12.4); fetching the v9 files.", LOG_PREFIX, ", ".join(stale))
+            return download_runtime(root, progress=progress)
         # ⚠️ Проверяется КАЖДЫЙ прогон, а не только свежая установка: файлы на
         # диске могли смениться после неё, а движок мы грузим заново.
         require_known_runtime(root)
         return root
     if download_if_missing:
         return download_runtime(root, progress=progress)
-    if legacy_complete(root):
-        # ⚠️ Выключатель выключен, а v9 стоит целиком — работаем на нём, а не
-        # падаем: сеть та же, движок отличается живучестью, не картинкой.
-        require_known_runtime(root)
-        logger.info(
-            "%s Running on the v9 engine: 'download_if_missing' is off. Switch it on once "
-            "to update to v11 (~240 KB; better recovery after a GPU driver reset).", LOG_PREFIX)
-        return root
     # ⚠️ Выключатель «выключен» в графе чаще всего НЕ выбран человеком: в
     # 12.10.0-12.11.2 это было умолчание, и граф несёт его в себе. Такой
     # человек до обновления работал на v5 (файлы были — выключатель ни на что

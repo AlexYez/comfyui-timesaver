@@ -162,6 +162,15 @@ function currentLayoutConflicts(node, names, values) {
     for (let i = 0; i < limit; i += 1) {
         const widget = resolveWidget(node, names[i]);
         if (!widget || !isSerializableWidget(widget)) continue;
+        // ⚠️ Пустая строка — это слот DOM-виджета, а не старый формат. Замерено
+        // 05.10.2026 на TS Ideogram Designer: вход `bigger_model`, добавленный в
+        // конец схемы, занял в старом сейве слот DOM-виджета (`""`), и этот `""`
+        // в галочке считался «невозможным значением» → массив раскладывался по
+        // старому порядку → `mode` получал `""` и нода возвращалась в
+        // «Дизайнер» после каждого переключения вкладки (и `design_json`
+        // тоже затирался). Невозможное значение в галочке чинит
+        // resetImpossibleValues ниже.
+        if (values[i] === "" || values[i] === null) continue;
         if (hardMismatch(widget, values[i])) return true;
     }
     return false;
@@ -301,6 +310,34 @@ function restoreLegacyWidgetValues(node, info) {
     }
 }
 
+/** The schema default of an input, from the node definition ComfyUI registered. */
+function schemaDefault(node, name) {
+    const input = node?.constructor?.nodeData?.input || {};
+    const spec = input.required?.[name] || input.optional?.[name];
+    return Array.isArray(spec) ? spec[1]?.default : undefined;
+}
+
+/**
+ * A visible widget left holding a value it can never hold — "" in a toggle,
+ * text in a number — goes back to its schema default.
+ *
+ * ⚠️ How it happens: an input appended to a schema takes, in a graph saved
+ * before the addition, the slot that belonged to the DOM widget, and LiteGraph
+ * writes that "" into it. The backend would read the toggle as False.
+ */
+function resetImpossibleValues(node) {
+    for (const widget of node?.widgets || []) {
+        if (!isSerializableWidget(widget) || !hardMismatch(widget, widget.value)) continue;
+        const fallback = schemaDefault(node, widget.name);
+        if (fallback === undefined || hardMismatch(widget, fallback)) continue;
+        try {
+            widget.value = fallback;
+        } catch {
+            /* non-writable — leave it alone */
+        }
+    }
+}
+
 function installNodeHooks(node) {
     if (node._tsNodeHooksInstalled) return;
     node._tsNodeHooksInstalled = true;
@@ -336,6 +373,11 @@ function installNodeHooks(node) {
             console.warn("[TS DomWidget] legacy widget restore failed", err);
         }
         const result = prevConfigure?.apply(this, arguments);
+        try {
+            resetImpossibleValues(node);
+        } catch (err) {
+            console.warn("[TS DomWidget] impossible value reset failed", err);
+        }
         try {
             const stash = node._tsHiddenWidgets;
             if (stash && node.properties) {

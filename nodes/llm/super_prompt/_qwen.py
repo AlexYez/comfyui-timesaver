@@ -38,6 +38,7 @@ from typing import Any
 
 import folder_paths
 
+from ..._caption_json import repair_caption_text
 from .._qwen_engine import (
     QwenEngine,
     _chat_template_functions,
@@ -481,6 +482,37 @@ def _build_messages(
         image_note = "One reference image is attached. Describe what is in it.\n"
     else:
         image_note = ""
+
+    if prompt_target == "json":
+        # ⚠️ Без «Hard rules» и без «Target output»: обе требуют прозу и стоят
+        # ближе системного промпта, а он здесь требует JSON (см. JSON_PRESETS).
+        # Перевод, кавычки и схема уже прописаны в самом пресете.
+        idea = str(text or "").strip()
+        parts = []
+        if pil_images:
+            parts.append("One reference image is attached.")
+        if idea:
+            parts.append(f"Idea:\n{idea}")
+        parts.append("Reply with ONE JSON object only, exactly as the system prompt "
+                     "specifies: start with { and end with }.")
+        user_text = "\n\n".join(parts)
+        system_text = (
+            f"{system_prompt.strip()}\n\n"
+            "Runtime mode: non-thinking. Produce the answer directly and never include a <think> block."
+        )
+        for index, pil_image in enumerate(pil_images):
+            label = _frame_label(index, len(pil_images))
+            if label:
+                user_content.append({"type": "text", "text": label})
+            user_content.append({
+                "type": "image",
+                "image": engine.resize_and_crop_image(pil_image, int(max_image_size)),
+            })
+        user_content.append({"type": "text", "text": user_text})
+        return [
+            {"role": "system", "content": [{"type": "text", "text": system_text}]},
+            {"role": "user", "content": user_content},
+        ]
 
     user_text = (
         f"{_target_instruction(prompt_target, bool(pil_images))}\n\n"
@@ -928,7 +960,15 @@ def _generate_with_qwen(
                 # промпт выглядит готовым, и тем он хуже пустого ответа.
                 log_info("enhancement cancelled by the user")
                 return ""
-            return _clean_model_output(output_text)
+            cleaned = _clean_model_output(output_text)
+            if target_for_preset(system_preset) == "json":
+                # Small models break the structure in the same few ways (see
+                # nodes/_caption_json.py). Without an image the caption was
+                # written from the idea alone, so its text is held to it.
+                repaired = repair_caption_text(cleaned, text if image is None else None)
+                if repaired:
+                    return repaired
+            return cleaned
         finally:
             forget_operation(operation_id)
             if SUPER_PROMPT_UNLOAD_AFTER_GENERATION:

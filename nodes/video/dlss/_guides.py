@@ -51,21 +51,25 @@ class TemporalGuideGenerator:
         self.compare_height = max(64, int(round(height * scale / 2) * 2))
         self.previous_gray: np.ndarray | None = None
 
-    def _small_gray(self, rgba: np.ndarray) -> np.ndarray:
+    def _small_gray(self, frame: np.ndarray) -> np.ndarray:
+        """Grey in 0..1 at the compare size, from float32 RGB (or RGB/RGBA8)."""
         cv2 = self._cv2
-        gray = cv2.cvtColor(rgba, cv2.COLOR_RGBA2GRAY)
+        rgb = frame[..., :3]
+        if rgb.dtype == np.uint8:
+            rgb = rgb.astype(np.float32) * (1.0 / 255.0)
+        gray = cv2.cvtColor(np.ascontiguousarray(rgb, dtype=np.float32), cv2.COLOR_RGB2GRAY)
         return cv2.resize(
             gray, (self.compare_width, self.compare_height), interpolation=cv2.INTER_AREA
         )
 
-    def process(self, rgba: np.ndarray) -> GuideFrame:
+    def process(self, frame: np.ndarray) -> GuideFrame:
         cv2 = self._cv2
-        current = self._small_gray(rgba)
+        current = self._small_gray(frame)
         if self.previous_gray is None:
             # The first frame has nothing to reuse.
             reset, scene_score = True, 1.0
         else:
-            scene_score = float(np.mean(cv2.absdiff(current, self.previous_gray))) / 255.0
+            scene_score = float(np.mean(cv2.absdiff(current, self.previous_gray)))
             reset = scene_score > SCENE_CUT_SCORE
         self.previous_gray = current
         return GuideFrame(reset=reset, scene_score=scene_score)

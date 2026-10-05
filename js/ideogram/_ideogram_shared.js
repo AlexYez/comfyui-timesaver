@@ -12,6 +12,13 @@ import { hideWidget as sharedHideWidget } from "../_dom_widget.js";
 
 export const NODE_NAME = "TS_IdeogramDesigner";
 export const DESIGN_INPUT = "design_json";
+// The ordinary (visible) checkbox widget choosing Qwen 2B / 4B. Default ON.
+export const BIGGER_MODEL_INPUT = "bigger_model";
+
+/** Whether the node asks for the 4B model; a graph without the widget gets 4B. */
+export function wantsBiggerModel(node) {
+    return getWidgetValue(node, BIGGER_MODEL_INPUT, true) !== false;
+}
 export const ROUTE_BASE = "/ts_ideogram";
 
 export const ASPECT_RATIOS = [
@@ -1598,6 +1605,8 @@ const I18N = {
         auto_failed: "Failed: {msg}",
         tip_auto_card: "Describe the image, or read an existing one, and the model writes an Ideogram 4 caption. Its elements carry bounding boxes, so the result lands on the artboard as editable blocks.",
         tip_auto_from_image: "Uses the reference image above: the model reconstructs its layout, objects, text and style as an editable design.",
+        auto_bigger: "Bigger model (Qwen 4B)",
+        tip_auto_bigger: "On: Qwen 4B writes the caption — better structure and layouts. Off: Qwen 2B, faster and half the VRAM. The same switch as 'bigger model' on the node; it also drives the node's Prompt mode.",
         card_design: "Design preset", design_saved: "Saved designs", design_load: "— load a design —",
         design_apply: "↻ Load", design_save: "💾 Save", design_name_prompt: "Design name:",
         tip_design_card: "Save, load, export and import the WHOLE design — layout, style, objects, text and prompt tweaks — as one reusable preset stored in the node folder.",
@@ -1707,6 +1716,8 @@ const I18N = {
         auto_failed: "Не удалось: {msg}",
         tip_auto_card: "Опишите картинку или считайте готовую — модель напишет капшен Ideogram 4. У его элементов есть bbox, поэтому результат ложится на артборд редактируемыми блоками.",
         tip_auto_from_image: "Использует референс выше: модель восстанавливает его макет, объекты, текст и стиль как редактируемый дизайн.",
+        auto_bigger: "Крупнее модель (Qwen 4B)",
+        tip_auto_bigger: "Включено — капшен пишет Qwen 4B: лучше структура и раскладка. Выключено — Qwen 2B: быстрее и вдвое меньше видеопамяти. Это та же галочка «крупнее модель», что на ноде; она же управляет режимом «Промпт».",
         card_design: "Пресет дизайна", design_saved: "Сохранённые дизайны", design_load: "— загрузить дизайн —",
         design_apply: "↻ Загрузить", design_save: "💾 Сохранить", design_name_prompt: "Имя дизайна:",
         tip_design_card: "Сохраняйте, загружайте, экспортируйте и импортируйте ВЕСЬ дизайн — макет, стиль, объекты, тексты и правки промтов — одним пресетом в папке ноды.",

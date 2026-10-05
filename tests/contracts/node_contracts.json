@@ -2655,7 +2655,9 @@
       "mode",
       "auto_prompt",
       "auto_caption",
-      "auto_seed"
+      "auto_seed",
+      "bigger_model",
+      "enhance_prompt"
     ],
     "inputs": [
       {
@@ -2691,6 +2693,16 @@
         "index": 5,
         "name": "auto_seed",
         "type": "Int"
+      },
+      {
+        "index": 6,
+        "name": "bigger_model",
+        "type": "Boolean"
+      },
+      {
+        "index": 7,
+        "name": "enhance_prompt",
+        "type": "Boolean"
       }
     ],
     "outputs": [
@@ -2726,8 +2738,14 @@
         "max": 2147483647,
         "min": 0
       },
+      "bigger_model": {
+        "default": true
+      },
       "design_json": {
         "default": ""
+      },
+      "enhance_prompt": {
+        "default": true
       },
       "mode": {
         "default": "designer"

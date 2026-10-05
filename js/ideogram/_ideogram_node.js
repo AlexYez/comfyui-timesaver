@@ -31,6 +31,8 @@ import {
     setWidgetValue,
     stopPropagation,
     t,
+    wantsBiggerModel,
+    BIGGER_MODEL_INPUT,
 } from "./_ideogram_shared.js";
 
 import { openIdeogramEditor } from "./_ideogram_editor.js";
@@ -61,16 +63,36 @@ const MODE_INPUT = "mode";
 const AUTO_PROMPT_INPUT = "auto_prompt";
 const AUTO_SEED_INPUT = "auto_seed";
 const AUTO_CAPTION_INPUT = "auto_caption";
+const ENHANCE_INPUT = "enhance_prompt";
 
 
 // Node-chrome strings follow the ComfyUI UI locale (the design document keeps
 // its own language; this is interface, not content).
 const CHROME_STRINGS = {
     en: {
+        mode_designer: "Designer",
+        mode_prompt: "Prompt",
+        tip_mode_designer: "Build the caption in the visual editor.",
+        tip_mode_prompt: "Write an ordinary prompt: when the graph runs, Qwen (4B or 2B — the 'bigger model' checkbox) turns it into a structured Ideogram 4 JSON caption.",
+        prompt_ph: "Describe the picture in your own words, any language. Text that must appear in the image goes in quotes.",
+        prompt_summary: "Prompt → Qwen {model} → JSON",
+        prompt_summary_raw: "Prompt as it is, no model",
     },
     ru: {
+        mode_designer: "Дизайнер",
+        mode_prompt: "Промпт",
+        tip_mode_designer: "Собрать капшен в визуальном редакторе.",
+        tip_mode_prompt: "Написать обычный промпт: при запуске графа Qwen (4B или 2B — галочка «крупнее модель») превратит его в структурный JSON-капшен Ideogram 4.",
+        prompt_ph: "Опишите картинку своими словами, на любом языке. Текст, который должен быть на изображении, — в кавычках.",
+        prompt_summary: "Промпт → Qwen {model} → JSON",
+        prompt_summary_raw: "Промпт как есть, без модели",
     },
 };
+
+// Modes the node itself offers. A graph saved in the retired "auto" mode is
+// moved to the designer (its caption came from the editor's button, and the
+// editor is where that now lives).
+const NODE_MODES = ["designer", "prompt"];
 
 function ensureStyles() {
     // Colours come from the shared --ts-* tokens in js/_theme.js; this
@@ -86,6 +108,12 @@ function ensureStyles() {
 .ts-ideo-node__pill{margin-left:auto;flex:0 0 auto;font-size:var(--ts-fs-xs);color:var(--ts-faint);white-space:nowrap;font-variant-numeric:tabular-nums}
 .ts-ideo-node__summary{position:absolute;left:6px;right:6px;bottom:6px;height:${SUMMARY_H - 6}px;display:flex;align-items:center;gap:8px;font-size:var(--ts-fs-sm);color:var(--ts-muted);background:var(--ts-elevated);border:1px solid var(--ts-border-soft);border-radius:8px;padding:0 8px;z-index:3;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden}
 .ts-ideo-node__warn{color:var(--ts-warning)}
+.ts-ideo-node__modes{display:flex;gap:4px;flex:0 0 auto}
+.ts-ideo-node__modes .ts-ui-btn{padding:5px 9px}
+.ts-ideo-node__prompt{position:absolute;left:6px;right:6px;top:${TOOLBAR_H}px;bottom:${SUMMARY_H + 4}px;display:none;z-index:3}
+.ts-ideo-node__prompt textarea{width:100%;height:100%;box-sizing:border-box;resize:none;user-select:text}
+.ts-ideo-node.is-prompt .ts-ideo-node__prompt{display:block}
+.ts-ideo-node.is-prompt .ts-ideo-node__canvas{visibility:hidden}
 /* Every other child of .ts-ideo-node is position:absolute, so its
    min-content height is 0 and the Nodes 2.0 (Vue) layout collapses the
    widget to a 2px sliver at node-creation time — the toolbar then floats
@@ -275,7 +303,38 @@ export function setupIdeogramNode(node) {
     const aspectPill = document.createElement("span");
     aspectPill.className = "ts-ideo-node__pill";
     aspectPill.textContent = "16x9";
-    toolbar.append(editBtn);
+
+    // Designer | Prompt. The prompt mode is the plain-text road: no blocks, no
+    // editor — the text goes to Qwen 4B when the graph runs (execute).
+    const modes = document.createElement("div");
+    modes.className = "ts-ideo-node__modes";
+    const modeButtons = {};
+    for (const mode of NODE_MODES) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "ts-ui-btn";
+        button.dataset.mode = mode;
+        button.textContent = C[`mode_${mode}`];
+        button.title = C[`tip_mode_${mode}`];
+        button.addEventListener("click", (e) => {
+            e.stopPropagation();
+            setMode(mode);
+            if (mode === "prompt") promptArea.focus();
+        });
+        modeButtons[mode] = button;
+        modes.appendChild(button);
+    }
+    toolbar.append(modes, editBtn);
+
+    const promptBox = document.createElement("div");
+    promptBox.className = "ts-ideo-node__prompt";
+    const promptArea = document.createElement("textarea");
+    promptArea.className = "ts-ui-textarea";
+    promptArea.placeholder = C.prompt_ph;
+    promptArea.spellcheck = false;
+    promptArea.value = String(readPersisted(AUTO_PROMPT_INPUT, "") || "");
+    promptArea.addEventListener("input", () => persist(AUTO_PROMPT_INPUT, promptArea.value));
+    promptBox.appendChild(promptArea);
 
     const summary = document.createElement("div");
     summary.className = "ts-ideo-node__summary";
@@ -283,11 +342,13 @@ export function setupIdeogramNode(node) {
 
     const spacer = document.createElement("div");
     spacer.className = "ts-ideo-node__spacer";
-    container.append(spacer, canvas, toolbar, summary);
+    container.append(spacer, canvas, toolbar, promptBox, summary);
     stopPropagation(container, [
         "pointerdown", "pointerup", "pointermove", "mousedown", "mouseup",
         "wheel", "click", "dblclick", "contextmenu",
     ]);
+    // Typing belongs to the field, not to the graph's shortcuts.
+    stopPropagation(promptArea, ["keydown", "keyup", "keypress", "paste", "copy", "cut"]);
 
     const widgetOptions = {
         serialize: false,
@@ -299,15 +360,28 @@ export function setupIdeogramNode(node) {
     const domWidget = node.addDOMWidget(DOM_WIDGET_NAME, "div", container, widgetOptions);
     const domWidgetEl = domWidget?.element || domWidget?.el || domWidget?.container;
 
-    // Auto lives in the fullscreen editor now, where a generated caption is
-    // laid out as editable blocks. The node therefore always emits the design
-    // document, and pins `mode` to designer so an older graph saved in auto
-    // mode starts following the editor the moment it is opened here.
-    function ensureDesignerMode() {
-        if (String(readPersisted(MODE_INPUT, "designer")) === "designer") return;
-        setWidgetValue(node, MODE_INPUT, "designer");
-        node.properties = node.properties || {};
-        node.properties[MODE_INPUT] = "designer";
+    // Auto (the old caption-from-a-button mode) lives in the fullscreen editor
+    // now, so a graph saved in "auto" is moved to the designer the moment it is
+    // opened here. "prompt" is the node's own plain-text mode.
+    function currentMode() {
+        const mode = String(readPersisted(MODE_INPUT, "designer"));
+        return NODE_MODES.includes(mode) ? mode : "designer";
+    }
+
+    function setMode(mode) {
+        const next = NODE_MODES.includes(mode) ? mode : "designer";
+        if (String(readPersisted(MODE_INPUT, "")) !== next) persist(MODE_INPUT, next);
+        container.classList.toggle("is-prompt", next === "prompt");
+        for (const [key, button] of Object.entries(modeButtons)) {
+            button.classList.toggle("is-active", key === next);
+            button.setAttribute("aria-pressed", String(key === next));
+        }
+        updateSummary();
+        requestRedraw();
+    }
+
+    function ensureKnownMode() {
+        setMode(currentMode());
     }
 
 
@@ -342,6 +416,14 @@ export function setupIdeogramNode(node) {
         summary.innerHTML = "";
         const main = document.createElement("span");
         main.style.cssText = "min-width:0;overflow:hidden;text-overflow:ellipsis";
+        if (container.classList.contains("is-prompt")) {
+            const enhance = node.widgets?.find((w) => w?.name === ENHANCE_INPUT)?.value !== false;
+            main.textContent = enhance
+                ? C.prompt_summary.replace("{model}", wantsBiggerModel(node) ? "4B" : "2B")
+                : C.prompt_summary_raw;
+            summary.append(main, aspectPill);
+            return;
+        }
         const txtWord = lang === "en" ? "text" : "текст";
         const objWord = lang === "en" ? "obj" : "об.";
         main.textContent = `${texts} ${txtWord} · ${objs} ${objWord}${placeholders ? ` · ${placeholders}↳` : ""} · ${styleName}`;
@@ -543,12 +625,27 @@ export function setupIdeogramNode(node) {
         return r;
     };
 
+    // "bigger model" and "enhance prompt" are ordinary widgets (like TS Super
+    // Prompt's): keep the Prompt-mode summary saying what a run will do.
+    for (const name of [BIGGER_MODEL_INPUT, ENHANCE_INPUT]) {
+        const widget = node.widgets?.find((w) => w?.name === name);
+        if (!widget || widget._tsIdeoHooked) continue;
+        const prevCallback = widget.callback;
+        widget.callback = function summaryCallback(...args) {
+            const r = prevCallback?.apply(this, args);
+            updateSummary();
+            return r;
+        };
+        widget._tsIdeoHooked = true;
+    }
+
     const resizeObserver = new ResizeObserver(() => requestRedraw());
     resizeObserver.observe(container);
 
     node._tsIdeoApplyDesign = applyDesign;
     node._tsIdeoSync = () => {
-        ensureDesignerMode();
+        promptArea.value = String(readPersisted(AUTO_PROMPT_INPUT, "") || "");
+        ensureKnownMode();
         state.design = parseDesign(readPersistedDesign(node));
         ensureRefImage();
         updateSummary();
@@ -568,7 +665,7 @@ export function setupIdeogramNode(node) {
     };
 
     // Initial load
-    ensureDesignerMode();
+    ensureKnownMode();
     syncDomSize();
     updateSummary();
     ensureRefImage();

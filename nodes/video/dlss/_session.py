@@ -14,6 +14,11 @@ choice and not a separate super-resolution step.
 motion itself when ``shimmer_suppression`` is above zero (NVIDIA optical flow,
 with a bundled GPU Lucas-Kanade fallback), so the only thing a video batch still
 has to tell it is where the cuts are.
+
+⚠️ Since 05.10.2026 frames travel as float32 RGB through host memory
+(``dlss5nr_process_v6``). Video memory shared with the engine is opt-in
+(``TS_DLSS_CUDA_INTEROP=1``): on a card ComfyUI keeps nearly full, that road
+produced corrupted 16×16 tiles and stalls — see ``NeuralBridge.process_float``.
 """
 
 from __future__ import annotations
@@ -21,6 +26,7 @@ from __future__ import annotations
 import json
 import logging
 import math
+import os
 from pathlib import Path
 from typing import Any, Callable
 
@@ -42,6 +48,23 @@ MAX_LONG_EDGE = 7680
 MAX_SHORT_EDGE = 4320
 #: Both the input and the output size must reach this.
 MIN_EDGE = 64
+
+#: Включает путь через общую с движком видеопамять. По умолчанию выключен.
+CUDA_INTEROP_ENV = "TS_DLSS_CUDA_INTEROP"
+
+
+def cuda_interop_requested() -> bool:
+    """Whether the machine owner asked for frames to stay in video memory.
+
+    ⚠️ Выключено по умолчанию (05.10.2026) по замеру, а не из осторожности: на
+    RTX 3080 Ti Laptop, пока ComfyUI держал 15 из 16 ГБ, этот путь дал битые
+    плитки 16×16 в одном кадре из двенадцати и зависал — на движках v9 и v11.
+    Хостовый float-путь на том же кадре: 0 из 40, все 40 прогонов побитно
+    одинаковы. Цена — ~0,5 с на кадр 3264×1856.
+    """
+    return str(os.environ.get(CUDA_INTEROP_ENV, "")).strip().lower() in {
+        "1", "true", "yes", "on",
+    }
 
 NR_STYLES = {"Default": 0, "Natural": 1, "Cinematic": 2}
 
@@ -201,16 +224,19 @@ def resolve_native_settings(
     }
 
 
-def resize_fit(rgba: np.ndarray, width: int, height: int) -> np.ndarray:
-    """Letterbox a frame into the size the network renders at.
+def resize_fit(rgb: np.ndarray, width: int, height: int) -> np.ndarray:
+    """Letterbox a float32 RGB frame into the size the network renders at.
 
     ⚠️ This is the upscale. The engine does not resize on this path: the frame
     it is handed is already at the output size, and everything it adds is
     detail, not pixels.
+
+    ⚠️ Ланцош во float, без восьмибитного шага, и с клампом после: его
+    лепестки выходят за 0..1 на контрастных краях, а движку нужен кадр в 0..1.
     """
-    source_height, source_width = rgba.shape[:2]
+    source_height, source_width = rgb.shape[:2]
     if source_width == width and source_height == height:
-        return np.ascontiguousarray(rgba)
+        return np.ascontiguousarray(rgb, dtype=np.float32)
     try:
         import cv2  # noqa: PLC0415 - optional, see the fallback below
 
@@ -218,16 +244,20 @@ def resize_fit(rgba: np.ndarray, width: int, height: int) -> np.ndarray:
         fit_width = max(1, min(width, int(round(source_width * scale))))
         fit_height = max(1, min(height, int(round(source_height * scale))))
         resized = cv2.resize(
-            rgba, (fit_width, fit_height), interpolation=cv2.INTER_LANCZOS4
+            np.ascontiguousarray(rgb, dtype=np.float32), (fit_width, fit_height),
+            interpolation=cv2.INTER_LANCZOS4,
         )
     except ImportError:
         fit_width, fit_height = min(width, source_width), min(height, source_height)
-        resized = rgba[:fit_height, :fit_width]
-    canvas = np.zeros((height, width, rgba.shape[2]), dtype=rgba.dtype)
-    canvas[..., 3] = 255
-    x = (width - fit_width) // 2
-    y = (height - fit_height) // 2
-    canvas[y:y + fit_height, x:x + fit_width] = resized
+        resized = rgb[:fit_height, :fit_width]
+    if fit_width == width and fit_height == height:
+        canvas = np.ascontiguousarray(resized, dtype=np.float32)
+    else:
+        canvas = np.zeros((height, width, 3), dtype=np.float32)
+        x = (width - fit_width) // 2
+        y = (height - fit_height) // 2
+        canvas[y:y + fit_height, x:x + fit_width] = resized
+    np.clip(canvas, 0.0, 1.0, out=canvas)
     return canvas
 
 
@@ -248,8 +278,10 @@ class DLSSFrameSession:
         native_settings: dict[str, int | float | bool],
         cuda_ordinal: int = 0,
         cancelled: Callable[[], bool] | None = None,
-        prefer_cuda: bool = True,
+        prefer_cuda: bool | None = None,
     ) -> None:
+        if prefer_cuda is None:
+            prefer_cuda = cuda_interop_requested()
         if output_width < MIN_EDGE or output_height < MIN_EDGE:
             raise ValueError(
                 f"{LOG_PREFIX} The neural pass needs at least {MIN_EDGE}x{MIN_EDGE} pixels; "
@@ -272,13 +304,11 @@ class DLSSFrameSession:
         self.frames = 0
         self.scene_resets = 0
         self.evaluate_seconds = 0.0
-        self.ngx_evaluate_result = "unreported"
         self.memory_path = "host"
         self._torch = None
         self._device = None
         self._incoming = None
         self._outgoing = None
-        self._staging = None
 
         # ⚠️ ДО того, как движок поднимется: свои возможности по CUDA он
         # определяет ровно один раз, при `dlss5nr_init`, и переставленный
@@ -305,11 +335,6 @@ class DLSSFrameSession:
                 "stabilizer_backend": "native_gpu_residual",
             },
         }
-        # ⚠️ Кадр отдаётся движку ВОСЬМИБИТНЫМ, по дескриптору, и таким же
-        # забирается: float-версии на хосте не существует вовсе. Замерено на
-        # 3840×2048 — те два прохода по 100 МБ стоили 98 мс на кадр, а
-        # преобразование всё равно делает карта.
-        self._output = np.empty((self.output_height, self.output_width, 4), dtype=np.uint8)
         if prefer_cuda:
             self._prepare_cuda(int(cuda_ordinal))
         self.bridge_status["memory_path"] = self.memory_path
@@ -345,10 +370,9 @@ class DLSSFrameSession:
     def _open_cuda_buffers(self, ordinal: int) -> None:
         """Take two frame buffers on the card, if the card is there to take them.
 
-        ⚠️ Мерено на 3840×2048: через видеопамять кадр считается за 260 мс,
-        через хост — за 420–460, и `nvidia-smi` при этом показывает карту
-        простаивающей больше половины времени. Причина — не сеть, а дорога к
-        ней: на хостовом пути движок перекладывает кадр процессором.
+        ⚠️ Только по явной просьбе (`TS_DLSS_CUDA_INTEROP=1`). Быстрее хоста
+        (на 3840×2048 сеть 0,27 с против 0,62), но на почти полной карте давал
+        битые плитки и зависания — см. `cuda_interop_requested`.
 
         Буферы — обычные тензоры torch, то есть та же память, которой уже
         пользуется ComfyUI: своего аллокатора CUDA пак не заводит. Не вышло —
@@ -364,9 +388,6 @@ class DLSSFrameSession:
                 (self.output_height, self.output_width, 3), dtype=torch.float32, device=device
             )
             outgoing = torch.empty_like(incoming)
-            staging = torch.empty(
-                (self.output_height, self.output_width, 4), dtype=torch.uint8, device=device
-            )
             torch.cuda.synchronize(device)
         except Exception as exc:  # noqa: BLE001 - любая беда здесь не фатальна
             logger.info("%s Staying on the host path: %s", LOG_PREFIX, exc)
@@ -375,11 +396,10 @@ class DLSSFrameSession:
         self._device = device
         self._incoming = incoming
         self._outgoing = outgoing
-        self._staging = staging
         self.memory_path = "cuda"
 
     def _release_cuda_buffers(self) -> None:
-        self._incoming = self._outgoing = self._staging = None
+        self._incoming = self._outgoing = None
         self._device = None
 
     # --------------------------------------------------------------- evidence
@@ -403,14 +423,13 @@ class DLSSFrameSession:
         status["frames"] = self.frames
         status["scene_resets"] = self.scene_resets
         status["evaluate_seconds"] = round(self.evaluate_seconds, 3)
-        status["ngx_evaluate_result"] = self.ngx_evaluate_result
         return status
 
     # ------------------------------------------------------------------ work
     def render_into(
-        self, *, index: int, rgba: np.ndarray, reset: bool, destination: np.ndarray
+        self, *, index: int, frame: np.ndarray, reset: bool, destination: np.ndarray
     ) -> None:
-        """One frame in, its float32 RGB result written into ``destination``.
+        """One float32 RGB frame at the output size in, its result written into ``destination``.
 
         ``destination`` is the caller's slice of the output batch: values land
         there in 0..1, without a single array being allocated per frame. Which
@@ -428,9 +447,10 @@ class DLSSFrameSession:
                 f"{LOG_PREFIX} Neural Rendering frames must arrive in order; expected "
                 f"{self._next_index}, got {index}."
             )
-        if rgba.dtype != np.uint8 or rgba.shape != (self.output_height, self.output_width, 4):
+        if frame.dtype != np.float32 \
+                or frame.shape != (self.output_height, self.output_width, 3):
             raise ValueError(
-                f"{LOG_PREFIX} The frame handed to Neural Rendering must be RGBA8 at "
+                f"{LOG_PREFIX} The frame handed to Neural Rendering must be float32 RGB at "
                 f"{self.output_width}x{self.output_height}."
             )
         if destination.dtype != np.float32 \
@@ -440,10 +460,10 @@ class DLSSFrameSession:
                 f"{LOG_PREFIX} The result buffer must be a contiguous float32 "
                 f"{self.output_width}x{self.output_height}x3 array."
             )
-        rgba = np.ascontiguousarray(rgba)
+        frame = np.ascontiguousarray(frame)
         if self._incoming is not None:
             try:
-                self._render_on_card(index, rgba, reset, destination)
+                self._render_on_card(frame, reset, destination)
             except NeuralBridgePoisonedError:
                 raise
             except (NeuralBridgeError, RuntimeError) as exc:
@@ -455,27 +475,25 @@ class DLSSFrameSession:
                 )
                 self._release_cuda_buffers()
                 self.memory_path = "host (after a fallback)"
-                self._render_on_host(index, rgba, reset, destination)
+                self._render_on_host(frame, reset, destination)
         else:
-            self._render_on_host(index, rgba, reset, destination)
+            self._render_on_host(frame, reset, destination)
 
         self.frames += 1
         self.scene_resets += int(bool(reset) and index != 0)
         self._next_index += 1
-        self._log("frame", index=int(index), reset=bool(reset),
-                  ngx_result=self.ngx_evaluate_result, path=self.memory_path)
+        self._log("frame", index=int(index), reset=bool(reset), path=self.memory_path)
 
-    def _render_on_card(self, index: int, rgba: np.ndarray, reset: bool,
+    def _render_on_card(self, frame: np.ndarray, reset: bool,
                         destination: np.ndarray) -> None:
         torch = self._torch
-        self._staging.copy_(torch.from_numpy(rgba), non_blocking=False)
-        torch.div(self._staging[..., :3], 255.0, out=self._incoming)
+        self._incoming.copy_(torch.from_numpy(frame), non_blocking=False)
         torch.cuda.synchronize(self._device)
         self.evaluate_seconds += BRIDGE.process_cuda(
             self._incoming.data_ptr(), self._outgoing.data_ptr(),
             self.output_width, self.output_height,
             self.native_settings, bool(reset),
-            keep_alive=(self._incoming, self._outgoing, self._staging),
+            keep_alive=(self._incoming, self._outgoing),
         )
         torch.cuda.synchronize(self._device)
         # ⚠️ Кламп на карте, а не на процессоре: на 4K это 24 МБ чисел, и
@@ -483,14 +501,13 @@ class DLSSFrameSession:
         self._outgoing.clamp_(0.0, 1.0)
         torch.from_numpy(destination).copy_(self._outgoing)
 
-    def _render_on_host(self, index: int, rgba: np.ndarray, reset: bool,
+    def _render_on_host(self, frame: np.ndarray, reset: bool,
                         destination: np.ndarray) -> None:
-        elapsed, report = BRIDGE.process_frame_host(
-            rgba, self._output, self.native_settings, bool(reset), timestamp=int(index)
+        self.evaluate_seconds += BRIDGE.process_float(
+            frame, destination, self.native_settings, bool(reset)
         )
-        self.evaluate_seconds += elapsed
-        self.ngx_evaluate_result = report["ngx_evaluate_result"]
-        np.multiply(self._output[..., :3], 1.0 / 255.0, out=destination, casting="unsafe")
+        # ⚠️ Выходить за 0..1 движок право имеет — IMAGE не имеет.
+        np.clip(destination, 0.0, 1.0, out=destination)
 
     # ----------------------------------------------------------------- close
     def close(self) -> None:
@@ -530,9 +547,6 @@ def verify_feature_18(logs: list[str], status: dict[str, Any]) -> dict[str, Any]
     return {
         "verified": bool(evaluated),
         "successful_frames": len(evaluated),
-        # ⚠️ Это уже не догадка по логу, как было у воркера: NGX сам говорит,
-        # чем кончилась оценка каждого кадра.
-        "ngx_evaluate_result": status.get("ngx_evaluate_result", "unreported"),
         "engine_version": status.get("engine_version", "unknown"),
         "gpu_name": status.get("gpu_name", "unknown"),
         "cuda_status": status.get("cuda_status", "unknown"),

@@ -214,7 +214,18 @@ AUDIO_NORMALIZE_MAX_GAIN_DB = 12.0
 # WHISPER_DIR are imported from the shared engine at the top of this module.
 ALLOWED_AUDIO_SUFFIXES = {".aac", ".aiff", ".flac", ".m4a", ".mp3", ".mp4", ".ogg", ".opus", ".wav", ".webm"}
 
-PROMPT_TARGETS = ("auto", "image", "video", "music")
+PROMPT_TARGETS = ("auto", "image", "video", "music", "json")
+
+# ⚠️ Пресеты, ответ которых — JSON-капшен Ideogram 4, а не промпт прозой.
+# Пользовательский ход обычного пресета говорит «верни один отшлифованный
+# английский промпт» и стоит БЛИЖЕ системного промпта — замерено 05.10.2026 на
+# Qwen 4B: с этой припиской «Ideogram Prompt Enhance» отвечал абзацем прозы, и
+# ни кнопка «Авто» редактора, ни режим «Промпт» TS Ideogram Designer JSON не
+# получали. Этим пресетам ход собирается без прозаических правил.
+JSON_PRESETS = (
+    "Ideogram Prompt Enhance",
+    "Json Image Capture",
+)
 
 # ⚠️ Пресеты, которые делают ЗВУК, а не картинку. Разница не косметическая:
 # при вложенной картинке пользовательский ход получает подсказку «реши, картинка
@@ -246,8 +257,13 @@ def resolve_preset_alias(preset: str) -> str:
 
 
 def target_for_preset(preset: str) -> str:
-    """Какой носитель просит этот пресет: звук или «как получится»."""
-    return "music" if resolve_preset_alias(preset) in AUDIO_PRESETS else SUPER_PROMPT_TARGET
+    """Какой носитель просит этот пресет: звук, JSON-капшен или «как получится»."""
+    name = resolve_preset_alias(preset)
+    if name in AUDIO_PRESETS:
+        return "music"
+    if name in JSON_PRESETS:
+        return "json"
+    return SUPER_PROMPT_TARGET
 
 # Hard cap on /ts_super_prompt/enhance text length. Anything bigger is almost
 # certainly a misuse or DoS attempt — Qwen3.5 has a much smaller context budget

@@ -24,6 +24,7 @@ import logging
 
 from comfy_api.v0_0_2 import IO
 
+from .._caption_json import repair_caption_text
 from ._ideogram_helpers import (
     build_caption,
     dims_from_design,
@@ -78,6 +79,60 @@ def _extract_json_object(text: str) -> str:
     return ""
 
 
+#: The Qwen preset that turns an idea into an Ideogram 4 caption. Shared with
+#: the editor's Generate button (pinned by test_ideogram_superprompt_contract).
+PROMPT_PRESET = "Ideogram Prompt Enhance"
+
+
+def caption_from_prompt(text: str, seed: int, bigger_model: bool = True) -> str:
+    """Turn a plain prompt into an Ideogram 4 JSON caption with Qwen.
+
+    ⚠️ По умолчанию четырёхмиллиардная модель (просьба владельца, 05.10.2026):
+    структурный JSON с bbox и стилем 2B пишет заметно хуже, а здесь качество
+    капшена — это качество картинки. Галочка `bigger_model` переключает на 2B.
+
+    Falls back to the minimal valid caption (the text verbatim as
+    ``high_level_description``) when the model returns no parseable JSON, so a
+    run never dies on a malformed answer.
+    """
+    # Lazy: the Qwen engine pulls in transformers, which the designer mode
+    # never needs.
+    from ..llm.super_prompt._helpers import resolve_prompt_model  # noqa: PLC0415
+    from ..llm.super_prompt._qwen import _generate_with_qwen  # noqa: PLC0415
+
+    raw = _generate_with_qwen(
+        text=text,
+        system_preset=PROMPT_PRESET,
+        operation_id=None,
+        seed=int(seed),
+        model_id=resolve_prompt_model(bool(bigger_model)),
+    )
+    # The engine already mends JSON-preset answers; this is the belt for an
+    # engine that returned the raw text (and the same repair, so idempotent).
+    caption = repair_caption_text(raw or "", text) or _extract_json_object(raw or "")
+    if caption:
+        return caption
+    logger.warning(
+        "%s Qwen returned no JSON caption; the prompt is passed on verbatim inside "
+        "the minimal Ideogram 4 schema.", LOG_PREFIX,
+    )
+    return json.dumps({"high_level_description": text}, ensure_ascii=False)
+
+
+def caption_as_typed(text: str) -> str:
+    """The prompt as it is, with no model: for a caption the user already has.
+
+    A JSON caption is only checked and re-serialized compactly (a stray brace
+    from hand editing is mended; nothing is added or held to an idea). Plain
+    text goes into the minimal valid caption, verbatim — the envelope Ideogram 4
+    expects, nothing more.
+    """
+    if text.lstrip().startswith("{"):
+        caption = repair_caption_text(text)
+        if caption:
+            return caption
+    return json.dumps({"high_level_description": text}, ensure_ascii=False)
+
 
 class TS_IdeogramDesigner(IO.ComfyNode):
     @classmethod
@@ -107,13 +162,13 @@ class TS_IdeogramDesigner(IO.ComfyNode):
                 IO.String.Input(
                     "mode",
                     default="designer",
-                    tooltip="UI mode, managed by the node: 'designer' builds the caption from the visual editor, 'auto' generates it from auto_prompt with the connected clip.",
+                    tooltip="UI mode, managed by the node: 'designer' builds the caption from the visual editor, 'prompt' turns the plain prompt (auto_prompt) into a caption with Qwen (2B or 4B, see bigger_model) when the graph runs.",
                 ),
                 IO.String.Input(
                     "auto_prompt",
                     default="",
                     multiline=True,
-                    tooltip="Plain-text idea for Auto mode. The connected clip's LLM turns it into a structured Ideogram 4 JSON caption.",
+                    tooltip="Plain prompt for Prompt mode, typed in the node. Qwen turns it into a structured Ideogram 4 JSON caption when the graph runs.",
                 ),
                 IO.String.Input(
                     "auto_caption",
@@ -127,6 +182,32 @@ class TS_IdeogramDesigner(IO.ComfyNode):
                     min=0,
                     max=0x7FFFFFFF,
                     tooltip="Sampling seed for Auto mode. The Generate button bumps it so a fresh caption is produced on the next run.",
+                ),
+                # ⚠️ Последним: `widgets_values` позиционен. Сохранённый граф
+                # приходит без этого поля и получает умолчание — 4B, как просил
+                # владелец (у TS Super Prompt умолчание 2B, там другая история).
+                IO.Boolean.Input(
+                    "bigger_model",
+                    default=True,
+                    tooltip=(
+                        "Which Qwen model writes the caption — in Prompt mode and for the "
+                        "editor's Generate and From image buttons. On: the 4B model, better "
+                        "structured captions and layouts. Off: the 2B one, faster and half "
+                        "the VRAM. The 4B model is fetched on first use."
+                    ),
+                ),
+                # ⚠️ Тоже последним, по той же причине. Умолчание True — так
+                # режим «Промпт» работал с самого появления.
+                IO.Boolean.Input(
+                    "enhance_prompt",
+                    default=True,
+                    tooltip=(
+                        "Prompt mode only. On: Qwen turns the prompt into a structured "
+                        "Ideogram 4 JSON caption when the graph runs (15-40 s). Off: the "
+                        "prompt goes out as it is — a ready JSON caption only gets its "
+                        "structure checked, plain text is wrapped into the minimal caption "
+                        "Ideogram 4 expects. No model is loaded."
+                    ),
                 ),
             ],
             outputs=[
@@ -148,7 +229,8 @@ class TS_IdeogramDesigner(IO.ComfyNode):
 
     @classmethod
     def execute(cls, image=None, design_json: str = "", mode: str = "designer",
-                auto_prompt: str = "", auto_caption: str = "", auto_seed: int = 0) -> IO.NodeOutput:
+                auto_prompt: str = "", auto_caption: str = "", auto_seed: int = 0,
+                bigger_model: bool = True, enhance_prompt: bool = True) -> IO.NodeOutput:
         if image is not None:
             try:
                 node_id = getattr(cls.hidden, "unique_id", None)
@@ -159,7 +241,20 @@ class TS_IdeogramDesigner(IO.ComfyNode):
                 logger.warning("%s Graph reference caching failed: %s", LOG_PREFIX, exc)
 
         width, height = dims_from_design(design_json or "")
-        if (mode or "designer").strip().lower() == "auto":
+        mode_key = (mode or "designer").strip().lower()
+        if mode_key == "prompt":
+            text = (auto_prompt or "").strip()
+            if not text:
+                raise RuntimeError(
+                    f"{LOG_PREFIX} Prompt mode has no prompt: type it in the node, or "
+                    "switch back to Designer mode."
+                )
+            if enhance_prompt:
+                json_prompt = caption_from_prompt(text, auto_seed, bigger_model)
+            else:
+                json_prompt = caption_as_typed(text)
+            return IO.NodeOutput(json_prompt, width, height, ui={"ts_ideo_auto": [json_prompt]})
+        if mode_key == "auto":
             # The caption is produced interactively by the Generate Prompt
             # button through the SuperPrompt engine (its /enhance route with
             # the 'Ideogram Prompt Enhance' preset) and stored here — queue
@@ -200,10 +295,13 @@ class TS_IdeogramDesigner(IO.ComfyNode):
 
     @classmethod
     def fingerprint_inputs(cls, image=None, design_json: str = "", mode: str = "designer",
-                           auto_prompt: str = "", auto_caption: str = "", auto_seed: int = 0) -> str:
+                           auto_prompt: str = "", auto_caption: str = "", auto_seed: int = 0,
+                           bigger_model: bool = True, enhance_prompt: bool = True) -> str:
         design_sig = hashlib.blake2b((design_json or "").encode("utf-8"), digest_size=16).hexdigest()
         auto_sig = hashlib.blake2b(
-            f"{mode}|{auto_prompt}|{auto_caption}|{auto_seed}".encode(), digest_size=16
+            f"{mode}|{auto_prompt}|{auto_caption}|{auto_seed}|{bool(bigger_model)}"
+            f"|{bool(enhance_prompt)}".encode(),
+            digest_size=16,
         ).hexdigest()
         if image is not None and hasattr(image, "shape"):
             try:
