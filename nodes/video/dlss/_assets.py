@@ -44,14 +44,17 @@ from __future__ import annotations
 
 import hashlib
 import io
+import ipaddress
 import logging
 import os
 import shutil
+import socket
 import struct
 import zipfile
 import zlib
 from pathlib import Path
 from typing import Any, Callable
+from urllib.parse import urlparse
 
 from ..._deps import TSDependencyManager
 
@@ -399,11 +402,26 @@ class PartialDownloadUnsupported(RuntimeError):
     """The server will not hand out byte ranges; the whole archive is the way."""
 
 
+def _assert_public_url(url: str) -> None:
+    """Block SSRF: refuse anything but an HTTPS URL resolving to a public address."""
+    parsed = urlparse(url)
+    if parsed.scheme != "https" or not parsed.hostname:
+        raise RuntimeError(f"{LOG_PREFIX} Refusing to fetch a non-HTTPS URL: {url!r}")
+    try:
+        addresses = {info[4][0] for info in socket.getaddrinfo(parsed.hostname, None)}
+    except OSError as exc:
+        raise RuntimeError(f"{LOG_PREFIX} Could not resolve host {parsed.hostname!r}: {exc}") from exc
+    if any(not ipaddress.ip_address(address).is_global for address in addresses):
+        raise RuntimeError(
+            f"{LOG_PREFIX} Refusing to fetch from a non-public address for host {parsed.hostname!r}.")
+
+
 class _RemoteArchive(io.RawIOBase):
     """A release zip read by byte ranges: enough for zipfile to list it."""
 
     def __init__(self, requests: Any, url: str) -> None:
         self._requests = requests
+        _assert_public_url(url)
         probe = requests.get(url, headers={"Range": "bytes=0-0"}, stream=True,
                              timeout=(15, 60), allow_redirects=True)
         try:
@@ -413,6 +431,7 @@ class _RemoteArchive(io.RawIOBase):
                     f"the server answered {probe.status_code} to a range request")
             self.size = int(span.rsplit("/", 1)[1])
             self.url = probe.url
+            _assert_public_url(self.url)
         finally:
             probe.close()
         self._position = 0
@@ -436,7 +455,7 @@ class _RemoteArchive(io.RawIOBase):
         if end < start:
             return b""
         response = self._requests.get(self.url, headers={"Range": f"bytes={start}-{end}"},
-                                      timeout=(15, 60))
+                                      timeout=(15, 60), allow_redirects=False)
         if response.status_code != 206:
             raise PartialDownloadUnsupported(
                 f"the server answered {response.status_code} to a range request")
