@@ -33,6 +33,7 @@ import {
     t,
     wantsBiggerModel,
     BIGGER_MODEL_INPUT,
+    hldIsStale,
 } from "./_ideogram_shared.js";
 
 import { openIdeogramEditor } from "./_ideogram_editor.js";
@@ -647,6 +648,17 @@ export function setupIdeogramNode(node) {
         promptArea.value = String(readPersisted(AUTO_PROMPT_INPUT, "") || "");
         ensureKnownMode();
         state.design = parseDesign(readPersistedDesign(node));
+        // A design saved before the stale-sentence check (or edited without
+        // reopening the editor) gets its flag here, so the queued caption does
+        // not ask for layers that are gone. Written only when it changes.
+        const stale = hldIsStale(state.design);
+        if (Boolean(state.design.hld_stale) !== stale) {
+            const fixed = { ...state.design };
+            if (stale) fixed.hld_stale = true;
+            else delete fixed.hld_stale;
+            applyDesign(fixed);
+            return;
+        }
         ensureRefImage();
         updateSummary();
         requestRedraw();

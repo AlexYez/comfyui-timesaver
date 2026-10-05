@@ -36,6 +36,8 @@ import {
     cleanPalette,
     composeTextDesc,
     fetchCaptionPreview,
+    hldIsStale,
+    localizeBriefHld,
     designsList,
     saveDesignPreset,
     fetchDesignPreset,
@@ -521,8 +523,21 @@ export function openIdeogramEditor(node, { design, presets, onSave, graphRef }) 
     }
     let lastJsonSig = null;
     let jsonReqId = 0;
+    // The scene sentence of an idea stops describing the artboard once its
+    // layers are deleted or rewritten; the flag tells build_caption to write
+    // the sentence from the layers instead (see hldIsStale).
+    let hldNoteEl = null;
+    function syncHldStale() {
+        // Written only when true: an untouched design keeps the exact shape it
+        // had (no new key, no spurious change).
+        if (hldIsStale(work, LAYOUT_BRIEFS)) work.hld_stale = true;
+        else delete work.hld_stale;
+        if (hldNoteEl) hldNoteEl.style.display = work.hld_stale ? "" : "none";
+    }
+
     async function refreshJson(force) {
         if (closed) return;
+        syncHldStale();
         const dj = JSON.stringify(work);
         if (!force && dj === lastJsonSig) return;  // only re-fetch when the design changed
         const myReq = ++jsonReqId;
@@ -564,6 +579,9 @@ export function openIdeogramEditor(node, { design, presets, onSave, graphRef }) 
 
     function pushHistory() {
         if (closed || activeDragCleanup || inlineEl) return;
+        // The flag is derived from the layers: brought up to date BEFORE the
+        // snapshot, or it would land as an undo step of its own one tick later.
+        syncHldStale();
         const snap = JSON.stringify(work);
         if (snap === history.stack[history.index]) return;
         history.stack.length = history.index + 1;  // editing after undo kills the redo tail
@@ -1644,7 +1662,13 @@ export function openIdeogramEditor(node, { design, presets, onSave, graphRef }) 
     // Blocks the user has manually overridden are left untouched.
     function applyBrief(brief) {
         if (!brief) return;
-        if (brief.v) work.high_level_description = brief.v;
+        if (brief.v) {
+            // The idea's own words, with its on-image text in the design's
+            // language; hld_brief_v remembers which idea it came from, so a
+            // later edit of the layers can be told from an untouched idea.
+            work.high_level_description = localizeBriefHld(brief, work.language);
+            work.hld_brief_v = brief.v;
+        }
         if (brief.style_preset_id) applyStylePresetById(brief.style_preset_id);
         // Named sub-presets — set each field to the preset's own text/colours so the
         // dropdowns below show a REAL selection (not "Custom"), and the background
@@ -1724,6 +1748,10 @@ export function openIdeogramEditor(node, { design, presets, onSave, graphRef }) 
         custom.addEventListener("input", () => { work.high_level_description = custom.value; });
         r.append(sel, custom);
         card.appendChild(r);
+        // Says why the JSON panel's scene sentence is not the idea's any more.
+        hldNoteEl = el("div", "ts-ideoe-hint", tr("hld_stale_note"));
+        hldNoteEl.style.display = hldIsStale(work, LAYOUT_BRIEFS) ? "" : "none";
+        card.appendChild(hldNoteEl);
     }
 
     // Merged "Style" card — everything about how the image LOOKS: the main idea,
@@ -2173,6 +2201,7 @@ export function openIdeogramEditor(node, { design, presets, onSave, graphRef }) 
     }
     function commit() {
         if (inlineEl) inlineEl.blur();
+        syncHldStale();
         onSave?.(JSON.parse(JSON.stringify(work)));
         close();
     }

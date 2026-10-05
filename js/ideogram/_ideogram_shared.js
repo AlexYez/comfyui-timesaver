@@ -744,6 +744,58 @@ export const OBJECT_PRESETS = [
     { id: "cosmic_nebula", ru: "Космическая туманность", en: "Cosmic Nebula", v: "A vast cosmic nebula of swirling magenta and teal stardust threaded with glowing newborn stars, drifting in luminous silence through the boundless depths of deep space." },
 ];
 
+/**
+ * An idea's sentence with its on-image words in the design's language.
+ *
+ * Idea sentences are English and quote the English literal ('SWEET'), while a
+ * Russian design puts the Russian one («СЛАДКО») into the text block — the
+ * caption then asked for two different words at once.
+ */
+export function localizeBriefHld(brief, lang) {
+    let sentence = String(brief?.v || "");
+    for (const tx of brief?.texts || []) {
+        const literal = lang === "en" ? (tx.en ?? tx.ru) : (tx.ru ?? tx.en);
+        if (tx.en && literal && literal !== tx.en) sentence = sentence.split(tx.en).join(literal);
+    }
+    return sentence;
+}
+
+/**
+ * Whether the design's scene sentence still describes its layers.
+ *
+ * ⚠️ Owner's case (05.10.2026): an idea's sentence named a "buy-now button" and
+ * the headline 'SWEET'; the price plate was deleted and the headline retyped,
+ * and Ideogram still drew the plate. The sentence is stale as soon as one of
+ * the idea's layers is gone, or its text / description no longer is the idea's
+ * — then build_caption writes the sentence from the layers instead. A sentence
+ * the person wrote (or edited) is never stale: it is theirs.
+ *
+ * @param {object} design Editor state.
+ * @param {object} briefsByLayout LAYOUT_BRIEFS.
+ */
+export function hldIsStale(design, briefsByLayout = LAYOUT_BRIEFS) {
+    const sentence = String(design?.high_level_description || "").trim();
+    if (!sentence) return false;
+    const briefs = briefsByLayout?.[design?.layout_id] || [];
+    const lang = design?.language || DEFAULT_LANG;
+    const brief = briefs.find((b) => b.v === design?.hld_brief_v)
+        || briefs.find((b) => b.v === sentence || localizeBriefHld(b, lang) === sentence);
+    if (!brief) return false;
+    if (sentence !== brief.v && sentence !== localizeBriefHld(brief, lang)) return false;
+    const blocks = Array.isArray(design?.blocks) ? design.blocks : [];
+    const same = (a, b) => String(a || "").trim() === String(b || "").trim();
+    for (const object of brief.objects || []) {
+        const block = blocks.find((b) => b?.type === "obj" && b.role === object.role);
+        if (!block || !same(block.desc, object.desc)) return true;
+    }
+    for (const tx of brief.texts || []) {
+        const block = blocks.find((b) => b?.type === "text" && b.role === tx.role);
+        if (!block || block.visual_only) return true;
+        if (!same(block.text, tx.en) && !same(block.text, tx.ru)) return true;
+    }
+    return false;
+}
+
 // "Main idea" (high_level_description) presets, 10 per layout, adapted to that
 // layout. `v` is the English one-sentence HLD fed to the model; ru/en are the
 // dropdown labels. Many feature vivid, emotional characters (a beautiful woman,
@@ -1525,6 +1577,7 @@ const I18N = {
         image_palette: "Image colors (up to {n})", background: "Background", add_color: "Add color",
         lighting_colors: "Lighting colors (up to {n})", background_colors: "Background colors (up to {n})",
         hld_hint: "One sentence describing the whole image — the model leans on this most. E.g. a bold summer-sale poster for a sneaker brand.",
+        hld_stale_note: "The layers no longer match this idea (a layer was removed or its text changed), so the scene sentence is now written from the layers — see the JSON prompt below.",
         aesthetics_hint: "The overall feel in a few words. Example: bold and punchy, calm and minimal, retro, luxurious. Safe to leave blank.",
         lighting_hint: "How the scene is lit. Example: bright daylight, soft studio light, moody shadows, neon glow. Safe to leave blank.",
         art_style_hint: "Shown for every image type except Photo — the drawing/rendering style. Example: flat vector, watercolor, low-poly 3D, bold poster graphics.",
@@ -1638,6 +1691,7 @@ const I18N = {
         image_palette: "Цвета изображения (до {n})", background: "Фон", add_color: "Добавить цвет",
         lighting_colors: "Цвета освещения (до {n})", background_colors: "Цвета фона (до {n})",
         hld_hint: "Одно предложение про всю картинку — модель опирается на него сильнее всего. Например: яркий постер летней распродажи кроссовок.",
+        hld_stale_note: "Слои больше не совпадают с этой идеей (слой удалён или изменён его текст), поэтому описание сцены теперь собирается из слоёв — см. JSON-промпт ниже.",
         aesthetics_hint: "Общее ощущение в паре слов. Например: дерзко и сочно, спокойно и минимально, ретро, премиально. Можно оставить пустым.",
         lighting_hint: "Как освещена сцена. Например: яркий дневной свет, мягкий студийный, драматичные тени, неоновое свечение. Можно оставить пустым.",
         art_style_hint: "Показывается для всех типов, кроме «Фото» — стиль отрисовки. Например: плоский вектор, акварель, low-poly 3D, плакатная графика.",

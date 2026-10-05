@@ -602,6 +602,55 @@ def _build_style_description(style: dict) -> dict | None:
     return out or None
 
 
+_MEDIUM_NOUNS = {
+    "photograph": "A photograph",
+    "illustration": "An illustration",
+    "3d_render": "A 3D render",
+    "painting": "A painting",
+    "graphic_design": "A graphic design",
+}
+
+
+def _subject_phrase(desc: str) -> str:
+    """The head of an object's desc: up to the first comma / semicolon / full stop."""
+    head = re.split(r"[,;.]", str(desc or "").strip(), maxsplit=1)[0].strip()
+    if head[:2] in ("A ", "An") or head[:4] == "The ":
+        head = head[0].lower() + head[1:]
+    return head
+
+
+def _join_phrases(items: list[str]) -> str:
+    if len(items) <= 1:
+        return "".join(items)
+    return ", ".join(items[:-1]) + " and " + items[-1]
+
+
+def auto_high_level_description(elements: list[dict], style: dict | None) -> str:
+    """One sentence about the scene, written from the layers that are there now.
+
+    ⚠️ Used instead of an idea's own sentence once the layers left that idea
+    behind (design ``hld_stale``, set by the editor). Owner's case, 05.10.2026:
+    the "Berry Indulgence" idea says "a headline spelling 'SWEET' … and a clean
+    buy-now button"; the headline was retyped as «Вкусняшка» and the price plate
+    deleted, and Ideogram still drew a "BUY-NOW" plate (in Cyrillic: «ДУУ-HOW»)
+    because the sentence kept asking for it. A generated sentence can only name
+    what is on the artboard.
+    """
+    medium = str((style or {}).get("medium") or "").strip()
+    noun = _MEDIUM_NOUNS.get(medium, "An image")
+    subjects = [_subject_phrase(e.get("desc", "")) for e in elements if e.get("type") == "obj"]
+    subjects = [s for s in subjects if s]
+    texts = [str(e["text"]) for e in elements if e.get("type") == "text" and e.get("text")]
+    quoted = _join_phrases([f"“{t}”" for t in texts])
+    if subjects and texts:
+        return f"{noun} of {_join_phrases(subjects)}, with the text {quoted}."
+    if subjects:
+        return f"{noun} of {_join_phrases(subjects)}."
+    if texts:
+        return f"{noun} with the text {quoted}."
+    return ""
+
+
 def build_caption(design_json: str) -> tuple[str, str]:
     """Parse the editor state and return (compact_json_caption, aspect_ratio)."""
     aspect = DEFAULT_ASPECT_RATIO
@@ -633,6 +682,9 @@ def build_caption(design_json: str) -> tuple[str, str]:
         background = f"{background}, {hint}" if background else hint
 
     hld = str(design.get("high_level_description") or "").strip()
+    if hld and design.get("hld_stale") is True:
+        # The idea's sentence describes layers that were deleted or rewritten.
+        hld = auto_high_level_description(elements, design.get("style"))
     style_description = _build_style_description(design.get("style"))
 
     # Nothing meaningful designed yet -> emit empty string (downstream no-op).
