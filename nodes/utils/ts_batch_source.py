@@ -70,8 +70,15 @@ _cursor = _Cursor()
 MODE_IMAGES = "Images in folder"
 MODE_LINES = "Lines in text file"
 MODE_COUNT = "Count only"
+#: One prompt per file. ⚠️ Appended LAST to the combo: the options' order is
+#: not stored in graphs, but the default and the existing names must not move.
+MODE_TEXT_FILES = "Text files in folder"
 
 IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tif", ".tiff")
+TEXT_SUFFIXES = (".txt", ".md")
+#: A prompt is a few kilobytes. Anything this big in the folder is not one (a
+#: log, a dump) and would land whole in every model call downstream.
+TEXT_FILE_MAX_BYTES = 1_000_000
 
 _DIGITS = re.compile(r"(\d+)")
 
@@ -85,14 +92,47 @@ def _natural_key(name: str) -> list:
     return [int(part) if part.isdigit() else part.lower() for part in _DIGITS.split(name)]
 
 
-def _folder_items(folder: Path) -> list[str]:
-    """Every image directly inside ``folder``, in natural name order."""
+def _folder_files(folder: Path, suffixes: tuple[str, ...]) -> list[Path]:
+    """Files with these suffixes directly inside ``folder``, in natural name order."""
     found = [
         entry for entry in folder.iterdir()
-        if entry.is_file() and entry.suffix.lower() in IMAGE_SUFFIXES
+        if entry.is_file() and entry.suffix.lower() in suffixes
     ]
     found.sort(key=lambda entry: _natural_key(entry.name))
-    return [str(entry) for entry in found]
+    return found
+
+
+def _folder_items(folder: Path) -> list[str]:
+    """Every image directly inside ``folder``, in natural name order."""
+    return [str(entry) for entry in _folder_files(folder, IMAGE_SUFFIXES)]
+
+
+def _folder_texts(folder: Path) -> list[str]:
+    """The text of every prompt file in ``folder``, one job per file.
+
+    The whole file is the prompt — line breaks inside it stay, unlike the
+    "Lines in text file" mode, where every line is a job of its own. A BOM
+    (Notepad's UTF-8) is dropped, outer whitespace trimmed; empty files and
+    files too big to be a prompt are skipped with a word in the log rather than
+    becoming blank or enormous jobs.
+    """
+    texts: list[str] = []
+    skipped: list[str] = []
+    for entry in _folder_files(folder, TEXT_SUFFIXES):
+        if entry.stat().st_size > TEXT_FILE_MAX_BYTES:
+            logger.warning("%s Skipped %s: %d bytes is not a prompt.",
+                           LOG_PREFIX, entry.name, entry.stat().st_size)
+            continue
+        text = entry.read_text(encoding="utf-8-sig", errors="replace")
+        text = text.replace("\r\n", "\n").strip()
+        if text:
+            texts.append(text)
+        else:
+            skipped.append(entry.name)
+    if skipped:
+        logger.info("%s Skipped %d empty file(s): %s", LOG_PREFIX, len(skipped),
+                    ", ".join(skipped[:5]) + (" ..." if len(skipped) > 5 else ""))
+    return texts
 
 
 def _file_lines(file_path: Path) -> list[str]:
@@ -117,10 +157,10 @@ def _collect(mode: str, path: str, count: int) -> list[str]:
     if not target.exists():
         raise FileNotFoundError(f"{LOG_PREFIX} Path does not exist: {target}")
 
-    if mode == MODE_IMAGES:
+    if mode in (MODE_IMAGES, MODE_TEXT_FILES):
         if not target.is_dir():
             raise NotADirectoryError(f"{LOG_PREFIX} Expected a folder, got a file: {target}")
-        return _folder_items(target)
+        return _folder_items(target) if mode == MODE_IMAGES else _folder_texts(target)
 
     if not target.is_file():
         raise IsADirectoryError(f"{LOG_PREFIX} Expected a text file, got a folder: {target}")
@@ -135,18 +175,21 @@ class TS_BatchSource(IO.ComfyNode):
             display_name="TS Batch Source",
             category="TS/Utils",
             description=(
-                "Turn a folder, a text file or a plain count into a job list. Everything "
-                "wired below this node runs once per item, independently — so a hundred "
-                "captions are a hundred separate model calls, not one growing context."
+                "Turn a folder of images, a folder of prompt files, a text file or a plain "
+                "count into a job list. Everything wired below this node runs once per "
+                "item, independently — so a hundred captions are a hundred separate model "
+                "calls, not one growing context."
             ),
             inputs=[
                 IO.Combo.Input(
                     "mode",
-                    options=[MODE_IMAGES, MODE_LINES, MODE_COUNT],
+                    options=[MODE_IMAGES, MODE_LINES, MODE_COUNT, MODE_TEXT_FILES],
                     default=MODE_IMAGES,
                     tooltip=(
                         "Where the jobs come from: image files in a folder, non-empty "
-                        "lines of a text file, or simply N numbered iterations."
+                        "lines of a text file, simply N numbered iterations, or prompt "
+                        "files in a folder (.txt / .md, one prompt per file, its line "
+                        "breaks kept)."
                     ),
                 ),
                 IO.String.Input(
@@ -210,7 +253,10 @@ class TS_BatchSource(IO.ComfyNode):
                 IO.String.Output(
                     display_name="item",
                     is_output_list=True,
-                    tooltip="One job per element: an image path, a text line, or a number.",
+                    tooltip=(
+                        "One job per element: an image path, a text line, a number, or "
+                        "the whole text of a prompt file."
+                    ),
                 ),
                 IO.Int.Output(
                     display_name="index",
@@ -258,10 +304,11 @@ class TS_BatchSource(IO.ComfyNode):
             target = _clean_path(path)
             try:
                 if target.is_dir():
+                    suffixes = TEXT_SUFFIXES if mode == MODE_TEXT_FILES else IMAGE_SUFFIXES
                     entries = sorted(
                         (entry.name, entry.stat().st_mtime_ns, entry.stat().st_size)
                         for entry in target.iterdir()
-                        if entry.is_file() and entry.suffix.lower() in IMAGE_SUFFIXES
+                        if entry.is_file() and entry.suffix.lower() in suffixes
                     )
                     stamp = str(entries)
                 elif target.is_file():

@@ -8,7 +8,7 @@
 
 Resize, color, cut out, inpaint, transcribe, translate, prompt-build, manage models — without leaving the canvas.
 
-[![Version](https://img.shields.io/badge/version-12.12.6-blue.svg)](pyproject.toml)
+[![Version](https://img.shields.io/badge/version-12.12.7-blue.svg)](pyproject.toml)
 [![ComfyUI](https://img.shields.io/badge/ComfyUI-V3%20API-orange.svg)](https://github.com/comfyanonymous/ComfyUI)
 [![Python](https://img.shields.io/badge/python-3.10+-green.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-see%20LICENSE.txt-lightgrey.svg)](LICENSE.txt)
@@ -1852,7 +1852,7 @@ Turns a folder, a text file or a plain count into a **job list**. Everything wir
 
 That independence is the point. A captioning model gets a fresh conversation per picture instead of one context that keeps growing for a hundred images.
 
-Modes: `Images in folder` (natural order, so `img2` comes before `img10`), `Lines in text file`, `Count only`. Outputs: `item` (path / line / number), `index`, `total`, `seed`.
+Modes: `Images in folder` (natural order, so `img2` comes before `img10`), `Lines in text file`, `Count only` and `Text files in folder` — a folder with one prompt per file (`.txt` / `.md`): one file is one job, its whole text, line breaks inside kept, the same natural order, empty files skipped. Outputs: `item` (path / line / number / prompt text), `index`, `total`, `seed`.
 
 **Why there is a seed output.** A seed *widget* on the model node holds one number for all hundred calls, so a hundred iterations of the same task come back identical. This output gives every item its own derived seed — reproducible from the base value, different from its neighbours.
 
@@ -1910,6 +1910,10 @@ The **Free memory** button in ComfyUI's top bar unloads every model and clears t
 - Windows Task Manager may show the Python process shrinking less than the message reports: the allocator keeps some freed RAM for reuse. Video memory comes back in full.
 
 The button is on by default and hides in **Settings → TS Timesaver → Interface → «Free memory» button in the top bar**.
+
+### Choose which tabs the left sidebar shows
+
+**Settings → TS Timesaver → Interface** has a switch per tab of ComfyUI's left sidebar: Assets, Node library, Model library, Workflows, Apps — and every tab another extension adds, which gets its own switch the moment it appears. Off: the tab leaves the sidebar (an open panel closes first). On: it comes back in the place it had, not at the end. The change applies at once, no reload, and survives one. The buttons below the tabs (Templates, Help center, Settings and the rest) are not touched.
 
 ### Where do model files live?
 

@@ -1025,7 +1025,16 @@ class TS_DownloadFilesNode(IO.ComfyNode):
         segments = [s for s in cleaned.replace("\\", "/").split("/") if s and s != "."]
         if not segments or any(s == ".." for s in segments):
             return None
-        if os.path.isabs(cleaned) or os.path.splitdrive(cleaned)[0]:
+        # A drive letter or a network share is a place on the machine, not a
+        # model folder — refused. A bare leading slash is NOT: "/loras/qwen2"
+        # is the typo the graph run (`_resolve_target_directory`) already reads
+        # as relative, and the button must agree with it. ⚠️ Owner's report
+        # (07.10.2026): the Qwen 2.1 list's fourth line carried "/loras/qwen2";
+        # the run downloaded it into models/loras/qwen2, the "Download models"
+        # button refused the same line as "not a model folder". The checks
+        # below (registered model folder, containment, no custom_nodes) still
+        # decide — the slash only stops counting as a root.
+        if os.path.splitdrive(cleaned)[0] or cleaned.replace("\\", "/").startswith("//"):
             return None
 
         model_segments = segments[1:] if segments[0].lower() == "models" else segments

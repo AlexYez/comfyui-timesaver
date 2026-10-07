@@ -4,7 +4,7 @@ Turns a folder, a text file or a plain count into a **job list**. Everything wir
 
 That independence is the point. A captioning model gets a fresh conversation per picture instead of one context that keeps growing for a hundred images.
 
-Modes: `Images in folder` (natural order, so `img2` comes before `img10`), `Lines in text file`, `Count only`. Outputs: `item` (path / line / number), `index`, `total`, `seed`.
+Modes: `Images in folder` (natural order, so `img2` comes before `img10`), `Lines in text file`, `Count only` and `Text files in folder` — a folder with one prompt per file (`.txt` / `.md`): one file is one job, its whole text, line breaks inside kept, the same natural order, empty files skipped. Outputs: `item` (path / line / number / prompt text), `index`, `total`, `seed`.
 
 **Why there is a seed output.** A seed *widget* on the model node holds one number for all hundred calls, so a hundred iterations of the same task come back identical. This output gives every item its own derived seed — reproducible from the base value, different from its neighbours.
 
