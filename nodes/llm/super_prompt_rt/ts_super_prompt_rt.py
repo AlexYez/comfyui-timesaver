@@ -56,6 +56,7 @@ from ._helpers import (
     LOG_PREFIX,
     TRANSCRIBE_MAX_UPLOAD,
     default_preset,
+    finish_answer,
     logger,
     preset_generation_params,
     preset_options,
@@ -120,8 +121,10 @@ def _enhance(
         on_progress=lambda stage, percent: send_progress(operation_id, stage, percent),
         **params,
     )
+    answer = finish_answer(resolved, str(result.get("text", "")).strip(),
+                           None if image_paths else text)
     send_progress(operation_id, "Generating the prompt", 100.0)
-    send_done(operation_id, str(result.get("text", "")))
+    send_done(operation_id, answer)
 
     benchmark = result.get("benchmark") or {}
     logger.info(
@@ -130,7 +133,7 @@ def _enhance(
         benchmark.get("decode_tokens"), result.get("seconds", 0.0),
         float(benchmark.get("decode_tps") or 0.0),
     )
-    return str(result.get("text", "")).strip()
+    return answer
 
 
 def model_for(high_quality: bool | None) -> str:

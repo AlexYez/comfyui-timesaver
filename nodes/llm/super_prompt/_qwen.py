@@ -38,7 +38,7 @@ from typing import Any
 
 import folder_paths
 
-from ..._caption_json import repair_caption_text
+from ..._caption_json import XYXY_PRESETS, repair_caption_text
 from .._qwen_engine import (
     QwenEngine,
     _chat_template_functions,
@@ -965,7 +965,9 @@ def _generate_with_qwen(
                 # Small models break the structure in the same few ways (see
                 # nodes/_caption_json.py). Without an image the caption was
                 # written from the idea alone, so its text is held to it.
-                repaired = repair_caption_text(cleaned, text if image is None else None)
+                repaired = repair_caption_text(
+                    cleaned, text if image is None else None,
+                    xyxy=resolve_preset_alias(system_preset) in XYXY_PRESETS)
                 if repaired:
                     return repaired
             return cleaned

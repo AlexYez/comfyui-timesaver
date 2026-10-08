@@ -130,6 +130,22 @@ def preset_generation_params(name: str, gen_params: dict[str, Any]) -> dict[str,
     }
 
 
+def finish_answer(preset: str, answer: str, idea: str | None) -> str:
+    """The answer as the preset's reader expects it.
+
+    A preset in ``XYXY_PRESETS`` asks for boxes in Qwen's grounding order, and
+    Ideogram reads them the other way round: such an answer is mended and its
+    boxes turned once, here (``nodes/_caption_json.py``). ``idea``: the user's
+    words when no picture was attached — requested text is held to them. Any
+    other preset, or an answer with no JSON in it, passes through unchanged.
+    """
+    from ..._caption_json import XYXY_PRESETS, repair_caption_text
+
+    if preset not in XYXY_PRESETS:
+        return answer
+    return repair_caption_text(answer, idea, xyxy=True) or answer
+
+
 # ---------------------------------------------------------------------------
 # Attached images
 # ---------------------------------------------------------------------------

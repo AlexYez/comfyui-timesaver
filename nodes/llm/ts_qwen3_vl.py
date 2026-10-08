@@ -19,6 +19,7 @@ import numpy as np
 import torch
 from comfy_api.v0_0_2 import IO
 
+from .._caption_json import XYXY_PRESETS, repair_caption_text
 from ._qwen_engine import (
     QWEN_MODEL_LOCK,
     QwenEngine,
@@ -600,6 +601,13 @@ def _run_qwen_generation(
         # slipped past the ``enable_thinking=False`` kwarg (some chat
         # templates bake the choice in regardless of the kwarg).
         output_text = QwenEngine.strip_thinking_block(output_text)
+        if system_preset in XYXY_PRESETS:
+            # This preset asks for boxes in Qwen's own order; Ideogram reads
+            # them the other way round (see nodes/_caption_json.py). Unmended,
+            # the answer would draw the scene mirrored over the diagonal.
+            visuals = image is not None or video is not None
+            output_text = repair_caption_text(
+                output_text, None if visuals else prompt, xyxy=True) or output_text
     except Exception as exc:
         _LOGGER.error("%s Generation error: %s", _LOG_PREFIX, exc, exc_info=True)
         output_text = f"ERROR: {exc}"

@@ -57,6 +57,7 @@ from ._litert_engine import (
 from .super_prompt_rt._helpers import (
     CUSTOM_PRESET,
     DEFAULT_PRESET,
+    finish_answer,
     load_presets,
     preset_generation_params,
     presets_path,
@@ -397,7 +398,8 @@ class TS_RTPromptEnhancer(IO.ComfyNode):
         finally:
             cleanup(staged)
 
-        answer = str(result.get("text", "")).strip()
+        answer = finish_answer(label, str(result.get("text", "")).strip(),
+                               text if frames is None else None)
         benchmark = result.get("benchmark") or {}
         logger.info(
             "%s %s, %s on %s: %s tokens in %.1f s",

@@ -38,6 +38,20 @@ _QUOTED = re.compile(r'"([^"\n]+)"|«([^»\n]+)»|“([^”\n]+)”|„([^“”
 # How close a model's text must be to a quoted span to count as that span.
 _MATCH_RATIO = 0.6
 
+#: Presets that ask for boxes in Qwen's own grounding order [x0, y0, x1, y1];
+#: their answers are turned into Ideogram's [y0, x0, y1, x1] here, once.
+#:
+#: ⚠️ Measured 07.10.2026 on the owner's long "izba" prompt, Qwen 4B, 5 seeds
+#: each, placement checks (couple right of centre, hut left, city on the
+#: horizon, well right, tablet text on the couple, sign on the hut):
+#:   schema's y-first order ........................ 14 of 44
+#:   the same plus placement rules, still y-first .. 12 of 44
+#:   Qwen's own x-first order + the same rules ..... 30 of 43
+#: Qwen-VL is trained to ground in x-first 0-1000 boxes; asked for y-first it
+#: mostly wrote x-first anyway, and Ideogram drew the scene mirrored over the
+#: diagonal — subjects piled onto each other, the horizon at the bottom.
+XYXY_PRESETS = frozenset({"Ideogram Prompt Enhance"})
+
 
 class _Merged(list):
     """Several elements the model wrote into one JSON object."""
@@ -247,6 +261,41 @@ def _absorbed_as_repeat(elements: list[dict[str, Any]], element: dict[str, Any])
     return False
 
 
+# How alike the openings of two descs must be to name the same subject.
+_SAME_SUBJECT_RATIO = 0.6
+_SUBJECT_HEAD = 60
+
+
+def _drop_repeated_objects(caption: dict[str, Any]) -> None:
+    """An object the model wrote again in other words.
+
+    ⚠️ Seen live (4B, long prompt): the couple three times over one box, the
+    hut and the well again further down without a box. Ideogram draws every
+    element it is given, so the scene filled with copies piled on each other.
+    A later object counts as a repeat when its desc opens like an earlier
+    one's AND it has no box of its own or exactly the same box — two alike
+    things in two places stay two things.
+    """
+    composition = caption.get("compositional_deconstruction")
+    elements = composition.get("elements") if isinstance(composition, dict) else None
+    if not isinstance(elements, list):
+        return
+    kept: list[Any] = []
+    for element in elements:
+        if isinstance(element, dict) and element.get("type") == "obj":
+            head = str(element.get("desc") or "")[:_SUBJECT_HEAD].casefold()
+            twin = next((e for e in kept if isinstance(e, dict) and e.get("type") == "obj"
+                         and element.get("bbox") in (None, e.get("bbox"))
+                         and difflib.SequenceMatcher(
+                             None, head, str(e.get("desc") or "")[:_SUBJECT_HEAD].casefold()
+                         ).ratio() >= _SAME_SUBJECT_RATIO), None)
+            if twin is not None:
+                logger.info("%s Dropped a repeated object: %r", LOG_PREFIX, head[:40])
+                continue
+        kept.append(element)
+    composition["elements"] = kept
+
+
 def _loads(text: str) -> Any:
     try:
         return _flatten(json.loads(text, object_pairs_hook=_pairs_hook))
@@ -341,12 +390,33 @@ def keep_requested_text(caption: dict[str, Any], idea: str) -> dict[str, Any]:
             logger.info("%s Dropped a text element without words.", LOG_PREFIX)
     for quote in unclaimed:
         if not _lift_text_out_of_desc(kept, quote):
-            _place_after_previous_request(kept, quote, quotes)
+            _place_after_previous_request(kept, quote, quotes, str(idea or ""))
+    _seat_unplaced_text(kept)
     composition["elements"] = kept
     return caption
 
 
-def _place_after_previous_request(elements: list[Any], quote: str, quotes: list[str]) -> None:
+# The end of a sentence: a requested line after it is a new thought, not the next line.
+_SENTENCE_END = re.compile(r"[.!?](?:\s|$)")
+
+
+def _written_together(idea: str, earlier: str, later: str) -> bool:
+    """Are two requests the lines of one thing — nothing but a lead-in between them?
+
+    ⚠️ Seen live: the tablet's lines were lost by the model, and the repair put
+    them under the hut's «Timesaver» sign — the request quoted just before
+    them, but four paragraphs earlier, on another object.
+    """
+    folded = idea.casefold()
+    end = folded.find(earlier.casefold())
+    start = folded.find(later.casefold(), end + len(earlier) if end >= 0 else 0)
+    if end < 0 or start < 0:
+        return False
+    return not _SENTENCE_END.search(idea[end + len(earlier):start].strip(' "«»“”„'))
+
+
+def _place_after_previous_request(elements: list[Any], quote: str, quotes: list[str],
+                                  idea: str = "") -> None:
     """A requested text the model dropped altogether.
 
     ⚠️ Seen live: «Ответственные жильцы» — the second line of the tablet, typed
@@ -358,12 +428,10 @@ def _place_after_previous_request(elements: list[Any], quote: str, quotes: list[
     """
     previous = quotes[:quotes.index(quote)]
     anchor = None
-    for earlier in reversed(previous):
+    if previous and (not idea or _written_together(idea, previous[-1], quote)):
         anchor = next((e for e in elements if isinstance(e, dict) and e.get("type") == "text"
-                       and earlier.casefold() in str(e.get("text") or "").casefold()
+                       and previous[-1].casefold() in str(e.get("text") or "").casefold()
                        and isinstance(e.get("bbox"), list)), None)
-        if anchor is not None:
-            break
     placed: dict[str, Any] = {"type": "text"}
     if anchor is not None:
         y0, x0, y1, x1 = anchor["bbox"]
@@ -371,13 +439,29 @@ def _place_after_previous_request(elements: list[Any], quote: str, quotes: list[
         top = min(999, y1 + 5)
         placed["bbox"] = [top, x0, min(1000, top + height), x1]
         placed["text"] = quote
-        placed["desc"] = str(anchor.get("desc") or "clearly legible lettering") + ", smaller, below the line above"
+        placed["desc"] = _smaller_lettering(str(anchor.get("desc") or ""))
         elements.insert(elements.index(anchor) + 1, placed)
     else:
         placed["text"] = quote
         placed["desc"] = "clearly legible lettering"
         elements.append(placed)
     logger.info("%s Restored the requested text %r the model left out.", LOG_PREFIX, quote)
+
+
+_BELOW_TAIL = ", smaller, below the line above"
+# Size words of the line above; the restored line is the smaller one.
+_SIZE_WORDS = re.compile(r"\b(?:very\s+)?(?:large|larger|huge|massive|big|bigger|giant|oversized)\s+", re.I)
+
+
+def _smaller_lettering(anchor_desc: str) -> str:
+    """The lettering of the line above, minus its size words, marked as the smaller line below.
+
+    ⚠️ Seen live: the copied desc said "large bold … , smaller, below the line
+    above" — both sizes at once — and a third restored line repeated the tail.
+    """
+    desc = anchor_desc.replace(_BELOW_TAIL, "")
+    desc = _SIZE_WORDS.sub("", desc).strip(" ,;") or "clearly legible lettering"
+    return desc + _BELOW_TAIL
 
 
 def _best_quote(written: str, quotes: list[str]) -> str | None:
@@ -404,33 +488,87 @@ def _lift_text_out_of_desc(elements: list[Any], quote: str) -> bool:
         desc = str(element.get("desc") or "")
         if folded not in desc.casefold():
             continue
-        clause = next((part.strip() for part in re.split(r"[,;]", desc)
-                       if folded in part.casefold()), "")
         lifted: dict[str, Any] = {"type": "text"}
-        bbox = element.get("bbox")
-        if isinstance(bbox, list) and len(bbox) == 4:
-            y0, x0, y1, x1 = bbox
-            height, width = y1 - y0, x1 - x0
-            lifted["bbox"] = [int(y0 + 0.05 * height), int(x0 + 0.2 * width),
-                              max(int(y0 + 0.25 * height), int(y0 + 0.05 * height) + 1),
-                              max(int(x1 - 0.2 * width), int(x0 + 0.2 * width) + 1)]
+        bbox = _sign_box(element.get("bbox"))
+        if bbox is not None:
+            lifted["bbox"] = bbox
         lifted["text"] = quote
-        lifted["desc"] = f"clearly legible lettering, {clause}" if clause else "clearly legible lettering"
+        lifted["desc"] = _lettering_from_clause(desc, folded)
         elements.insert(index + 1, lifted)
         logger.info("%s Gave the requested text %r its own element.", LOG_PREFIX, quote)
         return True
     return False
 
 
-def repair_caption_text(text: str, idea: str | None = None) -> str | None:
+def _sign_box(bbox: Any) -> list[int] | None:
+    """Where a sign on an object goes: the upper part of the object, inset from its sides."""
+    if not isinstance(bbox, list) or len(bbox) != 4:
+        return None
+    y0, x0, y1, x1 = bbox
+    height, width = y1 - y0, x1 - x0
+    return [int(y0 + 0.05 * height), int(x0 + 0.2 * width),
+            max(int(y0 + 0.25 * height), int(y0 + 0.05 * height) + 1),
+            max(int(x1 - 0.2 * width), int(x0 + 0.2 * width) + 1)]
+
+
+def _lettering_from_clause(desc: str, folded_text: str) -> str:
+    clause = next((part.strip() for part in re.split(r"[,;]", desc)
+                   if folded_text in part.casefold()), "")
+    return f"clearly legible lettering, {clause}" if clause else "clearly legible lettering"
+
+
+def _seat_unplaced_text(elements: list[Any]) -> None:
+    """A text element with no box, whose words an object's desc names: it is that object's sign.
+
+    ⚠️ Seen live: «Timesaver» came as a text element with no bbox and an empty
+    desc, while the hut's desc said "a weathered wooden sign above its door
+    reads Timesaver". Left unplaced, Ideogram put the word anywhere.
+    """
+    for element in elements:
+        if not (isinstance(element, dict) and element.get("type") == "text"
+                and "bbox" not in element and str(element.get("text") or "").strip()):
+            continue
+        folded = str(element["text"]).strip().casefold()
+        host = next((e for e in elements if isinstance(e, dict) and e.get("type") == "obj"
+                     and folded in str(e.get("desc") or "").casefold()
+                     and _sign_box(e.get("bbox")) is not None), None)
+        if host is None:
+            continue
+        element["bbox"] = _sign_box(host["bbox"])
+        if not str(element.get("desc") or "").strip():
+            element["desc"] = _lettering_from_clause(str(host["desc"]), folded)
+        # Key order is part of the schema: type, bbox, text, desc, color_palette.
+        ordered = {key: element[key] for key in _ELEMENT_KEYS if key in element}
+        element.clear()
+        element.update(ordered)
+        logger.info("%s Seated the text %r on the object that names it.", LOG_PREFIX, folded)
+
+
+def _xyxy_to_yxyx(caption: dict[str, Any]) -> None:
+    composition = caption.get("compositional_deconstruction")
+    elements = composition.get("elements") if isinstance(composition, dict) else None
+    for element in elements if isinstance(elements, list) else []:
+        bbox = element.get("bbox") if isinstance(element, dict) else None
+        if isinstance(bbox, list) and len(bbox) == 4:
+            x0, y0, x1, y1 = bbox
+            element["bbox"] = [y0, x0, y1, x1]
+
+
+def repair_caption_text(text: str, idea: str | None = None, xyxy: bool = False) -> str | None:
     """Mended compact caption JSON, or None when nothing usable was written.
 
     ``idea``: the user's own words when the caption was written from them alone
     (no reference image) — then text elements are held to it.
+    ``xyxy``: the answer's boxes are in Qwen's grounding order (a preset from
+    ``XYXY_PRESETS``). ⚠️ Only for a model's raw answer: a caption already
+    mended once is in Ideogram's order, and swapping it again mirrors it.
     """
     caption = parse_caption(text)
     if caption is None:
         return None
+    if xyxy:
+        _xyxy_to_yxyx(caption)
+    _drop_repeated_objects(caption)
     if idea is not None:
         caption = keep_requested_text(caption, idea)
     # Compact separators + literal UTF-8: the serialization Ideogram 4 was
