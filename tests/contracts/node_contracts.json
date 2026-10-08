@@ -6475,6 +6475,89 @@
       }
     }
   },
+  "TS_VAEFix": {
+    "api": "v3",
+    "category": "TS/Image/Retouch",
+    "class_name": "TS_VAEFix",
+    "display_name": "TS VAE Fix",
+    "effective_widget_order": [
+      "mode",
+      "limit",
+      "skip_when_clean",
+      "preview_gain",
+      "preview_view"
+    ],
+    "inputs": [
+      {
+        "index": 0,
+        "name": "image",
+        "type": "Image"
+      },
+      {
+        "index": 1,
+        "name": "mode",
+        "type": "Combo"
+      },
+      {
+        "index": 2,
+        "name": "limit",
+        "type": "Float"
+      },
+      {
+        "index": 3,
+        "name": "skip_when_clean",
+        "type": "Boolean"
+      },
+      {
+        "index": 4,
+        "name": "preview_gain",
+        "type": "Float"
+      },
+      {
+        "index": 5,
+        "name": "preview_view",
+        "type": "Combo"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "image",
+        "index": 0,
+        "name": "image",
+        "type": "Image"
+      },
+      {
+        "display_name": "removed_grid",
+        "index": 1,
+        "name": "removed_grid",
+        "type": "Image"
+      }
+    ],
+    "python_file": "nodes/image/ts_vae_fix.py",
+    "widgets": {
+      "limit": {
+        "default": 0.02,
+        "max": 0.1,
+        "min": 0.0,
+        "step": 0.001
+      },
+      "mode": {
+        "default": "auto"
+      },
+      "preview_gain": {
+        "default": 10.0,
+        "max": 50.0,
+        "min": 1.0,
+        "step": 1.0
+      },
+      "preview_view": {
+        "default": "4x zoom"
+      },
+      "skip_when_clean": {
+        "default": true
+      }
+    }
+  },
   "TS_VideoCut": {
     "api": "v3",
     "category": "TS/Video",
