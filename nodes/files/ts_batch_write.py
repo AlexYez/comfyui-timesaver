@@ -60,7 +60,9 @@ def _send_preview(image: torch.Tensor | None, value: int, total: int) -> None:
 
         frame = image[0] if image.ndim == 4 else image
         array = (frame.detach().cpu().clamp(0.0, 1.0).numpy() * 255.0).astype("uint8")
-        pil = Image.fromarray(array)
+        # ⚠️ JPEG has no alpha: an RGBA frame (Qwen Image 2.1 decodes 4 channels)
+        # made the server's save raise outside this try, and the preview was lost.
+        pil = Image.fromarray(array[..., :3] if array.shape[-1] >= 3 else array[..., 0]).convert("RGB")
         # The tuple shape the progress handler expects: (format, image, max side).
         ProgressBar(total).update_absolute(value, total, ("JPEG", pil, PREVIEW_MAX_SIDE))
     except Exception as exc:  # noqa: BLE001 - cosmetic path, never fatal

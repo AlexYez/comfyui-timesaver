@@ -145,6 +145,9 @@ class TS_RTX_Upscaler(IO.ComfyNode):
 
     @classmethod
     def execute(cls, images, resize_type, scale, width, height, quality) -> IO.NodeOutput:
+        if isinstance(images, torch.Tensor) and images.ndim == 4 and images.shape[-1] == 1:
+            # Gray IMAGE: the VSR model reads RGB — three equal channels.
+            images = images.expand(*images.shape[:-1], 3)
         cls._ensure_runtime_ready()
         cls._validate_images(images)
 

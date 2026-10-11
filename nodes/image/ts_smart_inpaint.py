@@ -164,6 +164,17 @@ def _fine_upscale_factor(
     )
 
 
+def _match_channels(pixels: torch.Tensor, channels: int) -> torch.Tensor:
+    """Bring a [B, H, W, C] patch to ``channels``: drop extras, pad alpha opaque."""
+    have = int(pixels.shape[-1])
+    if have == channels:
+        return pixels
+    if have > channels:
+        return pixels[..., :channels]
+    pad = torch.ones(*pixels.shape[:-1], channels - have, dtype=pixels.dtype, device=pixels.device)
+    return torch.cat([pixels, pad], dim=-1)
+
+
 def _vae_decode(vae, latent: torch.Tensor) -> torch.Tensor:
     """Decode a latent to pixels. Single decode chokepoint — see the
     VAE-boundary note above. Always returns a 4D image batch
@@ -423,6 +434,10 @@ def _refine_with_fine_upscaling(
         refined_pixel_up_chw, bbox_w_p, bbox_h_p, resize_method, "disabled",
     )
     refined_pixel = refined_pixel_chw.movedim(1, -1)  # (B, bbox_h_p, bbox_w_p, C)
+    # ⚠️ The VAE decides the channel count, not the canvas: the Qwen Image 2.1
+    # VAE decodes RGBA, Flux / Wan decode RGB. An RGBA canvas refined with an
+    # RGB VAE (or the reverse) failed to broadcast in the composite below.
+    refined_pixel = _match_channels(refined_pixel, int(cached_pixels.shape[-1]))
 
     # ----- Composite refined patch into the cached pixel image -----
     # Build a pixel-space alpha by resizing the latent feathered mask to

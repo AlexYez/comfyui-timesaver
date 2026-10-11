@@ -112,6 +112,8 @@ class TS_Compare(IO.ComfyNode):
         # ⚠️ .float(): кадр bfloat16 numpy не понимает вовсе, а float16 считал
         # бы округление в половинной точности. У float32 это та же память.
         frame = images[index].detach().to("cpu").float().numpy()[..., :3]
+        if frame.shape[-1] == 1:
+            frame = np.repeat(frame, 3, axis=-1)  # gray: PIL has no H×W×1 mode
         # Первая операция создаёт новый массив, дальше — на месте: вход
         # делит память с `frame` и трогать его нельзя.
         buffer = np.clip(frame, 0.0, 1.0)

@@ -917,6 +917,15 @@ def run_depth(
     if not (isinstance(images, torch.Tensor) and images.ndim == 4):
         raise ValueError(f"{log_prefix} 'images' must be a 4D float tensor (N, H, W, 3).")
 
+    # ⚠️ The models read RGB. An RGBA batch (Qwen Image 2.1's VAE decodes 4
+    # channels) failed to broadcast against the 3-value normalisation, and a
+    # gray one indexed channels that do not exist. Depth is a colour question:
+    # alpha is dropped, gray becomes three equal channels.
+    if images.shape[-1] > 3:
+        images = images[..., :3]
+    elif images.shape[-1] < 3:
+        images = images[..., :1].expand(*images.shape[:-1], 3)
+
     n_frames, original_h, original_w = images.shape[0], images.shape[1], images.shape[2]
     load_device = mm.get_torch_device()
 

@@ -697,6 +697,10 @@ class TS_Matting_ViTMatte(IO.ComfyNode):
                 _LOG_PREFIX, int(image.shape[-1]),
             )
             image = image[..., :3]
+        elif image.shape[-1] < 3:
+            # Gray IMAGE: three equal channels, otherwise PIL fails with
+            # "not enough image data" deep in the trimap path.
+            image = image[..., :1].expand(*image.shape[:-1], 3)
 
         if mask.ndim == 2:
             mask = mask.unsqueeze(0)

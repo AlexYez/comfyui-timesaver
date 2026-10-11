@@ -221,7 +221,11 @@ class TS_LTXHDRGuide(IO.ComfyNode):
         if hdr_linear is None and image_guide is not None:
             # Обычная картинка вместо EXR. Гамму снимаем ЗДЕСЬ и до ресайза:
             # усреднять надо линейный свет, а коды с гаммой — нельзя.
-            linear = srgb_to_linear(image_guide)
+            # HDR — это цвет: альфа (VAE Qwen Image 2.1 отдаёт RGBA) отбрасывается,
+            # серый кадр разворачивается в три равных канала. HdrImage ждёт RGB.
+            guide_rgb = (image_guide[..., :3] if image_guide.shape[-1] >= 3
+                         else image_guide[..., :1].expand(*image_guide.shape[:-1], 3))
+            linear = srgb_to_linear(guide_rgb)
             hdr_linear = HdrImage(linear, "REC709_LINEAR", {"source": "ordinary image"})
             white = float(linear_ap1_to_acescct(torch.tensor([1.0])))
             headroom = (

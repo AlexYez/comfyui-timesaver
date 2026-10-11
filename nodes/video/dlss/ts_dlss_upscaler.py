@@ -325,6 +325,9 @@ class TS_DLSSUpscaler(IO.ComfyNode):
 
         if images is None or images.ndim != 4:
             raise ValueError(f"{LOG_PREFIX} 'images' must be a batch shaped [B,H,W,C].")
+        if int(images.shape[-1]) < 3:
+            # Gray IMAGE: the engine reads RGB — three equal channels.
+            images = images[..., :1].expand(*images.shape[:-1], 3)
         batch, height, width, channels = (int(value) for value in images.shape)
         if height < MIN_EDGE or width < MIN_EDGE:
             raise ValueError(

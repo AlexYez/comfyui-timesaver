@@ -327,6 +327,17 @@ class TS_Film_Emulation(IO.ComfyNode):
         if not enable:
             return IO.NodeOutput(image)
 
+        # ⚠️ IMAGE бывает с альфой: VAE Qwen Image 2.1 в ядре ComfyUI объявлен
+        # RGBA, и VAEDecode отдаёт 4 канала. Плёнка — это цвет, поэтому
+        # считаем три канала, а альфу (и всё, что за ней) отдаём как пришло.
+        # Без этого LUT сводил 4 канала к 3, и lerp падал на несовпадении.
+        channels = int(image.shape[-1])
+        if channels < 3:
+            raise ValueError(f"{LOG_PREFIX} Expected an RGB or RGBA image, got {channels} channel(s).")
+        extra = image[..., 3:] if channels > 3 else None
+        if extra is not None:
+            image = image[..., :3]
+
         lut, lut_size = (None, None)
         if film_preset == "External LUT" and lut_choice != "None":
             lut, lut_size = cls.load_cube_lut(os.path.join(cls._resolve_luts_dir(), lut_choice))
@@ -361,7 +372,10 @@ class TS_Film_Emulation(IO.ComfyNode):
                 # весь клип на карте ради одной склейки — верный путь в OOM.
                 results.append(processed.to("cpu"))
 
-        return IO.NodeOutput(torch.cat(results, dim=0) if len(results) > 1 else results[0])
+        out = torch.cat(results, dim=0) if len(results) > 1 else results[0]
+        if extra is not None:
+            out = torch.cat([out, extra.to(out.device, out.dtype)], dim=-1)
+        return IO.NodeOutput(out)
 
     @staticmethod
     def _pixels_per_chunk(device):

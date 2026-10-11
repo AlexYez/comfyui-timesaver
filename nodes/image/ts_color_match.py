@@ -39,8 +39,11 @@ def _validate_image_tensor(name, image):
         raise ValueError(f"{_LOG_PREFIX} {name} must be a torch.Tensor")
     if image.ndim != 4:
         raise ValueError(f"{_LOG_PREFIX} {name} must have shape [B, H, W, C]")
-    if image.shape[-1] != 3:
-        raise ValueError(f"{_LOG_PREFIX} {name} must have 3 channels (RGB)")
+    # ⚠️ RGBA is a normal IMAGE now: ComfyUI declares the Qwen Image 2.1 VAE
+    # RGBA, so VAEDecode hands out 4 channels. Colour is matched on RGB; the
+    # extra channels ride along untouched (see execute).
+    if image.shape[-1] < 3:
+        raise ValueError(f"{_LOG_PREFIX} {name} must have 3 channels (RGB) or 4 (RGBA)")
 
 
 def _broadcast_batches(fix_image, reference_image):
@@ -589,6 +592,12 @@ class TS_Color_Match(IO.ComfyNode):
         if not enable:
             return IO.NodeOutput(target.clamp(0.0, 1.0))
 
+        # Alpha (and anything past RGB) is not colour: match on RGB only and
+        # put the target's extra channels back afterwards.
+        target_extra = target[..., 3:] if target.shape[-1] > 3 else None
+        target = target[..., :3]
+        reference = reference[..., :3]
+
         target_device = cls._resolve_device(device, log_enabled)
 
         original_ref_batch = reference.shape[0]
@@ -655,7 +664,14 @@ class TS_Color_Match(IO.ComfyNode):
             temporal_smoothing=bool(temporal_smoothing),
         )
 
-        return IO.NodeOutput(output.clamp(0.0, 1.0))
+        output = output.clamp(0.0, 1.0)
+        if target_extra is not None:
+            extra = target_extra.to(device=output.device, dtype=output.dtype)
+            if extra.shape[0] != output.shape[0]:
+                # One target broadcast over a reference batch: its alpha too.
+                extra = extra.expand(output.shape[0], -1, -1, -1)
+            output = torch.cat([output, extra], dim=-1)
+        return IO.NodeOutput(output)
 
 
 NODE_CLASS_MAPPINGS = {

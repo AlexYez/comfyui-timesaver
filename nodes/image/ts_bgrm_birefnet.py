@@ -957,6 +957,10 @@ class TS_BGRM_BiRefNet(IO.ComfyNode):
         except (TypeError, ValueError):
             ema_alpha = 0.5
 
+        if isinstance(image, torch.Tensor) and image.ndim == 4 and image.shape[-1] == 1:
+            # Gray IMAGE: BiRefNet reads RGB — three equal channels.
+            image = image.expand(*image.shape[:-1], 3)
+
         if not enable:
             b, h, w, c = image.shape
             mask_output = torch.ones((b, h, w), dtype=torch.float32, device=image.device)

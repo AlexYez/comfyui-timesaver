@@ -8,6 +8,10 @@ from comfy_api.v0_0_2 import IO
 logger = logging.getLogger("comfyui_timesaver.ts_resolution_selector")
 LOG_PREFIX = "[TS Resolution Selector]"
 
+# Alpha at or above this everywhere = an opaque picture, not a cutout (5/255 of
+# VAE noise headroom; see _crop_alpha_to_bbox).
+_OPAQUE_ALPHA = 0.98
+
 
 _ASPECT_PRESETS = [
     ("1:1", 1.0, 1.0),
@@ -167,6 +171,13 @@ class TS_ResolutionSelector(IO.ComfyNode):
 
         rgb = image[..., :3]
         alpha = image[..., 3:4].clamp(0.0, 1.0)
+
+        # ⚠️ An opaque RGBA is not a cutout. The Qwen Image 2.1 VAE decodes 4
+        # channels with alpha 0.992-1.0 (measured 11.10.2026), and compositing
+        # that over white lightened every decode by up to 2/255. A real cutout
+        # has transparent pixels, so "nothing below 0.98" cannot be one.
+        if float(alpha.min()) >= _OPAQUE_ALPHA:
+            return rgb
 
         # One bounding box for the WHOLE batch. Cropping each frame to its own
         # bbox produced tensors of differing sizes, which made the concatenation

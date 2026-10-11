@@ -441,7 +441,9 @@ def stage_images(image: Any, *, max_side: int = 1024, limit: int = 4) -> list[Pa
     directory = _temp_dir()
     for index in range(min(int(frames.shape[0]), limit)):
         array = (frames[index].detach().cpu().numpy() * 255.0).clip(0, 255).astype(np.uint8)
-        pil = Image.fromarray(array)
+        # The model reads colour: RGBA (Qwen Image 2.1 decodes) and gray frames
+        # go in as plain RGB, the same as the Qwen engine hands its processor.
+        pil = Image.fromarray(array[..., :3] if array.shape[-1] >= 3 else array[..., 0]).convert("RGB")
         if max(pil.size) > max_side:
             scale = max_side / max(pil.size)
             pil = pil.resize((max(1, int(pil.width * scale)), max(1, int(pil.height * scale))),

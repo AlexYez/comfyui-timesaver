@@ -686,6 +686,9 @@ class TS_Frame_Interpolation(IO.ComfyNode):
                 int(images.shape[-1]),
             )
             images = images[..., :3]
+        elif images.shape[-1] < 3:
+            # Gray frames: the models' first conv wants three channels.
+            images = images[..., :1].expand(*images.shape[:-1], 3)
 
         height = int(images.shape[1])
         width = int(images.shape[2])

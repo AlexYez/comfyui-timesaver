@@ -274,6 +274,8 @@ class QwenEngine:
         tensor = tensor.detach().cpu()
         for i in range(tensor.shape[0]):
             arr = np.clip(tensor[i].numpy(), 0.0, 1.0) * 255.0
+            if arr.ndim == 3 and arr.shape[-1] == 1:
+                arr = arr[..., 0]  # PIL has no H×W×1 mode; gray goes in as "L"
             img = Image.fromarray(arr.astype(np.uint8))
             if img.mode != "RGB":
                 img = img.convert("RGB")
