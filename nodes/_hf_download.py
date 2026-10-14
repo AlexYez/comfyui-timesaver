@@ -26,14 +26,71 @@ The loader skips ``_``-prefixed modules, so this is never registered as a node.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
+import re
+import threading
 from typing import Any, Sequence
 from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
 _DEFAULT_ENDPOINT = "https://huggingface.co"
+
+# `[::1]` or `[::1]:8080` in NO_PROXY — an IPv6 address in URL brackets.
+_BRACKETED_IPV6 = re.compile(r"^\[([0-9A-Fa-f:.]+(?:%[\w.-]+)?)\](?::\d+)?$")
+_NO_PROXY_LOCK = threading.Lock()
+_NO_PROXY_STATE: dict[str, Any] = {"depth": 0, "saved": {}}
+
+
+@contextlib.contextmanager
+def httpx_safe_no_proxy():
+    """While inside, NO_PROXY carries no bracketed IPv6 entry; restored after.
+
+    ⚠️ huggingface_hub 1.x talks HTTP through httpx, and httpx 0.28 turns a
+    NO_PROXY entry like ``[::1]`` into the URL ``all://*[::1]``, which it then
+    rejects: ``InvalidURL: Invalid port: ':1]'``. That happens while building
+    the client, before any request, so EVERY mirror fails the same way and
+    the person reads "All mirrors failed" (user report 14.10.2026).
+
+    The entry is written on purpose by the owner's ComfyUI launcher
+    (``launcher/src/system-proxy.js``): urllib compares hosts WITH the
+    brackets, and without ``[::1]`` a request to ``[::1]:8188`` went through
+    the proxy. So the environment is not rewritten for good — only for the
+    duration of a Hugging Face call, where ``::1`` (same host, the form httpx
+    reads) stands in. requests and urllib accept either form.
+
+    ⚠️ Calls overlap: the Super Prompt size lookup runs in its own thread next
+    to the download. The first one in heals, the LAST one out restores —
+    restoring on the first exit would break the download still running.
+    """
+    with _NO_PROXY_LOCK:
+        if _NO_PROXY_STATE["depth"] == 0:
+            for name in ("NO_PROXY", "no_proxy"):
+                value = os.environ.get(name)
+                if not value or "[" not in value:
+                    continue
+                healed = []
+                for entry in value.split(","):
+                    match = _BRACKETED_IPV6.match(entry.strip())
+                    healed.append(match.group(1) if match else entry)
+                fixed = ",".join(healed)
+                if fixed != value:
+                    _NO_PROXY_STATE["saved"][name] = value
+                    os.environ[name] = fixed
+            if _NO_PROXY_STATE["saved"]:
+                logger.debug("[TS HF] NO_PROXY bracketed IPv6 unbracketed for httpx.")
+        _NO_PROXY_STATE["depth"] += 1
+    try:
+        yield
+    finally:
+        with _NO_PROXY_LOCK:
+            _NO_PROXY_STATE["depth"] -= 1
+            if _NO_PROXY_STATE["depth"] == 0:
+                for name, value in _NO_PROXY_STATE["saved"].items():
+                    os.environ[name] = value
+                _NO_PROXY_STATE["saved"] = {}
 
 
 def is_official_hf_origin(url: str) -> bool:
@@ -99,7 +156,8 @@ def _snapshot_download_once(kwargs: dict[str, Any], log: logging.Logger, log_pre
     attempt = dict(kwargs)
     while True:
         try:
-            return snapshot_download(**attempt)
+            with httpx_safe_no_proxy():
+                return snapshot_download(**attempt)
         except TypeError as exc:
             message = str(exc)
             # Older/newer hub releases moved these; drop and retry rather than

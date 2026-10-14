@@ -1254,14 +1254,16 @@ class QwenEngine:
         endpoint = endpoints[0]
         if not endpoint.startswith(("http://", "https://")):
             endpoint = "https://" + endpoint
-        from .._hf_download import is_official_hf_origin
+        from .._hf_download import httpx_safe_no_proxy, is_official_hf_origin
 
         token = (hf_token or "").strip() or None
         if token and not is_official_hf_origin(endpoint):
             token = None
         try:
-            info = HfApi(endpoint=endpoint, token=token).model_info(
-                model_id, files_metadata=True)
+            # `[::1]` in NO_PROXY breaks httpx before any request is made.
+            with httpx_safe_no_proxy():
+                info = HfApi(endpoint=endpoint, token=token).model_info(
+                    model_id, files_metadata=True)
         except Exception:                   # noqa: BLE001 - справка не должна ронять прогон
             return "", 0
         config = getattr(info, "config", None) or {}
@@ -1505,7 +1507,7 @@ class QwenEngine:
 
         # Реестр закреплений — один на весь пак (`nodes/_hf_download.py`):
         # обновление коммита должно быть осознанным действием в одном месте.
-        from .._hf_download import pinned_revision
+        from .._hf_download import httpx_safe_no_proxy, pinned_revision
 
         kwargs: dict[str, Any] = {
             "repo_id": model_id,
@@ -1519,7 +1521,10 @@ class QwenEngine:
             kwargs["endpoint"] = endpoint_url
         while True:
             try:
-                snapshot_download(**kwargs)
+                # `[::1]` in NO_PROXY (the launcher writes it) breaks httpx
+                # before any request; every mirror then fails the same way.
+                with httpx_safe_no_proxy():
+                    snapshot_download(**kwargs)
                 return
             except TypeError as exc:
                 msg = str(exc)

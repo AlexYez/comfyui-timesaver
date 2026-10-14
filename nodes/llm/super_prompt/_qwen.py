@@ -154,7 +154,11 @@ class QwenDownloadProgressMonitor:
         try:
             from huggingface_hub import HfApi
 
-            info = HfApi().model_info(self.model_id, files_metadata=True)
+            from ..._hf_download import httpx_safe_no_proxy
+
+            # `[::1]` in NO_PROXY breaks httpx before any request is made.
+            with httpx_safe_no_proxy():
+                info = HfApi().model_info(self.model_id, files_metadata=True)
             total = sum(int(getattr(f, "size", 0) or 0) for f in (info.siblings or []))
             if total <= 0:
                 return
