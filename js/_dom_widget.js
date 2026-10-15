@@ -588,8 +588,11 @@ function savedSize(info) {
  * @param {number} [options.minHeight=200] Lower bound for node height.
  * @param {number} [options.defaultWidth] Width applied when the node has none.
  * @param {number} [options.defaultHeight] Height applied when the node has none.
- * @param {number} [options.chromeHeight=0] Pixels above the widget (title bar +
- *   visible stock widgets) that the legacy renderer must leave for chrome.
+ * @param {number|(() => number)} [options.chromeHeight=0] Pixels above the widget
+ *   (title bar + visible stock widgets). A function is re-read on every layout —
+ *   pass one when that height is only known once the node is drawn (e.g. the
+ *   widget's own measured `y`): a fixed guess either clips the bottom of the UI
+ *   or leaves an empty band under it.
  * @param {number} [options.minWidgetHeight=120] Lower bound for the widget's own height.
  * @param {() => void} [options.onResize] Extra callback after each resize.
  * @returns {{domWidget:object, element:HTMLElement, isV2:boolean, sanitize:() => void}}
@@ -614,8 +617,12 @@ export function addResizableDomWidget(node, element, options = {}) {
     };
 
     // Widget height derived from node.size — never from a measured rect.
+    const chrome = () => {
+        const value = typeof chromeHeight === "function" ? Number(chromeHeight()) : chromeHeight;
+        return Number.isFinite(value) ? value : 0;
+    };
     const widgetHeight = () =>
-        Math.max(minWidgetHeight, clamp(node.size?.[1] || defaultHeight, minHeight) - chromeHeight);
+        Math.max(minWidgetHeight, clamp(node.size?.[1] || defaultHeight, minHeight) - chrome());
 
     node.resizable = true;
     sanitize();

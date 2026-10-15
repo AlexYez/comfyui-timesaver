@@ -92,6 +92,17 @@ function ensureStyles() {
 @media (prefers-reduced-motion:reduce){
   .ts-compare__progress.is-endless .ts-compare__fill{animation:none;width:100%;opacity:.5}
 }
+
+/* Кнопка полного экрана у пары кадров. Лежит ПОВЕРХ картинки в углу, поэтому
+   полупрозрачная тёмная подложка и светлый значок, а не токены темы: обязана
+   читаться и на белом небе, и на чёрной тени. До наведения почти прозрачна —
+   не мешает смотреть сам кадр. */
+/* Внизу справа: верхние углы заняты подписями сторон (label_a / label_b). */
+.ts-cmp__expand.ts-ui-btn{position:absolute;bottom:8px;right:8px;z-index:3;
+  background:rgba(0,0,0,.42);border-color:rgba(255,255,255,.25);color:rgba(255,255,255,.95);
+  opacity:.55;transition:opacity .12s ease,background .12s ease}
+.ts-cmp:hover .ts-cmp__expand.ts-ui-btn{opacity:1}
+.ts-cmp__expand.ts-ui-btn:hover:not([disabled]){background:rgba(0,0,0,.62);border-color:rgba(255,255,255,.45)}
 `;
     document.head.appendChild(style);
 }
@@ -155,8 +166,44 @@ function setupCompare(node) {
     // так и осталась бы висеть с наблюдателями и, для видео, с декодером.
     let stills = null;
     let clip = null;
-    // Ручка открытого полноэкранного окна — ровно одно на ноду.
+    // Ручка открытого полноэкранного окна — ровно одно на ноду — и чья шторка в нём.
     let fullscreen = null;
+    let fullscreenOf = null;
+
+    /**
+     * Полный экран для пары кадров (просьба владельца 15.10.2026): кнопка в
+     * углу картинки и двойной щелчок по ней. У видео кнопка была всегда, а
+     * картинки — как раз то, что разглядывают в деталях, — смотрелись только в
+     * окошке ноды.
+     *
+     * ⚠️ pointerdown на кнопке гасится: шторка тянется за ВСЮ картинку, и без
+     * этого нажатие на кнопку сначала дёргало разрез под курсор.
+     */
+    function addStillsFullscreen(view) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "ts-ui-btn ts-ui-btn--icon ts-cmp__expand";
+        button.title = t.fullscreen;
+        button.setAttribute("aria-label", t.fullscreen);
+        button.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h6v2H6v4H4zm10 0h6v6h-2V6h-4zM4 14h2v4h4v2H4zm14 0h2v6h-6v-2h4z"/></svg>';
+        for (const name of ["pointerdown", "mousedown", "dblclick"]) {
+            button.addEventListener(name, (event) => event.stopPropagation());
+        }
+        button.addEventListener("click", (event) => {
+            event.stopPropagation();
+            openFullscreen(view);
+        });
+        // В коробку кадра, а не в слот: иначе кнопка висит в углу пустого
+        // поля рядом с картинкой (замерено на вертикальном кадре в ноде).
+        (view.element.querySelector(".ts-cmp__box") || view.element).appendChild(button);
+        view.expandButton = button;
+        // Двойной щелчок по кадру — туда и обратно.
+        view.element.addEventListener("dblclick", (event) => {
+            event.stopPropagation();
+            if (fullscreenOf === view && fullscreen?.isOpen()) fullscreen.close();
+            else openFullscreen(view);
+        });
+    }
 
     // Какой payload сейчас на экране. По нему rehydrate отличает «ничего не
     // менялось» от «из workflow приехал результат»: повторный show() с новым
@@ -176,17 +223,24 @@ function setupCompare(node) {
         if (payload.mode === "image") {
             // Если ролик показывали во весь экран, а пришли кадры — окно надо
             // закрыть: иначе в нём останется шторка от уже снесённого плеера.
-            fullscreen?.close();
+            if (fullscreenOf === clip) fullscreen?.close();
             clip?.teardown();
             clip = null;
-            if (!stills) stills = createCompare({ before: t.before, after: t.after });
+            if (!stills) {
+                stills = createCompare({ before: t.before, after: t.after });
+                addStillsFullscreen(stills);
+            }
             // Имена сторон задаёт человек виджетами label_a / label_b, и приходят
             // они вместе с результатом. Видео-ветка их использовала всегда, а
             // картиночная показывала локализованные «A» и «B» — то есть виджеты
             // работали через раз, в зависимости от того, кадр это или пачка.
             stills.setLabels(payload.label_a, payload.label_b);
-            clear();
-            slot.appendChild(stills.element);
+            // Новый прогон, пока кадры открыты во весь экран: показываем его
+            // прямо там, а не выдёргиваем шторку из открытого окна.
+            if (!(fullscreenOf === stills && fullscreen?.isOpen())) {
+                clear();
+                slot.appendChild(stills.element);
+            }
             stills.show(
                 viewUrl(payload, payload.filename_a),
                 viewUrl(payload, payload.filename_b),
@@ -194,9 +248,11 @@ function setupCompare(node) {
             return;
         }
 
+        // Пришла пачка, а во весь экран были кадры — то же самое в обратную сторону.
+        if (fullscreenOf && fullscreenOf === stills) fullscreen?.close();
         if (!clip) {
             clip = createVideoCompare(t);
-            clip.expandButton.addEventListener("click", () => openFullscreen());
+            clip.expandButton.addEventListener("click", () => openFullscreen(clip));
         }
         clear();
         slot.appendChild(clip.element);
@@ -214,9 +270,11 @@ function setupCompare(node) {
      * копия означала бы второй `<video>`, то есть второй декодер и ту самую
      * борьбу за видеокарту, ради которой всё сравнение и сложено в один файл.
      */
-    function openFullscreen() {
-        const current = clip;
+    function openFullscreen(current = clip) {
         if (!current) return;
+        // У пары кадров пересчитывать нечего: коробку подгоняет её собственный
+        // ResizeObserver. У видео — свой relayout().
+        const relayout = () => current.relayout?.();
         // ⚠️ Второй оверлей поверх первого открывать нельзя. Шторка ПЕРЕЕЗЖАЕТ
         // внутрь, то есть уехала бы из уже открытого окна в новое, а закрывать
         // пришлось бы каждое по отдельности. Замерено до правки: три нажатия на
@@ -225,46 +283,61 @@ function setupCompare(node) {
         const host = document.createElement("div");
         // Хост занимает весь оверлей, а шторка внутри — весь хост: иначе кадр
         // остаётся размером с ноду и висит в углу пустого экрана.
-        host.style.cssText = "flex:1 1 auto;display:flex;width:100%;height:100%;"
+        // position:relative — для пары кадров: её шторка лежит вне потока
+        // (position:absolute;inset:0) и без позиционированного хозяина уехала
+        // бы искать его выше по дереву, как когда-то в Nodes 2.0.
+        host.style.cssText = "flex:1 1 auto;display:flex;width:100%;height:100%;position:relative;"
             + "min-width:0;min-height:0;padding:24px;box-sizing:border-box";
         // ⚠️ Без этого шторка занимает ширину СОДЕРЖИМОГО, а не экрана: замерено
         // — сцена выходила 305 px при экране 1600. В ноде её растягивает
         // правило слота, а в оверлее такого правила нет.
-        current.element.style.flex = "1 1 auto";
-        current.element.style.width = "100%";
-        current.element.style.minWidth = "0";
+        if (current === stills) {
+            // Пара кадров лежит вне потока и паддинг хоста не видит — отступ
+            // ей задаётся напрямую. Ширину не трогаем: width:100% перебил бы
+            // правый отступ, и кадр уехал бы за край.
+            current.element.style.inset = "24px";
+        } else {
+            current.element.style.flex = "1 1 auto";
+            current.element.style.width = "100%";
+            current.element.style.minWidth = "0";
+        }
         host.appendChild(current.element);
+        fullscreenOf = current;
         fullscreen = openFullscreenOverlay(host, {
             label: t.fullscreen,
             closeTitle: t.fullscreen,
-            // Кнопка разворота живёт в полосе плеера и уезжает в оверлей вместе
-            // с ней. Внутри она бессмысленна — мы уже во весь экран, — а нажатая
-            // открывала ещё один оверлей. Оверлей прячет её на время показа и
-            // возвращает при закрытии (тот же приём у TS Video Loader и Saver).
+            // Кнопка разворота уезжает в оверлей вместе со шторкой. Внутри она
+            // бессмысленна — мы уже во весь экран, — а нажатая открывала ещё
+            // один оверлей. Оверлей прячет её на время показа и возвращает при
+            // закрытии (тот же приём у TS Video Loader и Saver).
             trigger: current.expandButton,
-            onOpen: () => current.relayout(),
+            onOpen: relayout,
             onClose: () => {
                 fullscreen = null;
+                fullscreenOf = null;
                 // Возвращаем как было: в ноде размер задаёт слот.
                 current.element.style.flex = "";
                 current.element.style.width = "";
                 current.element.style.minWidth = "";
-                slot.appendChild(current.element);
+                current.element.style.inset = "";
+                // Шторка могла смениться за время показа (пришёл новый прогон
+                // другого вида) — старую в ноду не возвращаем.
+                if (current === clip || current === stills) slot.appendChild(current.element);
                 // ⚠️ Пересчитать НЕ один раз. Замерено: сразу после возврата
                 // сцена ещё меряется по оверлею, и кадр оставался растянутым
                 // (1450×816 вместо 300×150). Та же механика, что при открытии.
-                current.relayout();
-                requestAnimationFrame(() => current.relayout());
-                setTimeout(() => current.relayout(), 120);
-                setTimeout(() => current.relayout(), 400);
+                relayout();
+                requestAnimationFrame(relayout);
+                setTimeout(relayout, 120);
+                setTimeout(relayout, 400);
             },
         });
         // ⚠️ Место у оверлея появляется не сразу и не за один кадр: пересчитываем
         // несколько раз, пока раскладка не улеглась. Тот же приём, что у
         // holdSize() в js/_dom_widget.js, и по той же причине.
-        requestAnimationFrame(() => current.relayout());
-        setTimeout(() => current.relayout(), 120);
-        setTimeout(() => current.relayout(), 400);
+        requestAnimationFrame(relayout);
+        setTimeout(relayout, 120);
+        setTimeout(relayout, 400);
     }
 
     addResizableDomWidget(node, root, {

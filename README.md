@@ -4,11 +4,11 @@
 
 # 🚀 Timesaver Nodes for ComfyUI
 
-**A friendly toolkit of 83 production-ready nodes that take the boring busywork out of your ComfyUI graphs.**
+**A friendly toolkit of 85 production-ready nodes that take the boring busywork out of your ComfyUI graphs.**
 
 Resize, color, cut out, inpaint, transcribe, translate, prompt-build, manage models — without leaving the canvas.
 
-[![Version](https://img.shields.io/badge/version-12.12.10-blue.svg)](pyproject.toml)
+[![Version](https://img.shields.io/badge/version-12.13.0-blue.svg)](pyproject.toml)
 [![ComfyUI](https://img.shields.io/badge/ComfyUI-V3%20API-orange.svg)](https://github.com/comfyanonymous/ComfyUI)
 [![Python](https://img.shields.io/badge/python-3.10+-green.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-see%20LICENSE.txt-lightgrey.svg)](LICENSE.txt)
@@ -37,7 +37,7 @@ Whether you build pipelines for image generation, video, audio, or just want to 
 | 🛠️ | **[Utils](#utils)** | 13 | Workflow group bypass panel, before/after compare, LoRA loader, unmerged LoRA and turbo sigmas for Qwen Image 2.1, custom sliders, math, smart type-aware switch |
 | 🎨 | **[Conditioning](#conditioning)** | 1 | Multi-reference image conditioning |
 
-> All 83 nodes use the **ComfyUI V3 API** (`comfy_api.v0_0_2.IO` — a pinned namespace, not a stable one: the adapter itself declares `STABLE = False`. Pinning keeps the pack off the moving `latest` alias; it does not promise the API will not change).
+> All 85 nodes use the **ComfyUI V3 API** (`comfy_api.v0_0_2.IO` — a pinned namespace, not a stable one: the adapter itself declares `STABLE = False`. Pinning keeps the pack off the moving `latest` alias; it does not promise the API will not change).
 >
 > **Plus extra samplers & schedulers** added straight into the native KSampler / KSamplerAdvanced / BasicScheduler dropdowns (no node to wire — they just appear after install): sampler **`res_2s`** (2nd-order exponential RK / "RES"), schedulers **`bong_tangent`** (two-stage arctangent sigma curve) and **`beta57`** (`beta` α=0.5/β=0.7). Algorithms reimplemented clean-room from [RES4LYF](https://github.com/ClownsharkBatwing/RES4LYF)'s public math (no code copied).
 
@@ -194,6 +194,18 @@ The resize node you actually want. Pick one of: exact target (`target_width` × 
 
 ---
 
+#### TS Model Resize
+
+Brings any image to the resolution a model was trained on. Pick the model; the node reads whether the picture is horizontal, vertical or square and takes the model's matching size — a 1920×1080 frame becomes 1280×720 for Wan 720p, a phone shot 1080×1920 becomes 720×1280, a 4:3 photo becomes 1472×1104 for Qwen Image.
+
+Two kinds of models. Some ship a **fixed list** of sizes: Wan 2.1 / 2.2 (1280×720, 832×480; 1280×704 for TI2V 5B), Qwen Image (its seven official sizes), the SDXL buckets, Z-Image Turbo, SD 1.5 — the size with the nearest aspect ratio wins. Others take **any aspect at a pixel budget on a grid**: FLUX at 1 or 2 MP in steps of 16, LTX-2 / 2.5 at 720p in steps of 32, HunyuanVideo 1.5 at 720p — there the picture keeps its own shape and only a few pixels are trimmed to the grid. The tables come from the models' own repositories (Wan's `SUPPORTED_SIZES`, Qwen-Image's `aspect_ratios`, the SDXL report); note that Qwen's 4:3 is 1472×1104, not the 1472×1140 many nodes use.
+
+`fit` decides how the picture gets there: **crop** fills the frame and trims what sticks out (nothing is distorted; `anchor = top` keeps the faces of a tall shot), **pad** shows the whole picture with bars (`pad_color`: black, white, grey or repeated edge pixels), **stretch** distorts to the exact size. The `mask` output is 1 on the picture and 0 on the bars — wire it into an outpaint to fill them. A batch is resized frame by frame; an alpha channel goes along and is transparent on the bars.
+
+**Use when:** feeding a start frame to Wan or LTX, an edit image to Qwen, or anything to a model that misbehaves off its native sizes.
+
+---
+
 #### TS Resolution Selector
 <img src="doc/screenshots/ts_resolution_selector.png" alt="TS Resolution Selector" width="450" />
 
@@ -220,7 +232,25 @@ Includes match masks (`rectangle` / `ellipse` for stabilising on edges only), VR
 #### TS Film Emulation
 <img src="doc/screenshots/ts_film_emulation.png" alt="TS Film Emulation" width="450" />
 
-Built-in film stock presets (Kodak Portra/Vision3, Fuji, Cineon-style, …) plus optional `.cube` LUT loading from `models/luts/`. Adds gamma correction, contrast curve and a tunable `lut_strength`.
+Film looks for stills and clips: 24 modelled film stocks, or any `.cube` LUT from the pack's `nodes/luts/` folder (drop your own there). On top: contrast, warmth, fade, saturation by tone and modelled grain.
+
+**A compact node: the preview is the whole node.** It shows the current look on the reference portrait with its name over the picture, and nothing else. Every setting sits in a drawer behind the gear button in the corner, in three groups — **Tone** (look strength, contrast, warmth, fade), **Colour** (shadow and highlight saturation) and **Grain** (amount, size, speed for clips, seed). The preview follows the tone and colour sliders, so you judge them by eye; grain is not shown at thumbnail size. Sliders show their value, a value that differs from the default is highlighted, and a dot on the gear says something has been changed; double-click a slider to reset that one, **Reset** resets them all. There is no on/off switch — use ComfyUI's Bypass; a workflow saved with the old switch off shows an **Off** badge that turns it back on with one click. A wire already plugged into one of these inputs keeps working.
+
+**What changed in the maths in 12.13.** Soft stocks no longer park white at grey: Portra 400 went from 0.87 to 0.98, Polaroid from 0.80 to 0.90, while mid-grey stays where it was. Contrast is an S-curve that bends into black and white instead of clipping them; warmth is a white balance, so black stays black; fade lifts the blacks and leaves white alone. Shadow and highlight saturation start at 1.0 (they were 0.8 / 0.85 and quietly drained every image). A `.cube` LUT is applied to the sRGB values it was made for — the old `gamma_correction` detour moved its mid-tones (Cinematic1: 0.41 → 0.47) and is now ignored. The look comes first and your sliders work on top of it, for LUTs as for stocks. Saved workflows keep their own slider values; they look different only where the old behaviour was wrong.
+
+**Pick a look by sight — one choice, no mode switch.** Click the preview for a gallery of every stock and every LUT applied to the same reference portrait — skin, blonde hair, white linen with red embroidery, blue sky, deep forest greens, where film stocks differ most. Filter by family, search, click a card. Whether a stock or a LUT applies follows from the card you picked: the old `film_preset` / `lut_choice` pair (where "External LUT" was really a mode switch, and a LUT picked while a stock was selected silently did nothing) is hidden, and one `strength` slider replaces the two. The same inputs carry the same values underneath, so saved workflows and API calls behave exactly as before. A LUT you add to the folder appears in the gallery on the next open.
+
+**The stocks are modelled, not filtered.** Each one is a characteristic curve per dye layer (the channels cross over, which is where warm highlights and cool shadows come from), colour in six hue bands with skin tones protected, split toning, and — for CineStill and the Vision3 stocks — halation, the red glow around bright areas. Black-and-white stocks use their own spectral sensitivity.
+
+| family | stocks |
+|---|---|
+| colour negative | Kodak Portra 160 / 400 / 800, Kodak Gold 200, Kodak Ultramax 400, Kodak Ektar 100, Fuji Superia 400, Fuji Pro 400H, Agfa Vista 200 |
+| slide | Fuji Velvia 50, Fuji Provia 100F, Kodachrome 64 |
+| cinema | Kodak Vision3 250D / 500T, Kodak 2383 Print, Fuji Eterna 250T, CineStill 800T, CineStill 50D |
+| instant | Polaroid 600 |
+| black and white | Ilford HP5, Kodak Tri-X 400, Kodak T-Max 100, Ilford Delta 3200, Sepia Fiber Print |
+
+> Since 12.13 the seven stocks the node always had (Vision3 250D, Portra 400, Eterna 250T, Vista 200, HP5, Gold 200, Superia 400) render through the new model. Saved workflows open with the same preset selected, but the picture changes — HP5 is now actually black and white.
 
 **The grain is modelled, not sprinkled on.** Real grain is a fluctuation in
 *density*, which is a logarithmic quantity, so the noise is applied in log space
@@ -296,6 +326,17 @@ The same idea as TS Langevin Inpaint, packaged as a **SAMPLER** you plug into Co
 Feed `SamplerCustomAdvanced` a latent whose noise mask marks the region to repaint, and hand it this sampler. `think_steps` sets how much correction happens at each noise level; `resample_strength` sets how hard the known pixels pull the masked ones towards them.
 
 **Use when:** you already have a custom sampling chain (own sigmas, own guider) and want inpaint-aware sampling inside it rather than around it.
+
+---
+
+#### TS Edit Align
+Puts an edited image back exactly over its source. Edit models redraw the whole frame and the result drifts: measured on Qwen Image 2.1, a 960×720 restoration came back 2.8 px to the side and 0.5% wider — 5 px at the frame edge; a tall 1100×1980 one was off by 7 px. Even with the latent sized like the reference, as the core node advises, the model kept a 0.3% zoom and a 2.7 px offset. That is the model's own error, so it is measured and undone after the fact.
+
+Put it right after VAE Decode (and TS VAE Fix), and wire the original into `source`. The node brings the edit to the source's exact size, compares the two on a grid of tiles, ignores the tiles you edited (they disagree with the rest), fits shift and scale per axis on the ones that did not change and undoes them with one sub-pixel warp. On the measured edits the error in untouched textured areas dropped by two thirds; what remains is the model re-rendering detail, not displacement. The status line says what was corrected. Without a `source` the image passes through, so one graph can still generate from scratch.
+
+**`output_size`.** `source` (default) returns the edit at the original's size, ready to lie on it pixel for pixel. `edit` keeps the size the model rendered at and stretches the original to it for the measurement instead — a 960×720 photo restored at 1408×1056 stays 1408×1056 with nothing squeezed away, aligned to the original enlarged to that size. Use `edit` when an upscaler (TS DLSS Upscaler, a model upscaler) comes next; use `source` when the edit is blended back onto the original.
+
+**Use when:** restoring photos, removing objects or any edit you want to overlay, compare with a slider or blend back onto the original — Qwen Image Edit, Qwen Image 2.1, Flux Kontext.
 
 ---
 
@@ -1636,6 +1677,8 @@ Both sides are brought to a single frame size, because a wipe over two different
 
 **The clip never starts by itself**, pauses when a run begins, and pauses when the node leaves the screen. Play, scrub and the wipe are yours to move.
 
+**Full screen, for stills and clips alike.** The button in the corner of the frame (or a double-click on a still) opens the comparison over the whole window; Esc, the cross or another double-click brings it back into the node at the size it had. The wipe is a 1-pixel line with a small translucent grip — it shows where the cut is without covering the pixels on either side of it.
+
 > The video preview is compressed (H.264, draft quality, up to 1280 wide) — it is a player in a node, not a master. Judge grain and gradients from the saved file, not from here. Stills carry no such caveat: those are PNG.
 
 **Use when:** you changed something and need to see whether it actually got better — an upscale, a denoise, a grade, a retouch.
@@ -1969,7 +2012,7 @@ You can override these with `extra_model_paths.yaml` — Timesaver respects Comf
 On a clean load the pack now says one line and nothing else:
 
 ```
-[TS Timesaver] All 83 nodes loaded successfully.
+[TS Timesaver] All 85 nodes loaded successfully.
 ```
 
 The ComfyUI console is shared by every pack you have installed, and two screens
@@ -2089,7 +2132,7 @@ What the pack does **not** do is switch the event loop to `WindowsSelectorEventL
 ```text
 comfyui-timesaver/
 ├─ ts_pasted_media_fix.py  # the pack's one patch to ComfyUI itself
-├─ nodes/                  # 87 ts_*.py modules: 83 nodes + 4 that register none
+├─ nodes/                  # 89 ts_*.py modules: 85 nodes + 4 that register none
 │                          #   (sampler + scheduler injectors, shared routes,
 │                          #    one backward-compat re-export shim)
 ├─ js/                     # frontend extensions for DOM-widget nodes

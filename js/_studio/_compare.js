@@ -38,19 +38,29 @@ export function ensureCompareStyles() {
    разной пропорции — тогда будет поле, но не растяжение. */
 .ts-cmp__img{position:absolute;inset:0;display:block;width:100%;height:100%;
     object-fit:contain}
-.ts-cmp__handle{position:absolute;top:0;bottom:0;width:2px;margin-left:-1px;cursor:ew-resize;
-    /* Поверх пользовательской картинки: обязана читаться на любом кадре,
-       поэтому не токен темы. */
-    background:rgba(255,255,255,.9);box-shadow:0 0 0 1px rgba(0,0,0,.45)}
-/* Ручка — кружок тёмной темы, а не белая нашлёпка: студия тёмная, и светлое
-   пятно посреди кадра выбивалось из всего остального. Стрелки нарисованы
-   flex-раскладкой, а не текстовым глифом: глиф садится на базовую линию
-   шрифта и никогда не стоит ровно по центру круга. */
-.ts-cmp__grip{position:absolute;top:50%;left:50%;width:32px;height:32px;
+/* Тонкая линия разреза (просьба владельца 15.10.2026: «потоньше, изящнее»).
+   Было 2 px белого с чёрной обводкой в 1 px — линия читалась толще, чем она
+   есть, и закрывала сами пиксели на стыке. Теперь 1 px и мягкая тень: на
+   светлом кадре линию держит тень, на тёмном — сама линия. Поверх
+   пользовательской картинки, поэтому не токен темы. */
+.ts-cmp__handle{position:absolute;top:0;bottom:0;width:1px;margin-left:-.5px;cursor:ew-resize;
+    background:rgba(255,255,255,.88);
+    box-shadow:0 0 0 .5px rgba(0,0,0,.18),0 0 6px rgba(0,0,0,.35)}
+/* Ручка — маленький полупрозрачный кружок с размытием под ним: заметна, но не
+   заслоняет кадр, как прежний сплошной круг в 32 px. Стрелки нарисованы
+   SVG, а не текстовым глифом: глиф садится на базовую линию шрифта и
+   никогда не стоит ровно по центру круга. */
+.ts-cmp__grip{position:absolute;top:50%;left:50%;width:24px;height:24px;
     transform:translate(-50%,-50%);border-radius:50%;
-    background:var(--ts-elevated);border:1px solid var(--ts-border-strong);
-    box-shadow:var(--ts-shadow-sm);color:var(--ts-text);
-    display:flex;align-items:center;justify-content:center;gap:3px}
+    background:color-mix(in srgb,var(--ts-elevated) 62%,transparent);
+    -webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);
+    border:1px solid rgba(255,255,255,.5);
+    box-shadow:0 1px 4px rgba(0,0,0,.35);color:rgba(255,255,255,.95);
+    display:flex;align-items:center;justify-content:center;
+    transition:transform .12s ease,background .12s ease}
+.ts-cmp:hover .ts-cmp__grip,.ts-cmpv__stage:hover .ts-cmp__grip{
+    transform:translate(-50%,-50%) scale(1.08);
+    background:color-mix(in srgb,var(--ts-elevated) 80%,transparent)}
 .ts-cmp__grip svg{display:block}
 .ts-cmp__taglayer{position:absolute;inset:0;pointer-events:none}
 /* Подписи лежат поверх пользовательской картинки. Подложки под ними нет —
@@ -89,10 +99,10 @@ export function createCompareHandle() {
     handle.className = "ts-cmp__handle";
     const grip = document.createElement("div");
     grip.className = "ts-cmp__grip";
-    grip.innerHTML = '<svg viewBox="0 0 20 12" width="20" height="12" fill="none"'
-        + ' stroke="currentColor" stroke-width="1.6" stroke-linecap="round"'
-        + ' stroke-linejoin="round"><path d="M7.5 2.5 4 6l3.5 3.5"/>'
-        + '<path d="M12.5 2.5 16 6l-3.5 3.5"/></svg>';
+    grip.innerHTML = '<svg viewBox="0 0 20 12" width="14" height="9" fill="none"'
+        + ' stroke="currentColor" stroke-width="1.5" stroke-linecap="round"'
+        + ' stroke-linejoin="round"><path d="M7 2.5 3.5 6 7 9.5"/>'
+        + '<path d="M13 2.5 16.5 6 13 9.5"/></svg>';
     handle.appendChild(grip);
     return handle;
 }
@@ -250,6 +260,15 @@ export function createCompare(strings = {}) {
             if (afterLabel) tagAfter.textContent = String(afterLabel);
         },
         isActive: () => element.classList.contains("is-active"),
+        /**
+         * Пересчитать коробку под текущую область.
+         *
+         * ⚠️ ResizeObserver сам этого не делает при ПЕРЕЕЗДЕ элемента в другое
+         * место документа (полный экран TS Compare): замерено — шторка в
+         * оверлее 1024×678, а коробка с кадром осталась размером с ноду,
+         * 257×193. Тот, кто переносит шторку, зовёт relayout() явно.
+         */
+        relayout: () => fitBox(),
         teardown: () => {
             window.removeEventListener("blur", stop);
             resizeWatch?.disconnect();

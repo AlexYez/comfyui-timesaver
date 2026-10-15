@@ -70,6 +70,18 @@ export function createPlayback(video, {
 
     const handlePlay = () => { onState?.(true); schedule(); };
     const handlePause = () => { onState?.(false); stopLoop(); onTime?.(video.currentTime); };
+    // ⚠️ The tick above only catches a range that ends INSIDE the file. When the
+    // range is the whole file (TS Video Saver always; the loader with nothing
+    // selected), the last frame is shown at duration - 1/fps, the tick's
+    // "right - half a frame" is never reached, and the element runs into its own
+    // end and pauses — the loop button did nothing (user report 14.10.2026).
+    const handleEnded = () => {
+        if (!isLooping()) return;
+        const { left } = getRange();
+        apply(Math.max(0, left || 0));
+        const started = video.play();
+        if (started && typeof started.catch === "function") started.catch(() => {});
+    };
     const handleSeeked = () => {
         seekBusy = false;
         if (seekTarget !== null && Math.abs(video.currentTime - seekTarget) > 0.02) {
@@ -92,6 +104,7 @@ export function createPlayback(video, {
     video.addEventListener("play", handlePlay);
     video.addEventListener("pause", handlePause);
     video.addEventListener("seeked", handleSeeked);
+    video.addEventListener("ended", handleEnded);
 
     return {
         play() {
@@ -144,6 +157,7 @@ export function createPlayback(video, {
             video.removeEventListener("play", handlePlay);
             video.removeEventListener("pause", handlePause);
             video.removeEventListener("seeked", handleSeeked);
+            video.removeEventListener("ended", handleEnded);
         },
     };
 }

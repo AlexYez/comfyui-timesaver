@@ -244,6 +244,46 @@ def reanchor_conditioning(cond, f0, f1, spatial=None):
     return out
 
 
+def upscale_keyframes(cond, param, upscale=None):
+    """Bring keyframe latents to the target size with the VIDEO's own upscaler.
+
+    ⚠️ Keyframes are frozen rows in the H3 packed sequence: the sampler never
+    re-draws them. `reanchor_conditioning` used to stretch them bilinearly to
+    the new size, and a bilinearly stretched latent decodes into 16x16-pixel
+    blocks (the VAE's 16x grid) — visible tiles on the first frames of every
+    upscale (user report 14.10.2026). Only the first chunk was hit: later chunks
+    are anchored on the previous, already upscaled result.
+
+    Each distinct latent is upscaled once. A keyframe already at the target
+    size passes through (the upscaler is a no-op there); one the upscaler
+    refuses (larger than the target) is left for the bilinear fallback.
+    """
+    upscale = upscale or upscale_latent
+    done = {}
+    out = []
+    for tensor, d in cond or []:
+        nd = dict(d)
+        kfs = nd.get("minimax_keyframes")
+        if kfs:
+            fixed = []
+            for kf in kfs:
+                lt = kf.get("latent") if isinstance(kf, dict) else None
+                if lt is not None and getattr(lt, "ndim", 0) == 5:
+                    key = id(lt)
+                    if key not in done:
+                        try:
+                            done[key] = upscale(lt, param)[0]
+                        except ValueError as exc:
+                            logger.warning("%s Keyframe left as is: %s", LOG_PREFIX, exc)
+                            done[key] = lt
+                    kf = dict(kf)
+                    kf["latent"] = done[key]
+                fixed.append(kf)
+            nd["minimax_keyframes"] = fixed
+        out.append([tensor, nd])
+    return out
+
+
 def anchor_conditioning(cond, prev_video, f0, strength):
     """Replace the frame-0 keyframe with the previous chunk's re-sampled frame.
 

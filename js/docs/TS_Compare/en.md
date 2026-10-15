@@ -10,6 +10,8 @@ Both sides are brought to a single frame size, because a wipe over two different
 
 **The clip never starts by itself**, pauses when a run begins, and pauses when the node leaves the screen. Play, scrub and the wipe are yours to move.
 
+**Full screen, for stills and clips alike.** The button in the corner of the frame (or a double-click on a still) opens the comparison over the whole window; Esc, the cross or another double-click brings it back into the node at the size it had. The wipe is a 1-pixel line with a small translucent grip — it shows where the cut is without covering the pixels on either side of it.
+
 > The video preview is compressed (H.264, draft quality, up to 1280 wide) — it is a player in a node, not a master. Judge grain and gradients from the saved file, not from here. Stills carry no such caveat: those are PNG.
 
 **Use when:** you changed something and need to see whether it actually got better — an upscale, a denoise, a grade, a retouch.

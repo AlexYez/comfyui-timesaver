@@ -33,6 +33,8 @@ import os
 import torch
 from comfy_api.v0_0_2 import IO
 
+from ._film_stocks import PRESET_OPTIONS, STOCK_BY_NAME, render_stock
+
 logger = logging.getLogger(__name__)
 LOG_PREFIX = "[TS Film Emulation]"
 
@@ -58,14 +60,11 @@ _VRAM_SHARE = 0.25
 class TS_Film_Emulation(IO.ComfyNode):
     @classmethod
     def _resolve_luts_dir(cls):
-        preferred = os.path.join(os.path.dirname(__file__), "luts")
-        if os.path.isdir(preferred):
-            return preferred
-        parent = os.path.dirname(os.path.dirname(__file__))
-        candidate = os.path.join(parent, "luts")
-        if os.path.isdir(candidate):
-            return candidate
-        return os.path.join(os.path.dirname(parent), "luts")
+        # The pack's LUTs live in nodes/luts. Since 12.13 this file sits two
+        # levels below it (nodes/image/film_emulation/), so the path is spelled
+        # out instead of being found by walking up and hoping.
+        nodes_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        return os.path.join(nodes_dir, "luts")
 
     @classmethod
     def _scan_luts(cls):
@@ -83,28 +82,36 @@ class TS_Film_Emulation(IO.ComfyNode):
             node_id="TS_Film_Emulation",
             display_name="TS Film Emulation",
             category="TS/Image/Color",
-            description="Apply film-stock looks (Kodak, Fuji, Cineon-style) or any .cube LUT from models/luts.",
+            description=(
+                "Film looks: 24 modelled stocks (Kodak, Fuji, CineStill, Kodachrome, Polaroid, "
+                "black and white) or any .cube LUT from the pack's luts folder. Click the "
+                "thumbnail to pick a look from a gallery of previews."
+            ),
             inputs=[
                 IO.Image.Input("image", tooltip="Image to apply the film look to."),
-                IO.Boolean.Input("enable", default=True, tooltip="If disabled, the image passes through unchanged."),
+                IO.Boolean.Input("enable", default=True, tooltip="Kept for older workflows; the node hides it — use Bypass instead. If disabled, the image passes through unchanged."),
                 IO.Combo.Input(
                     "film_preset",
-                    options=["External LUT", "Kodak Vision3 250D", "Kodak Portra 400",
-                             "Fuji Eterna 250T", "Agfa Vista 200", "Ilford HP5",
-                             "Kodak Gold 200", "Fuji Superia 400"],
+                    # "External LUT" first: no default is set, so the first
+                    # option IS the default. The seven pre-12.13 stocks follow
+                    # in their old order, the new ones after them.
+                    options=list(PRESET_OPTIONS),
                     tooltip="Built-in analog film look. Choose 'External LUT' to use a .cube LUT from lut_choice instead.",
                 ),
                 IO.Combo.Input("lut_choice", options=cls._scan_luts(), tooltip="External .cube LUT file (from the luts folder) applied when film_preset is 'External LUT'. 'None' = no LUT."),
                 IO.Float.Input("lut_strength", default=1.0, min=0.0, max=1.0, step=0.01, tooltip="Blend amount of the external LUT. 0 = original, 1 = full LUT."),
-                IO.Boolean.Input("gamma_correction", default=True, tooltip="Apply the LUT in sRGB space (recommended for most .cube LUTs)."),
+                IO.Boolean.Input("gamma_correction", default=True, tooltip="Kept for older workflows and ignored: since 12.13 a .cube LUT is always applied to the sRGB values it was made for."),
                 IO.Float.Input("film_strength", default=1.0, min=0.0, max=1.0, step=0.01, tooltip="Blend amount of the selected film preset. 0 = original, 1 = full preset."),
-                IO.Float.Input("contrast_curve", default=1.0, min=0.0, max=3.0, step=0.01, tooltip="Contrast around mid-gray. 1 = unchanged, >1 = more contrast."),
-                IO.Float.Input("warmth", default=0.0, min=-1.0, max=1.0, step=0.01, tooltip="Warm/cool shift. Positive warms (red up, blue down), negative cools."),
+                IO.Float.Input("contrast_curve", default=1.0, min=0.0, max=3.0, step=0.01, tooltip="S-curve contrast around mid-gray; black and white are never clipped. 1 = unchanged, >1 = more contrast."),
+                IO.Float.Input("warmth", default=0.0, min=-1.0, max=1.0, step=0.01, tooltip="White balance: positive warms, negative cools. Black stays black."),
                 IO.Float.Input("grain_intensity", default=0.02, min=0.0, max=0.5, step=0.01, tooltip="Strength of added film grain. 0 = no grain."),
                 IO.Float.Input("grain_size", default=0.5, min=0.5, max=5.0, step=0.1, tooltip="Scale of the grain particles. Higher values give coarser grain."),
-                IO.Float.Input("fade", default=0.0, min=0.0, max=0.5, step=0.01, tooltip="Lifts blacks toward gray for a faded, matte film look. 0 = off."),
-                IO.Float.Input("shadow_saturation", default=0.8, min=0.0, max=2.0, step=0.01, tooltip="Color saturation in the shadows. 1 = unchanged, <1 = desaturated."),
-                IO.Float.Input("highlight_saturation", default=0.85, min=0.0, max=2.0, step=0.01, tooltip="Color saturation in the highlights. 1 = unchanged, <1 = desaturated."),
+                IO.Float.Input("fade", default=0.0, min=0.0, max=0.5, step=0.01, tooltip="Matte film look: lifts the blacks, whites stay white. 0 = off."),
+                # ⚠️ Defaults were 0.8 / 0.85 until 12.13: every image lost a
+                # fifth of its colour even with no look selected. Saved graphs
+                # keep their own values; only new nodes start neutral.
+                IO.Float.Input("shadow_saturation", default=1.0, min=0.0, max=2.0, step=0.01, tooltip="Color saturation in the shadows. 1 = unchanged, <1 = desaturated."),
+                IO.Float.Input("highlight_saturation", default=1.0, min=0.0, max=2.0, step=0.01, tooltip="Color saturation in the highlights. 1 = unchanged, <1 = desaturated."),
                 # ⚠️ Оба входа — ПОСЛЕДНИМИ и optional. `widgets_values`
                 # позиционен: вставленный выше вход сдвинул бы все значения в
                 # каждом уже сохранённом workflow с этой нодой.
@@ -203,28 +210,61 @@ class TS_Film_Emulation(IO.ComfyNode):
 
     @staticmethod
     def _apply_contrast_curve(x, contrast=1.0):
-        return torch.clamp(0.5 + (x - 0.5) * contrast, 0.0, 1.0)
+        """S-curve around mid-grey whose ends stay pinned at 0 and 1.
+
+        ⚠️ Until 12.13 this was ``0.5 + (x - 0.5) * c`` with a clamp: at 1.3
+        everything below 0.115 and above 0.885 was cut flat — a sky lost its
+        gradient, a shadow its texture. ``x^p / (x^p + (1-x)^p)`` has slope
+        ``p`` at the pivot like the old line, but bends into the ends instead
+        of hitting them; 0 still flattens the image to mid-grey.
+        """
+        if abs(contrast - 1.0) < 1e-6:
+            return x
+        if contrast <= 1e-6:
+            return torch.full_like(x, 0.5)
+        x = x.clamp(1e-6, 1.0 - 1e-6)
+        a = x ** contrast
+        b = (1.0 - x) ** contrast
+        return a / (a + b)
+
+    @classmethod
+    def _apply_warmth(cls, x, warmth):
+        """White balance in linear light: red up, blue down (or back).
+
+        ⚠️ The old version ADDED ±0.05 to red and blue, which tinted pure black
+        too. A gain in linear light leaves black black, as a real white
+        balance does. ±1 is about ±0.35 stops on each of the two channels.
+        """
+        lin = cls._srgb_to_linear(x)
+        gain = torch.tensor(
+            [2.0 ** (0.35 * warmth), 1.0, 2.0 ** (-0.35 * warmth)], dtype=x.dtype, device=x.device,
+        )
+        return cls._linear_to_srgb((lin * gain).clamp(0.0, 1.0))
+
+    @staticmethod
+    def _apply_fade(x, fade):
+        """Matte look: lift the blacks, leave the whites.
+
+        The old lerp towards 0.5 also pulled white down to grey. Here black
+        rises exactly as far as it did (to ``fade / 2``) and white stays at 1 —
+        what a faded print does — so the slider keeps its old scale.
+        """
+        lift = 0.5 * fade
+        return lift + x * (1.0 - lift)
 
     @staticmethod
     def apply_preset(image, preset_name):
-        presets = {
-            "Kodak Vision3 250D": {"warmth": 0.25, "fade": 0.05, "gamma": 0.95},
-            "Kodak Portra 400": {"warmth": 0.3, "fade": 0.1, "gamma": 0.9},
-            "Fuji Eterna 250T": {"warmth": -0.1, "fade": 0.05, "gamma": 0.95},
-            "Agfa Vista 200": {"warmth": 0.1, "fade": 0.08, "gamma": 0.92},
-            "Ilford HP5": {"warmth": 0.0, "fade": 0.15, "gamma": 0.85},
-            "Kodak Gold 200": {"warmth": 0.2, "fade": 0.08, "gamma": 0.93},
-            "Fuji Superia 400": {"warmth": 0.15, "fade": 0.1, "gamma": 0.9},
-        }
-        if preset_name not in presets or preset_name == "External LUT":
+        """Render a built-in film stock (see _film_stocks.py); other names pass through.
+
+        ⚠️ Since 12.13 the stocks are modelled (curve per dye layer, hue bands,
+        split toning, halation, true B&W) instead of gamma + fade + warmth. The
+        seven old names are kept, so saved workflows open, but they render
+        differently — this was asked for, and it is in the CHANGELOG.
+        """
+        stock = STOCK_BY_NAME.get(preset_name)
+        if stock is None:
             return image
-        p = presets[preset_name]
-        img = torch.pow(torch.clamp(image, 0.0, 1.0), p["gamma"])
-        img = img * (1 - p["fade"]) + p["fade"] * 0.5
-        if abs(p["warmth"]) > 1e-6:
-            img[..., 0] += p["warmth"] * 0.05
-            img[..., 2] -= p["warmth"] * 0.05
-        return torch.clamp(img, 0, 1)
+        return render_stock(image, stock).clamp(0.0, 1.0)
 
     @staticmethod
     def _smart_saturation(img, shadows_strength=1.0, highlights_strength=1.0):
@@ -310,7 +350,7 @@ class TS_Film_Emulation(IO.ComfyNode):
     def execute(cls, image, enable=True, film_preset="External LUT", lut_choice="None", lut_strength=1.0,
                 gamma_correction=True, film_strength=1.0, contrast_curve=1.0, warmth=0.0,
                 grain_intensity=0.02, grain_size=0.5, fade=0.0,
-                shadow_saturation=0.8, highlight_saturation=0.85,
+                shadow_saturation=1.0, highlight_saturation=1.0,
                 grain_speed=1.0, grain_seed=0) -> IO.NodeOutput:
         # ⚠️ Эти значения обязаны совпадать с `default=` в схеме выше.
         #
@@ -421,29 +461,35 @@ class TS_Film_Emulation(IO.ComfyNode):
                        grain_seed, frame_offset):
         out = img.clamp(0, 1)
 
+        # 1. The look: a stock OR a LUT, blended by its strength.
         if film_preset != "External LUT":
             out = torch.lerp(out, cls.apply_preset(out, film_preset), film_strength)
+        elif lut is not None and lut_size:
+            # ⚠️ LUT читается ОДИН раз в `execute`, а не здесь: файл на 33³
+            # точки разбирается построчно, и на клипе это был бы повторный
+            # разбор для каждой порции кадров.
+            #
+            # ⚠️ Applied straight to the sRGB values: a .cube made for display
+            # (Rec.709 / sRGB in and out — every creative LUT) expects exactly
+            # them. Until 12.13 the default `gamma_correction=True` ran the
+            # image through linear->sRGB first — on an image that already WAS
+            # sRGB — so the LUT read the wrong tones (Cinematic1: mid-grey 0.41
+            # became 0.47). The input is kept for old graphs and ignored.
+            looked = cls._apply_3d_lut_trilinear(out, lut, lut_size).clamp(0.0, 1.0)
+            out = torch.lerp(out, looked, lut_strength)
+
+        # 2. The user's adjustments, on top of the look — the same order for
+        # stocks and LUTs (LUTs used to get them BEFORE the look).
         out = cls._apply_contrast_curve(out, contrast_curve)
         if fade > 0:
-            out = out * (1 - fade) + fade * 0.5
+            out = cls._apply_fade(out, fade)
         if abs(warmth) > 1e-6:
-            out[..., 0] = torch.clamp(out[..., 0] + warmth * 0.05, 0, 1)
-            out[..., 2] = torch.clamp(out[..., 2] - warmth * 0.05, 0, 1)
-        out = cls._smart_saturation(out, shadows_strength=shadow_saturation, highlights_strength=highlight_saturation)
+            out = cls._apply_warmth(out, warmth)
+        if abs(shadow_saturation - 1.0) > 1e-6 or abs(highlight_saturation - 1.0) > 1e-6:
+            out = cls._smart_saturation(out, shadows_strength=shadow_saturation,
+                                        highlights_strength=highlight_saturation)
 
-        # ⚠️ LUT читается ОДИН раз в `execute`, а не здесь: файл на 33³ точки
-        # разбирается построчно, и на клипе это был бы повторный разбор для
-        # каждой порции кадров.
-        if lut is not None and lut_size:
-            original_for_lerp = out
-            if gamma_correction:
-                image_for_lut = cls._linear_to_srgb(out)
-                lut_applied = cls._apply_3d_lut_trilinear(image_for_lut, lut, lut_size)
-                processed_image = cls._srgb_to_linear(lut_applied)
-            else:
-                processed_image = cls._apply_3d_lut_trilinear(out, lut, lut_size)
-            out = torch.lerp(original_for_lerp, processed_image, lut_strength)
-
+        # 3. Grain last: it belongs to the film, not to the colour.
         return cls._apply_grain(
             out,
             intensity=grain_intensity,
@@ -456,3 +502,7 @@ class TS_Film_Emulation(IO.ComfyNode):
 
 NODE_CLASS_MAPPINGS = {"TS_Film_Emulation": TS_Film_Emulation}
 NODE_DISPLAY_NAME_MAPPINGS = {"TS_Film_Emulation": "TS Film Emulation"}
+
+# Gallery routes (/ts_film/looks, /ts_film/preview). Imported for the side effect
+# of registering them; the module renders through this file's pipeline.
+from . import _film_previews  # noqa: E402,F401

@@ -2156,6 +2156,59 @@
       }
     }
   },
+  "TS_EditAlign": {
+    "api": "v3",
+    "category": "TS/Image/Retouch",
+    "class_name": "TS_EditAlign",
+    "display_name": "TS Edit Align",
+    "effective_widget_order": [
+      "max_shift",
+      "output_size"
+    ],
+    "inputs": [
+      {
+        "index": 0,
+        "name": "image",
+        "type": "Image"
+      },
+      {
+        "index": 1,
+        "name": "source",
+        "optional": true,
+        "type": "Image"
+      },
+      {
+        "index": 2,
+        "name": "max_shift",
+        "type": "Float"
+      },
+      {
+        "index": 3,
+        "name": "output_size",
+        "type": "Combo"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "image",
+        "index": 0,
+        "name": "image",
+        "type": "Image"
+      }
+    ],
+    "python_file": "nodes/image/ts_edit_align.py",
+    "widgets": {
+      "max_shift": {
+        "default": 24.0,
+        "max": 128.0,
+        "min": 1.0,
+        "step": 1.0
+      },
+      "output_size": {
+        "default": "source"
+      }
+    }
+  },
   "TS_Film_Emulation": {
     "api": "v3",
     "category": "TS/Image/Color",
@@ -2270,7 +2323,7 @@
         "type": "Image"
       }
     ],
-    "python_file": "nodes/image/ts_film_emulation.py",
+    "python_file": "nodes/image/film_emulation/ts_film_emulation.py",
     "widgets": {
       "contrast_curve": {
         "default": 1.0,
@@ -2320,7 +2373,7 @@
         "step": 0.05
       },
       "highlight_saturation": {
-        "default": 0.85,
+        "default": 1.0,
         "max": 2.0,
         "min": 0.0,
         "step": 0.01
@@ -2332,7 +2385,7 @@
         "step": 0.01
       },
       "shadow_saturation": {
-        "default": 0.8,
+        "default": 1.0,
         "max": 2.0,
         "min": 0.0,
         "step": 0.01
@@ -4779,6 +4832,83 @@
         "max": 128,
         "min": 0,
         "step": 1
+      }
+    }
+  },
+  "TS_ModelResize": {
+    "api": "v3",
+    "category": "TS/Image/Size",
+    "class_name": "TS_ModelResize",
+    "display_name": "TS Model Resize",
+    "effective_widget_order": [
+      "model",
+      "fit",
+      "anchor",
+      "pad_color"
+    ],
+    "inputs": [
+      {
+        "index": 0,
+        "name": "image",
+        "type": "Image"
+      },
+      {
+        "index": 1,
+        "name": "model",
+        "type": "Combo"
+      },
+      {
+        "index": 2,
+        "name": "fit",
+        "type": "Combo"
+      },
+      {
+        "index": 3,
+        "name": "anchor",
+        "type": "Combo"
+      },
+      {
+        "index": 4,
+        "name": "pad_color",
+        "type": "Combo"
+      }
+    ],
+    "outputs": [
+      {
+        "display_name": "image",
+        "index": 0,
+        "name": "image",
+        "type": "Image"
+      },
+      {
+        "display_name": "width",
+        "index": 1,
+        "name": "width",
+        "type": "Int"
+      },
+      {
+        "display_name": "height",
+        "index": 2,
+        "name": "height",
+        "type": "Int"
+      },
+      {
+        "display_name": "mask",
+        "index": 3,
+        "name": "mask",
+        "type": "Mask"
+      }
+    ],
+    "python_file": "nodes/image/ts_model_resize.py",
+    "widgets": {
+      "anchor": {
+        "default": "center"
+      },
+      "fit": {
+        "default": "crop"
+      },
+      "pad_color": {
+        "default": "black"
       }
     }
   },

@@ -303,6 +303,12 @@ class TS_LatentUpscale(IO.ComfyNode):
                     b0, _bf0, b1, _bf1 = bounds[offset]
                     part = video[:, :, b0:b1].contiguous()
                     upscaled_cache[offset], _, _ = core.upscale_latent(part, upscale_param)
+                # ⚠️ Keyframes get the same upscaler as the video, once, while the
+                # diffusion model is off the card. Stretched bilinearly (as
+                # reanchor_conditioning did), these frozen rows decoded into
+                # 16-px tiles on the first frames of every upscale.
+                if index == 0:
+                    conditioning = core.upscale_keyframes(conditioning, upscale_param)
 
             chunk_v = upscaled_cache.pop(index)
 
@@ -414,7 +420,11 @@ class TS_LatentUpscale(IO.ComfyNode):
         """
         expected = (int(height) // core.VAE_DOWNSAMPLE, int(width) // core.VAE_DOWNSAMPLE)
         for _cond, extra in conditioning or []:
-            for keyframe in (extra or {}).get("keyframes", []) or []:
+            # ⚠️ H3 keeps them under "minimax_keyframes": the old "keyframes"
+            # key never matched, so this warning had never fired.
+            extra = extra or {}
+            keyframes = extra.get("minimax_keyframes") or extra.get("keyframes") or []
+            for keyframe in keyframes:
                 latent = keyframe.get("latent") if isinstance(keyframe, dict) else None
                 if latent is None or getattr(latent, "ndim", 0) != 5:
                     continue
@@ -422,8 +432,9 @@ class TS_LatentUpscale(IO.ComfyNode):
                 if got != expected:
                     logger.warning(
                         "%s Conditioning keyframes are %dx%d latent (%dx%d pixels) but the "
-                        "target is %dx%d pixels. They will be resized, and if the conditioning "
-                        "was written for a different size the result will drift from it.",
+                        "target is %dx%d pixels. They are upscaled with the same upscaler as "
+                        "the video; if the conditioning was written for a different size the "
+                        "result may still drift from it.",
                         LOG_PREFIX, got[1], got[0],
                         got[1] * core.VAE_DOWNSAMPLE, got[0] * core.VAE_DOWNSAMPLE,
                         int(width), int(height),

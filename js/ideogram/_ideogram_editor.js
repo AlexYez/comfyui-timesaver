@@ -25,6 +25,8 @@ import {
     WEIGHTS,
     applyCase,
     captionToDesign,
+    harmonizeStylePalette,
+    parseCaptionObject,
     BACKGROUND_PRESETS,
     LAYOUT_BRIEFS,
     LIGHTING_PRESETS,
@@ -189,6 +191,14 @@ function ensureStyles() {
 .ts-ideoe-vresizer::after{content:"";position:absolute;top:2px;left:6px;right:6px;height:3px;border-radius:2px;background:var(--ts-border);transition:background .1s}
 .ts-ideoe-vresizer:hover::after,.ts-ideoe-vresizer.is-drag::after{background:var(--ts-accent)}
 .ts-ideoe-jsonhead{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.ts-ideoe-jsonhead h3{flex:1 1 auto}
+/* The view is clickable (it opens the editable prompt), the field looks like it. */
+.ts-ideoe-card pre.ts-ideoe-json{cursor:text}
+.ts-ideoe-jsonedit{display:block;width:100%;box-sizing:border-box;min-height:300px;max-height:none;resize:vertical;color:var(--ts-text);outline:none}
+.ts-ideoe-jsonedit:focus{border-color:var(--ts-accent-line)}
+.ts-ideoe-jsonstatus{margin-top:6px;font-size:var(--ts-fs-xs);color:var(--ts-muted)}
+.ts-ideoe-jsonstatus.is-ok{color:var(--ts-success)}
+.ts-ideoe-jsonstatus.is-bad{color:var(--ts-warning)}
 /* Monospace stack is intentional (code block) — there is no --ts-* mono token. */
 .ts-ideoe-json{margin:0;max-height:300px;overflow:auto;background:var(--ts-sunken);border:1px solid var(--ts-border-soft);border-radius:6px;padding:8px 10px;font-family:Consolas,'SF Mono','Courier New',monospace;font-size:var(--ts-fs-sm);line-height:1.5;color:var(--ts-muted);white-space:pre;tab-size:2}
 /* Syntax-highlight palette: five mutually distinguishable hues that carry
@@ -497,13 +507,26 @@ export function openIdeogramEditor(node, { design, presets, onSave, graphRef }) 
     const jsonTitle = el("h3", null, "JSON");
     const copyBtn = el("button", "ts-ideoe-btn ghost small ts-ideoe-copybtn");
     tip(copyBtn, "tip_copy_json");
-    jsonHead.append(jsonTitle, copyBtn);
+    // Two-way prompt: the panel can also be EDITED (or a ready prompt pasted
+    // into it) and the artboard follows — captionToDesign lays the caption
+    // back out as blocks. View mode keeps the highlighted, server-built text.
+    const editJsonBtn = el("button", "ts-ideoe-btn ghost small");
+    tip(editJsonBtn, "tip_json_edit");
+    jsonHead.append(jsonTitle, editJsonBtn, copyBtn);
     const jsonPre = el("pre", "ts-ideoe-json", "—");
-    jsonCardEl.append(jsonHead, jsonPre);
+    tip(jsonPre, "tip_json_edit");
+    const jsonEdit = el("textarea", "ts-ideoe-json ts-ideoe-jsonedit");
+    jsonEdit.spellcheck = false;
+    jsonEdit.style.display = "none";
+    const jsonStatus = el("div", "ts-ideoe-jsonstatus");
+    jsonStatus.style.display = "none";
+    jsonCardEl.append(jsonHead, jsonPre, jsonEdit, jsonStatus);
+    let jsonEditing = false;
     function relabelJson() {
         jsonTitle.textContent = tr("json_prompt");
         copyBtn.classList.remove("ok");
         copyBtn.textContent = tr("copy");
+        editJsonBtn.textContent = tr(jsonEditing ? "json_done" : "json_edit");
     }
     function prettyJson(s) { try { return JSON.stringify(JSON.parse(s), null, 2); } catch { return s; } }
     // Color-highlight a JSON string into SAFE html: keys / strings / numbers /
@@ -561,6 +584,62 @@ export function openIdeogramEditor(node, { design, presets, onSave, graphRef }) 
             } catch { ok = false; }
         }
         if (ok) { copyBtn.classList.add("ok"); copyBtn.textContent = tr("copied"); setTimeout(relabelJson, 1200); }
+    });
+
+    // ── Prompt → layout ──────────────────────────────────────────────────── //
+    let jsonApplyTimer = null;
+    let jsonStatusTimer = null;
+    function showJsonStatus(key, good, linger = 0) {
+        clearTimeout(jsonStatusTimer);
+        jsonStatus.textContent = tr(key);
+        jsonStatus.classList.toggle("is-ok", good);
+        jsonStatus.classList.toggle("is-bad", !good);
+        jsonStatus.style.display = "";
+        if (linger) jsonStatusTimer = setTimeout(() => { if (!jsonEditing) jsonStatus.style.display = "none"; }, linger);
+    }
+    /** Lay a caption out on the artboard; false when the text is not one yet. */
+    function applyJsonText(text) {
+        const caption = parseCaptionObject(String(text || ""));
+        const design = caption ? captionToDesign(caption, work) : null;
+        if (!design) return false;
+        // While the textarea is focused the inspector must not be rebuilt:
+        // re-appending its card would steal the caret mid-typing.
+        loadDesignIntoEditor(design, { keepInspector: jsonEditing });
+        return true;
+    }
+    function enterJsonEdit() {
+        if (jsonEditing) return;
+        jsonEditing = true;
+        const shown = jsonPre.textContent || "";
+        jsonEdit.value = shown === "—" ? "" : shown;
+        jsonPre.style.display = "none";
+        jsonEdit.style.display = "";
+        jsonStatus.style.display = "none";
+        relabelJson();
+        jsonEdit.focus();
+    }
+    function exitJsonEdit() {
+        if (!jsonEditing) return;
+        clearTimeout(jsonApplyTimer);
+        if (jsonEdit.value.trim()) applyJsonText(jsonEdit.value);
+        jsonEditing = false;
+        jsonEdit.style.display = "none";
+        jsonPre.style.display = "";
+        jsonStatus.style.display = "none";
+        relabelJson();
+        renderInspector();  // catch up on the style fields the prompt changed
+        refreshJson(true);  // and show the prompt as the server builds it
+        parkFocus();
+    }
+    editJsonBtn.addEventListener("click", () => (jsonEditing ? exitJsonEdit() : enterJsonEdit()));
+    jsonPre.addEventListener("click", enterJsonEdit);
+    jsonEdit.addEventListener("input", () => {
+        clearTimeout(jsonApplyTimer);
+        jsonApplyTimer = setTimeout(() => {
+            if (!jsonEditing || closed) return;
+            const ok = applyJsonText(jsonEdit.value);
+            showJsonStatus(ok ? "json_applied" : "json_invalid", ok);
+        }, 400);
     });
     // ── Undo / redo: snapshot history of the whole editor state ──────────── //
     // Snapshots are cut by the same 500ms poll tick that refreshes the JSON
@@ -1703,6 +1782,20 @@ export function openIdeogramEditor(node, { design, presets, onSave, graphRef }) 
                 if (tx.desc_override !== undefined) b.desc_override = tx.desc_override;
             }
         });
+        // The style's palette is generic; an accent foreign to THIS idea turns
+        // into an extra element in the render (see harmonizeStylePalette).
+        // ⚠️ Anchors are the colours the idea gives its SUBJECTS (lettering set by
+        // the idea, object palettes) — not the background preset: a background
+        // only describes the backdrop, and anchoring on it stripped the mango's
+        // orange from "Mango Season" and the red from "Hot Sauce" (measured over
+        // all 180 ideas). Layout-default lettering colours are not the idea's.
+        if (brief.style_preset_id && Array.isArray(work.style.color_palette)) {
+            const ideaColors = [
+                ...(brief.texts || []).map((tx) => tx?.color).filter(Boolean),
+                ...work.blocks.filter((b) => b.type === "obj").flatMap((b) => b.color_palette || []),
+            ];
+            work.style.color_palette = harmonizeStylePalette(work.style.color_palette, ideaColors);
+        }
     }
 
     // Main idea (high_level_description). A per-layout dropdown of curated briefs
@@ -1901,14 +1994,33 @@ export function openIdeogramEditor(node, { design, presets, onSave, graphRef }) 
         const fontPrompt = el("textarea", "ts-ideoe-prompt"); fontPrompt.rows = 2;
         tip(fontPrompt, "tip_font_prompt");
         const hasOverride = () => !!String(sel.font_desc || "").trim();
-        fontSel.value = hasOverride() ? "__custom__" : (sel.font_preset_id || fontList[0]?.id || "");
-        fontPrompt.value = hasOverride() ? sel.font_desc : resolveSnippet();
+        // A desc that came verbatim from a pasted caption (raw_desc) is shown
+        // and edited right here; it stays verbatim while only its prose changes.
+        const isRaw = () => !!String(sel.raw_desc || "").trim();
+        fontSel.value = isRaw() || hasOverride() ? "__custom__" : (sel.font_preset_id || fontList[0]?.id || "");
+        fontPrompt.value = isRaw() ? sel.raw_desc : hasOverride() ? sel.font_desc : resolveSnippet();
+        // Any OTHER lettering control ends verbatim mode: its prose moves into the
+        // lettering slot, so nothing the caption said is lost, and the desc is
+        // composed from the controls again (size, colour, outline...).
+        const leaveRaw = () => {
+            if (!isRaw()) return;
+            sel.font_desc = String(sel.raw_desc).trim();
+            delete sel.raw_desc;
+            delete sel.raw_palette;
+            fontSel.value = "__custom__";
+            fontPrompt.value = sel.font_desc;
+        };
         fontSel.addEventListener("change", () => {
+            leaveRaw();
             if (fontSel.value === "__custom__") { sel.font_desc = String(sel.font_desc || "").trim() || resolveSnippet(); fontPrompt.value = sel.font_desc; fontPrompt.focus(); }
             else { sel.font_preset_id = fontSel.value; sel.font_desc = ""; fontPrompt.value = resolveSnippet(); }
             renderBlocks(); renderDescPreview();
         });
-        fontPrompt.addEventListener("input", () => { sel.font_desc = fontPrompt.value; fontSel.value = "__custom__"; renderBlocks(); renderDescPreview(); });
+        fontPrompt.addEventListener("input", () => {
+            if (isRaw()) sel.raw_desc = fontPrompt.value;
+            else { sel.font_desc = fontPrompt.value; fontSel.value = "__custom__"; }
+            renderBlocks(); renderDescPreview();
+        });
         fontRow.append(fontSel, fontPrompt);
         card.appendChild(fontRow);
 
@@ -1921,17 +2033,17 @@ export function openIdeogramEditor(node, { design, presets, onSave, graphRef }) 
         card.appendChild(textRow);
 
         const segRow = row("weight");
-        segRow.appendChild(tip(buildSegmented(WEIGHTS, () => sel.weight, (v) => { sel.weight = v; renderBlocks(); renderDescPreview(); }, (o) => segLabel("weight", o, work.language)), "tip_weight"));
+        segRow.appendChild(tip(buildSegmented(WEIGHTS, () => sel.weight, (v) => { leaveRaw(); sel.weight = v; renderBlocks(); renderDescPreview(); }, (o) => segLabel("weight", o, work.language)), "tip_weight"));
         card.appendChild(segRow);
 
         const caseRow = row("case");
-        caseRow.appendChild(tip(buildSegmented(CASES, () => sel.case, (v) => { sel.case = v; renderBlocks(); renderDescPreview(); }, (o) => segLabel("case", o, work.language)), "tip_case"));
+        caseRow.appendChild(tip(buildSegmented(CASES, () => sel.case, (v) => { leaveRaw(); sel.case = v; renderBlocks(); renderDescPreview(); }, (o) => segLabel("case", o, work.language)), "tip_case"));
         card.appendChild(caseRow);
 
         const colorRow = row("text_color");
         const color = el("input"); color.type = "color"; color.value = normHex(sel.color) || "#FFFFFF";
         tip(color, "tip_text_color");
-        color.addEventListener("input", () => { sel.color = color.value.toUpperCase(); renderBlocks(); renderDescPreview(); });
+        color.addEventListener("input", () => { leaveRaw(); sel.color = color.value.toUpperCase(); renderBlocks(); renderDescPreview(); });
         colorRow.appendChild(color);
         card.appendChild(colorRow);
 
@@ -1944,7 +2056,7 @@ export function openIdeogramEditor(node, { design, presets, onSave, graphRef }) 
             const cb = el("input"); cb.type = "checkbox"; cb.checked = !!sel.legibility[key];
             // Rebuild the card so the matching color picker shows/hides, and the
             // outline/plate now render live on the canvas.
-            cb.addEventListener("change", () => { sel.legibility[key] = cb.checked; renderBlocks(); renderLayers(); renderBlockPanel(); });
+            cb.addEventListener("change", () => { leaveRaw(); sel.legibility[key] = cb.checked; renderBlocks(); renderLayers(); renderBlockPanel(); });
             c.append(cb, document.createTextNode(tr(lblKey)));
             checks.appendChild(c);
         });
@@ -1956,7 +2068,7 @@ export function openIdeogramEditor(node, { design, presets, onSave, graphRef }) 
             const r = row("outline_color");
             const ci = el("input"); ci.type = "color"; ci.value = normHex(sel.outline_color) || "#000000";
             tip(ci, "tip_outline_color");
-            ci.addEventListener("input", () => { sel.outline_color = ci.value.toUpperCase(); renderBlocks(); renderDescPreview(); });
+            ci.addEventListener("input", () => { leaveRaw(); sel.outline_color = ci.value.toUpperCase(); renderBlocks(); renderDescPreview(); });
             r.appendChild(ci);
             card.appendChild(r);
         }
@@ -1964,7 +2076,7 @@ export function openIdeogramEditor(node, { design, presets, onSave, graphRef }) 
             const r = row("plate_color");
             const ci = el("input"); ci.type = "color"; ci.value = normHex(sel.plate_color) || "#1A1A1A";
             tip(ci, "tip_plate_color");
-            ci.addEventListener("input", () => { sel.plate_color = ci.value.toUpperCase(); renderBlocks(); renderDescPreview(); });
+            ci.addEventListener("input", () => { leaveRaw(); sel.plate_color = ci.value.toUpperCase(); renderBlocks(); renderDescPreview(); });
             r.appendChild(ci);
             card.appendChild(r);
         }
@@ -1979,7 +2091,7 @@ export function openIdeogramEditor(node, { design, presets, onSave, graphRef }) 
         const ovRow = row("override");
         const ov = el("input"); ov.type = "text"; ov.value = sel.desc_override || "";
         tip(ov, "tip_override");
-        ov.addEventListener("input", () => { sel.desc_override = ov.value; renderDescPreview(); });
+        ov.addEventListener("input", () => { leaveRaw(); sel.desc_override = ov.value; renderDescPreview(); });
         ovRow.appendChild(ov);
         card.appendChild(ovRow);
 
@@ -2044,7 +2156,7 @@ export function openIdeogramEditor(node, { design, presets, onSave, graphRef }) 
 
     // Replace the whole editor state with a loaded design (mutate `work` in place
     // so every closure keeps its reference), then repaint everything.
-    function loadDesignIntoEditor(d) {
+    function loadDesignIntoEditor(d, { keepInspector = false } = {}) {
         if (!d || typeof d !== "object") return;
         const fresh = JSON.parse(JSON.stringify(d));
         Object.keys(work).forEach((k) => delete work[k]);
@@ -2060,7 +2172,7 @@ export function openIdeogramEditor(node, { design, presets, onSave, graphRef }) 
         renderBlocks();
         renderLayers();
         renderBlockPanel();
-        renderInspector();
+        if (!keepInspector) renderInspector();
     }
 
     async function refreshDesigns() {
@@ -2170,7 +2282,18 @@ export function openIdeogramEditor(node, { design, presets, onSave, graphRef }) 
     function onPaste(e) {
         const item = Array.from(e.clipboardData?.items || []).find((i) => i.type.startsWith("image/"));
         const file = item?.getAsFile?.();
-        if (file) uploadReference(file);
+        if (file) { uploadReference(file); return; }
+        // A ready Ideogram JSON prompt pasted with no field focused is laid out
+        // right away. Pasting into any field stays ordinary text pasting.
+        const target = document.activeElement;
+        if (target && target !== keyAnchor && overlay.contains(target)) return;
+        const text = e.clipboardData?.getData?.("text") || "";
+        if (!text.trim().startsWith("{") && !text.includes('"compositional_deconstruction"')) return;
+        if (applyJsonText(text)) {
+            e.preventDefault();
+            refreshJson(true);
+            showJsonStatus("json_applied", true, 2500);
+        }
     }
     document.addEventListener("paste", onPaste);
 

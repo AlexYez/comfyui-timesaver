@@ -454,6 +454,14 @@ def compose_text_desc(block: dict, fonts_by_id: dict[str, dict] | None = None) -
     drawn block) -> color -> legibility (outline/plate colors) -> Cyrillic hint ->
     user override (verbatim, last).
     """
+    # A pasted (or model-written) caption brings its own finished desc. Composing
+    # around it — snippet, weight, size, colour, outline — doubled every phrase
+    # and changed the prompt the user had pasted. ``raw_desc`` is emitted as is
+    # until a lettering control is touched (the editor then clears it).
+    raw = str(block.get("raw_desc") or "").strip()
+    if raw:
+        return raw
+
     fonts_by_id = fonts_by_id if fonts_by_id is not None else _fonts_by_id()
     slots: list[str] = []
 
@@ -537,6 +545,9 @@ def _build_element(block: dict, fonts_by_id: dict[str, dict]) -> dict | None:
         if leg.get("solid_block"):
             colors.append(norm_hex(block.get("plate_color")))
         text_palette = clean_palette([c for c in colors if c], ELEMENT_PALETTE_CAP)
+        # A verbatim desc keeps the palette it came with (see compose_text_desc).
+        if str(block.get("raw_desc") or "").strip() and block.get("raw_palette"):
+            text_palette = clean_palette(block.get("raw_palette"), ELEMENT_PALETTE_CAP)
         element: dict = {"type": "text"}
         if bbox is not None:
             element["bbox"] = bbox

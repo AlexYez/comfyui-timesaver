@@ -297,6 +297,9 @@ export function captionToDesign(caption, base = null) {
 
     const style = data.style_description;
     if (style && typeof style === "object") {
+        // The caption brings its own look: the inherited style preset would
+        // show as selected in the inspector while describing something else.
+        design.style.preset_id = "";
         design.style.aesthetics = String(style.aesthetics || "").trim();
         design.style.lighting = String(style.lighting || "").trim();
         design.style.color_palette = cleanPalette(style.color_palette || [], IMAGE_PALETTE_CAP);
@@ -348,12 +351,19 @@ function elementToBlock(element, index, design) {
             // The text arrives exactly as it must be rendered, so re-casing it
             // in the editor would change what the image says.
             case: "As-typed",
-            legibility: { outline: true, solid_block: false },
+            // ⚠️ The desc goes out VERBATIM (raw_desc), not as desc_override:
+            // composing around it added a font snippet, size, colour and an
+            // outline the caption never asked for, so pasting a prompt and
+            // reading it back gave a different prompt. Outline off for the same
+            // reason — the caption decides, not the editor default.
+            legibility: { outline: false, solid_block: false },
             visual_only: false,
             color: palette[0] || "#FFFFFF",
             outline_color: "#000000",
             plate_color: "#1A1A1A",
-            desc_override: desc,
+            desc_override: "",
+            raw_desc: desc,
+            raw_palette: palette,
         };
     }
 
@@ -365,6 +375,58 @@ function elementToBlock(element, index, design) {
         desc,
         color_palette: palette,
     };
+}
+
+// Hue (0-360) of a #RRGGBB colour that carries a hue, or null for a neutral
+// (grey, near-black, near-white) — those belong to any scene.
+function chromaticHue(hex) {
+    const m = /^#?([0-9a-f]{6})$/i.exec(String(hex || "").trim());
+    if (!m) return null;
+    const n = parseInt(m[1], 16);
+    const r = ((n >> 16) & 255) / 255, g = ((n >> 8) & 255) / 255, b = (n & 255) / 255;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b);
+    const l = (max + min) / 2;
+    const d = max - min;
+    if (d === 0) return null;
+    const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    if (s < 0.35 || l < 0.12 || l > 0.94) return null;
+    let h;
+    if (max === r) h = ((g - b) / d) % 6;
+    else if (max === g) h = (b - r) / d + 2;
+    else h = (r - g) / d + 4;
+    return (h * 60 + 360) % 360;
+}
+
+/**
+ * The style's image palette, minus saturated accents that belong to nothing
+ * in the idea.
+ *
+ * ⚠️ Ideogram tries to place EVERY palette colour somewhere. The "Frozen Ice"
+ * idea took studio_3d_render's palette, whose neon pink (#FF2E97) is there for a
+ * rim light; in an ice scene it had nowhere to go but an extra element — a pink
+ * "РО" in the user's render, a pink first letter and a pink spark in our A/B
+ * (same prompt without the pink: clean). An accent is dropped only when the idea
+ * HAS colours of its own (text / background / object) and none is within 60° of
+ * it; an idea without a colour identity keeps the style's palette whole — there
+ * the accents ARE the intended look.
+ *
+ * @param {string[]} palette Style palette.
+ * @param {string[]} ideaColors Colours the idea itself uses.
+ * @returns {string[]} The palette to keep.
+ */
+export function harmonizeStylePalette(palette, ideaColors) {
+    const list = Array.isArray(palette) ? palette : [];
+    const anchors = (Array.isArray(ideaColors) ? ideaColors : [])
+        .map(chromaticHue).filter((h) => h !== null);
+    if (!anchors.length) return list.slice();
+    const near = (h) => anchors.some((a) => {
+        const diff = Math.abs(a - h) % 360;
+        return Math.min(diff, 360 - diff) <= 60;
+    });
+    return list.filter((c) => {
+        const h = chromaticHue(c);
+        return h === null || near(h);
+    });
 }
 
 export function applyCase(text, mode) {
@@ -406,6 +468,10 @@ export function sizePhraseFromRect(rect) {
 
 // Mirror of compose_text_desc(): ordered, non-empty slots joined with ", ".
 export function composeTextDesc(block, fontsById) {
+    // A pasted caption's finished desc goes out as is (mirror of Python): see
+    // compose_text_desc. The editor clears raw_desc once a lettering control moves.
+    const raw = String(block.raw_desc || "").trim();
+    if (raw) return raw;
     const slots = [];
     // Slot 1 (lettering style): a per-block font_desc override wins over the chosen
     // font's snippet, so the inspector can SHOW this prose, let the user EDIT it, and
@@ -1224,7 +1290,7 @@ export const LAYOUT_BRIEFS = {
     ],
     material_typography: [
         { ru: "Ледяные буквы", en: "Frozen Ice", v: "A single giant short word fills the entire frame, its letters carved from translucent blue glacial ice with frost-feathered surfaces, sharp crystalline edges and tiny trapped air bubbles, faint cold mist curling at the bases, set against a clean dark teal void lit with a soft cold rim light.",
-          style_preset_id: "studio_3d_render", aesthetics_id: "tech", lighting_id: "backlit", background_id: "dark_moody",
+          style_preset_id: "studio_3d_render", aesthetics_id: "cinematic", lighting_id: "backlit", background_id: "dark_moody",
           objects: [],
           texts: [{ role: "hero", en: "FROST", ru: "ХОЛОД", font_preset_id: "ice_crystal", color: "#BFE6FF" }, { role: "caption", en: "Carved from glacial ice", ru: "Высечено изо льда" }] },
         { ru: "Сочные фрукты", en: "Ripe Fruit", v: "One bold short headline towers across the frame with each letter sculpted from fresh ripe fruit — glossy juicy strawberries, citrus segments and dewy berries pressed into the strokes — droplets of juice beading on the surfaces against a clean creamy backdrop lit like a bright food commercial.",
@@ -1646,6 +1712,10 @@ const I18N = {
         layer_untitled: "(untitled)", general_settings: "General settings",
         json_prompt: "JSON prompt", copy: "Copy", copied: "Copied!",
         tip_copy_json: "Copy the ready JSON prompt to the clipboard.",
+        json_edit: "Edit", json_done: "Done",
+        tip_json_edit: "Edit or paste an Ideogram JSON prompt here: the artboard follows it as you type. Ctrl+V with a JSON prompt anywhere in the editor does the same.",
+        json_applied: "Layout updated from the prompt.",
+        json_invalid: "Not an Ideogram JSON prompt yet — the layout waits.",
         object_preset: "Object preset",
         tip_object_preset: "Pick a ready subject for this object — a character or a hero object. It replaces the description.",
         card_auto: "Auto layout", auto_idea: "Your idea",
@@ -1758,6 +1828,10 @@ const I18N = {
         layer_untitled: "(без названия)", general_settings: "Общие настройки",
         json_prompt: "JSON-промпт", copy: "Копировать", copied: "Скопировано!",
         tip_copy_json: "Скопировать готовый JSON-промпт в буфер обмена.",
+        json_edit: "Изменить", json_done: "Готово",
+        tip_json_edit: "Правьте или вставьте сюда JSON-промпт Ideogram — раскладка на холсте следует за ним по мере ввода. Ctrl+V с JSON-промптом в любом месте редактора делает то же.",
+        json_applied: "Раскладка обновлена по промпту.",
+        json_invalid: "Пока не похоже на JSON-промпт Ideogram — раскладка ждёт.",
         object_preset: "Пресет объекта",
         tip_object_preset: "Выберите готовый объект — персонажа или герой-предмет. Заменяет описание.",
         card_auto: "Авто-макет", auto_idea: "Ваша идея",
