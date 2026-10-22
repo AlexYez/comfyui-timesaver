@@ -8,7 +8,7 @@
 
 Resize, color, cut out, inpaint, transcribe, translate, prompt-build, manage models — without leaving the canvas.
 
-[![Version](https://img.shields.io/badge/version-12.13.0-blue.svg)](pyproject.toml)
+[![Version](https://img.shields.io/badge/version-12.13.1-blue.svg)](pyproject.toml)
 [![ComfyUI](https://img.shields.io/badge/ComfyUI-V3%20API-orange.svg)](https://github.com/comfyanonymous/ComfyUI)
 [![Python](https://img.shields.io/badge/python-3.10+-green.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-see%20LICENSE.txt-lightgrey.svg)](LICENSE.txt)
@@ -1593,6 +1593,8 @@ Models you already have are listed too, on purpose: the list travels with the wo
 The folder it proposes is the one your models of that category are **already in**. ComfyUI reads two directories per category — `clip` and `text_encoders`, `unet` and `diffusion_models` — and both are real; if your encoders live in `clip`, that is where the download is aimed, not at the empty folder next to it. A line you wrote in the list yourself is never rewritten.
 
 **Cancelling the run stops everything.** ComfyUI's cancel button ends the file in flight *and* every file still queued after it. A partial file is kept as `.part`, so the next run resumes from where it stopped instead of starting over. Progress shows twice: one bar for the whole list, and a small one on the line of the model in flight.
+
+**A closed repository is explained, not just counted.** Some authors gate their models on Hugging Face: nothing downloads until you accept their terms on the page. When that happens — or when a repository was removed, or a file in it renamed — the node opens a window after the run instead of a bare "failed 1": what happened to each file, the folder it belongs in, and buttons that open the repository and the file's page. Accept the terms there (signed in to Hugging Face), then either download the file by hand into the folder shown, or put your Hugging Face token in the node's settings and run again. The same lines are written to the console.
 
 **The rest of the workflow waits.** This node brings in the models the graph has nothing to load without, so it holds the run until the last file has landed rather than handing the graph back while the bytes are still arriving.
 

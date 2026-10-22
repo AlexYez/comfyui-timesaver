@@ -156,9 +156,15 @@ class _RunProgress:
         self._tell(status="verifying" if phase == "verify" else "running",
                    done_bytes=int(done), total_bytes=int(total))
 
-    def finished(self, success: int, failed: int, note: str = "") -> None:
-        """Итог всего списка — последнее, что слышит подписчик."""
-        self._tell(status="done", success=int(success), failed=int(failed), note=str(note))
+    def finished(self, success: int, failed: int, note: str = "", problems=None) -> None:
+        """Итог всего списка — последнее, что слышит подписчик.
+
+        ``problems`` — файлы, которые не скачать без человека (закрытый
+        репозиторий, удалённый файл): фронтенд показывает по ним окно со
+        ссылками. Пустой список в событие не кладётся.
+        """
+        extra = {"problems": list(problems)} if problems else {}
+        self._tell(status="done", success=int(success), failed=int(failed), note=str(note), **extra)
 
     def _tell(self, **payload) -> None:
         if self._sink is None:
@@ -1608,7 +1614,15 @@ class TS_DownloadFilesNode(IO.ComfyNode):
         return hasher.hexdigest()
 
     @classmethod
-    def _probe_remote_file(cls, session, processed_url, domain_headers):
+    def _probe_remote_file(cls, session, processed_url, domain_headers, failure=None):
+        """Ask the server about the file without downloading it.
+
+        Returns the facts as a dict, or None when both probes failed. In that
+        case ``failure["response"]`` (when a dict is passed) holds the last
+        HTTP answer, so the caller can tell "the author closed the repository"
+        from "the network is down" — the status and headers stay readable
+        after the response is closed.
+        """
         response = None
         used_get_probe = False
 
@@ -1621,6 +1635,8 @@ class TS_DownloadFilesNode(IO.ComfyNode):
             )
             response.raise_for_status()
         except requests.RequestException as head_error:
+            if failure is not None and getattr(head_error, "response", None) is not None:
+                failure["response"] = head_error.response
             if response is not None:
                 response.close()
                 response = None
@@ -1638,6 +1654,8 @@ class TS_DownloadFilesNode(IO.ComfyNode):
                 response.raise_for_status()
                 used_get_probe = True
             except requests.RequestException as get_error:
+                if failure is not None and getattr(get_error, "response", None) is not None:
+                    failure["response"] = get_error.response
                 if response is not None:
                     response.close()
                 logger.error(f"{LOG_PREFIX} Remote probe failed: {get_error}")
@@ -1770,8 +1788,115 @@ class TS_DownloadFilesNode(IO.ComfyNode):
             logger.error(f"{LOG_PREFIX} Extraction failed: {e}")
             return False
 
+    # Что Hugging Face кладёт в X-Error-Code (замерено 22.10.2026):
+    #   GatedRepo     — автор закрыл репозиторий: 401 без токена, 403 с токеном,
+    #                   условия которого не приняты (или запрос ждёт одобрения);
+    #   EntryNotFound — репозиторий открыт, а файла в нём нет (переименовали);
+    #   RepoNotFound  — с токеном: репозитория нет или он приватный.
+    # Без токена удалённый и приватный отвечают одинаково — 401 БЕЗ кода
+    # (и «Invalid username or password»): Hugging Face не говорит посторонним,
+    # существует ли репозиторий.
+    _HF_GATED_CODES = frozenset({"GatedRepo"})
+    _HF_MISSING_FILE_CODES = frozenset({"EntryNotFound", "RevisionNotFound"})
+    _HF_PAGE_ROOT = "https://huggingface.co"
+
     @classmethod
-    def _download_single_file(cls, session, url, target_dir, skip_existing, verify_size, chunk_size_bytes, hf_domain_active, hf_token, ms_token, unzip_after_download, integrity_mode, progress_cb=None, guard=None):
+    def _hf_pages(cls, url):
+        """Repository and file pages on huggingface.co for a download URL.
+
+        Always the canonical host, never the mirror the URL may name: the
+        terms are accepted on huggingface.co, signed in there, and that is the
+        page with the download button. Returns ("", "", "") when the URL is not
+        a Hugging Face file link.
+        """
+        try:
+            parts = [p for p in urlparse(url).path.split("/") if p]
+        except Exception:
+            return "", "", ""
+        prefix = []
+        if parts and parts[0] in ("datasets", "spaces"):
+            prefix, parts = [parts[0]], parts[1:]
+        if len(parts) < 2:
+            return "", "", ""
+        repo = "/".join(parts[:2])
+        repo_url = "/".join([cls._HF_PAGE_ROOT, *prefix, repo])
+        file_url = ""
+        if len(parts) >= 5 and parts[2] == "resolve":
+            # /resolve/ отдаёт байты, /blob/ — страницу файла с кнопкой загрузки.
+            file_url = "/".join([repo_url, "blob", *parts[3:]])
+        return repo, repo_url, file_url
+
+    @classmethod
+    def _hf_access_problem(cls, response, url, target_dir, hf_token=""):
+        """Turn a refused Hugging Face answer into something a person can act on.
+
+        Returns None for anything that is not "go to the page and do something"
+        — a dropped connection, a 500, a host that is not Hugging Face. Those
+        stay plain failures in the log, as before.
+        """
+        if response is None or not cls._is_hf_url(url):
+            return None
+        status = cls._safe_int(getattr(response, "status_code", 0), 0)
+        headers = getattr(response, "headers", None) or {}
+        code = str(headers.get("x-error-code", "") or "").strip()
+        if code in cls._HF_GATED_CODES:
+            kind = "gated"
+        elif code in cls._HF_MISSING_FILE_CODES:
+            kind = "missing_file"
+        elif code == "RepoNotFound" or status in (401, 403):
+            kind = "unavailable"
+        else:
+            return None
+        repo, repo_url, file_url = cls._hf_pages(url)
+        if not repo_url:
+            return None
+        filename = os.path.basename(requests_unquote(urlparse(url).path)) or url
+        folder = str(target_dir or "")
+        try:
+            root = cls._models_root()
+            if root and cls._is_within(root, folder):
+                folder = "models/" + os.path.relpath(folder, root).replace("\\", "/")
+        except Exception:                   # noqa: BLE001 - путь только для показа
+            pass
+        detail = str(headers.get("x-error-message", "") or "").strip()
+        return {
+            "kind": kind,
+            "file": filename,
+            "repo": repo,
+            "repo_url": repo_url,
+            "file_url": file_url,
+            "folder": folder,
+            "status": status,
+            # Слова самого Hugging Face: «awaiting a review» говорит, что
+            # согласие уже отправлено и ждёт автора, — это не перескажешь.
+            "detail": detail[:300],
+            "has_token": bool(str(hf_token or "").strip()),
+        }
+
+    @classmethod
+    def _note_access_problem(cls, problems, response, url, target_dir, hf_token=""):
+        """Record a problem for the end-of-run dialog and say it in the log."""
+        problem = cls._hf_access_problem(response, url, target_dir, hf_token)
+        if problem is None:
+            return
+        reasons = {
+            "gated": "the repository is gated: accept its terms on the page "
+                     "(signed in to Hugging Face), then add an HF token or download the file by hand",
+            "missing_file": "the repository no longer has this file (renamed or removed)",
+            "unavailable": "the repository is unavailable: removed, renamed or private",
+        }
+        logger.warning(
+            "%s '%s': %s. Open %s and put the file into %s.",
+            LOG_PREFIX, problem["file"], reasons[problem["kind"]],
+            problem["file_url"] or problem["repo_url"], problem["folder"],
+        )
+        if problems is not None and all(
+                p.get("file") != problem["file"] or p.get("folder") != problem["folder"]
+                for p in problems):
+            problems.append(problem)
+
+    @classmethod
+    def _download_single_file(cls, session, url, target_dir, skip_existing, verify_size, chunk_size_bytes, hf_domain_active, hf_token, ms_token, unzip_after_download, integrity_mode, progress_cb=None, guard=None, problems=None):
         response_get = None
         download_lock = None
         try:
@@ -1786,8 +1911,10 @@ class TS_DownloadFilesNode(IO.ComfyNode):
             )
 
             logger.info(f"{LOG_PREFIX} Connecting to: {processed_url}")
-            remote_info = cls._probe_remote_file(session, processed_url, domain_headers)
+            failure: dict = {}
+            remote_info = cls._probe_remote_file(session, processed_url, domain_headers, failure=failure)
             if not remote_info:
+                cls._note_access_problem(problems, failure.get("response"), url, target_dir, hf_token)
                 return False
 
             remote_file_size = remote_info["remote_size"]
@@ -2191,6 +2318,10 @@ class TS_DownloadFilesNode(IO.ComfyNode):
 
         except Exception as e:
             logger.error(f"{LOG_PREFIX} Download failed: {e}")
+            # Проба могла пройти, а сама загрузка — получить отказ (условия
+            # сменились между запросами, редирект на другой хост).
+            if isinstance(e, requests.HTTPError):
+                cls._note_access_problem(problems, getattr(e, "response", None), url, target_dir, hf_token)
             return False
         finally:
             if response_get is not None:
@@ -2455,6 +2586,10 @@ class TS_DownloadFilesNode(IO.ComfyNode):
 
         success = 0
         failed = 0
+        # Файлы, которые не скачать без человека: закрытый репозиторий,
+        # пропавший файл. Уходят в итоговое событие — нода покажет окно со
+        # ссылками, а не одно «не удалось 1» в углу экрана.
+        problems: list[dict] = []
         remaining = len(files_to_download)
         with cls._create_session_with_retries(proxy_url, guard_public=from_route) as session:
             for position, file_info in enumerate(files_to_download, 1):
@@ -2462,7 +2597,7 @@ class TS_DownloadFilesNode(IO.ComfyNode):
                 shown = os.path.basename(urlparse(file_info['url']).path) or file_info['url']
                 logger.info("%s Checking %d/%d: %s", LOG_PREFIX, position, remaining, shown)
                 progress.file_started(position, shown)
-                if cls._download_single_file(session, file_info['url'], file_info['target_dir'], skip_existing, verify_size, chunk_size_bytes, active_mirror, hf_token, modelscope_token, unzip_after_download, integrity_mode_value, progress_cb=progress.bytes, guard=guard):
+                if cls._download_single_file(session, file_info['url'], file_info['target_dir'], skip_existing, verify_size, chunk_size_bytes, active_mirror, hf_token, modelscope_token, unzip_after_download, integrity_mode_value, progress_cb=progress.bytes, guard=guard, problems=problems):
                     success += 1
                 else:
                     failed += 1
@@ -2470,7 +2605,7 @@ class TS_DownloadFilesNode(IO.ComfyNode):
 
         logger.info("%s Done. Success: %d, Failed: %d", LOG_PREFIX, success, failed)
         cls._report_shadowed(listed)
-        progress.finished(success, failed)
+        progress.finished(success, failed, problems=problems)
         return IO.NodeOutput()
 
 

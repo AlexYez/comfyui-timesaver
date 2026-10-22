@@ -205,6 +205,29 @@ const STRINGS = {
         hfNothing: "No repository on Hugging Face contains these files under that exact name.",
         hfFound: (n) => `Found ${n} of them — adding to the list.`,
         hfFailed: (m) => `Search failed: ${m}`,
+        accessTitle: "Some files need you on Hugging Face",
+        accessSummary: (n) => `${n} file${n === 1 ? "" : "s"} could not be downloaded automatically.`,
+        accessGated: "Gated repository",
+        accessGatedHint:
+            "The author lets people download only after they accept the terms. Open the page, " +
+            "sign in to Hugging Face and accept. Then either download the file from its page " +
+            "into the folder shown, or put your Hugging Face token in the node's settings and " +
+            "run the download again.",
+        accessGatedToken:
+            "A token is set, but this account has not been granted access yet — accept the " +
+            "terms with the same account the token belongs to. Some authors approve requests by hand.",
+        accessUnavailable: "Repository unavailable",
+        accessUnavailableHint:
+            "Hugging Face does not show this repository: it was removed, renamed or made private. " +
+            "Check the page — the model may have moved to another repository.",
+        accessMissing: "File not found in the repository",
+        accessMissingHint:
+            "The repository is there, but not this file — it was probably renamed. " +
+            "Find it in the repository's file list and correct the line.",
+        accessOpenRepo: "Open repository",
+        accessOpenFile: "File page",
+        accessFolder: (folder) => `put into ${folder}`,
+        accessServer: "Hugging Face says:",
     },
     ru: {
         button: "Взять модели из workflow",
@@ -308,6 +331,36 @@ const STRINGS = {
         hfNothing: "Ни в одном репозитории Hugging Face нет файлов с такими именами.",
         hfFound: (n) => `Найдено: ${n} — добавляем в список.`,
         hfFailed: (m) => `Поиск не удался: ${m}`,
+        accessTitle: "Часть файлов ждёт вас на Hugging Face",
+        accessSummary: (n) => {
+            const tail = n % 10;
+            const teen = n % 100;
+            let word = "файлов";
+            if (tail === 1 && teen !== 11) word = "файл";
+            else if (tail >= 2 && tail <= 4 && (teen < 12 || teen > 14)) word = "файла";
+            return `${n} ${word} не удалось скачать автоматически.`;
+        },
+        accessGated: "Закрытый репозиторий",
+        accessGatedHint:
+            "Автор разрешает скачивание только после согласия с условиями. Откройте страницу, " +
+            "войдите в аккаунт Hugging Face и примите условия. Затем скачайте файл с его " +
+            "страницы в указанную папку — или впишите токен Hugging Face в настройках ноды " +
+            "и запустите загрузку снова.",
+        accessGatedToken:
+            "Токен указан, но у этого аккаунта доступа пока нет — примите условия тем же " +
+            "аккаунтом, которому принадлежит токен. Некоторые авторы одобряют запросы вручную.",
+        accessUnavailable: "Репозиторий недоступен",
+        accessUnavailableHint:
+            "Hugging Face не показывает этот репозиторий: его удалили, переименовали или сделали " +
+            "приватным. Проверьте страницу — модель могла переехать в другой репозиторий.",
+        accessMissing: "Файла нет в репозитории",
+        accessMissingHint:
+            "Репозиторий на месте, а такого файла в нём нет — вероятно, его переименовали. " +
+            "Найдите его в списке файлов репозитория и поправьте строку.",
+        accessOpenRepo: "Открыть репозиторий",
+        accessOpenFile: "Страница файла",
+        accessFolder: (folder) => `положить в ${folder}`,
+        accessServer: "Ответ Hugging Face:",
     },
 };
 
@@ -1091,6 +1144,12 @@ function ensureStyles() {
 .ts-fdl__bar div{height:100%;width:0%;background:var(--ts-accent);transition:width .25s ease}
 .ts-fdl__hint{font-size:var(--ts-fs-sm);color:var(--ts-muted)}
 .ts-fdl__foot{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}
+.ts-fdl__problem{display:flex;flex-direction:column;gap:6px;padding:8px 10px;border-radius:8px;
+    background:var(--ts-sunken)}
+.ts-fdl__problemhead{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.ts-fdl__links{display:flex;gap:8px;flex-wrap:wrap}
+.ts-fdl__links .ts-ui-btn{text-decoration:none}
+.ts-fdl__server{font-size:var(--ts-fs-xs);color:var(--ts-faint);overflow-wrap:anywhere}
 `;
     document.head.appendChild(style);
 }
@@ -1357,6 +1416,127 @@ function showReport(node, widget, buckets, t) {
         });
     }
     addButton(t.cancel, false, () => {});
+}
+
+/* ---------------------------------------------------------- access problems */
+
+// Ссылки в окне строит сервер, но в `href` попадает только сам Hugging Face:
+// адрес приезжает событием, и `javascript:` в нём не должен стать кнопкой.
+const HF_PAGE = /^https:\/\/huggingface\.co\/[^\s"'<>]+$/;
+
+// Одно окно на всю страницу: при прогоне графа событие слышат ВСЕ ноды
+// загрузчика, и каждая открыла бы своё.
+let openAccessDialog = null;
+
+function accessLink(href, label) {
+    if (!HF_PAGE.test(String(href || ""))) return null;
+    const link = document.createElement("a");
+    link.className = "ts-ui-btn";
+    link.href = href;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    link.textContent = label;
+    return link;
+}
+
+/**
+ * Файлы, которые без человека не скачать: закрытый репозиторий, удалённый или
+ * переименованный файл. Раньше это было «не удалось 1» в углу экрана и строка
+ * `401 Unauthorized` в консоли — ни что случилось, ни куда идти.
+ */
+function showAccessProblems(problems, t) {
+    const list = (Array.isArray(problems) ? problems : []).filter((p) => p && p.kind);
+    if (!list.length) return;
+    ensureStyles();
+    if (openAccessDialog?.isOpen()) openAccessDialog.close();
+
+    const panel = document.createElement("div");
+    panel.className = `${TS_UI_CLASS} ts-fdl`;
+
+    const head = document.createElement("div");
+    head.className = "ts-fdl__head";
+    const title = document.createElement("div");
+    title.className = "ts-ui-title";
+    title.textContent = t.accessTitle;
+    const summary = document.createElement("div");
+    summary.className = "ts-fdl__hint";
+    summary.textContent = t.accessSummary(list.length);
+    head.append(title, summary);
+    panel.appendChild(head);
+
+    const scroll = document.createElement("div");
+    scroll.className = "ts-fdl__scroll";
+    const kinds = [
+        ["gated", t.accessGated, t.accessGatedHint],
+        ["unavailable", t.accessUnavailable, t.accessUnavailableHint],
+        ["missing_file", t.accessMissing, t.accessMissingHint],
+    ];
+    for (const [kind, name, hint] of kinds) {
+        const items = list.filter((p) => p.kind === kind);
+        if (!items.length) continue;
+        const group = document.createElement("div");
+        group.className = "ts-fdl__group";
+        const groupHead = document.createElement("div");
+        groupHead.className = "ts-fdl__grouphead";
+        groupHead.textContent = `${name} — ${items.length}`;
+        const note = document.createElement("div");
+        note.className = "ts-fdl__hint";
+        note.textContent = hint;
+        group.append(groupHead, note);
+        if (kind === "gated" && items.some((p) => p.has_token)) {
+            const tokenNote = document.createElement("div");
+            tokenNote.className = "ts-fdl__hint";
+            tokenNote.textContent = t.accessGatedToken;
+            group.appendChild(tokenNote);
+        }
+
+        for (const item of items) {
+            const row = document.createElement("div");
+            row.className = "ts-fdl__problem";
+
+            const line = document.createElement("div");
+            line.className = "ts-fdl__problemhead";
+            const fileName = document.createElement("span");
+            fileName.className = "ts-fdl__name";
+            fileName.textContent = String(item.file || "");
+            fileName.title = String(item.repo || "");
+            const folder = document.createElement("span");
+            folder.className = "ts-fdl__src";
+            folder.textContent = item.folder ? t.accessFolder(String(item.folder)) : "";
+            line.append(fileName, folder);
+
+            const links = document.createElement("div");
+            links.className = "ts-fdl__links";
+            const repoLink = accessLink(item.repo_url, t.accessOpenRepo);
+            // Страница файла нужна только закрытому репозиторию — на ней кнопка
+            // скачивания. Когда нет файла или самого репозитория, она пуста.
+            const fileLink = kind === "gated" ? accessLink(item.file_url, t.accessOpenFile) : null;
+            if (repoLink) links.appendChild(repoLink);
+            if (fileLink) links.appendChild(fileLink);
+
+            row.append(line, links);
+            if (item.detail) {
+                const server = document.createElement("div");
+                server.className = "ts-fdl__server";
+                server.textContent = `${t.accessServer} ${String(item.detail)}`;
+                row.appendChild(server);
+            }
+            group.appendChild(row);
+        }
+        scroll.appendChild(group);
+    }
+    panel.appendChild(scroll);
+
+    const overlay = openFullscreenOverlay(panel, {
+        closeOnBackdrop: true,
+        center: true,
+        extraClass: "ts-fdl-overlay",
+        closeTitle: t.close,
+        onClose: () => {
+            if (openAccessDialog === overlay) openAccessDialog = null;
+        },
+    });
+    openAccessDialog = overlay;
 }
 
 function toast(severity, detail) {
@@ -1728,8 +1908,10 @@ function attachDownloadButton(node, t) {
         // трогает — её никто не нажимал, — но полосы напротив моделей оживить
         // обязан: человек смотрит на ноду, а не в консоль.
         if (detail.operation_id === GRAPH_RUN) {
-            if (detail.stage === "finished") node.__tsFdlList?.finishProgress();
-            else {
+            if (detail.stage === "finished") {
+                node.__tsFdlList?.finishProgress();
+                showAccessProblems(detail.problems, t);
+            } else {
                 node.__tsFdlList?.showProgress({
                     filename: detail.filename || "",
                     doneBytes: Number(detail.done_bytes || 0),
@@ -1753,6 +1935,7 @@ function attachDownloadButton(node, t) {
             // точка появляется у того, что действительно докачалось.
             node.__tsFdlList?.finishProgress();
             reset();
+            showAccessProblems(detail.problems, t);
             return;
         }
 

@@ -26,6 +26,8 @@ The folder it proposes is the one your models of that category are **already in*
 
 **Cancelling the run stops everything.** ComfyUI's cancel button ends the file in flight *and* every file still queued after it. A partial file is kept as `.part`, so the next run resumes from where it stopped instead of starting over. Progress shows twice: one bar for the whole list, and a small one on the line of the model in flight.
 
+**A closed repository is explained, not just counted.** Some authors gate their models on Hugging Face: nothing downloads until you accept their terms on the page. When that happens — or when a repository was removed, or a file in it renamed — the node opens a window after the run instead of a bare "failed 1": what happened to each file, the folder it belongs in, and buttons that open the repository and the file's page. Accept the terms there (signed in to Hugging Face), then either download the file by hand into the folder shown, or put your Hugging Face token in the node's settings and run again. The same lines are written to the console.
+
 **The rest of the workflow waits.** This node brings in the models the graph has nothing to load without, so it holds the run until the last file has landed rather than handing the graph back while the bytes are still arriving.
 
 **Use when:** distributing a workflow that needs N specific models — open it, press the button, and the node is filled in.
