@@ -25,6 +25,8 @@ Footage arrives by **drag and drop** — from the file manager, from the Artius 
 >
 > Two limits hold regardless of those settings, and neither touches the path you type. A preview route only ever serves **media** — video, audio, images, subtitles — so no setting turns it into a way to read `id_rsa` or a password database. And it only answers **its own page**: a request arriving from another site open in your browser is refused, because ComfyUI itself has no protection against that and a page you did not open should not be able to read your disk through it.
 
+**Batch over a folder of clips.** The `path` socket takes a path on a wire — from TS Batch Source in `Files in folder` mode (`file_types` = `Videos`), one clip per job. When connected it wins over the file picked in the node, and the timeline trim is **not applied**: it was set on another file and would silently cut every clip of the batch. Frame rate, max frames and size work as usual. The node shows that the file comes from the wire, and after a run, which one.
+
 **Use when:** any workflow that starts from footage rather than from a still.
 
 ---

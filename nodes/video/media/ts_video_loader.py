@@ -193,6 +193,23 @@ class TS_VideoLoader(IO.ComfyNode):
                         "releases the tensor, and leftovers are swept on the next decode."
                     ),
                 ),
+                # ⚠️ Дописан В КОНЕЦ, optional и БЕЗ виджета (force_input): у входа
+                # нет места в widgets_values, так что сохранённые графы его не
+                # замечают. Провод сюда — путь от TS Batch Source, по файлу на
+                # задание.
+                IO.String.Input(
+                    "path",
+                    default="",
+                    optional=True,
+                    force_input=True,
+                    tooltip=(
+                        "A file path from a wire — typically TS Batch Source in 'Files in "
+                        "folder' mode, one video per job. When connected it replaces the "
+                        "file picked in the node, and the timeline trim is NOT applied "
+                        "(it was set on another file): each video loads whole. Frame rate, "
+                        "max_frames and resizing still apply."
+                    ),
+                ),
             ],
             outputs=[
                 IO.Image.Output(
@@ -227,8 +244,16 @@ class TS_VideoLoader(IO.ComfyNode):
         source_path: str = "",
         start_seconds: float = 0.0,
         end_seconds: float = -1.0,
+        path: str | None = "",
         **_kwargs,
     ) -> bool | str:
+        # Пришедший проводом вход на этапе проверки равен None: файла ещё нет,
+        # проверять нечего — его проверит execute.
+        if path is None:
+            return True
+        if str(path).strip():
+            wired = resolve_media_path(path)
+            return True if os.path.isfile(wired) else f"File not found: {safe_log_path(wired)}"
         path = resolve_media_path(source_path)
         if not path:
             return "Pick a video file first."
@@ -253,7 +278,7 @@ class TS_VideoLoader(IO.ComfyNode):
         же именем обязана инвалидировать кэш, иначе человек правит видео и не
         понимает, почему ничего не поменялось.
         """
-        path = resolve_media_path(kwargs.get("source_path", ""))
+        path = resolve_media_path(kwargs.get("path") or kwargs.get("source_path", ""))
         parts = [os.path.normcase(path)]
         try:
             stat = os.stat(path)
@@ -261,7 +286,7 @@ class TS_VideoLoader(IO.ComfyNode):
         except OSError:
             parts.append("missing")
         for key in sorted(kwargs):
-            if key != "source_path":
+            if key not in ("source_path", "path"):
                 parts.append(f"{key}={kwargs[key]}")
         return hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()
 
@@ -279,11 +304,19 @@ class TS_VideoLoader(IO.ComfyNode):
         frame_step: int = 1,
         resize_filter: str = "area",
         when_too_large: str = "stop",
+        path: str | None = "",
     ) -> IO.NodeOutput:
         from ._decode import DecodeRequest, decode
 
+        wired = str(path or "").strip()
+        if wired:
+            # Подрезка с таймлайна выставлялась на ДРУГОМ файле: применять её к
+            # каждому ролику батча значило бы молча резать их все по чужим меткам.
+            source_path, start_seconds, end_seconds = wired, 0.0, -1.0
         path = resolve_media_path(source_path)
         if not path or not os.path.isfile(path):
+            if wired:
+                raise RuntimeError(f"{LOG_PREFIX} File not found: {safe_log_path(path)}")
             raise RuntimeError(f"{LOG_PREFIX} No video file selected.")
 
         result = decode(DecodeRequest(
@@ -344,9 +377,14 @@ class TS_VideoLoader(IO.ComfyNode):
         if result.truncated:
             logger.info("%s stopped at max_frames=%d for %s",
                         LOG_PREFIX, max_frames, safe_log_path(path))
+        if wired:
+            logger.info("%s from the wire: %s (%d frames)",
+                        LOG_PREFIX, safe_log_path(path), result.frame_count)
 
         return IO.NodeOutput(result.images, result.audio, info,
-                             cls._as_video(path, result.start_time, result.end_time))
+                             cls._as_video(path, result.start_time, result.end_time),
+                             # Нода показывает, какой файл пришёл по проводу.
+                             ui={"ts_wired_path": [os.path.basename(path)]} if wired else None)
 
     @staticmethod
     def _as_video(path: str, start: float, end: float):

@@ -12,8 +12,8 @@
         80
       ],
       "size": [
-        270,
-        286
+        270.833984375,
+        334
       ],
       "flags": {},
       "order": 0,
@@ -138,6 +138,40 @@
             "name": "one_per_run"
           },
           "link": null
+        },
+        {
+          "color_off": null,
+          "color_on": null,
+          "dir": null,
+          "label": null,
+          "localized_name": "include_subfolders",
+          "locked": null,
+          "name": "include_subfolders",
+          "nameLocked": null,
+          "removable": null,
+          "shape": 7,
+          "type": "BOOLEAN",
+          "widget": {
+            "name": "include_subfolders"
+          },
+          "link": null
+        },
+        {
+          "color_off": null,
+          "color_on": null,
+          "dir": null,
+          "label": null,
+          "localized_name": "file_types",
+          "locked": null,
+          "name": "file_types",
+          "nameLocked": null,
+          "removable": null,
+          "shape": 7,
+          "type": "COMBO",
+          "widget": {
+            "name": "file_types"
+          },
+          "link": null
         }
       ],
       "outputs": [
@@ -218,31 +252,35 @@
         "Node name for S&R": "TS_BatchSource"
       },
       "widgets_values": [
-        "Images in folder",
+        "Files in folder",
         "C:/path/to/your/images",
         10,
         0,
         0,
         0,
         "randomize",
-        true
+        true,
+        false,
+        "Images"
       ],
       "widgets_values_named": {
-        "mode": "Images in folder",
+        "mode": "Files in folder",
         "path": "C:/path/to/your/images",
         "count": 10,
         "start_at": 0,
         "limit": 0,
         "seed": 0,
         "control_after_generate": "randomize",
-        "one_per_run": true
+        "one_per_run": true,
+        "include_subfolders": false,
+        "file_types": "Images"
       }
     },
     {
       "id": 2,
       "type": "TS_BatchLoadImage",
       "pos": [
-        400,
+        400.833984375,
         80
       ],
       "size": [
@@ -341,7 +379,7 @@
       "id": 3,
       "type": "TS_Qwen3_VL_V3",
       "pos": [
-        760,
+        760.833984375,
         80
       ],
       "size": [
@@ -715,7 +753,7 @@
       "id": 4,
       "type": "TS_BatchWrite",
       "pos": [
-        1250,
+        1250.833984375,
         80
       ],
       "size": [

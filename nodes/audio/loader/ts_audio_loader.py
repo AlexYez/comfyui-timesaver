@@ -45,6 +45,22 @@ class TS_AudioLoader(IO.ComfyNode):
                 ),
                 IO.Float.Input("crop_start_seconds", default=0.0, min=0.0, step=0.01, tooltip="Crop start time in seconds.", socketless=True, advanced=True),
                 IO.Float.Input("crop_end_seconds", default=-1.0, step=0.01, tooltip="Crop end time in seconds. Use -1 for full length.", socketless=True, advanced=True),
+                # ⚠️ Дописан В КОНЕЦ, optional и БЕЗ виджета (force_input): места в
+                # widgets_values у него нет, сохранённые графы его не замечают.
+                # `source_path` — выпадающий список, а провод от TS Batch Source
+                # несёт строку, поэтому нужен отдельный вход.
+                IO.String.Input(
+                    "path",
+                    default="",
+                    optional=True,
+                    force_input=True,
+                    tooltip=(
+                        "A file path from a wire — typically TS Batch Source in 'Files in folder' "
+                        "mode, one audio or video file per job. When connected it replaces the file "
+                        "picked in the node, and the crop is NOT applied (it was set on another "
+                        "file): each file loads whole."
+                    ),
+                ),
             ],
             outputs=[
                 IO.Audio.Output(display_name="audio", tooltip="Decoded audio clip (cropped to the selected range)."),
@@ -61,9 +77,16 @@ class TS_AudioLoader(IO.ComfyNode):
         )
 
     @classmethod
-    def validate_inputs(cls, mode: str, source_path: str, crop_start_seconds: float, crop_end_seconds: float) -> bool | str:
+    def validate_inputs(cls, mode: str, source_path: str, crop_start_seconds: float, crop_end_seconds: float,
+                        path: str | None = "") -> bool | str:
         if mode not in cls._MODES:
             return f"Unsupported mode '{mode}'."
+        # Пришедший проводом вход на этапе проверки равен None — файл придёт позже.
+        if path is None:
+            return True
+        if str(path).strip():
+            wired = _normalize_selected_path(str(path).strip().strip('"'))
+            return True if os.path.isfile(wired) else f"File not found: {path}"
         if crop_start_seconds < 0:
             return "crop_start_seconds must be >= 0."
         if crop_end_seconds > 0 and crop_end_seconds <= crop_start_seconds:
@@ -78,7 +101,12 @@ class TS_AudioLoader(IO.ComfyNode):
         return True
 
     @classmethod
-    def fingerprint_inputs(cls, mode: str, source_path: str, crop_start_seconds: float, crop_end_seconds: float) -> str:
+    def fingerprint_inputs(cls, mode: str, source_path: str, crop_start_seconds: float, crop_end_seconds: float,
+                           path: str | None = "") -> str:
+        # ⚠️ `path` обязан стоять в сигнатуре: ядро передаёт сюда ВСЕ входы, и
+        # без него вызов падал бы, а кэш ноды превращался бы в «всегда заново».
+        if path:
+            source_path = str(path).strip().strip('"')
         hasher = hashlib.sha256()
         hasher.update(str(mode).encode("utf-8"))
         hasher.update(f"{float(crop_start_seconds):.6f}".encode())
@@ -92,7 +120,15 @@ class TS_AudioLoader(IO.ComfyNode):
         return hasher.hexdigest()
 
     @classmethod
-    def execute(cls, mode: str = "load", source_path: str = "", crop_start_seconds: float = 0.0, crop_end_seconds: float = -1.0) -> IO.NodeOutput:
+    def execute(cls, mode: str = "load", source_path: str = "", crop_start_seconds: float = 0.0, crop_end_seconds: float = -1.0,
+                path: str | None = "") -> IO.NodeOutput:
+        wired = str(path or "").strip().strip('"')
+        if wired:
+            # Обрезка выставлялась на ДРУГОМ файле: к каждому файлу батча её не
+            # применяем — иначе все они молча резались бы по чужим меткам.
+            source_path, crop_start_seconds, crop_end_seconds = wired, 0.0, -1.0
+            if not os.path.isfile(_normalize_selected_path(wired)):
+                raise RuntimeError(f"[TS Audio Loader] File not found: {wired}")
         if not source_path:
             return IO.NodeOutput(_empty_audio(), 0, 0.0)
         normalized = _normalize_selected_path(source_path)
@@ -115,6 +151,8 @@ class TS_AudioLoader(IO.ComfyNode):
                 {"waveform": waveform.unsqueeze(0).contiguous(), "sample_rate": sample_rate},
                 duration_int,
                 float(clip_duration_seconds),
+                # Нода показывает, какой файл пришёл по проводу.
+                ui={"ts_wired_path": [os.path.basename(normalized)]} if wired else None,
             )
         except Exception as exc:
             _log_warning(f"Execution fallback activated: {exc}")

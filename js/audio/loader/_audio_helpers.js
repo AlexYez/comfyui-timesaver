@@ -10,6 +10,7 @@ import { TS_UI_CLASS, ensureThemeStyles, getThemeColors, pickLocaleStrings } fro
 import { hideWidget as sharedHideWidget } from "../../_dom_widget.js";
 import { guardPlayback } from "../../_media/_playback_guard.js";
 import { drawPeakBars } from "../../_media/_wave.js";
+import { watchWiredSource } from "../../_wired_source.js";
 
 export const LOADER_NODE_NAME = "TS_AudioLoader";
 export const PREVIEW_NODE_NAME = "TS_AudioPreview";
@@ -99,6 +100,8 @@ const STRINGS = {
         recordingSaveFailed: "Failed to save recording.",
         autoplayBlocked: "Browser blocked autoplay. Press play again.",
         codecUnavailable: "Browser preview is unavailable for this codec, but ffmpeg loading still works.",
+        wiredName: (file) => (file ? `wire: ${file}` : "file from the wire"),
+        wiredStatus: "Files come from the wire (path) — each loads whole, the crop is not applied.",
     },
     ru: {
         statusPreviewIdle: "Подключите аудио и запустите очередь один раз для предпросмотра.",
@@ -142,6 +145,8 @@ const STRINGS = {
         recordingSaveFailed: "Не удалось сохранить запись.",
         autoplayBlocked: "Браузер заблокировал автовоспроизведение. Нажмите play ещё раз.",
         codecUnavailable: "Браузер не может воспроизвести этот кодек, но загрузка через ffmpeg работает.",
+        wiredName: (file) => (file ? `провод: ${file}` : "файл по проводу"),
+        wiredStatus: "Файлы приходят по проводу (path) — каждый берётся целиком, обрезка не применяется.",
     },
 };
 function makeCursor(svg, fallback = "ew-resize") {
@@ -380,6 +385,18 @@ export function setupAudioLoader(node) {
     // rehydrate не вызывается). После — onSourceChanged работает как прежде:
     // выбор файла человеком по-прежнему переводит ноду в 'load'.
     let restoringWorkflow = true;
+
+    // Подключён ли сокет `path` (только у загрузчика) и какой файл пришёл по
+    // нему последним. Объявлено до первого updateText.
+    let wired = { linked: false, file: "" };
+    if (!isPreviewNode) {
+        watchWiredSource(node, "path", (next) => {
+            wired = next;
+            // Функции ниже объявлены через function и поднимаются, но сама
+            // разметка появляется позже: первый вызов приходит через кадр.
+            updateText();
+        });
+    }
 
     const container = document.createElement("div");
     container.className = `${TS_UI_CLASS} ts-audio-loader`;
@@ -685,6 +702,11 @@ export function setupAudioLoader(node) {
     function updateText() {
         fileLabel.textContent = state.filename || L.noFile;
         statusLabel.textContent = state.status;
+        // Файл с провода (TS Batch Source) главнее выбранного в ноде.
+        if (wired.linked) {
+            fileLabel.textContent = L.wiredName(wired.file);
+            statusLabel.textContent = L.wiredStatus;
+        }
         empty.textContent = state.isLoading ? L.loadingWaveform : state.status;
         empty.style.display = state.peaks.length > 0 ? "none" : "flex";
         const activeMedia = getActiveMedia();

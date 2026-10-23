@@ -8,7 +8,7 @@
 
 Resize, color, cut out, inpaint, transcribe, translate, prompt-build, manage models — without leaving the canvas.
 
-[![Version](https://img.shields.io/badge/version-12.13.1-blue.svg)](pyproject.toml)
+[![Version](https://img.shields.io/badge/version-12.13.2-blue.svg)](pyproject.toml)
 [![ComfyUI](https://img.shields.io/badge/ComfyUI-V3%20API-orange.svg)](https://github.com/comfyanonymous/ComfyUI)
 [![Python](https://img.shields.io/badge/python-3.10+-green.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-see%20LICENSE.txt-lightgrey.svg)](LICENSE.txt)
@@ -523,6 +523,8 @@ Footage arrives by **drag and drop** — from the file manager, from the Artius 
 > If ComfyUI is started open to a network (`--listen 0.0.0.0`, a LAN box, a cloud machine), the preview is served over HTTP to whoever can reach that port, so it then stays inside your home folder and ComfyUI's own directories. Add more with `TS_MEDIA_EXTRA_ROOTS=D:/footage` (several separated by your OS path separator), or lift the limit with `TS_MEDIA_ALLOW_ANY_PATH=1`. Both are set on the machine by its owner — not inside a workflow, which can arrive from anyone.
 >
 > Two limits hold regardless of those settings, and neither touches the path you type. A preview route only ever serves **media** — video, audio, images, subtitles — so no setting turns it into a way to read `id_rsa` or a password database. And it only answers **its own page**: a request arriving from another site open in your browser is refused, because ComfyUI itself has no protection against that and a page you did not open should not be able to read your disk through it.
+
+**Batch over a folder of clips.** The `path` socket takes a path on a wire — from TS Batch Source in `Files in folder` mode (`file_types` = `Videos`), one clip per job. When connected it wins over the file picked in the node, and the timeline trim is **not applied**: it was set on another file and would silently cut every clip of the batch. Frame rate, max frames and size work as usual. The node shows that the file comes from the wire, and after a run, which one.
 
 **Use when:** any workflow that starts from footage rather than from a still.
 
@@ -1063,6 +1065,8 @@ Speech-to-text, text-to-speech, music separation, a waveform visualizer, plus a 
 The audio loader you'd build yourself if you had time. Loads audio from any media (mp3/wav/mp4/mov/…), shows a real waveform, lets you crop visually by dragging on the waveform, and can even record from the microphone right inside the node. Outputs the `AUDIO` waveform, a whole-second `duration` int and an exact `duration_seconds` float.
 
 Transport buttons, left to right: rewind to the start of the loop (the left edge of the selection, or the file start when nothing is selected), play/pause, loop.
+
+**Batch over a folder of sound.** The `path` socket takes a path on a wire — from TS Batch Source in `Files in folder` mode (`file_types` = `Audio`, or `Videos` to take the sound of clips), one file per job. When connected it wins over the file picked in the node, and the crop is **not applied** — it was set on another file. The node shows that the file comes from the wire.
 
 **Use when:** preparing voiceovers, music beds, or any audio that needs trimming before processing.
 
@@ -1926,7 +1930,13 @@ Turns a folder, a text file or a plain count into a **job list**. Everything wir
 
 That independence is the point. A captioning model gets a fresh conversation per picture instead of one context that keeps growing for a hundred images.
 
-Modes: `Images in folder` (natural order, so `img2` comes before `img10`), `Lines in text file`, `Count only` and `Text files in folder` — a folder with one prompt per file (`.txt` / `.md`): one file is one job, its whole text, line breaks inside kept, the same natural order, empty files skipped. Outputs: `item` (path / line / number / prompt text), `index`, `total`, `seed`.
+Modes: `Files in folder` — the paths of a folder's files of any type (natural order, so `img2` comes before `img10`), `Lines in text file`, `Count only` and `Text files in folder` — a folder with one prompt per file (`.txt` / `.md`): one file is one job, its whole text, line breaks inside kept, the same natural order, empty files skipped. Outputs: `item` (path / line / number / prompt text), `index`, `total`, `seed`.
+
+**`Files in folder` — any files, not just pictures.** The node hands out paths, so the file type is none of its business: pictures go to TS Batch Load Image, videos to the `path` socket of TS Video Loader, sound to the `path` socket of TS Audio Loader. The `file_types` list narrows the choice: `All` — every file; `Images`, `Videos` or `Audio` — exactly the formats the matching loader opens. `include_subfolders` walks nested folders too, keeping natural order per path level (`a/2` before `a/10` before `b/1`). Hidden files and folders (a leading dot) and the system's `Thumbs.db` / `desktop.ini` are always skipped.
+
+⚠️ Until 23.10.2026 the mode was called `Images in folder`. Graphs saved with it open and run as before — images only, so `.txt` captions lying beside them do not end up in an image loader. The old name is no longer in the list.
+
+**`Prompts from images in folder` — prompts instead of pictures.** Each image in the folder gives the positive prompt it was made with, and that prompt becomes the job — to regenerate a set with another model, say, or to build a prompt file. It reads ComfyUI metadata (the graph: from the sampler's `positive` to the text encoder, through switches, `PreviewAny`, `StringConcatenate`, TS Super Prompt and TS Style Prompt Selector), A1111 / Forge / Civitai (`parameters` in PNG, UserComment in JPEG and WebP), ComfyUI's WebP and JPEG, and NovelAI. The negative is never taken. An image without a prompt — a photo, an upscale, a frame whose prompt an LLM wrote during the run — is skipped with a line in the log: the LLM's text is not stored in the file, and the node will not hand out the instruction given to the model in its place. Such a prompt is kept when TS Image Prompt Injector sits before the save.
 
 **Why there is a seed output.** A seed *widget* on the model node holds one number for all hundred calls, so a hundred iterations of the same task come back identical. This output gives every item its own derived seed — reproducible from the base value, different from its neighbours.
 

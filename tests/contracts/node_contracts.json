@@ -969,6 +969,13 @@
         "name": "crop_end_seconds",
         "socketless": true,
         "type": "Float"
+      },
+      {
+        "force_input": true,
+        "index": 4,
+        "name": "path",
+        "optional": true,
+        "type": "String"
       }
     ],
     "outputs": [
@@ -1004,6 +1011,9 @@
       },
       "mode": {
         "default": "load"
+      },
+      "path": {
+        "default": ""
       }
     }
   },
@@ -1524,7 +1534,9 @@
       "start_at",
       "limit",
       "seed",
-      "one_per_run"
+      "one_per_run",
+      "include_subfolders",
+      "file_types"
     ],
     "inputs": [
       {
@@ -1562,6 +1574,18 @@
         "name": "one_per_run",
         "optional": true,
         "type": "Boolean"
+      },
+      {
+        "index": 7,
+        "name": "include_subfolders",
+        "optional": true,
+        "type": "Boolean"
+      },
+      {
+        "index": 8,
+        "name": "file_types",
+        "optional": true,
+        "type": "Combo"
       }
     ],
     "outputs": [
@@ -1600,13 +1624,19 @@
         "max": 10000,
         "min": 1
       },
+      "file_types": {
+        "default": "All"
+      },
+      "include_subfolders": {
+        "default": false
+      },
       "limit": {
         "default": 0,
         "max": 1000000,
         "min": 0
       },
       "mode": {
-        "default": "Images in folder"
+        "default": "Files in folder"
       },
       "one_per_run": {
         "default": false
@@ -7133,6 +7163,13 @@
         "name": "when_too_large",
         "optional": true,
         "type": "Combo"
+      },
+      {
+        "force_input": true,
+        "index": 11,
+        "name": "path",
+        "optional": true,
+        "type": "String"
       }
     ],
     "outputs": [
@@ -7195,6 +7232,9 @@
         "default": 0,
         "max": 1000000,
         "min": 0
+      },
+      "path": {
+        "default": ""
       },
       "resize_filter": {
         "default": "area"

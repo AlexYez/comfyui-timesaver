@@ -4,6 +4,8 @@ The audio loader you'd build yourself if you had time. Loads audio from any medi
 
 Transport buttons, left to right: rewind to the start of the loop (the left edge of the selection, or the file start when nothing is selected), play/pause, loop.
 
+**Batch over a folder of sound.** The `path` socket takes a path on a wire — from TS Batch Source in `Files in folder` mode (`file_types` = `Audio`, or `Videos` to take the sound of clips), one file per job. When connected it wins over the file picked in the node, and the crop is **not applied** — it was set on another file. The node shows that the file comes from the wire.
+
 **Use when:** preparing voiceovers, music beds, or any audio that needs trimming before processing.
 
 **Warning:** `duration` rounds UP to a whole second. That is fine for display, but if a frame count is computed from it the clip ends up almost a second longer than the speech. Where the length matters, take `duration_seconds` — it reports exactly `samples / sample_rate`.

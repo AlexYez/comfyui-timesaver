@@ -19,6 +19,7 @@ import { hotkeysAllowed, isTypingTarget } from "../../_keys.js";
 import { makeDropZone } from "../../_studio/_dnd.js";
 import { icon, setIcon } from "../../_media/_icons.js";
 import { formatTimecode } from "../../_media/_ruler.js";
+import { watchWiredSource } from "../../_wired_source.js";
 import { createVideoEditor } from "./_video_editor.js";
 import { ensureVideoStyles } from "./_video_styles.js";
 
@@ -92,6 +93,8 @@ export const STRINGS_LOADER = {
         stageHint: "Drop a video here, or paste one from the clipboard",
         pathHint: "Path to a file on the ComfyUI machine — the footage does not have to be copied into the input folder",
         waveOff: "This file has no audio track",
+        wiredName: (file) => (file ? `wire: ${file}` : "file from the wire"),
+        wiredStatus: "Files come from the wire (path) — each loads whole, the trim is not applied",
     },
     ru: {
         load: "Загрузить видео",
@@ -145,6 +148,8 @@ export const STRINGS_LOADER = {
         stageHint: "Бросьте сюда видео или вставьте из буфера",
         pathHint: "Путь к файлу на машине с ComfyUI — съёмку не обязательно копировать в папку input",
         waveOff: "В этом файле нет звуковой дорожки",
+        wiredName: (file) => (file ? `провод: ${file}` : "файл по проводу"),
+        wiredStatus: "Файлы приходят по проводу (path) — каждый берётся целиком, подрезка не применяется",
     },
 };
 
@@ -186,6 +191,9 @@ function button(iconName, title, onClick, extra = "") {
 export function setupVideoLoader(node) {
     ensureVideoStyles();
     const L = pickLocaleStrings(STRINGS_LOADER);
+    // Подключён ли сокет `path` и какой файл пришёл по нему последним.
+    // Объявлено до первого updateStatus: тот читает его с самого начала.
+    let wired = { linked: false, file: "" };
 
     const editor = createVideoEditor({
         api,
@@ -448,10 +456,27 @@ export function setupVideoLoader(node) {
         return { full, final, capped: cap > 0 && cap < full, rate };
     }
 
+    // Файл с провода (TS Batch Source) главнее выбранного в ноде, а подрезка
+    // к нему не применяется — об этом нода обязана сказать сама.
+    watchWiredSource(node, "path", (next) => {
+        const unplugged = wired.linked && !next.linked;
+        wired = next;
+        // Провод сняли — подпись снова про выбранный в ноде файл.
+        if (unplugged) {
+            nameLabel.textContent = L.noFile;
+            node._tsVideoLoaderRehydrate?.();
+        }
+        updateStatus();
+    });
+
     function updateStatus(message = "", isError = false) {
         const { left, right } = editor.bounds();
         const fps = editor.state.fps;
         const whole = editor.state.cropEnd < 0 && left <= 0.001;
+        if (wired.linked) {
+            nameLabel.textContent = L.wiredName(wired.file);
+            if (!message) message = L.wiredStatus;
+        }
         statusLeft.textContent = message || (whole
             ? L.trimWhole
             : L.trim(formatTimecode(left, { fps }), formatTimecode(right, { fps }),
