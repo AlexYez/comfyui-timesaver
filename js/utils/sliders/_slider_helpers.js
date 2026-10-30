@@ -64,22 +64,20 @@ export function tsReadRealStep(tsOptions, tsType) {
     return tsType === "int" ? 1 : 0.1;
 }
 
-export function tsSnapToStep(tsValue, tsMin, tsStep, tsType, tsAnchor) {
+export function tsSnapToStep(tsValue, tsMin, tsStep, tsType) {
     if (!Number.isFinite(tsStep) || tsStep <= 0) return tsValue;
-    // Anchor on default (when supplied) instead of min. With a min far from the
-    // value (old nodes had -1e9) and step=1, snapping relative to min loses
-    // sub-step precision in float64 (default 0.5 collapses to 1). Snapping
-    // relative to default keeps the
-    // default exact and lets neighbours grid by `step`. Falls back to min
-    // when no usable anchor is provided.
-    const anchor = Number.isFinite(tsAnchor) ? tsAnchor : tsMin;
+    // Match the native grids: integers step from min; floats round to
+    // multiples of options.round (step) from zero. The default chooses the
+    // initial value, never the grid, so an off-grid default cannot move a
+    // valid saved value on every configure.
+    const anchor = tsType === "int" ? tsMin : 0;
     const tsSteps = Math.round((tsValue - anchor) / tsStep);
     let tsSnapped = anchor + tsSteps * tsStep;
     if (tsType === "int") {
         tsSnapped = Math.round(tsSnapped);
         return tsSnapped;
     }
-    const tsDecimals = tsCountDecimals(tsStep);
+    const tsDecimals = Math.max(tsCountDecimals(tsMin), tsCountDecimals(tsStep));
     if (tsDecimals > 0) {
         tsSnapped = Number(tsSnapped.toFixed(tsDecimals));
     }
@@ -87,7 +85,7 @@ export function tsSnapToStep(tsValue, tsMin, tsStep, tsType, tsAnchor) {
 }
 
 function tsSnapBackIntoRange(tsValue, tsConfig, tsType) {
-    // tsSnapToStep grids on `default`, so when min/max do not sit on that grid a
+    // When a boundary does not sit on the widget's grid a
     // value at the boundary can snap one step OUTSIDE the declared range — and
     // ComfyUI rejects an out-of-range widget at queue time. Walk back to the
     // nearest grid point that is still inside the range.
@@ -102,7 +100,7 @@ function tsSnapBackIntoRange(tsValue, tsConfig, tsType) {
         if (tsType === "int") {
             tsValue = Math.round(tsValue);
         } else {
-            const tsDecimals = tsCountDecimals(tsStep);
+            const tsDecimals = Math.max(tsCountDecimals(tsConfig.min), tsCountDecimals(tsStep));
             if (tsDecimals > 0) tsValue = Number(tsValue.toFixed(tsDecimals));
         }
     }
@@ -245,7 +243,7 @@ export function tsApplyConfig(tsNode, tsWidget, tsType, tsConfig, tsForceDefault
         // pinned to the schema's 0.01, so a user-set 0.1 step still snapped to
         // 0.01.) tsConfig.step is the REAL step (see tsReadRealStep), so its
         // decimal count is correct with no `round` fallback needed.
-        tsOptions.precision = tsCountDecimals(tsConfig.step);
+        tsOptions.precision = Math.max(tsCountDecimals(tsConfig.min), tsCountDecimals(tsConfig.step));
         tsOptions.round = tsConfig.step;
     }
 
@@ -265,7 +263,7 @@ export function tsApplyConfig(tsNode, tsWidget, tsType, tsConfig, tsForceDefault
     }
 
     tsValue = Math.min(tsConfig.max, Math.max(tsConfig.min, tsValue));
-    tsValue = tsSnapToStep(tsValue, tsConfig.min, tsConfig.step, tsType, tsConfig.default);
+    tsValue = tsSnapToStep(tsValue, tsConfig.min, tsConfig.step, tsType);
     tsValue = tsSnapBackIntoRange(tsValue, tsConfig, tsType);
 
     if (tsValue !== tsWidget.value) {

@@ -30,6 +30,7 @@ node_id: TS_LatentUpscale
 from __future__ import annotations
 
 import logging
+import math
 
 from comfy_api.v0_0_2 import IO
 
@@ -182,6 +183,11 @@ class TS_LatentUpscale(IO.ComfyNode):
                     "cfg", default=1.0, min=0.0, max=100.0, step=0.1, round=0.01, optional=True,
                     tooltip="CFG scale, used only when 'negative' is connected.",
                 ),
+                IO.Float.Input(
+                    "denoise", default=1.0, min=0.0, max=1.0, step=0.01, optional=True,
+                    tooltip=("Redraw strength: multiplies the connected sigma schedule, keeping its step count. "
+                             "1 preserves the schedule; 0 only upscales, with no diffusion sampling."),
+                ),
             ],
             outputs=[
                 IO.Latent.Output("latent", tooltip="Upscaled, re-sampled and stitched H3 audio+video latent."),
@@ -215,10 +221,15 @@ class TS_LatentUpscale(IO.ComfyNode):
                 upscale_model="", width=1280, height=704,
                 chunk_length=136, temporal_overlap=17, anchor_strength=0.999,
                 precision="fp16", device="cuda",
-                negative=None, cfg=1.0) -> IO.NodeOutput:
+                negative=None, cfg=1.0, denoise=1.0) -> IO.NodeOutput:
         import comfy.model_management
         import comfy.nested_tensor
         import torch
+
+        denoise = float(denoise)
+        if not math.isfinite(denoise) or not 0.0 <= denoise <= 1.0:
+            raise ValueError("denoise must be between 0 and 1.")
+        sigmas = sigmas * denoise if denoise != 1.0 else sigmas
 
         samples = latent["samples"]
         if not core.is_h3_av_latent(samples):
@@ -315,7 +326,7 @@ class TS_LatentUpscale(IO.ComfyNode):
             cond_i = core.reanchor_conditioning(
                 conditioning, f0, f1, (chunk_v.shape[3], chunk_v.shape[4]),
             )
-            if index > 0 and acc_v is not None:
+            if index > 0 and acc_v is not None and denoise > 0 and int(temporal_overlap) > 0:
                 cond_i = core.anchor_conditioning(cond_i, acc_v, f0, float(anchor_strength))
 
             # ⚠️ Аудио на пересэмплинге ЗАКРЕПЛЯЕТСЯ (маска: видео 1, аудио 0).
@@ -336,7 +347,7 @@ class TS_LatentUpscale(IO.ComfyNode):
                     torch.zeros_like(chunk_a),
                 )),
             }
-            if clip_noise is None:
+            if denoise > 0 and clip_noise is None:
                 clip_noise = core.clip_noise(
                     noise, chunk_v, chunk_a, total_tokens, audio_tokens,
                 )
@@ -346,7 +357,7 @@ class TS_LatentUpscale(IO.ComfyNode):
                     clip_noise, k0, k0 + chunk_v.shape[2],
                     a0, a0 + chunk_a.shape[-1],
                 ),
-            )
+            ) if denoise > 0 else piece["samples"]
             chunk_out_v = out.tensors[0]
 
             acc_v, acc_a = core.temporal_append(

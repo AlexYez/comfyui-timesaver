@@ -2167,7 +2167,7 @@
         "step": 0.01
       },
       "skin_structure_strength": {
-        "default": 2.0,
+        "default": 0.0,
         "max": 2.0,
         "min": -1.0,
         "step": 0.01
@@ -2727,6 +2727,285 @@
       }
     ],
     "python_file": "nodes/video/ts_h3_audio_inject.py"
+  },
+  "TS_H3FastVAEDecode": {
+    "api": "v3",
+    "category": "TS/Video",
+    "class_name": "TS_H3FastVAEDecode",
+    "display_name": "TS H3 Fast VAE Decode",
+    "effective_widget_order": [
+      "vae_name"
+    ],
+    "inputs": [
+      {
+        "index": 0,
+        "name": "latent",
+        "type": "Latent"
+      },
+      {
+        "index": 1,
+        "name": "vae_name",
+        "type": "Combo"
+      },
+      {
+        "index": 2,
+        "name": "fallback_vae",
+        "optional": true,
+        "type": "Vae"
+      }
+    ],
+    "outputs": [
+      {
+        "index": 0,
+        "name": "images",
+        "type": "Image"
+      },
+      {
+        "index": 1,
+        "name": "report",
+        "type": "String"
+      }
+    ],
+    "python_file": "nodes/video/latent_upscale/ts_h3_fast_vae.py"
+  },
+  "TS_H3Regenerate": {
+    "api": "v3",
+    "category": "TS/Video",
+    "class_name": "TS_H3Regenerate",
+    "display_name": "TS H3 Regenerate",
+    "effective_widget_order": [
+      "upscale_model",
+      "width",
+      "height",
+      "denoise",
+      "steps",
+      "seed",
+      "audio_mode",
+      "precision",
+      "chunk_length",
+      "temporal_overlap",
+      "reference_mode",
+      "chunk_mode"
+    ],
+    "inputs": [
+      {
+        "index": 0,
+        "name": "model",
+        "type": "Model"
+      },
+      {
+        "index": 1,
+        "name": "conditioning",
+        "type": "Conditioning"
+      },
+      {
+        "index": 2,
+        "name": "latent",
+        "type": "Latent"
+      },
+      {
+        "index": 3,
+        "name": "upscale_model",
+        "type": "Combo"
+      },
+      {
+        "index": 4,
+        "name": "width",
+        "type": "Int"
+      },
+      {
+        "index": 5,
+        "name": "height",
+        "type": "Int"
+      },
+      {
+        "index": 6,
+        "name": "denoise",
+        "type": "Float"
+      },
+      {
+        "index": 7,
+        "name": "steps",
+        "type": "Combo"
+      },
+      {
+        "index": 8,
+        "name": "seed",
+        "type": "Int"
+      },
+      {
+        "index": 9,
+        "name": "audio_mode",
+        "type": "Combo"
+      },
+      {
+        "index": 10,
+        "name": "precision",
+        "type": "Combo"
+      },
+      {
+        "index": 11,
+        "name": "chunk_length",
+        "type": "Int"
+      },
+      {
+        "index": 12,
+        "name": "temporal_overlap",
+        "type": "Int"
+      },
+      {
+        "index": 13,
+        "name": "audio_vae",
+        "optional": true,
+        "type": "Vae"
+      },
+      {
+        "index": 14,
+        "name": "reference_mode",
+        "optional": true,
+        "type": "Combo"
+      },
+      {
+        "index": 15,
+        "name": "first_frame",
+        "optional": true,
+        "type": "Image"
+      },
+      {
+        "index": 16,
+        "name": "video_vae",
+        "optional": true,
+        "type": "Vae"
+      },
+      {
+        "index": 17,
+        "name": "chunk_mode",
+        "optional": true,
+        "type": "Combo"
+      }
+    ],
+    "outputs": [
+      {
+        "index": 0,
+        "name": "latent",
+        "type": "Latent"
+      },
+      {
+        "index": 1,
+        "name": "report",
+        "type": "String"
+      }
+    ],
+    "python_file": "nodes/video/latent_upscale/ts_h3_regenerate.py",
+    "widgets": {
+      "audio_mode": {
+        "default": "keep source audio (lipsync)"
+      },
+      "chunk_length": {
+        "default": 0,
+        "max": 100000,
+        "min": 0,
+        "step": 17
+      },
+      "chunk_mode": {
+        "default": "independent (crossfade)"
+      },
+      "denoise": {
+        "default": 1.0,
+        "max": 1.0,
+        "min": 0.0,
+        "step": 0.01
+      },
+      "height": {
+        "default": 1088,
+        "max": 4096,
+        "min": 64,
+        "step": 32
+      },
+      "precision": {
+        "default": "bf16"
+      },
+      "reference_mode": {
+        "default": "off"
+      },
+      "seed": {
+        "default": 0,
+        "max": 18446744073709551615,
+        "min": 0
+      },
+      "steps": {
+        "default": 3
+      },
+      "temporal_overlap": {
+        "default": 17,
+        "max": 100000,
+        "min": 0,
+        "step": 17
+      },
+      "width": {
+        "default": 1920,
+        "max": 4096,
+        "min": 64,
+        "step": 32
+      }
+    }
+  },
+  "TS_H3RegenerateModel": {
+    "api": "v3",
+    "category": "TS/Video",
+    "class_name": "TS_H3RegenerateModel",
+    "display_name": "TS H3 Regenerate Model",
+    "effective_widget_order": [
+      "lora_name",
+      "sharp_name",
+      "reference_checkpoint",
+      "lora_precision"
+    ],
+    "inputs": [
+      {
+        "index": 0,
+        "name": "model",
+        "type": "Model"
+      },
+      {
+        "index": 1,
+        "name": "lora_name",
+        "type": "Combo"
+      },
+      {
+        "index": 2,
+        "name": "sharp_name",
+        "type": "Combo"
+      },
+      {
+        "index": 3,
+        "name": "reference_checkpoint",
+        "type": "Combo"
+      },
+      {
+        "index": 4,
+        "name": "lora_precision",
+        "type": "Combo"
+      }
+    ],
+    "outputs": [
+      {
+        "index": 0,
+        "name": "model",
+        "type": "Model"
+      },
+      {
+        "index": 1,
+        "name": "report",
+        "type": "String"
+      }
+    ],
+    "python_file": "nodes/video/latent_upscale/ts_h3_regenerate.py",
+    "widgets": {
+      "lora_precision": {
+        "default": "bf16"
+      }
+    }
   },
   "TS_IdeogramDesigner": {
     "api": "v3",
@@ -4271,7 +4550,8 @@
       "anchor_strength",
       "precision",
       "device",
-      "cfg"
+      "cfg",
+      "denoise"
     ],
     "inputs": [
       {
@@ -4355,6 +4635,12 @@
         "name": "cfg",
         "optional": true,
         "type": "Float"
+      },
+      {
+        "index": 16,
+        "name": "denoise",
+        "optional": true,
+        "type": "Float"
       }
     ],
     "outputs": [
@@ -4388,6 +4674,12 @@
         "max": 100000,
         "min": 17,
         "step": 17
+      },
+      "denoise": {
+        "default": 1.0,
+        "max": 1.0,
+        "min": 0.0,
+        "step": 0.01
       },
       "device": {
         "default": "cuda"

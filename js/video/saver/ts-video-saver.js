@@ -5,6 +5,24 @@ import { app } from "/scripts/app.js";
 import { getWidget } from "../../_dom_widget.js";
 import { DOM_WIDGET, NODE_TYPE, UI_KEY, setupVideoSaver } from "./_video_saver.js";
 
+// A background workflow has no live node to receive onExecuted. ComfyUI keeps
+// its outputs in the workflow's change tracker and restores them after loading
+// the graph, later than loadedGraphNode. Restore our custom player at that hook.
+function restoreOutputs(outputs) {
+    const root = app.rootGraph || app.graph;
+    if (!root || !outputs) return;
+    const workflow = app.extensionManager?.workflow;
+    const graphs = [root, ...(root.subgraphs?.values?.() || [])];
+    for (const graph of graphs) {
+        for (const node of graph._nodes || []) {
+            if (node.comfyClass !== NODE_TYPE && node.type !== NODE_TYPE) continue;
+            const locator = workflow?.nodeToNodeLocatorId?.(node) ?? String(node.id);
+            const payload = outputs[locator]?.[UI_KEY]?.[0];
+            if (payload) node._tsVideoSaverApply?.(payload);
+        }
+    }
+}
+
 app.registerExtension({
     name: "ts.videoSaver",
     async beforeRegisterNodeDef(nodeType, nodeData) {
@@ -29,5 +47,8 @@ app.registerExtension({
         // Виджет не пересоздаём — в Nodes 2.0 это двоит шапку ноды (§12.5.12).
         if (!getWidget(node, DOM_WIDGET)) setupVideoSaver(node);
         else node._tsVideoSaverRehydrate?.();
+    },
+    onNodeOutputsUpdated(outputs) {
+        restoreOutputs(outputs);
     },
 });

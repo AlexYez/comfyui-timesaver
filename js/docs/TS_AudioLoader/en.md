@@ -1,5 +1,7 @@
 # TS Audio Loader
 
+**Full screen.** The top-right button opens the waveform in the pack's shared fullscreen editor. Drag to select a range, adjust zoom and press Space to listen. Esc or the close button returns the panel to the node, preserving the crop and zoom.
+
 The audio loader you'd build yourself if you had time. Loads audio from any media (mp3/wav/mp4/mov/…), shows a real waveform, lets you crop visually by dragging on the waveform, and can even record from the microphone right inside the node. Outputs the `AUDIO` waveform, a whole-second `duration` int and an exact `duration_seconds` float.
 
 Transport buttons, left to right: rewind to the start of the loop (the left edge of the selection, or the file start when nothing is selected), play/pause, loop.

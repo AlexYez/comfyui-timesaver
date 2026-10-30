@@ -1,5 +1,7 @@
 # TS Latent Upscale
 
+`denoise=1` preserves the connected sigma schedule. Lower values multiply its sigmas while keeping the step count; `0` only upscales without sampling. With no temporal overlap, no previous-chunk anchor is used.
+
 Re-samples an already-denoised **MiniMax H3** audio+video latent at a larger
 size. Three nodes from
 [Comfyui-MMH3-UltimateUpscale](https://github.com/bbaudio-2025/Comfyui-MMH3-UltimateUpscale)

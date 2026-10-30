@@ -11,6 +11,8 @@ import { hideWidget as sharedHideWidget } from "../../_dom_widget.js";
 import { guardPlayback } from "../../_media/_playback_guard.js";
 import { drawPeakBars } from "../../_media/_wave.js";
 import { watchWiredSource } from "../../_wired_source.js";
+import { openFullscreenOverlay } from "../../_fullscreen.js";
+import { icon } from "../../_media/_icons.js";
 
 export const LOADER_NODE_NAME = "TS_AudioLoader";
 export const PREVIEW_NODE_NAME = "TS_AudioPreview";
@@ -65,6 +67,8 @@ const STRINGS = {
         startRecord: "Start Record",
         stopRecord: "Stop Record",
         resetCrop: "Reset Crop",
+        fullscreen: "Full screen",
+        closeFullscreen: "Close (Esc)",
         zoomOutTitle: "Zoom out (Ctrl/Cmd + wheel down)",
         zoomInTitle: "Zoom in (Ctrl/Cmd + wheel up)",
         fit: "Fit",
@@ -110,6 +114,8 @@ const STRINGS = {
         startRecord: "Записать",
         stopRecord: "Остановить запись",
         resetCrop: "Сбросить обрезку",
+        fullscreen: "На весь экран",
+        closeFullscreen: "Закрыть (Esc)",
         zoomOutTitle: "Отдалить (Ctrl/Cmd + колесо вниз)",
         zoomInTitle: "Приблизить (Ctrl/Cmd + колесо вверх)",
         fit: "Вписать",
@@ -191,6 +197,8 @@ function ensureStyles() {
    overflow), а не вниз. Тот же инвариант держит канвас волны ниже. */
 .ts-audio-loader__topbar{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:nowrap;min-width:0;overflow:hidden}
 .ts-audio-loader__actions{display:flex;gap:6px;flex-wrap:nowrap;min-width:0}
+.ts-audio-loader__fullscreen{flex:0 0 auto}
+.ts-audio-loader--fullscreen{flex:1;min-height:0;height:100%}
 .ts-audio-loader__button{border:1px solid var(--ts-border);background:var(--ts-surface);color:var(--ts-text);border-radius:8px;padding:6px 12px;font-size:var(--ts-fs-sm);cursor:pointer}
 .ts-audio-loader__button:hover{background:var(--ts-surface-hover);border-color:var(--ts-border-strong)}
 .ts-audio-loader__button.is-primary{background:var(--ts-accent);border-color:var(--ts-accent-strong);color:var(--ts-accent-contrast);font-weight:700}
@@ -366,6 +374,9 @@ export function setupAudioLoader(node) {
         viewStartSeconds: Math.max(0, Number(node.properties?.[PROP_VIEW_START]) || 0),
     };
 
+    let metadataRequest = 0;
+    let disposed = false;
+
     // Нода, поднятая сразу из сохранённого графа (rehydrate до неё не дойдёт —
     // см. loadedGraphNode), тоже обязана получить путь в общем написании.
     if (!isPreviewNode && state.sourcePath) {
@@ -445,7 +456,35 @@ export function setupAudioLoader(node) {
     zoomFitButton.title = L.fitTitle;
     zoomGroup.append(zoomOutButton, zoomLabel, zoomInButton, zoomFitButton);
     actions.append(zoomGroup);
-    topbar.append(actions);
+    const fullscreenButton = document.createElement("button");
+    fullscreenButton.type = "button";
+    fullscreenButton.className = "ts-ui-btn ts-ui-btn--icon ts-audio-loader__fullscreen";
+    fullscreenButton.title = L.fullscreen;
+    fullscreenButton.setAttribute("aria-label", L.fullscreen);
+    fullscreenButton.innerHTML = icon("fullscreen");
+    let fullscreen = null;
+    fullscreenButton.addEventListener("click", () => {
+        if (fullscreen?.isOpen()) return;
+        const host = container.parentElement;
+        container.classList.add("ts-audio-loader--fullscreen");
+        fullscreen = openFullscreenOverlay(container, {
+            label: node.title || nodeName,
+            trigger: fullscreenButton,
+            closeTitle: L.closeFullscreen,
+            onKey: (event, { typing = false } = {}) => {
+                if (typing || event.code !== "Space") return;
+                event.preventDefault();
+                event.stopPropagation();
+                if (!event.repeat) void togglePlay();
+            },
+            onClose: () => {
+                fullscreen = null;
+                container.classList.remove("ts-audio-loader--fullscreen");
+                if (!disposed && host?.isConnected) host.appendChild(container);
+            },
+        });
+    });
+    topbar.append(actions, fullscreenButton);
 
     const meta = document.createElement("div");
     meta.className = "ts-audio-loader__meta";
@@ -922,7 +961,11 @@ export function setupAudioLoader(node) {
         state.rafId = requestAnimationFrame(tick);
     }
     async function fetchMetadata(filepath) {
+        const request = ++metadataRequest;
+        const isCurrent = () => !disposed && request === metadataRequest;
+        if (disposed) return;
         if (!filepath) {
+            state.isLoading = false;
             state.peaks = [];
             state.duration = 0;
             state.sampleRate = 0;
@@ -947,9 +990,11 @@ export function setupAudioLoader(node) {
         try {
             const response = await api.fetchApi(`${ROUTE_BASE}/metadata?filepath=${encodeURIComponent(filepath)}`);
             const payload = await response.json();
+            if (!isCurrent()) return;
             if (!response.ok) throw new Error(payload?.error || L.metadataFailed);
             applyMediaPayload(payload, { persist: false });
         } catch (error) {
+            if (!isCurrent()) return;
             state.peaks = [];
             state.duration = 0;
             state.sampleRate = 0;
@@ -957,11 +1002,13 @@ export function setupAudioLoader(node) {
             state.filename = filepath.split("/").pop() || filepath;
             state.status = error?.message || L.mediaFailed;
         } finally {
-            state.isLoading = false;
-            updateZoomControls();
-            updateScrollbar();
-            updateText();
-            drawWaveform();
+            if (isCurrent()) {
+                state.isLoading = false;
+                updateZoomControls();
+                updateScrollbar();
+                updateText();
+                drawWaveform();
+            }
         }
     }
     function buildAnnotatedPath(uploadPayload) {
@@ -1492,6 +1539,9 @@ export function setupAudioLoader(node) {
     const unguardVideo = guardPlayback({ media: videoEl, watch: container });
 
     node._tsAudioLoaderCleanup = () => {
+        disposed = true;
+        fullscreen?.close();
+        ++metadataRequest;
         resizeObserver.disconnect();
         unwatchSourceWidget();
         if (state.rafId) { cancelAnimationFrame(state.rafId); state.rafId = 0; }
@@ -1515,7 +1565,9 @@ export function setupAudioLoader(node) {
         };
     }
     node._tsAudioLoaderApplyPayload = (payload, persist = true) => {
-        if (!payload) return;
+        if (!payload || disposed) return;
+        ++metadataRequest;
+        state.isLoading = false;
         applyMediaPayload(payload, { persist });
     };
     node._tsAudioLoaderRehydrate = () => {

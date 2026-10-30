@@ -1,0 +1,262 @@
+"""Open-H3-Regenerate-2K: a separate refinement branch for native H3 models."""
+from __future__ import annotations
+
+import logging
+import math
+
+import torch
+import folder_paths
+from comfy_api.v0_0_2 import IO
+
+from . import _h3_core as core
+from . import _regenerate as regen
+
+LOG = logging.getLogger(__name__)
+
+
+def _files(category, needle):
+    return [p for p in folder_paths.get_filename_list(category) if needle in p.lower()] or [f"(missing {needle})"]
+
+
+class TS_H3RegenerateModel(IO.ComfyNode):
+    @classmethod
+    def define_schema(cls):
+        return IO.Schema(
+            node_id="TS_H3RegenerateModel", display_name="TS H3 Regenerate Model", category="TS/Video",
+            description="Loads the official merged Regenerate LoRA and Sharp branches onto a clean pruned H3 model. Connect the base loader directly, before all generation LoRAs.",
+            inputs=[
+                IO.Model.Input("model", tooltip="Clean pruned H3 FL2VA model, directly from its loader. No Pika, Turbo or DMAD before this input."),
+                IO.Combo.Input("lora_name", options=_files("loras", "open_h3_regenerate_2k_lora")),
+                IO.Combo.Input("sharp_name", options=_files("loras", "sharp_curve_branches")),
+                IO.Combo.Input("reference_checkpoint", options=_files("diffusion_models", "ref2va_pruned"),
+                               tooltip="Only the 32 KB AdaLN reference table is read. This checkpoint is not loaded onto the GPU."),
+                IO.Combo.Input("lora_precision", options=["bf16", "fp32"], default="bf16",
+                               tooltip="CPU LoRA factors: about 6.2 GB in bf16 or 12.45 GB in fp32. Release weights are fp32."),
+            ],
+            outputs=[IO.Model.Output("model"), IO.String.Output("report")],
+        )
+
+    @classmethod
+    def execute(cls, model, lora_name, sharp_name, reference_checkpoint, lora_precision="bf16"):
+        if model.patches or model.object_patches or model.model_options.get("transformer_options", {}).get("patches_replace"):
+            raise ValueError("Connect the clean H3 loader to TS H3 Regenerate Model, before all LoRAs and block patches.")
+        dm = model.get_model_object("diffusion_model")
+        if not getattr(dm, "use_adaln_curves", False):
+            raise ValueError("TS Regenerate currently supports pruned H3 models with AdaLN curves.")
+        reference = regen.read_reference_table(folder_paths.get_full_path_or_raise("diffusion_models", reference_checkpoint))
+        patches = regen.read_patches(folder_paths.get_full_path_or_raise("loras", lora_name), model.model.state_dict(),
+                                     torch.float32 if lora_precision == "fp32" else torch.bfloat16)
+        result = model.clone()
+        loaded = result.add_patches(patches, strength_patch=1.0)
+        if len(loaded) != len(patches):
+            raise ValueError(f"Regenerate applied only {len(loaded)} of {len(patches)} patches.")
+        regen.install_sharp(result, folder_paths.get_full_path_or_raise("loras", sharp_name), reference)
+        result.model_options["ts_h3_regenerate"] = True
+        report = f"Regenerate: 312 merged LoRA patches + 50 Sharp branches; {lora_precision}; verified reference curve."
+        LOG.info(report)
+        return IO.NodeOutput(result, report)
+
+
+class TS_H3Regenerate(IO.ComfyNode):
+    @classmethod
+    def define_schema(cls):
+        return IO.Schema(
+            node_id="TS_H3Regenerate", display_name="TS H3 Regenerate", category="TS/Video",
+            description="Latent upscale and 2/3-step Euler refinement with NVIDIA's Open-H3-Regenerate recipe. Audio is held clean. Optional experimental first-frame guidance uses a normal H3 video VAE at final resolution.",
+            inputs=[
+                IO.Model.Input("model", tooltip="Output of TS H3 Regenerate Model."),
+                IO.Conditioning.Input("conditioning", tooltip="Original H3 text conditioning. Draft keyframes/references are removed for the T2VA refinement layout."),
+                IO.Latent.Input("latent", tooltip="Denoised H3 video or audio+video latent."),
+                IO.Combo.Input("upscale_model", options=core._scan_models()),
+                IO.Int.Input("width", default=1920, min=64, max=4096, step=32),
+                IO.Int.Input("height", default=1088, min=64, max=4096, step=32),
+                IO.Float.Input("denoise", default=1.0, min=0.0, max=1.0, step=0.01,
+                               tooltip="1 = release sigma schedule; lower = less redraw, shift-6 grid from a lower starting sigma; 0 = upscale only."),
+                IO.Combo.Input("steps", options=[3, 2], default=3),
+                IO.Int.Input("seed", default=0, min=0, max=0xffffffffffffffff, control_after_generate=True),
+                IO.Combo.Input("audio_mode", options=["keep source audio (lipsync)", "silence (reference)"], default="keep source audio (lipsync)",
+                               tooltip="Source audio is held clean for lipsync. Reference mode encodes silence; mux the original soundtrack after decoding."),
+                IO.Combo.Input("precision", options=["bf16", "fp16", "fp32"], default="bf16", tooltip="Latent upscaler precision. NVIDIA reference uses bf16."),
+                IO.Int.Input("chunk_length", default=0, min=0, max=100000, step=17,
+                             tooltip="0 = whole clip, release recipe. Nonzero = experimental lower-memory independent chunks, in multiples of 17 frames. No feedback from previous refined chunks."),
+                IO.Int.Input("temporal_overlap", default=17, min=0, max=100000, step=17),
+                IO.Vae.Input("audio_vae", optional=True, tooltip="H3 audio VAE; required only for silence reference mode."),
+                IO.Combo.Input("reference_mode", options=["off", "first frame (preserve character)"], default="off", optional=True,
+                               tooltip="Experimental extra image guidance. Connect a separately prepared start image at final resolution and the normal H3 video VAE. Identity preservation needs visual evaluation."),
+                IO.Image.Input("first_frame", optional=True,
+                               tooltip="Start image prepared directly from the source at final output size, before strong draft downscaling. Only the first image is used; it is fitted to width/height without cropping."),
+                IO.Vae.Input("video_vae", optional=True,
+                             tooltip="Normal H3 video VAE for encoding the reference, including its compatible INT8 version. The fast decode-only VAE cannot be used here."),
+                IO.Combo.Input("chunk_mode", options=["independent (crossfade)", "continue (lock overlap)"],
+                               default="independent (crossfade)", optional=True,
+                               tooltip="Continue: reuse the completed overlap as clean, fixed video context for the next chunk, instead of redrawing and blending two versions. Requires nonzero overlap for multiple chunks. Experimental; evaluate long-clip drift."),
+            ],
+            outputs=[IO.Latent.Output("latent"), IO.String.Output("report")],
+        )
+
+    @classmethod
+    def validate_inputs(cls, width=1920, height=1088, chunk_length=0, temporal_overlap=17, **kwargs):
+        # Linked values are unknown (None) during ComfyUI prompt validation.
+        # execute calls this again with the actual upstream results.
+        if any(value is not None and value % 32 for value in (width, height)):
+            return "Width and height must be multiples of 32; use 1088 for 1080p and crop after decoding."
+        if any(value is not None and (value < 0 or value % 17)
+               for value in (chunk_length, temporal_overlap)):
+            return "Chunks/overlap must be non-negative multiples of 17."
+        if chunk_length is not None and temporal_overlap is not None and chunk_length > 0 and temporal_overlap >= chunk_length:
+            return "Chunks/overlap must be multiples of 17, with overlap smaller than the chunk."
+        return True
+
+    @classmethod
+    def execute(cls, model, conditioning, latent, upscale_model, width=1920, height=1088,
+                denoise=1.0, steps=3, seed=0, audio_mode="keep source audio (lipsync)",
+                precision="bf16", chunk_length=0, temporal_overlap=17, audio_vae=None,
+                reference_mode="off", first_frame=None, video_vae=None,
+                chunk_mode="independent (crossfade)"):
+        import comfy.model_management as mm
+        import comfy.nested_tensor
+        import comfy.samplers
+        from comfy_extras.nodes_custom_sampler import Noise_RandomNoise
+
+        if any(value is None for value in (width, height, chunk_length, temporal_overlap)):
+            raise ValueError("Width, height, chunk length and overlap must resolve to numbers; check the connected upstream nodes.")
+        valid = cls.validate_inputs(width, height, chunk_length, temporal_overlap)
+        if valid is not True:
+            raise ValueError(valid)
+        sigma_grid = regen.sigmas(steps, denoise)
+        if reference_mode not in ("off", "first frame (preserve character)"):
+            raise ValueError(f"Unknown Regenerate reference mode: {reference_mode}")
+        use_reference = reference_mode != "off" and denoise > 0
+        if use_reference:
+            if first_frame is None or video_vae is None:
+                raise ValueError("First-frame mode requires both first_frame and the normal H3 video_vae inputs.")
+            if not conditioning:
+                raise ValueError("First-frame mode requires H3 text conditioning.")
+        video, source_audio = regen.video_audio(latent["samples"])
+        if width < video.shape[-1] * 16 or height < video.shape[-2] * 16:
+            raise ValueError("Regenerate targets must be at least as large as the input in both dimensions.")
+        if denoise > 0 and not model.model_options.get("ts_h3_regenerate"):
+            raise ValueError("Connect TS H3 Regenerate Model to load the required adapter and Sharp branches.")
+        frame_count = core.frames_for_tokens(video.shape[2])
+        if audio_mode == "silence (reference)" and denoise > 0:
+            if audio_vae is None:
+                raise ValueError("Reference silence mode requires the H3 audio VAE.")
+            rate = int(getattr(audio_vae, "audio_sample_rate", 32000))
+            audio = audio_vae.encode(torch.zeros(1, round(frame_count / 24 * rate), 2))
+        elif audio_mode == "keep source audio (lipsync)" or denoise == 0:
+            audio = source_audio
+        else:
+            raise ValueError(f"Unknown Regenerate audio mode: {audio_mode}")
+        if audio is None and denoise > 0:
+            raise ValueError("Source audio mode requires an H3 audio+video latent; choose silence mode for video-only input.")
+        if audio is not None:
+            audio = audio.to(device="cpu", dtype=torch.float32)
+        expected_audio = round(frame_count * 5 / 3)
+        if audio is None and denoise == 0:
+            audio = torch.zeros(1, 32, 2, expected_audio)
+        if denoise > 0 and abs(audio.shape[-1] - expected_audio) > 1:
+            raise ValueError(f"Audio/video durations differ: expected about {expected_audio} audio tokens, got {audio.shape[-1]}.")
+        bounds = (core.compute_segments(video.shape[2], chunk_length, temporal_overlap)[0]
+                  if chunk_length else [(0, 0, video.shape[2], frame_count)])
+        if chunk_mode not in ("independent (crossfade)", "continue (lock overlap)"):
+            raise ValueError(f"Unknown Regenerate chunk mode: {chunk_mode}")
+        continue_chunks = chunk_mode == "continue (lock overlap)" and denoise > 0
+        if continue_chunks and len(bounds) > 1 and temporal_overlap == 0:
+            raise ValueError("Continue chunk mode requires a nonzero temporal overlap (at least 17 frames).")
+        balanced_tail = False
+        if continue_chunks and chunk_length:
+            balanced = regen.balance_short_tail(bounds, chunk_length, temporal_overlap)
+            balanced_tail = balanced != bounds
+            bounds = balanced
+        LOG.info("H3 Regenerate frame windows: %s; %s", [(f0, f1) for _, f0, _, f1 in bounds], chunk_mode)
+        cond = regen.text_conditioning(conditioning)
+        device = "cuda" if mm.get_torch_device().type == "cuda" else "cpu"
+        # Upscale every chunk before loading the diffusion model; no repeated
+        # 20-GB model swaps between chunks. Cache only CPU video latents.
+        mm.unload_model_and_clones(model, unload_additional_models=False)
+        mm.soft_empty_cache()
+        reference = None
+        if use_reference:
+            try:
+                reference = regen.encode_first_frame(first_frame, video_vae, width, height)
+            finally:
+                # Release the encoder before the latent upscaler/diffusion
+                # stages, including when encoding fails.
+                if getattr(video_vae, "patcher", None) is not None:
+                    mm.unload_model_and_clones(video_vae.patcher, unload_additional_models=False)
+                mm.soft_empty_cache()
+        upscaled = []
+        for k0, f0, k1, f1 in bounds:
+            part = video[:, :, k0:k1].contiguous()
+            targets = []
+            if width * height > 2560 * 1440 and part.shape[-1] * part.shape[-2] * 256 < 2560 * 1440:
+                scale = math.sqrt(2560 * 1440 / (width * height))
+                mid_w = max(part.shape[-1] * 16, int(width * scale / 32) * 32)
+                mid_h = max(part.shape[-2] * 16, int(height * scale / 32) * 32)
+                if (width, height) == (3840, 2176):
+                    mid_w, mid_h = 2560, 1440
+                elif (width, height) == (2176, 3840):
+                    mid_w, mid_h = 1440, 2560
+                targets.append((mid_w, mid_h))
+            targets.append((width, height))
+            for w, h in targets:
+                part, _, _ = core.upscale_latent(part, {"model_name": upscale_model, "width": w, "height": h,
+                                                       "device": device, "precision": precision})
+            upscaled.append(part)
+        noise = Noise_RandomNoise(seed)
+        sampler = comfy.samplers.sampler_object("euler")
+        full_noise = None
+        acc_v = acc_a = None
+        try:
+            for i, (k0, f0, k1, f1) in enumerate(bounds):
+                v = upscaled[i]
+                upscaled[i] = None
+                a0, a1 = core.audio_range(f0, f1)
+                a = audio[..., a0:a1].contiguous()
+                if denoise > 0:
+                    video_mask = torch.ones_like(v)
+                    locked = 0
+                    if continue_chunks and acc_v is not None:
+                        locked = min(acc_v.shape[2] - k0, v.shape[2])
+                        if locked <= 0:
+                            raise ValueError("Previous refined chunk does not cover the continuation overlap.")
+                        v = v.clone()
+                        v[:, :, :locked] = acc_v[:, :, k0:k0 + locked]
+                        video_mask[:, :, :locked] = 0
+                    piece = {"samples": comfy.nested_tensor.NestedTensor((v, a)),
+                             "noise_mask": comfy.nested_tensor.NestedTensor((video_mask, torch.zeros_like(a)))}
+                    if full_noise is None:
+                        full_noise = core.clip_noise(noise, v, a, video.shape[2], audio.shape[-1])
+                    piece_cond = regen.first_frame_conditioning(cond, reference, f0) if reference is not None else cond
+                    sampled = core.sample_piece(piece, piece_cond, model, noise, sampler, sigma_grid, None, 1.0,
+                                                noise_tensor=core.slice_noise(full_noise, k0, k1, a0, a0 + a.shape[-1]))
+                    v = sampled.tensors[0]
+                    if locked:
+                        # Keep the boundary bit-exact even if a sampler/backend
+                        # introduces numerical residue on zero-mask rows.
+                        v = torch.cat((acc_v[:, :, k0:k0 + locked], v[:, :, locked:]), dim=2)
+                acc_v, acc_a = core.temporal_append(acc_v, acc_a, v, a, i, k0, f0)
+        finally:
+            mm.unload_model_and_clones(model, unload_additional_models=False)
+            mm.soft_empty_cache()
+        # Preserve the original soundtrack latent exactly, even in silence mode.
+        # Silence is only the model's clean conditioning during refinement.
+        output_audio = source_audio if source_audio is not None else (acc_a if denoise > 0 else None)
+        result = {k: v for k, v in latent.items() if k not in ("samples", "noise_mask")}
+        result["samples"] = (comfy.nested_tensor.NestedTensor((acc_v, output_audio))
+                             if output_audio is not None else acc_v)
+        report = f"{width}×{height}, {len(bounds)} chunk(s), denoise={denoise:g}, sigmas={sigma_grid.tolist()}, {audio_mode}."
+        if reference is not None:
+            report += f" Experimental first-frame guidance: normal H3 VAE, {width}×{height}; original global frame 0."
+        elif reference_mode != "off":
+            report += " First-frame guidance inactive at denoise=0."
+        if chunk_length:
+            report += " Experimental chunked mode; differs from whole-clip reference."
+            report += f" Stitching: {chunk_mode}."
+            if balanced_tail:
+                report += " Short final tail redistributed within the selected chunk length."
+        return IO.NodeOutput(result, report)
+
+
+NODE_CLASS_MAPPINGS = {"TS_H3RegenerateModel": TS_H3RegenerateModel, "TS_H3Regenerate": TS_H3Regenerate}
+NODE_DISPLAY_NAME_MAPPINGS = {"TS_H3RegenerateModel": "TS H3 Regenerate Model", "TS_H3Regenerate": "TS H3 Regenerate"}

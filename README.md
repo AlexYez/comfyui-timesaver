@@ -8,7 +8,7 @@
 
 Resize, color, cut out, inpaint, transcribe, translate, prompt-build, manage models — without leaving the canvas.
 
-[![Version](https://img.shields.io/badge/version-12.13.2-blue.svg)](pyproject.toml)
+[![Version](https://img.shields.io/badge/version-12.13.3-blue.svg)](pyproject.toml)
 [![ComfyUI](https://img.shields.io/badge/ComfyUI-V3%20API-orange.svg)](https://github.com/comfyanonymous/ComfyUI)
 [![Python](https://img.shields.io/badge/python-3.10+-green.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-see%20LICENSE.txt-lightgrey.svg)](LICENSE.txt)
@@ -706,7 +706,7 @@ Upscale a picture — or a whole video batch — with **NVIDIA DLSS 5 Neural Ren
 
 **Temporal, which is where the quality comes from.** A batch of consecutive frames shares one temporal history, so detail is carried from frame to frame instead of every frame being treated as a still. Motion is no longer estimated here — the engine does it on the GPU — so the only thing the node still supplies is where the cuts are: a hard cut restarts the history rather than smearing across it. `shimmer_suppression` (0.70 by default) is that stabiliser's strength; a single picture is always rendered with it at 0. **Switch `temporal` off for a batch of unrelated pictures** — otherwise each one drags the previous one's detail behind it.
 
-**The look controls.** `nr_style` (Default / Natural / Cinematic) and `nr_intensity` set the character; `local_tone_strength` and `local_structure_strength` how much contrast and detail come back; `skin_structure_strength` keeps faces from turning plastic. Added with v9: `nr_passes` (1–4, each pass another full evaluation), `nr_color_strength` and `tone_preservation` for how much of the network's colour and tonality reaches the result, `face_skin_protection` and `grain_preservation` — raise the last one for film scans, so the grain is kept instead of cleaned away. `dlss_model_preset` is **ignored** since v9: the engine picks the network itself, and the widget only stays so older workflows keep their other settings lined up.
+**The look controls.** `nr_style` (Default / Natural / Cinematic) and `nr_intensity` set the character; `local_tone_strength` and `local_structure_strength` how much contrast and detail come back; `skin_structure_strength` is how much detail the network adds on skin. It defaults to 0: at the old default of 2.0 the decoder's fine noise gathered into a honeycomb-like mottle on skin; raise it only if faces look plastic. Added with v9: `nr_passes` (1–4, each pass another full evaluation), `nr_color_strength` and `tone_preservation` for how much of the network's colour and tonality reaches the result, `face_skin_protection` and `grain_preservation` — raise the last one for film scans, so the grain is kept instead of cleaned away. `dlss_model_preset` is **ignored** since v9: the engine picks the network itself, and the widget only stays so older workflows keep their other settings lined up.
 
 **No 8-bit step.** The frame is resized with Lanczos in float and handed to the engine as float, so there is nothing to round and nothing to dither: `dither` has no effect any more and only stays so older workflows keep their other settings lined up. `source_curve` is for pictures that are not display-referred SDR — log footage, PQ/HLG, a linear EXR render: they are converted to SDR before the network and converted back after, by the same curve, so the node changes the size and not the colour. Leave it at SDR for ordinary graph output.
 
@@ -720,7 +720,13 @@ Upscale a picture — or a whole video batch — with **NVIDIA DLSS 5 Neural Ren
 
 ---
 
+#### TS H3 Regenerate
+
+Open-H3-Regenerate-2K: a dedicated model branch (**TS H3 Regenerate Model**), latent upscale/refinement with adjustable denoise (**TS H3 Regenerate**), and optional **TS H3 Fast VAE Decode**. Preserves the source audio latent, with NVIDIA silence conditioning and experimental temporal chunks for lower VRAM. Optional first-frame guidance encodes a separately prepared final-resolution image with the normal H3 VAE; chunk continuation locks completed overlap to avoid crossfading different versions. [Connections and limitations](js/docs/TS_H3Regenerate/en.md).
+
 #### TS Latent Upscale
+
+**Denoise** controls redraw: 1 preserves the connected sigma schedule; 0 only upscales. Intermediate values multiply the schedule while keeping its step count.
 
 Re-samples an already-denoised **MiniMax H3** audio+video latent at a larger
 size. Three nodes from
@@ -1756,7 +1762,7 @@ Each wire is routed knowing about the ones already routed, and the lane it takes
 
 Measured on a real 32-node workflow: the layout alone left 68 places where a wire runs through a node and 94 wire crossings; routing brings that to **0 cuts, 0 overlaps and 88 crossings**. The same graph as its author had arranged it by hand: 40 cuts, 84 crossings. The crossings that remain come from the order of the nodes in their columns rather than from the wires — laying out and routing together, so that the order is chosen with the wires in mind, is the next step and is not done yet.
 
-**Or pack it as tiles.** The third entry, **Pack as tiles**, is the other request: not "show me the flow" but "get rid of the empty space". Every node in a column is given the same width, so they read as tiles rather than a ragged staircase, and a column now holds **several consecutive layers of the graph** rather than one — a column per layer turns a workflow into a ribbon nobody's monitor can show. The height of the columns is chosen so the whole thing lands near **16:9**, and so that no column ends up noticeably emptier than its neighbours. Nodes of the same type stay together, and each column is ordered by how soon a node's result is needed — so the node the flow actually starts from is top-left, and the last one is bottom-right. (Barycentres alone could not do that: a loader whose output is only needed at the very end has no opinion about the column next to it, and used to float to the top.) **The wires are not touched at all** in this mode: no aligning, no routing.
+**Or pack it as tiles.** The third entry, **Pack as tiles**, reserves an area on the left for model loaders and preparation: checkpoints, UNET, VAE, CLIP, ControlNet, image and latent upscale models. Loaders align in one column; LoRAs and model patches follow in dependency columns. Output socket types identify model nodes even when their titles have been renamed. Model nodes inside mixed processing groups move into the model area; groups containing only models stay together. The remaining nodes fill compact columns on the right in processing order, with equal tile widths within each column. Column heights account for the whole layout, including models, aiming for **16:9**. Selection and pinned-node rules still apply. **Wires and their link dots are preserved.**
 
 Measured on a real 32-node workflow: 17 columns and 5540×1308 become **5 columns and 1760×1128** — the area actually filled by nodes goes from 17% to 76%, and the shape from 4.2:1 to 1.6:1, which fits on a screen.
 

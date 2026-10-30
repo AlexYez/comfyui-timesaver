@@ -69,6 +69,15 @@ export function collectTargets(canvas) {
     return pool.filter((node) => isNode(node) && !node.flags?.pinned);
 }
 
+/** Model resources/preparation, identified by socket types rather than titles. */
+export function isModelNode(node) {
+    const types = (node.outputs || []).map((output) => String(output?.type || "").toUpperCase());
+    // A full generation/subgraph returning media stays with the generation.
+    if (types.some((type) => ["IMAGE", "MASK", "LATENT", "AUDIO", "VIDEO"].includes(type))) return false;
+    return types.some((type) => type.endsWith("MODEL") || type.startsWith("MODEL_")
+        || ["CLIP", "VAE", "CLIP_VISION", "CONTROL_NET", "GLIGEN", "IPADAPTER", "LORA_STACK"].includes(type));
+}
+
 /**
  * Размер, который нода просит под своё содержимое.
  *
@@ -260,13 +269,20 @@ export function planPositions(canvas, options = {}) {
     const { columnGap, rowGap, grid = 10, packed = false, aspect = 0 } = options;
     const layoutOptions = { columnGap, rowGap, grid, packed, aspect };
     const size = new Map(targets.map((node) => [node, boxOf(node)]));
+    const models = new Set(targets.filter(isModelNode));
 
     // Кто в какой группе. Нода может попасть в несколько (вложенность) — держит
     // её самая тесная.
     const homeGroup = new Map();
     for (const { group, nodes } of snapshotGroups(graph)) {
         if (group.pinned) continue;
-        for (const node of nodes) if (!homeGroup.has(node)) homeGroup.set(node, group);
+        const modelGroup = nodes.size > 0 && [...nodes].every((node) => models.has(node));
+        for (const node of nodes) {
+            // In packed mode model-only groups travel together on the left;
+            // loaders inside a mixed processing group join the model area.
+            if (packed && models.has(node) && !modelGroup) continue;
+            if (!homeGroup.has(node)) homeGroup.set(node, group);
+        }
     }
 
     const inGroup = new Map();
@@ -294,6 +310,7 @@ export function planPositions(canvas, options = {}) {
         const blocks = nodes.map((node) => ({
             key: `n${node.id}`,
             kind: String(node.type || ""),
+            role: models.has(node) ? "model" : "",
             width: size.get(node)[0],
             height: size.get(node)[1],
             y: node.pos[1],
@@ -315,13 +332,15 @@ export function planPositions(canvas, options = {}) {
     const outerBlocks = [];
     for (const [group, nodes] of inGroup) {
         const [width, height] = blockSize.get(groupKey.get(group));
-        outerBlocks.push({ key: groupKey.get(group), width, height, y: group.pos[1] });
+        outerBlocks.push({ key: groupKey.get(group), width, height, y: group.pos[1],
+            role: nodes.every((node) => models.has(node)) ? "model" : "" });
         void nodes;
     }
     for (const node of free) {
         outerBlocks.push({
             key: `n${node.id}`,
             kind: String(node.type || ""),
+            role: models.has(node) ? "model" : "",
             width: size.get(node)[0],
             height: size.get(node)[1],
             y: node.pos[1],

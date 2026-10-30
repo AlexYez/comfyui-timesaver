@@ -40,8 +40,23 @@ def _clean_path(path: str) -> Path:
     return Path(str(path).strip().strip('"'))
 
 
-def _safe_name(name: str, index: int) -> str:
-    """A file name that cannot escape the output folder or collide by accident."""
+def _safe_name(name: str, index: int, *, for_file: bool = False) -> str:
+    """Preserve file names exactly; reject unsafe ones instead of collapsing them."""
+    if for_file:
+        raw = str(name)
+        if not raw.strip():
+            return f"item_{index:05d}"
+        # Use portable basenames, including on cloud hosts. Stripping punctuation
+        # (e.g. parentheses) silently merges unrelated dataset captions.
+        stem = raw.split(".", 1)[0].upper()
+        reserved = {"CON", "PRN", "AUX", "NUL"} | {
+            f"{prefix}{number}" for prefix in ("COM", "LPT") for number in range(1, 10)
+        }
+        if (any(ord(ch) < 32 or ch in '<>:"/\\|?*' for ch in raw)
+                or raw.endswith((" ", ".")) or stem in reserved):
+            raise ValueError(f"{LOG_PREFIX} Unsafe item name: {raw!r}. Supply a unique file basename.")
+        return raw
+    # One-file labels are text, so retain their existing display convention.
     cleaned = "".join(ch for ch in str(name).strip() if ch.isalnum() or ch in " ._-").strip()
     return cleaned or f"item_{index:05d}"
 
@@ -189,7 +204,7 @@ class TS_BatchWrite(IO.ComfyNode):
 
         if str(mode) == MODE_PER_ITEM:
             target.mkdir(parents=True, exist_ok=True)
-            destination = target / f"{_safe_name(name or '', position)}.txt"
+            destination = target / f"{_safe_name(name or '', position, for_file=True)}.txt"
             destination.write_text(body + "\n", encoding="utf-8")
         else:
             target.parent.mkdir(parents=True, exist_ok=True)

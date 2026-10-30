@@ -121,10 +121,18 @@ class TS_DLSSUpscaler(IO.ComfyNode):
                     default=1.0, min=0.0, max=2.0, step=0.01,
                     tooltip="Local detail recovered by the network.",
                 ),
+                # ⚠️ Умолчание 0, а не 2.0 (до 28.10.2026). На 2.0 сеть дорисовывает
+                # коже «поры» и собирает мелкий шум декодера в губчатые «соты» —
+                # замерено на FLUX.2 Dev: 0 убирает их почти целиком, а пряди волос
+                # остаются такими же чёткими. Сохранённые графы несут своё значение.
                 IO.Float.Input(
                     "skin_structure_strength",
-                    default=2.0, min=-1.0, max=2.0, step=0.01,
-                    tooltip="Detail on skin, kept separate so faces do not turn plastic.",
+                    default=0.0, min=-1.0, max=2.0, step=0.01,
+                    tooltip=(
+                        "Detail the network adds on skin. 0 (default) keeps skin as it "
+                        "is; higher values invent pores and at 2.0 often turn the "
+                        "decoder's fine noise into a honeycomb-like mottle."
+                    ),
                 ),
                 IO.Boolean.Input(
                     "automatic_mask",

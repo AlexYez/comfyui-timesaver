@@ -4,6 +4,8 @@ Writes frames to a video file and plays the result in the node. Format and quali
 
 **Encoding shows its progress on the node**, the way sampling does: a long clip takes minutes, and a silent node during that time looks stuck.
 
+**Encoding runs on the ComfyUI server** and continues while the browser is unfocused or another workflow is open. When you return to the workflow, the node restores its completed result from that tab's execution state: the player, filename and download link update without another run.
+
 The player remembers whether you turned sound on. ProRes is not playable in a browser, so the node writes a small H.264 proxy next to it just for the preview (`preview: off` skips that). Hardware encoding is available but never chosen for you: it is much faster and noticeably worse at the same file size.
 
 **An EXR sequence** is the fourth format: one scene-linear float32 (or 16-bit half) file per frame, in its own folder, written from the `hdr_image` socket without touching the range. That socket exists because the ordinary `images` input is clamped to 0..1 long before the saver sees it. There is no compression option — this encoder does not offer one. The sequence carries no audio; a small H.264 proxy is written in the same pass so the node still has something to play.

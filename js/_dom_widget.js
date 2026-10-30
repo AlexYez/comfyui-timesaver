@@ -72,9 +72,21 @@ function installPromptInjector() {
     app.graphToPrompt = async function tsGraphToPrompt(...args) {
         const result = await original(...args);
         try {
-            for (const node of app.graph?._nodes || []) {
+            // app.graph can be the currently opened subgraph. Execution starts
+            // at the supplied graph (or root), with instance-qualified IDs.
+            const graph = args[0] ?? app.rootGraph ?? app.graph;
+            const executableNodes = new Map();
+            const nodes = [];
+            for (const node of graph?._nodes || []) {
+                if (node.isSubgraphNode?.()) {
+                    nodes.push(...node.getInnerNodes(executableNodes));
+                } else {
+                    nodes.push({ node, id: String(node.id) });
+                }
+            }
+            for (const { node, id } of nodes) {
                 const stash = node?._tsHiddenWidgets;
-                const entry = result?.output?.[String(node.id)];
+                const entry = result?.output?.[String(id)];
                 if (!stash || !entry?.inputs) continue;
                 for (const name of Object.keys(stash)) {
                     // Never clobber a real wired connection to this input.
