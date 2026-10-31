@@ -9,6 +9,43 @@ broken here, in writing, with a way back.
 
 ---
 
+## 12.13.4 — 2026-11-01
+
+### Existing LLM presets refreshed
+
+Fourteen existing presets have revised instructions and sampling settings for
+small E2B/E4B models. Existing preset names and order stay unchanged. OCR,
+translation, exact lettering, constrained edits and music/SFX descriptions
+have separate contracts. Instrumental examples no longer add voices, and a
+material edit no longer silently changes a garment's color.
+
+The RT nodes now repair `Json Image Capture` answers too, retaining its
+already y-first boxes. Ideogram enhancement still converts x-first boxes
+once. Generated content and H3 speaker tags still need review.
+Already-English translation input retains its line breaks when the returned
+words are identical; actual translated wording is not rewritten.
+
+### Qwen: корректное завершение реплики
+
+Общий загрузчик Qwen учитывает EOS токенизатора вместе с EOS модели. У
+некоторых Qwen3.5 конфигурация останавливает только по концу текста, хотя
+реплика заканчивается другим токеном; из-за этого ответ мог продолжаться
+выдуманными ролями user/assistant до лимита. Исправление действует и для
+TS Qwen 3, и для TS Super Prompt; файлы моделей не меняются.
+
+### TS Files Downloader: Check Links
+
+Новая кнопка **Check Links / «Проверить ссылки»** проверяет весь список без
+авторизации, включая уже скачанные модели. Отчёт различает открытый доступ,
+закрытые репозитории, отсутствующие файлы, HTML-страницы и Git LFS-указатели
+вместо моделей, временные ссылки и ошибки сети. Читается максимум 2 КБ файла;
+сохранённые токены, cookies, зеркала и прокси ноды не используются. Проверка
+показывает доступ с текущего сервера сейчас; скачивание из другой сети или
+позднее может дать другой результат. Закрытие отчёта останавливает оставшиеся
+проверки. Кнопка не меняет сохранённый список и не запускает workflow.
+
+---
+
 ## 12.13.3
 
 ### H3 Regenerate: уточнение видео, стартовый кадр и склейка кусков

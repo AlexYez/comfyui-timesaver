@@ -4,11 +4,11 @@
 
 # 🚀 Timesaver Nodes for ComfyUI
 
-**A friendly toolkit of 85 production-ready nodes that take the boring busywork out of your ComfyUI graphs.**
+**A friendly toolkit of 88 production-ready nodes that take the boring busywork out of your ComfyUI graphs.**
 
 Resize, color, cut out, inpaint, transcribe, translate, prompt-build, manage models — without leaving the canvas.
 
-[![Version](https://img.shields.io/badge/version-12.13.3-blue.svg)](pyproject.toml)
+[![Version](https://img.shields.io/badge/version-12.13.4-blue.svg)](pyproject.toml)
 [![ComfyUI](https://img.shields.io/badge/ComfyUI-V3%20API-orange.svg)](https://github.com/comfyanonymous/ComfyUI)
 [![Python](https://img.shields.io/badge/python-3.10+-green.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-see%20LICENSE.txt-lightgrey.svg)](LICENSE.txt)
@@ -25,11 +25,11 @@ Whether you build pipelines for image generation, video, audio, or just want to 
 
 |  | Category | Count | Highlights |
 |---|---|---|---|
-| 🖼️ | **[Image](#image)** | 26 | Resize, color, masks, tiling, Lama cleanup, Smart Inpaint, BiRefNet bg removal, ViTMatte, SAM3 picker, depth of a still, VAE pixel-grid removal |
-| 🎬 | **[Video](#video)** | 12 | Loader with a timeline and saver, frame interpolation, RTX / DLSS upscale, latent upscale, depth, trimming, animation preview |
+| 🖼️ | **[Image](#image)** | 28 | Resize, color, masks, tiling, Lama cleanup, Smart Inpaint, BiRefNet bg removal, ViTMatte, SAM3 picker, depth of a still, VAE pixel-grid removal |
+| 🎬 | **[Video](#video)** | 15 | Loader with a timeline and saver, frame interpolation, RTX / DLSS upscale, latent upscale, depth, trimming, animation preview |
 | 🌈 | **[HDR / EXR](#hdr)** | 7 | Native LTX 2.5 HDR: EXR in, ACEScct working space, float32 decode, scene-linear master |
 | 🎵 | **[Audio](#audio)** | 6 | Whisper transcription, Silero TTS, Demucs stem split, audio cropping |
-| 🤖 | **[LLM](#llm)** | 4 | Qwen 3 VL multimodal chat, Super Prompt with voice input, Gemma 4 on LiteRT (Super Prompt RT, RT Prompt Enhancer) |
+| 🤖 | **[LLM](#llm)** | 4 | Qwen 3 VL, Super Prompt with voice input, Gemma 4 on LiteRT (Super Prompt RT, RT Prompt Enhancer) |
 | 📝 | **[Text & Prompts](#text)** | 7 | Prompt library, prompt builder, batch loader, style picker, camera angles, songs, Russian stress marks |
 | 🎨 | **[Ideogram](#ideogram)** | 1 | Visual JSON-prompt designer for Ideogram 4 — text/object blocks, WYSIWYG node preview, per-area colours, layout/style/design presets, width/height output, RU/EN, import/export |
 | 📁 | **[Files & Models](#files)** | 3 | Model downloader, batch writer, EDL→YouTube chapters |
@@ -37,7 +37,7 @@ Whether you build pipelines for image generation, video, audio, or just want to 
 | 🛠️ | **[Utils](#utils)** | 13 | Workflow group bypass panel, before/after compare, LoRA loader, unmerged LoRA and turbo sigmas for Qwen Image 2.1, custom sliders, math, smart type-aware switch |
 | 🎨 | **[Conditioning](#conditioning)** | 1 | Multi-reference image conditioning |
 
-> All 85 nodes use the **ComfyUI V3 API** (`comfy_api.v0_0_2.IO` — a pinned namespace, not a stable one: the adapter itself declares `STABLE = False`. Pinning keeps the pack off the moving `latest` alias; it does not promise the API will not change).
+> All 88 nodes use the **ComfyUI V3 API** (`comfy_api.v0_0_2.IO` — a pinned namespace, not a stable one: the adapter itself declares `STABLE = False`. Pinning keeps the pack off the moving `latest` alias; it does not promise the API will not change).
 >
 > **Plus extra samplers & schedulers** added straight into the native KSampler / KSamplerAdvanced / BasicScheduler dropdowns (no node to wire — they just appear after install): sampler **`res_2s`** (2nd-order exponential RK / "RES"), schedulers **`bong_tangent`** (two-stage arctangent sigma curve) and **`beta57`** (`beta` α=0.5/β=0.7). Algorithms reimplemented clean-room from [RES4LYF](https://github.com/ClownsharkBatwing/RES4LYF)'s public math (no code copied).
 
@@ -1269,6 +1269,13 @@ same runtime plus a command-line tool, and keeps working if you already have it.
 
 #### TS RT Prompt Enhancer
 
+The **15 existing presets** retain their names and order. Fourteen have refreshed
+instructions and sampling settings for small Gemma E2B/E4B models. The refresh
+separates OCR, translation, exact lettering, image/video direction, limited
+inpaint edits and music/SFX captions. Both JSON presets use caption repair
+with the appropriate box order. `Erotism` retains the owner's original
+instruction and settings. Review OCR, meaning and H3 speaker tags before rendering.
+
 The same Gemma 4 on LiteRT-LM as TS Super Prompt RT, as an **ordinary graph
 node** — what TS Qwen 3 is to TS Super Prompt. No buttons, no panel: text,
 pictures and sound in, text out, run by the queue like any other node. Build it
@@ -1344,7 +1351,7 @@ Prompt enhancement node with a built-in **voice button** — speak your idea, Wh
 
 **On-screen text is not translated.** Anything in quotes is what should appear in the picture — a sign, a title, a lyric. It is copied through unchanged, in its original language, while everything else is translated to English. An obliging translation used to turn a Russian shop sign into an English one nobody asked for.
 
-**Audio presets: music and sound effects.** `Audio Prompt Enhance Minimax` writes a caption for **MiniMax Music 3** in the official format — exactly three headings (`Global Metadata` → `Vocal Details` → `Arrangement`) and roughly 250–450 words. The voice is always stated, since leaving it out is what makes a track drift instrumental; an exact BPM or key appears only if you asked for one; lyrics never enter the caption at all, because they go in the node's own lyrics field. **A picture works as a mood board**: a summer street does not come back as a description of the photograph but as the music that would score it, with the scene itself becoming the `Application Scenarios & Imagery` line.
+**Audio presets: music and sound effects.** `Audio Prompt Enhance Minimax` writes a MiniMax Music 3 caption under three headings: `Global Metadata`, `Vocal Details`, `Arrangement`. Detailed briefs target roughly 250–450 words; sparse solos need less. The caption retains the requested vocal configuration, allowed instruments and supplied BPM/key. Lyrics stay in their separate field. A picture is a mood board for the music and listening context, not a request for a visual caption.
 
 `Audio Prompt Enhance Stable Audio SFX` writes for **Stable Audio 3**, aimed at sound effects and solo instruments. The prompt opens with the dataset tag the model was trained on — `TrackType: SFX` or `TrackType: Instrument`, plus `Format: Duo` for a pair — without which an effect drifts into music and a solo guitar arrives with a full band. An effect is described by three things: the source, the action, and the recording. It carries no verses and no choruses, because it is one event rather than a song.
 
@@ -1576,6 +1583,8 @@ Visual JSON-prompt designer for Ideogram 4. Open a full-screen editor, drag and 
 Tools for managing model files, downloads, EDLs, and inspecting weights.
 
 #### TS Files Downloader
+
+**Check Links** checks every listed URL anonymously, including files already on disk, and reports gated access, missing files, HTML pages, expiring links and network failures. It reads at most 2 KiB per file directly from this server, without node tokens, mirrors or proxy settings. It confirms access now; a full download from another network can differ. [Details](js/docs/TS%20Files%20Downloader/en.md).
 <img src="doc/screenshots/ts_downloader.png" alt="TS Files Downloader" width="450" />
 
 Multi-file downloader that takes a list of `URL <space> target_path` lines and downloads them sequentially. Auto-replaces HuggingFace mirrors with reachability check across the full mirror list, supports `models/<subdir>` aliases, resumes interrupted downloads, validates archives against zip-slip on auto-unzip, and shows progress (including SHA256 verification). Handy for one-shot pulling all assets a workflow needs.
@@ -1584,7 +1593,7 @@ Multi-file downloader that takes a list of `URL <space> target_path` lines and d
 
 **Lines are checked against the open graph's loaders.** If a line downloads into `diffusion_models/ltx` while the loader looks in `diffusion_models/wan`, the line says "the loader looks in …" and offers **Fix**. The author sees that mismatch before sharing the workflow, instead of the recipient finding it after. A file no loader selects is marked quietly: it may well be wanted, but it is worth checking whether a loader was switched to another model.
 
-**Download now, without running the graph.** The second button on the node pulls the whole list straight away — the same engine, the same tokens, mirrors and unzip settings as a normal run. It shows `3/10 · 42% · model.safetensors` while it works, and pressing it again cancels: the partial file stays as `.part` and the next attempt resumes from there.
+**Download now, without running the graph.** The **Download Models** button pulls the whole list straight away — the same engine, the same tokens, mirrors and unzip settings as a normal run. It shows `3/10 · 42% · model.safetensors` while it works, and pressing it again cancels: the partial file stays as `.part` and the next attempt resumes from there.
 
 That button is what makes `enable` useful as a mode. Turn `enable` off and the node stops doing anything when the workflow runs — no checks, no downloads — while you still fetch the models by hand, once, when you actually need them. The button ignores `enable` on purpose: it is the one way left to download.
 

@@ -247,6 +247,10 @@ AUDIO_PRESETS = (
 # выдавал бы совсем другой промпт, и понять почему было бы неоткуда.
 PRESET_ALIASES = {
     "Music Prompt Enhance": "Audio Prompt Enhance ACE-Step",
+    # Retired experimental names remain readable in saved workflows, not menus.
+    "Gemma - Prompts enhance": "Prompts enhance",
+    "Gemma - Video Prompt Enhance H3": "Video Prompt Enhance H3",
+    "Gemma - Video Prompt Enhance LTX": "Video Prompt Enhance LTX",
 }
 
 

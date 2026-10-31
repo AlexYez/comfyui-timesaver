@@ -757,6 +757,29 @@ class QwenEngine:
             return tokenizer
         return processor
 
+    @classmethod
+    def sync_chat_eos(cls, model, processor) -> None:
+        """Honor the tokenizer's end-of-turn as well as model stop tokens.
+
+        Some Qwen3.5 checkpoints name only <|endoftext|> in their generation
+        config while their chat tokenizer ends answers with <|im_end|>. Without
+        that second EOS, generate can continue into fabricated user/assistant
+        turns until the answer limit. Only the in-memory generation config is
+        changed; existing stop IDs and the files on disk are preserved.
+        """
+        config = getattr(model, "generation_config", None)
+        if config is None:
+            return
+        tokenizer = cls.get_tokenizer_from_processor(processor)
+        chat_eos = getattr(tokenizer, "eos_token_id", None)
+        if not isinstance(chat_eos, int) or isinstance(chat_eos, bool) or chat_eos < 0:
+            return
+        original = getattr(config, "eos_token_id", None)
+        stops = list(original) if isinstance(original, (list, tuple)) else ([] if original is None else [original])
+        if chat_eos not in stops:
+            stops.append(chat_eos)
+            config.eos_token_id = stops[0] if len(stops) == 1 else stops
+
     def get_pad_token_id(self, processor, model):
         tokenizer = self.get_tokenizer_from_processor(processor)
         for attr in ("pad_token_id", "eos_token_id"):
@@ -977,6 +1000,7 @@ class QwenEngine:
             model.to(device)
 
         model.eval()
+        self.sync_chat_eos(model, processor)
         self._set_cached(key, model, processor)
         return model, processor
 

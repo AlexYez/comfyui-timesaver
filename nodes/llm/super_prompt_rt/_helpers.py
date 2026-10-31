@@ -133,17 +133,26 @@ def preset_generation_params(name: str, gen_params: dict[str, Any]) -> dict[str,
 def finish_answer(preset: str, answer: str, idea: str | None) -> str:
     """The answer as the preset's reader expects it.
 
-    A preset in ``XYXY_PRESETS`` asks for boxes in Qwen's grounding order, and
-    Ideogram reads them the other way round: such an answer is mended and its
-    boxes turned once, here (``nodes/_caption_json.py``). ``idea``: the user's
-    words when no picture was attached — requested text is held to them. Any
-    other preset, or an answer with no JSON in it, passes through unchanged.
+    Both JSON presets are mended (``nodes/_caption_json.py``). Only presets
+    in ``XYXY_PRESETS`` need their boxes turned; image capture already uses
+    the consumer's y-first order. ``idea`` is the user's text without an
+    attached picture, so requested lettering can be checked against it.
+    Translation restores original formatting when its words are unchanged.
+    Other presets and answers without JSON pass through unchanged.
     """
-    from ..._caption_json import XYXY_PRESETS, repair_caption_text
+    # The translator sometimes flattens an already-English input to one line.
+    # Restore formatting only when every whitespace-delimited token is intact;
+    # this neither detects languages nor rewrites an actual translation.
+    if preset == "Text translation to English" and isinstance(idea, str):
+        if answer.split() == idea.split():
+            return idea
 
-    if preset not in XYXY_PRESETS:
+    from ..._caption_json import XYXY_PRESETS, repair_caption_text
+    from ..super_prompt._helpers import JSON_PRESETS
+
+    if preset not in JSON_PRESETS:
         return answer
-    return repair_caption_text(answer, idea, xyxy=True) or answer
+    return repair_caption_text(answer, idea, xyxy=preset in XYXY_PRESETS) or answer
 
 
 # ---------------------------------------------------------------------------

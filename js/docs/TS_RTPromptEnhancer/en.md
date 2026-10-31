@@ -1,5 +1,12 @@
 # TS RT Prompt Enhancer
 
+The **15 existing presets** keep their names and order; 14 have refreshed
+small-model instructions and settings. Select them as before. Both
+JSON presets use caption repair with their respective box conventions.
+OCR, quoted translations, exact lettering, limited inpaint edits and audio-only
+descriptions have separate rules. `Erotism` retains the owner's original
+instruction and settings. Review OCR, content and H3 speaker tags before rendering.
+
 The same Gemma 4 on LiteRT-LM as TS Super Prompt RT, as an **ordinary graph
 node** — what TS Qwen 3 is to TS Super Prompt. No buttons, no panel: text,
 pictures and sound in, text out, run by the queue like any other node. Build it

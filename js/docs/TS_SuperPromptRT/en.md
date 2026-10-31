@@ -1,5 +1,13 @@
 # TS Super Prompt RT
 
+The **15 existing presets** keep their names and order; 14 have refreshed
+instructions and settings for small E2B/E4B models. There are no extra Gemma entries.
+OCR transcribes, translation translates, image/video prompts preserve the brief,
+and audio captions keep lyrics separate. `Erotism` retains the owner's original
+instruction and settings. Both JSON presets use caption repair; image capture keeps its
+y-first boxes, while Ideogram enhancement boxes are converted from x-first.
+Review wording, OCR and H3 speaker tags before rendering.
+
 The same node, on a different engine: **Gemma 4 through Google's LiteRT-LM**,
 the on-device runtime behind AI Edge. Measured on an RTX 3080 Ti Laptop against
 the transformers path, same machine, same prompt:

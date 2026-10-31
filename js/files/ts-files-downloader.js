@@ -42,6 +42,7 @@ import { openFullscreenOverlay } from "../_fullscreen.js";
 import { addResizableDomWidget, hideWidget, getWidget as getAnyWidget } from "../_dom_widget.js";
 import { createListEditor } from "./_downloader_list.js";
 import { createSettingsPanel } from "./_downloader_settings.js";
+import { createLinkCheckButton } from "./_downloader_links.js";
 // Extensions that identify a model file, and the one opinion in this node on
 // whether two folders are the same — shared with the list's check against the
 // graph's loaders.
@@ -1774,6 +1775,12 @@ function mountActions(node, editor, t) {
 
     const scan = proxy(node.__tsFdlButton, t.button, t.buttonHint);
     const download = proxy(node.__tsFdlDownload, t.download, t.downloadHint, true);
+    const linkCheck = createLinkCheckButton(() => getWidget(node, FILE_LIST_WIDGET)?.value ?? "");
+    const checks = document.createElement("div");
+    checks.className = "ts-fdl-list__actions ts-fdl-list__checks";
+    if (scan) checks.appendChild(scan);
+    checks.appendChild(linkCheck.button);
+    editor.element.insertBefore(checks, editor.actions);
 
     // Остальные виджеты убираем ПОСЛЕ кнопок: так в снимке порядка, который
     // делает hideWidget, оказываются ровно сериализуемые поля схемы в её
@@ -1795,7 +1802,7 @@ function mountActions(node, editor, t) {
         node.setDirtyCanvas?.(true, true);
     });
 
-    for (const button of [scan, download, settings]) {
+    for (const button of [download, settings]) {
         if (button) editor.actions.appendChild(button);
     }
 
@@ -1803,6 +1810,7 @@ function mountActions(node, editor, t) {
     node.onRemoved = function tsFdlActionsRemoved(...args) {
         scan?._tsStop?.();
         download?._tsStop?.();
+        linkCheck.dispose();
         return previousRemoved?.apply(this, args);
     };
 

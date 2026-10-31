@@ -1,12 +1,16 @@
 # TS Files Downloader
 
+**Check Links** tests every source URL for public download access, including files already on disk. The report distinguishes available files, gated/sign-in access, missing files, webpages instead of direct downloads, and temporary network failures. Token-bearing URLs and expiring signed source links are flagged separately. Progress updates in small batches; closing the report stops the remaining checks.
+
+The check reads at most 2 KiB per file without downloading models or running the graph. It uses a fresh anonymous connection directly from this server: node tokens, cookies, mirrors and proxy settings are not used. A green result confirms that the start of the file can be read now; it cannot guarantee a later full transfer or availability from another user's network. The file list and download settings are unchanged.
+
 Multi-file downloader that takes a list of `URL <space> target_path` lines and downloads them sequentially. Auto-replaces HuggingFace mirrors with reachability check across the full mirror list, supports `models/<subdir>` aliases, resumes interrupted downloads, validates archives against zip-slip on auto-unzip, and shows progress (including SHA256 verification). Handy for one-shot pulling all assets a workflow needs.
 
 **"On disk" means "the loader will find it".** The node looks for a file the way the graph's loader does — in every folder of the category, including the ones added through `extra_model_paths.yaml`. A model already sitting in a shared folder under the same name and subfolder shows green with "in …", and is not downloaded a second time (its size is checked against the server on the run). A file in another subfolder or another category is invisible to the loader, so it stays "not downloaded" and is fetched as before: the link between a list line and a loader's path does not break. The reverse case is shown too: when ComfyUI finds a different file of the same name first, so the downloaded one will not be loaded, the dot is red and says which file will be.
 
 **Lines are checked against the open graph's loaders.** If a line downloads into `diffusion_models/ltx` while the loader looks in `diffusion_models/wan`, the line says "the loader looks in …" and offers **Fix**. The author sees that mismatch before sharing the workflow, instead of the recipient finding it after. A file no loader selects is marked quietly: it may well be wanted, but it is worth checking whether a loader was switched to another model.
 
-**Download now, without running the graph.** The second button on the node pulls the whole list straight away — the same engine, the same tokens, mirrors and unzip settings as a normal run. It shows `3/10 · 42% · model.safetensors` while it works, and pressing it again cancels: the partial file stays as `.part` and the next attempt resumes from there.
+**Download now, without running the graph.** The **Download Models** button pulls the whole list straight away — the same engine, the same tokens, mirrors and unzip settings as a normal run. It shows `3/10 · 42% · model.safetensors` while it works, and pressing it again cancels: the partial file stays as `.part` and the next attempt resumes from there.
 
 That button is what makes `enable` useful as a mode. Turn `enable` off and the node stops doing anything when the workflow runs — no checks, no downloads — while you still fetch the models by hand, once, when you actually need them. The button ignores `enable` on purpose: it is the one way left to download.
 

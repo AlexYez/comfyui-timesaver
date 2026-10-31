@@ -31,6 +31,7 @@ from .._shared import url_target_is_public
 # run serves the node's own "download now" button.
 from . import (
     _downloader_jobs,  # noqa: F401
+    _downloader_links,  # noqa: F401
     _downloader_run,  # noqa: F401
     _downloader_search,  # noqa: F401
     _downloader_status,  # noqa: F401
