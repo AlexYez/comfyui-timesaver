@@ -19,25 +19,17 @@ pytest-cache-files-*/
 /.claude/
 /.codex_tmp/
 
-# Local-only AI memory & developer infrastructure — kept in the dev
-# location alongside the pack, but not published to GitHub or the Comfy
-# registry. Keeps the public repo focused on shippable runtime code and
-# stops the registry security scanner from inspecting test / tooling
-# code that would otherwise trip false-positives.
-/project_memory/
+# Local test/tooling laboratory stays optional. Project documentation,
+# assistant instructions and persistent memory belong in version control
+# (owner's documentation consolidation request, 2026-11-02).
 /tests/
 /tools/
 
-# Local-only AI-assistant instructions and engineering plans
-CLAUDE.md
-AGENTS.md
+# Local engineering scratch plans (canonical instructions are tracked).
 MODERNIZATION_PLAN.md
 comfyui-pack-testing-guide.md
 
-# Internal contributor docs — kept in dev only; doc/screenshots/ stays
-# because README.md links to it.
-/doc/AGENTS.md
-/doc/ARCHITECTURE.md
+# Historical local working sheets and generators; contributor docs are tracked.
 # Author's working sheet for testing on a live install — dev-only.
 /doc/TESTING_STUDIO.md
 /doc/TS_DEPENDENCY_POLICY.md
@@ -57,7 +49,6 @@ comfyui-pack-testing-guide.md
 # Local review artifacts (multi-agent code review scratch + reports)
 /_review_results.json
 /_verify_quantile.py
-/code-review-report.md
 .openrouter
 
 # Built packs for the studio (author-side artefacts, uploaded not committed)
@@ -70,6 +61,9 @@ comfyui-pack-testing-guide.md
 # `git ls-files`, а .comfyignore в паке нет с v9.14) и попал в чекаут, который
 # читает сканер безопасности реестра.
 /archive/
+
+# Separately installed external Visual Enhancer; keep binaries/user outputs local.
+/runtime/visual-enhancer/v21/
 
 # ⚠️ Токен HuggingFace владельца пака. НИКОГДА не в репозиторий.
 # Лежал незакрытым: git видел его как untracked, то есть `git add -A` увёл бы

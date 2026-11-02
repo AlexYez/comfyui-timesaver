@@ -27,6 +27,10 @@ would decode the whole clip into frames — a minute of 1080p is tens of
 gigabytes — for the four the model can take. Feed a clip's frames to `images`
 and its soundtrack to `audio`.
 
+This analyzes sampled images rather than watching a full video timeline.
+The 2026-11-02 E2B/E4B comparison on LiteRT 0.19.0 found incorrect motion
+directions even on simple frame sequences; verify temporal conclusions.
+
 **Sound** on `audio`, in one of two modes (`audio_mode`):
 
 - **listen** (default) — the model hears the recording itself: music, sounds, a
@@ -40,6 +44,14 @@ and its soundtrack to `audio`.
   which the preset then works on. Tuned for Russian speech with English terms.
 
 With pictures or a recording connected the text may stay empty.
+
+**Measured limit:** speech transcription and delivery descriptions work;
+non-speech events, instruments, vocal presence and event counts can be wrong.
+Audio presets require grounding in the recording and prohibit invented BPM or
+sound sources, but instructions cannot remove model limitations.
+[LiteRT-LM's E2B investigation](https://github.com/google-ai-edge/LiteRT-LM/issues/3851)
+distinguishes limited sound understanding from audio transport failures.
+Use `transcribe` for a transcript and check unfamiliar names against the audio.
 
 The model is **unloaded after every run** by default, for the same reason as in
 TS Super Prompt RT: ComfyUI cannot see the memory it takes. `keep_loaded` keeps

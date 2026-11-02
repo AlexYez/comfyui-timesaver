@@ -41,9 +41,9 @@ test, and a prompt that would not fit is refused with a readable message
 truncated.
 
 **Every press can give a new wording.** Speculative decoding (MTP) made sampling
-greedy: the same idea came back word for word at any seed and any temperature,
-so "Enhance" twice returned the same text and the presets' temperatures did
-nothing. It is off now, at a measured cost of about 10 % speed. Each preset's
+greedy on legacy runtime 0.16.1: changing the seed did not change the answer.
+The 2026-11-02 comparison on 0.19.0 restored diversity, but MTP did not speed
+up every tested task. It remains off by default. Each preset's
 answer ceiling and repetition penalty now reach the model too — without them one
 answer in twelve could loop ("0, 0,0, …") for 46 seconds.
 
@@ -97,7 +97,7 @@ whole job is writing prompts. The runtime itself is not in
 `requirements.txt` and installs separately:
 
 ```
-python -m pip install litert-lm-api==0.16.1
+python -m pip install litert-lm-api==0.19.0
 ```
 
 `litert-lm-api` is the runtime itself; the plain `litert-lm` package installs the

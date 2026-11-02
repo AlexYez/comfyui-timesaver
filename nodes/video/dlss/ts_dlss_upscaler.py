@@ -256,11 +256,11 @@ class TS_DLSSUpscaler(IO.ComfyNode):
                 IO.Combo.Input(
                     "engine", options=["v9 (built-in)", "v21 (external CLI)"],
                     default="v9 (built-in)", optional=True,
-                    tooltip="Select the backend. v9 (default) preserves existing workflows. v21 runs a separately installed official Visual Enhancer v21.0 application. Read each control's tooltip for supported engines and v21 limits; the v9 DLLs are never replaced.",
+                    tooltip="v9 is the default built-in engine. To use v21: 1) Download official Visual Enhancer v21.0: https://github.com/Merserk/dlss5-visual-enhancer/releases/tag/v21.0 2) Extract the complete archive into runtime/visual-enhancer/v21 inside this node pack, with VE_CLI.exe directly in that folder. 3) Select v21 and leave v21_directory blank. The node does not download the application.",
                 ),
                 IO.String.Input(
                     "v21_directory", default="", optional=True,
-                    tooltip="v21 only; ignored in v9. Folder of the complete official Visual Enhancer v21.0 installation, containing VE_CLI.exe and bin/. The application is installed separately, not downloaded or bundled by this node.",
+                    tooltip="v21 only; ignored in v9. Leave blank for runtime/visual-enhancer/v21 inside this node pack. Only relative paths inside the pack are accepted; absolute paths and ../ outside the pack are rejected. Manual installation steps are in the engine tooltip.",
                 ),
             ],
             outputs=[

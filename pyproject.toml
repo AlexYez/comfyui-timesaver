@@ -2,7 +2,7 @@
 name = "comfyui-timesaver"
 description = "ComfyUI nodes from [Timesaver](https://github.com/AlexYez/comfyui-timesaver)."
 # ⚠️ Три составляющих: Comfy Registry принимает только SemVer.
-version = "12.13.6"
+version = "12.13.7"
 license = { file = "LICENSE.txt" }
 # Matches CI (.github/workflows/ci.yml) and the Python range ComfyUI itself
 # supports; >=3.12 wrongly blocked pip installs on 3.10/3.11.
@@ -108,7 +108,7 @@ rtx-upscaler = ["nvidia-vfx>=0.1.0.1,<0.3"]
 # ⚠️ Deliberately NOT part of `all`: an exact pin on a native runtime for two
 # nodes is not something to force on every install; the nodes load without it
 # and say what is missing.
-litert = ["litert-lm-api==0.16.1"]
+litert = ["litert-lm-api==0.19.0"]
 
 # Convenience meta-extra: install everything optional in one go.
 all = [

@@ -5,7 +5,7 @@
 #   pip install bitsandbytes        # for TS_Qwen3_VL_V3 int4/int8
 #   pip install demucs geomloss pykeops  # for the older Demucs engine in TS_Music_Stems
 #   pip install silero silero-stress  # Russian TTS / stress marks
-#   pip install litert-lm-api==0.16.1  # for TS Super Prompt RT / TS RT Prompt Enhancer (Gemma 4 on LiteRT)
+#   pip install litert-lm-api==0.19.0  # for TS Super Prompt RT / TS RT Prompt Enhancer (Gemma 4 on LiteRT)
 #
 # TS RTX Upscaler needs NVIDIA's own package index — the copy on PyPI is a
 # 2.7 KB stub that fails to build, while the real wheel (~436 MB of VFX SDK,

@@ -24,12 +24,14 @@ measured on this machine before a line was written (2026-08-26):
   memory ComfyUI cannot see. 16384 cost +1.6 GB and was slower — not worth it
   for prompt writing. The budget is still checked BEFORE generation and refused
   with a readable message rather than silently truncated.
-* **MTP makes sampling greedy.** With speculative decoding on, the same prompt
+* **MTP made sampling greedy on 0.16.1.** With speculative decoding on, the same prompt
   gave the same words for every seed and every temperature, on GPU and CPU
   alike (measured 2026-09-27) — the presets' temperatures were dead letters and
   "generate again" returned the previous text. Off, the seed works and E4B/E2B
   lose only ~10 % decode speed (57 vs 63, 88 vs 99 tok/s). So it is OFF by
-  default; the switch stays for a runtime that fixes this.
+  default. The 2026-11-02 comparison on 0.19.0 found seed diversity restored
+  for both models; MTP still did not improve speed on every tested task, so
+  the default remains OFF.
 * **The answer needs a ceiling.** Sampling can run away: one Ideogram answer in
   twelve degenerated into "0, 0,0, …" for 2215 tokens and 46 s. The ceiling
   (``max_new_tokens``) and the preset's repetition penalty both reach the
@@ -103,7 +105,7 @@ CONTEXT_TOKENS = 8192
 #: The stable runtime this adapter is written and measured against. The
 #: ``-api`` package is the runtime itself (``litert_lm`` and its DLL); the plain
 #: ``litert-lm`` adds a CLI and a builder that drags protobuf in.
-RUNTIME_REQUIREMENT = "litert-lm-api==0.16.1"
+RUNTIME_REQUIREMENT = "litert-lm-api==0.19.0"
 
 #: Left for the answer when checking whether a prompt fits.
 _MIN_ANSWER_TOKENS = 256
@@ -285,6 +287,19 @@ def context_error(prompt_tokens: int, answer_tokens: int) -> str:
 # --------------------------------------------------------------------------
 # Engine lifecycle
 # --------------------------------------------------------------------------
+def speculative_decoding_options(runtime: Any, enabled: bool) -> dict[str, Any]:
+    """Use the current configuration API without breaking older environments.
+
+    v0.19 still accepts the old boolean but emits a deprecation warning for
+    both True and False. Keep the public bool and its default unchanged.
+    """
+    config = getattr(runtime, "SpeculativeDecodingConfig", None)
+    modes = getattr(runtime, "SpeculativeDecodingMode", None)
+    if config is not None and modes is not None:
+        return {"speculative_decoding_config": config(mode=modes.ON if enabled else modes.OFF)}
+    return {"enable_speculative_decoding": bool(enabled)}
+
+
 def load_engine(
     model_key: str,
     *,
@@ -295,8 +310,8 @@ def load_engine(
 ) -> Any:
     """Load (or reuse) the engine for ``model_key``.
 
-    ``mtp`` is off by default: speculative decoding makes sampling greedy (see
-    the module docstring).
+    ``mtp`` stays off by default; its speed/quality tradeoff depends on the
+    runtime and task (see the module docstring).
 
     Falls back to CPU when the GPU backend refuses to come up — the vendor's own
     studio does the same, and a machine without a working WebGPU stack is a real
@@ -345,7 +360,7 @@ def load_engine(
                     # Without it the runtime quietly uses 4096 (module docstring).
                     max_num_tokens=CONTEXT_TOKENS,
                     enable_benchmark=True,
-                    enable_speculative_decoding=bool(mtp),
+                    **speculative_decoding_options(runtime, bool(mtp)),
                 )
             except Exception as exc:  # noqa: BLE001 - reported after the loop
                 failures.append(f"{candidate}: {exc}")
@@ -593,8 +608,8 @@ def generate(
     """One prompt in, one answer out, card clean on the way back.
 
     ``seed=None`` lets the runtime choose; pass one to make a repeat press
-    sample differently (or to reproduce an answer exactly). ⚠️ Only with
-    ``mtp=False`` — with MTP on every seed gives the same words.
+    sample differently (or to reproduce an answer exactly). On legacy 0.16.1,
+    MTP ignores sampling diversity; on tested 0.19.0 seeds work with MTP too.
 
     ``max_new_tokens`` is a real ceiling: the runtime stops there, mid-sentence
     if it has to. ``None`` leaves only the window as the limit. A penalty of

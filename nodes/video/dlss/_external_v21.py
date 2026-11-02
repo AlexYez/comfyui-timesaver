@@ -12,9 +12,11 @@ import os
 import subprocess
 import tempfile
 import time
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 logger = logging.getLogger("comfyui_timesaver.ts_dlss_upscaler")
+PACK_ROOT = Path(__file__).resolve().parents[3]
+DEFAULT_APPLICATION_SUBDIR = Path("runtime") / "visual-enhancer" / "v21"
 PINNED_FILES = {
     "VE_CLI.exe": "c12436f670ad44492c7d360cbfc0d2a34a9e0b777bd7fcd3f64202a57b1c4da9",
     "bin/runtime/dlssnr/neuroframe_engine_neural_rendering.dll":
@@ -26,15 +28,19 @@ PINNED_FILES = {
 
 def application_root(directory: str) -> Path:
     text = directory.strip().strip('"')
-    if not text:
-        raise ValueError("[TS DLSS Upscaler] Choose the folder of the complete official Visual Enhancer v21 installation in v21_directory.")
-    root = Path(text).expanduser().resolve()
+    relative = Path(text.replace("\\", "/")) if text else DEFAULT_APPLICATION_SUBDIR
+    if relative.is_absolute() or relative.root or PureWindowsPath(text).drive:
+        raise ValueError("[TS DLSS Upscaler] v21_directory must be relative to this node pack, not an absolute path. Leave it blank for runtime/visual-enhancer/v21.")
+    pack = PACK_ROOT.resolve()
+    root = (pack / relative).resolve()
+    if not root.is_relative_to(pack):
+        raise ValueError("[TS DLSS Upscaler] v21_directory must stay inside this node pack; paths outside the pack are not supported.")
     if root.name.lower() == "ve_cli.exe":
         root = root.parent
     for relative, expected in PINNED_FILES.items():
         path = root / relative
         if not path.is_file():
-            raise FileNotFoundError(f"[TS DLSS Upscaler] Missing official v21 file: {path}. Extract the complete official application; do not copy just the CLI.")
+            raise FileNotFoundError(f"[TS DLSS Upscaler] Missing official v21 file: {path}. Extract the complete official Visual Enhancer v21.0 application into {root}, or select its folder in v21_directory. Blank uses {DEFAULT_APPLICATION_SUBDIR.as_posix()} inside this node pack; relative paths start at the pack folder. Do not copy just the CLI.")
         hasher = hashlib.sha256()
         with path.open("rb") as stream:
             for chunk in iter(lambda: stream.read(1024 * 1024), b""):
