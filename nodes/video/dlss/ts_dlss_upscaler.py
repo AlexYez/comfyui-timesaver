@@ -21,6 +21,9 @@ with ``temporal`` off, or each picture drags the previous one's detail behind it
 
 Windows and an NVIDIA RTX card only: the work is done by NVIDIA's signed D3D12
 runtime, and there is no other implementation of it.
+
+The optional v21 backend calls a separately installed official Visual Enhancer
+application. It never replaces or loads the v9 runtime in this process.
 """
 
 from __future__ import annotations
@@ -34,13 +37,13 @@ from comfy_api.v0_0_2 import IO
 from ..._deps import TSDependencyManager
 from . import _assets
 from ._session import (
-    DLSSFrameSession,
-    NR_STYLES,
     MIN_EDGE,
+    NR_STYLES,
     UPSCALING_LABELS,
+    DLSSFrameSession,
     factor_from_label,
-    resolve_native_settings,
     resize_fit,
+    resolve_native_settings,
     resolve_output_size,
     resolve_upscaling_mode,
     verify_feature_18,
@@ -78,7 +81,7 @@ class TS_DLSSUpscaler(IO.ComfyNode):
                 IO.Image.Input(
                     "images",
                     tooltip=(
-                        "One picture or a batch of frames [B,H,W,C]. Both sides must be at "
+                        "v9 + v21: one picture or a batch of frames [B,H,W,C]. Both sides must be at "
                         "least 64 pixels."
                     ),
                 ),
@@ -87,7 +90,7 @@ class TS_DLSSUpscaler(IO.ComfyNode):
                     options=UPSCALING_LABELS,
                     default=DEFAULT_FACTOR_LABEL,
                     tooltip=(
-                        "Output size. 1× is DLAA: no resize, the network re-renders at the "
+                        "v9 + v21: output size. 1× means no resize; the network re-renders at the "
                         "same size. The output is capped at 7680×4320."
                     ),
                 ),
@@ -96,7 +99,8 @@ class TS_DLSSUpscaler(IO.ComfyNode):
                     options=LEGACY_MODEL_PRESETS,
                     default="M",
                     tooltip=(
-                        "Ignored since the v9 runtime — the engine picks the network itself. "
+                        "v9 + v21: Ignored in both engines; this does not select the backend. "
+                        "Use 'engine' to choose v9 or v21. "
                         "Kept so older workflows keep their other settings lined up."
                     ),
                 ),
@@ -104,22 +108,22 @@ class TS_DLSSUpscaler(IO.ComfyNode):
                     "nr_style",
                     options=list(NR_STYLES),
                     default="Default",
-                    tooltip="Neural rendering look: Default, Natural or Cinematic.",
+                    tooltip="v9 + v21: neural rendering look: Default, Natural or Cinematic.",
                 ),
                 IO.Float.Input(
                     "nr_intensity",
                     default=1.0, min=0.0, max=1.0, step=0.01,
-                    tooltip="How strongly neural rendering is applied.",
+                    tooltip="v9 + v21: overall neural rendering strength, 0–1. Lower it to reduce changes to faces and skin as well as the rest of the image.",
                 ),
                 IO.Float.Input(
                     "local_tone_strength",
                     default=1.0, min=0.0, max=2.0, step=0.01,
-                    tooltip="Local contrast recovered by the network.",
+                    tooltip="v9 + v21: local contrast recovered by the network. Lower for a softer tonal result. v9: 0–2; v21: 0–1 (higher values cause a validation error).",
                 ),
                 IO.Float.Input(
                     "local_structure_strength",
                     default=1.0, min=0.0, max=2.0, step=0.01,
-                    tooltip="Local detail recovered by the network.",
+                    tooltip="v9 + v21: local detail recovered by the network. Lower for gentler texture enhancement. v9: 0–2; v21: 0–1 (higher values cause a validation error).",
                 ),
                 # ⚠️ Умолчание 0, а не 2.0 (до 28.10.2026). На 2.0 сеть дорисовывает
                 # коже «поры» и собирает мелкий шум декодера в губчатые «соты» —
@@ -129,26 +133,29 @@ class TS_DLSSUpscaler(IO.ComfyNode):
                     "skin_structure_strength",
                     default=0.0, min=-1.0, max=2.0, step=0.01,
                     tooltip=(
-                        "Detail the network adds on skin. 0 (default) keeps skin as it "
-                        "is; higher values invent pores and at 2.0 often turn the "
-                        "decoder's fine noise into a honeycomb-like mottle."
+                        "v9 + v21: extra skin detail; requires automatic_mask. 0 (default) "
+                        "avoids extra skin texture, but does not lock the face against other processing. "
+                        "v9: -1–2; v21: 0–1 (outside this range causes an error). "
+                        "High values can exaggerate pores; v9 at 2.0 often creates honeycomb-like mottle."
                     ),
                 ),
                 IO.Boolean.Input(
                     "automatic_mask",
                     default=True,
                     tooltip=(
-                        "Let the runtime decide where neural rendering is applied. Skin "
-                        "structure and face protection need this on."
+                        "v9 + v21: let the runtime decide where neural rendering is applied. "
+                        "Needed for skin structure controls. In v9, face_skin_protection also needs this on; "
+                        "that separate protection control is unavailable in v21."
                     ),
                 ),
                 IO.Boolean.Input(
                     "temporal",
                     default=True,
                     tooltip=(
-                        "Treat the batch as consecutive video frames: one temporal history, "
-                        "restarted at scene cuts. Switch OFF for a batch of unrelated "
-                        "pictures. Ignored for a single image."
+                        "v9 + v21: treat the batch as consecutive video frames. v9 shares temporal "
+                        "history and resets at scene cuts; v21 processes the batch as one video "
+                        "using the application's temporal policy. Switch OFF for unrelated pictures. "
+                        "Ignored for a single image."
                     ),
                 ),
                 IO.Combo.Input(
@@ -156,7 +163,7 @@ class TS_DLSSUpscaler(IO.ComfyNode):
                     options=_CURVE_LABELS,
                     default=TRANSFER_LABELS["sdr"],
                     tooltip=(
-                        "What the incoming values mean. The network only understands "
+                        "v9 + v21: what the incoming values mean. The network only understands "
                         "display-referred SDR, so log/HDR/linear pictures are converted before "
                         "it and converted back after — exactly, by the same curve."
                     ),
@@ -167,8 +174,8 @@ class TS_DLSSUpscaler(IO.ComfyNode):
                     # ⚠️ Мёртвый с 05.10.2026, оставлен ради `widgets_values`: кадр
                     # идёт в движок float32, восьмибитного шага больше нет.
                     tooltip=(
-                        "No effect any more: frames reach the engine as 32-bit float, so there "
-                        "is no 8-bit step to dither. Kept so older workflows keep their other "
+                        "v9 + v21: no effect in either engine. v9 uses float32 transport; v21 "
+                        "uses its own PNG16/video transport. Kept so older workflows keep their other "
                         "settings lined up."
                     ),
                 ),
@@ -183,7 +190,9 @@ class TS_DLSSUpscaler(IO.ComfyNode):
                     "download_if_missing",
                     default=True,
                     tooltip=(
-                        "Fetch the runtime into models/DLSS when it is not there "
+                        "v9 only. Ignored in v21: install the complete application separately "
+                        "and set v21_directory; this switch never downloads v21. "
+                        "Fetch the v9 runtime into models/DLSS when it is not there "
                         "(~112 MB, once; only the needed files are taken out of the "
                         "upstream project's v9 release, the last one that is MIT throughout). "
                         "It contains NVIDIA's proprietary DLSSNR runtime and the MIT-licensed "
@@ -202,7 +211,7 @@ class TS_DLSSUpscaler(IO.ComfyNode):
                     "nr_passes",
                     default=1, min=1, max=4,
                     tooltip=(
-                        "How many times the network goes over the frame. Each pass costs "
+                        "v9 + v21: number of network passes, 1–4. Each pass costs "
                         "another full evaluation; 1 is what the reference application ships."
                     ),
                 ),
@@ -210,42 +219,54 @@ class TS_DLSSUpscaler(IO.ComfyNode):
                     "nr_color_strength",
                     default=1.0, min=0.0, max=1.0, step=0.01,
                     tooltip=(
-                        "How much of the network's colour reaches the result. 1 is the "
-                        "network's own; lower keeps more of the source's."
+                        "v9 only: how much of the network's colour reaches the result. "
+                        "1 is the network's own; lower keeps more of the source's. "
+                        "v21: must stay at 1; any other value causes an error, not colour preservation."
                     ),
                 ),
                 IO.Float.Input(
                     "tone_preservation",
                     default=0.0, min=0.0, max=1.0, step=0.01,
-                    tooltip="Hold the source's tonality against the network's own.",
+                    tooltip="v9 only: preserve the source's tonality against the network's own. v21: must stay at 0; any other value causes an error.",
                 ),
                 IO.Float.Input(
                     "face_skin_protection",
                     default=0.0, min=0.0, max=1.0, step=0.01,
-                    tooltip="Extra restraint on faces. Needs the automatic mask.",
+                    tooltip="v9 only: extra restraint on faces; requires automatic_mask. v21: must stay at 0; any other value causes an error. For gentler v21 processing, lower nr_intensity and keep skin_structure_strength at 0.",
                 ),
                 IO.Float.Input(
                     "grain_preservation",
                     default=0.0, min=0.0, max=1.0, step=0.01,
                     tooltip=(
-                        "Keep the source's grain instead of letting the network clean it "
-                        "away. Raise it for film scans."
+                        "v9 only: keep the source's grain instead of letting the network clean it "
+                        "away. Raise it for film scans. v21: must stay at 0; any other value causes an error."
                     ),
                 ),
                 IO.Float.Input(
                     "shimmer_suppression",
                     default=0.70, min=0.0, max=1.0, step=0.01,
                     tooltip=(
-                        "The engine's GPU temporal stabiliser: it estimates motion itself "
+                        "v9 only: the engine's GPU temporal stabiliser estimates motion itself "
                         "and steadies detail between frames. Used only with 'temporal' on "
-                        "and more than one frame; a still is always rendered with 0."
+                        "and more than one frame; a still is always rendered with 0. "
+                        "v21: this value is ignored; the application controls temporal stabilisation. "
+                        "The temporal switch still works in both engines."
                     ),
+                ),
+                IO.Combo.Input(
+                    "engine", options=["v9 (built-in)", "v21 (external CLI)"],
+                    default="v9 (built-in)", optional=True,
+                    tooltip="Select the backend. v9 (default) preserves existing workflows. v21 runs a separately installed official Visual Enhancer v21.0 application. Read each control's tooltip for supported engines and v21 limits; the v9 DLLs are never replaced.",
+                ),
+                IO.String.Input(
+                    "v21_directory", default="", optional=True,
+                    tooltip="v21 only; ignored in v9. Folder of the complete official Visual Enhancer v21.0 installation, containing VE_CLI.exe and bin/. The application is installed separately, not downloaded or bundled by this node.",
                 ),
             ],
             outputs=[
                 IO.Image.Output(
                     display_name="images",
-                    tooltip="The upscaled batch, same order, same channel count.",
+                    tooltip="v9 + v21: the upscaled batch, same order, same channel count.",
                 )
             ],
             search_aliases=["dlss", "dlss 5", "neural rendering", "upscale", "nvidia"],
@@ -323,6 +344,8 @@ class TS_DLSSUpscaler(IO.ComfyNode):
         face_skin_protection: float = 0.0,
         grain_preservation: float = 0.0,
         shimmer_suppression: float = 0.70,
+        engine: str = "v9 (built-in)",
+        v21_directory: str = "",
     ) -> IO.NodeOutput:
         import torch  # noqa: PLC0415 - always present in ComfyUI, never at import time
 
@@ -366,6 +389,14 @@ class TS_DLSSUpscaler(IO.ComfyNode):
 
         curve = _LABEL_TO_CURVE.get(source_curve, source_curve)
         tone_map = tone_map_for(curve) if needs_tone_map(curve) else None
+
+        if engine == "v21 (external CLI)":
+            return cls._execute_v21(
+                np, torch, images, v21_directory, output_width, output_height,
+                native, temporal_active, tone_map,
+            )
+        if engine != "v9 (built-in)":
+            raise ValueError(f"{LOG_PREFIX} Unknown engine: {engine!r}")
 
         root = _assets.ensure_runtime(
             download_if_missing=download_if_missing,
@@ -456,6 +487,43 @@ class TS_DLSSUpscaler(IO.ComfyNode):
         return IO.NodeOutput(torch.from_numpy(results).to(images.device))
 
     # ------------------------------------------------------------------ plumbing
+    @classmethod
+    def _execute_v21(cls, np, torch, images, directory, width, height, native, temporal, tone_map):
+        import folder_paths
+
+        from ._external_v21 import render_frames
+
+        # Do not silently accept controls the documented v21 preset cannot express.
+        defaults = {"color_strength": 1.0, "tone_preservation": 0.0,
+                    "face_skin_protection": 0.0, "grain_preservation": 0.0}
+        unsupported = [key for key, value in defaults.items() if native[key] != value]
+        if unsupported:
+            raise ValueError(f"{LOG_PREFIX} v21 CLI does not expose {', '.join(unsupported)}. Reset those v9-only controls to their defaults or choose v9.")
+        # New upstream controls have narrower ranges than the old ABI.
+        if any(not 0 <= native[k] <= 1 for k in ("skin_structure", "local_tone", "local_structure")):
+            raise ValueError(f"{LOG_PREFIX} v21 requires skin/tone/structure between 0 and 1; use v9 for the wider legacy ranges.")
+        source = images.detach().to("cpu")
+        progress = cls._progress_bar(len(source) * 2)
+        def prepare(index):
+            frame = source[index].numpy()
+            return resize_fit(cls._to_network(np, frame, tone_map), width, height)
+        logger.info("%s v21 external CLI, %d frame(s), %dx%d; PNG16 or lossless FFV1 transport. Its own temporal policy replaces the v9 shimmer control.",
+                    LOG_PREFIX, len(source), width, height)
+        rgb = render_frames(
+            directory, source, width=width, height=height, settings=native,
+            temporal=temporal, ordinal=cls._cuda_ordinal(torch), prepare=prepare,
+            cancelled=cls._raise_if_interrupted,
+            progress=(lambda done, total: progress.update_absolute(done, total)) if progress else None,
+            temp_root=folder_paths.get_temp_directory(),
+        )
+        for index in range(len(rgb)):
+            cls._undo_curve(np, tone_map, rgb[index])
+        np.clip(rgb, 0.0, 1.0, out=rgb)
+        if images.shape[-1] >= 4:
+            alpha = np.stack([cls._resize_alpha(np, frame.numpy()[..., 3], width, height) for frame in source])
+            rgb = np.concatenate([rgb, alpha[..., None]], axis=-1)
+        return IO.NodeOutput(torch.from_numpy(rgb).to(images.device))
+
     @classmethod
     def _cuda_ordinal(cls, torch) -> int:
         """The card ComfyUI is working on; the engine is brought up on the same one."""

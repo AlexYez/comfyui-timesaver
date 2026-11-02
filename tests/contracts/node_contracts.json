@@ -1995,7 +1995,9 @@
       "tone_preservation",
       "face_skin_protection",
       "grain_preservation",
-      "shimmer_suppression"
+      "shimmer_suppression",
+      "engine",
+      "v21_directory"
     ],
     "inputs": [
       {
@@ -2092,6 +2094,18 @@
         "index": 18,
         "name": "shimmer_suppression",
         "type": "Float"
+      },
+      {
+        "index": 19,
+        "name": "engine",
+        "optional": true,
+        "type": "Combo"
+      },
+      {
+        "index": 20,
+        "name": "v21_directory",
+        "optional": true,
+        "type": "String"
       }
     ],
     "outputs": [
@@ -2115,6 +2129,9 @@
       },
       "download_if_missing": {
         "default": true
+      },
+      "engine": {
+        "default": "v9 (built-in)"
       },
       "face_skin_protection": {
         "default": 0.0,
@@ -2183,6 +2200,9 @@
       },
       "upscaling_factor": {
         "default": "2× (Performance)"
+      },
+      "v21_directory": {
+        "default": ""
       }
     }
   },

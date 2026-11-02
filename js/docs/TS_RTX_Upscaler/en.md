@@ -5,13 +5,15 @@ Four quality levels (LOW/MEDIUM/HIGH/ULTRA), batched processing. **Requires an
 RTX GPU.**
 
 **Installing it needs NVIDIA's own index** — the package on PyPI is a 2.7 KB
-stub that fails to build, and the real wheel (792 MB, carrying its own VFX SDK,
+stub that fails to build, and the real wheel (~436 MB, carrying its own VFX SDK,
 TensorRT and NPP libraries — no separate NVIDIA SDK needed) is published only
 here:
 
 ```
-pip install nvidia-vfx==0.1.0.1 --no-build-isolation --index-url https://pypi.nvidia.com
+pip install --upgrade nvidia-vfx==0.2.0.0 --no-build-isolation --index-url https://pypi.nvidia.com
 ```
+
+NVIDIA VFX 0.2 is required by the official Nvidia VFX Nodes pack. TS RTX Upscaler supports both the 0.1 and 0.2 APIs; its optional dependency no longer forces a downgrade to 0.1.0.1.
 
 **The engine is now kept alive between runs.** Measured on an RTX 3080 Ti:
 creating it costs ~730 ms, changing the output size on a live one costs 6 ms,

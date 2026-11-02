@@ -8,7 +8,7 @@
 
 Resize, color, cut out, inpaint, transcribe, translate, prompt-build, manage models — without leaving the canvas.
 
-[![Version](https://img.shields.io/badge/version-12.13.5-blue.svg)](pyproject.toml)
+[![Version](https://img.shields.io/badge/version-12.13.6-blue.svg)](pyproject.toml)
 [![ComfyUI](https://img.shields.io/badge/ComfyUI-V3%20API-orange.svg)](https://github.com/comfyanonymous/ComfyUI)
 [![Python](https://img.shields.io/badge/python-3.10+-green.svg)](https://www.python.org/)
 [![License](https://img.shields.io/badge/license-see%20LICENSE.txt-lightgrey.svg)](LICENSE.txt)
@@ -661,13 +661,15 @@ Four quality levels (LOW/MEDIUM/HIGH/ULTRA), batched processing. **Requires an
 RTX GPU.**
 
 **Installing it needs NVIDIA's own index** — the package on PyPI is a 2.7 KB
-stub that fails to build, and the real wheel (792 MB, carrying its own VFX SDK,
+stub that fails to build, and the real wheel (~436 MB, carrying its own VFX SDK,
 TensorRT and NPP libraries — no separate NVIDIA SDK needed) is published only
 here:
 
 ```
-pip install nvidia-vfx==0.1.0.1 --no-build-isolation --index-url https://pypi.nvidia.com
+pip install --upgrade nvidia-vfx==0.2.0.0 --no-build-isolation --index-url https://pypi.nvidia.com
 ```
+
+NVIDIA VFX 0.2 is required by the official Nvidia VFX Nodes pack. TS RTX Upscaler supports both the 0.1 and 0.2 APIs; its optional dependency no longer forces a downgrade to 0.1.0.1.
 
 **The engine is now kept alive between runs.** Measured on an RTX 3080 Ti:
 creating it costs ~730 ms, changing the output size on a live one costs 6 ms,
@@ -685,6 +687,8 @@ faster frame source would not make it quicker.
 ---
 
 #### TS DLSS Upscaler
+
+**Optional v21 engine.** The `engine` selector keeps **v9 (built-in)** as the default and can run **v21 (external CLI)** from a separate official Visual Enhancer v21.0 installation. Set `v21_directory` to its full application folder. The node does not download, redistribute or replace that application. The appended optional inputs preserve older workflows. v21 runs outside ComfyUI, using PNG16 for images and lossless FFV1 for temporal batches; alpha and frame count are retained. Its documented CLI exposes fewer controls: use v9 for non-default colour/tone/face/grain preservation and custom shimmer suppression. v21 tone/structure/skin controls use the 0–1 range.
 
 Upscale a picture — or a whole video batch — with **NVIDIA DLSS 5 Neural Rendering**: the same feature games use, running here on your frames. `IMAGE` in, `IMAGE` out, so a single still and a batch of decoded video frames both go straight in.
 

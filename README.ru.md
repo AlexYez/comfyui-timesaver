@@ -8,7 +8,7 @@
 
 Ресайз, цвет, вырезание фона, инпейнтинг, транскрипция, переводы, конструкторы промптов, менеджмент моделей — всё прямо на канвасе.
 
-[![Версия](https://img.shields.io/badge/version-12.13.5-blue.svg)](pyproject.toml)
+[![Версия](https://img.shields.io/badge/version-12.13.6-blue.svg)](pyproject.toml)
 [![ComfyUI](https://img.shields.io/badge/ComfyUI-V3%20API-orange.svg)](https://github.com/comfyanonymous/ComfyUI)
 [![Python](https://img.shields.io/badge/python-3.10+-green.svg)](https://www.python.org/)
 [![Лицензия](https://img.shields.io/badge/license-see%20LICENSE.txt-lightgrey.svg)](LICENSE.txt)
@@ -662,12 +662,14 @@ max(5, ceil(a * 24 + 0.2)) + (5 - (max(5, ceil(a * 24 + 0.2)) % 17)) % 17
 RTX-видеокарта.**
 
 **Ставится только с индекса NVIDIA** — на обычном PyPI лежит заглушка на 2,7 КБ,
-которая падает при сборке, а настоящее колесо (792 МБ; везёт с собой VFX SDK,
+которая падает при сборке, а настоящее колесо (~436 МБ; везёт с собой VFX SDK,
 TensorRT и NPP — отдельный SDK ставить не нужно) публикуется здесь:
 
 ```
-pip install nvidia-vfx==0.1.0.1 --no-build-isolation --index-url https://pypi.nvidia.com
+pip install --upgrade nvidia-vfx==0.2.0.0 --no-build-isolation --index-url https://pypi.nvidia.com
 ```
+
+Официальному паку Nvidia VFX Nodes нужна библиотека NVIDIA VFX 0.2. TS RTX Upscaler работает с API 0.1 и 0.2; его необязательная зависимость больше не требует отката на 0.1.0.1.
 
 **Движок теперь живёт между запусками.** Замерено на RTX 3080 Ti: создать его —
 около 730 мс, сменить выходной размер на живом — 6 мс, сменить качество — нисколько.
@@ -685,6 +687,8 @@ pip install nvidia-vfx==0.1.0.1 --no-build-isolation --index-url https://pypi.nv
 ---
 
 #### TS DLSS Upscaler
+
+**Дополнительный движок v21.** В `engine` по умолчанию остаётся **v9 (built-in)**. Режим **v21 (external CLI)** запускает отдельно установленный официальный Visual Enhancer v21.0: в `v21_directory` укажите папку всего приложения. Нода его не скачивает, не распространяет и не заменяет файлы v9. Новые необязательные входы добавлены в конец, старые workflow сохраняют поведение. Картинки передаются через PNG16, временной батч — через FFV1 без потерь; альфа-канал и число кадров сохраняются. CLI v21 предоставляет меньше настроек: для нестандартного сохранения цвета, тона, лица, зерна и собственного подавления мерцания выбирайте v9. Диапазон tone/structure/skin для v21 — 0–1.
 
 Увеличивает картинку — или сразу пачку кадров видео — через **NVIDIA DLSS 5 Neural Rendering**: ту самую функцию, что работает в играх, только применённую к вашим кадрам. На входе `IMAGE`, на выходе `IMAGE`, поэтому и одиночный кадр, и батч раскодированного видео заходят как есть.
 

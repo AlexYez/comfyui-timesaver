@@ -8,9 +8,9 @@
 #   pip install litert-lm-api==0.16.1  # for TS Super Prompt RT / TS RT Prompt Enhancer (Gemma 4 on LiteRT)
 #
 # TS RTX Upscaler needs NVIDIA's own package index — the copy on PyPI is a
-# 2.7 KB stub that fails to build, while the real wheel (792 MB of VFX SDK,
+# 2.7 KB stub that fails to build, while the real wheel (~436 MB of VFX SDK,
 # TensorRT and NPP libraries) lives only here:
-#   pip install nvidia-vfx==0.1.0.1 --no-build-isolation --index-url https://pypi.nvidia.com
+#   pip install --upgrade nvidia-vfx==0.2.0.0 --no-build-isolation --index-url https://pypi.nvidia.com
 #
 # ⚠️ litert-lm-api СОЗНАТЕЛЬНО не в списке ниже и не в extra `all`: это
 # нативный рантайм с точной версией ради двух нод, и колёс под Intel-мак у него
