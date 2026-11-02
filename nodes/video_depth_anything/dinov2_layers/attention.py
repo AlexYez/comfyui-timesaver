@@ -24,7 +24,8 @@ try:
 
     XFORMERS_AVAILABLE = True
 except ImportError:
-    logger.warning("xFormers not available")
+    # Optional accelerator: ordinary tensor inputs use PyTorch attention below.
+    logger.debug("xFormers not available; using PyTorch attention for tensor inputs")
     XFORMERS_AVAILABLE = False
 
 

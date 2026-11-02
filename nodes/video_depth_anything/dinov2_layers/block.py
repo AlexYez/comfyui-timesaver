@@ -29,7 +29,8 @@ try:
 
     XFORMERS_AVAILABLE = True
 except ImportError:
-    logger.warning("xFormers not available")
+    # Optional accelerator: ordinary tensor inputs use the standard block path.
+    logger.debug("xFormers not available; using the standard block for tensor inputs")
     XFORMERS_AVAILABLE = False
 
 

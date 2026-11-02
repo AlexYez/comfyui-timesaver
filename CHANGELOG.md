@@ -9,6 +9,17 @@ broken here, in writing, with a way back.
 
 ---
 
+## 12.13.5 — 2026-11-02
+
+### Ноды глубины: необязательный xFormers
+
+TS Image Depth и TS Video Depth больше не выводят два предупреждения
+`xFormers not available`, когда доступен обычный путь PyTorch для тензоров.
+Диагностические сообщения остаются на уровне debug. Проверки обязательной
+зависимости для nested tensors и сообщения о настоящих ошибках сохранены.
+
+---
+
 ## 12.13.4 — 2026-11-01
 
 ### Existing LLM presets refreshed
