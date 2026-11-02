@@ -1,602 +1,298 @@
 import { app } from "/scripts/app.js";
 import { api } from "/scripts/api.js";
+import { TS_UI_CLASS, ensureThemeStyles, pickLocaleStrings, createOpenInterfaceButton } from "../_theme.js";
+import { addResizableDomWidget, hideWidget, getWidget } from "../_dom_widget.js";
+import { openFullscreenOverlay } from "../_fullscreen.js";
+import { parseConfig as tsParseConfig, buildItems as tsBuildItems, serializeItems, moveItem } from "./_prompt_builder_state.js";
 
-import { TS_UI_CLASS, ensureThemeStyles, pickLocaleStrings } from "../_theme.js";
-import { addResizableDomWidget, hideWidget as sharedHideWidget, getWidget as sharedGetWidget } from "../_dom_widget.js";
-
-const TS_PROMPT_BUILDER_EXTENSION_ID = "ts.prompt_builder";
-const TS_PROMPT_BUILDER_NODE_NAME = "TS_PromptBuilder";
-const TS_PROMPT_BUILDER_CONFIG_INPUT = "config_json";
-const TS_PROMPT_BUILDER_STYLE_ID = "ts-prompt-builder-styles";
-const TS_PROMPT_BUILDER_NODE_WIDTH = 260;
-const TS_PROMPT_BUILDER_NODE_HEIGHT = 340;
-const TS_PROMPT_BUILDER_MIN_HEIGHT = 240;
-const TS_PROMPT_BUILDER_CHROME_HEIGHT = 60;
-const TS_PROMPT_BUILDER_MIN_WIDGET_HEIGHT = 160;
-
+const NODE = "TS_PromptBuilder", CONFIG = "config_json";
+const DRAG_TYPE = "application/x-ts-prompt-block";
 const STRINGS = {
     en: {
-        hint: "Click to toggle. Drag handle to reorder.",
-        loading: "Loading prompt blocks...",
-        noFiles: "No prompt files found.",
-        loadFailed: "Failed to load prompt files.",
+        title: "Prompt Builder", close: "Close (Esc)", fullscreen: "Arrange prompt blocks in full screen",
+        hint: "Drag a handle to reorder. Keyboard: Alt + arrows on a block toggle.",
+        loading: "Loading prompt blocks…", noFiles: "No blocks yet. Add your own text.",
+        loadFailed: "Could not reload files. Your blocks are kept.", saveFailed: "Could not save default file order. The workflow keeps your edits.",
+        addCustom: "+ Your text", customText: "Your text", placeholder: "Write a prompt fragment…",
+        remove: "Remove text block", reload: "Reload", reloadTitle: "Reload wildcard files", move: "Drag to reorder",
+        enable: "Enable block", disable: "Disable block", blocks: "Enabled blocks",
     },
     ru: {
-        hint: "Клик — вкл/выкл. Тяните за ручку для порядка.",
-        loading: "Загрузка блоков промпта...",
-        noFiles: "Файлы промптов не найдены.",
-        loadFailed: "Не удалось загрузить файлы промптов.",
+        title: "Конструктор промпта", close: "Закрыть (Esc)", fullscreen: "Разложить блоки промпта на весь экран",
+        hint: "Тяните за ручку для порядка. С клавиатуры: Alt + стрелки на переключателе блока.",
+        loading: "Загрузка блоков…", noFiles: "Блоков пока нет. Добавьте свой текст.",
+        loadFailed: "Не удалось обновить файлы. Ваши блоки сохранены.", saveFailed: "Не удалось сохранить порядок файлов по умолчанию. Правки остаются в workflow.",
+        addCustom: "+ Свой текст", customText: "Свой текст", placeholder: "Впишите фрагмент промпта…",
+        remove: "Удалить текстовый блок", reload: "Обновить", reloadTitle: "Обновить файлы wildcard", move: "Тяните для перестановки · Alt + стрелки",
+        enable: "Включить блок", disable: "Выключить блок", blocks: "Включено блоков",
     },
 };
 
-function tsEnsureStyles() {
-    // Colours come from the shared --ts-* tokens (js/_theme.js); keep this
-    // stylesheet to layout only.
+function styles() {
     ensureThemeStyles();
-    if (document.getElementById(TS_PROMPT_BUILDER_STYLE_ID)) {
-        return;
-    }
-    const tsStyle = document.createElement("style");
-    tsStyle.id = TS_PROMPT_BUILDER_STYLE_ID;
-    tsStyle.textContent = `
-.ts-prompt-builder {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    padding: 6px;
-    box-sizing: border-box;
-    height: 100%;
-    min-height: 0;
-    width: 100%;
-    color: var(--ts-text);
-    font-family: var(--ts-font);
-    pointer-events: auto;
-}
-.ts-prompt-body {
-    position: relative;
-    flex: 1 1 0;
-    min-height: 0;
-}
-.ts-prompt-list {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    overflow-y: auto;
-    padding-right: 2px;
-}
-.ts-prompt-item {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 4px 6px;
-    border: 1px solid var(--ts-border-soft);
-    border-radius: var(--ts-radius-sm);
-    background: var(--ts-surface);
-    cursor: pointer;
-    user-select: none;
-    transition: border-color 0.15s ease, background 0.15s ease, opacity 0.15s ease;
-}
-.ts-prompt-item.is-disabled {
-    opacity: 0.45;
-}
-.ts-prompt-item.is-drop-target {
-    border-color: var(--ts-accent);
-    box-shadow: 0 0 0 1px var(--ts-accent-line);
-}
-.ts-prompt-item.is-dragging {
-    opacity: 0.6;
-}
-.ts-prompt-handle {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 18px;
-    height: 18px;
-    border-radius: 4px;
-    border: 1px solid var(--ts-border-soft);
-    background: var(--ts-sunken);
-    color: var(--ts-muted);
-    font-size: var(--ts-fs-xs);
-    line-height: 1;
-    cursor: grab;
-}
-.ts-prompt-label {
-    flex: 1 1 auto;
-    font-size: var(--ts-fs);
-    color: var(--ts-text);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-.ts-prompt-toggle {
-    width: 10px;
-    height: 10px;
-    border-radius: 999px;
-    border: 1px solid var(--ts-border);
-    background: var(--ts-sunken);
-}
-.ts-prompt-item.is-enabled .ts-prompt-toggle {
-    background: var(--ts-accent);
-    border-color: var(--ts-accent);
-}
-.ts-prompt-hint {
-    font-size: var(--ts-fs-xs);
-    color: var(--ts-muted);
-}
-.ts-prompt-empty {
-    position: absolute;
-    left: 0;
-    right: 0;
-    top: 0;
-    font-size: var(--ts-fs-sm);
-    color: var(--ts-muted);
-    padding: 2px 0;
-}
+    if (document.getElementById("ts-prompt-builder-styles")) return;
+    const sheet = document.createElement("style");
+    sheet.id = "ts-prompt-builder-styles";
+    sheet.textContent = `
+.ts-prompt-builder-shell{width:100%;height:100%;min-height:0;display:flex}
+.ts-prompt-builder{display:flex;flex-direction:column;gap:6px;padding:6px;box-sizing:border-box;
+    height:100%;min-height:0;width:100%;color:var(--ts-text);font-family:var(--ts-font);pointer-events:auto}
+.ts-prompt-toolbar{display:flex;align-items:center;flex-wrap:wrap;gap:5px;flex:0 0 auto}
+.ts-prompt-toolbar .ts-ui-btn{font-size:var(--ts-fs-sm)}
+.ts-prompt-toolbar .ts-ui-launch{margin-left:auto}
+.ts-prompt-body{position:relative;flex:1 1 0;min-height:0}
+.ts-prompt-list{position:absolute;inset:0;display:flex;flex-direction:column;gap:4px;overflow:auto;padding:2px}
+.ts-prompt-item{display:flex;flex-direction:column;gap:6px;padding:6px;border:1px solid var(--ts-border-soft);
+    border-radius:var(--ts-radius-sm);background:var(--ts-surface);cursor:pointer;user-select:none;flex:0 0 auto}
+.ts-prompt-item.is-disabled{opacity:.5}
+.ts-prompt-item.is-drop-target{border-color:var(--ts-accent);box-shadow:0 0 0 1px var(--ts-accent-line)}
+.ts-prompt-item.is-dragging{opacity:.5}
+.ts-prompt-item-head{display:flex;gap:6px;align-items:center;min-width:0}
+.ts-prompt-handle{display:inline-flex;align-items:center;justify-content:center;flex:0 0 22px;
+    width:22px;height:24px;border:1px solid var(--ts-border-soft);border-radius:4px;
+    background:var(--ts-sunken);color:var(--ts-muted);cursor:grab;font-size:var(--ts-fs-sm)}
+.ts-prompt-handle:active{cursor:grabbing}
+.ts-prompt-label{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--ts-fs)}
+.ts-prompt-number{font-size:var(--ts-fs-xs);color:var(--ts-muted)}
+.ts-prompt-toggle{width:18px;height:18px;flex:0 0 18px;padding:0;border-radius:50%;
+    border:1px solid var(--ts-border);background:var(--ts-sunken);cursor:pointer}
+.ts-prompt-item.is-enabled .ts-prompt-toggle{background:var(--ts-accent);border-color:var(--ts-accent)}
+.ts-prompt-remove{flex:0 0 auto}
+.ts-prompt-custom{box-sizing:border-box;width:100%;min-height:86px;resize:vertical;padding:7px;
+    border:1px solid var(--ts-border-soft);border-radius:var(--ts-radius-sm);background:var(--ts-sunken);
+    color:var(--ts-text);font:inherit;font-size:var(--ts-fs);line-height:1.5;cursor:text;user-select:text}
+.ts-prompt-hint{font-size:var(--ts-fs-xs);color:var(--ts-muted);flex:0 0 auto}
+.ts-prompt-empty{font-size:var(--ts-fs-sm);color:var(--ts-muted);padding:8px}
+.ts-prompt-counter{font-size:var(--ts-fs-sm);color:var(--ts-muted);margin-left:auto;white-space:nowrap}
+.ts-prompt-builder.is-fullscreen{padding:12px 18px;gap:10px;font-size:var(--ts-fs)}
+.ts-prompt-builder.is-fullscreen .ts-prompt-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));
+    gap:10px;align-content:start;align-items:start;padding:4px 6px 12px}
+.ts-prompt-builder.is-fullscreen .ts-prompt-item{min-height:84px;padding:12px;justify-content:center}
+.ts-prompt-builder.is-fullscreen .ts-prompt-label{white-space:normal;overflow-wrap:anywhere;line-height:1.4;font-size:var(--ts-fs-lg)}
+.ts-prompt-builder.is-fullscreen .is-custom{grid-column:span 2;justify-content:flex-start}
+.ts-prompt-builder.is-fullscreen .ts-prompt-custom{min-height:112px}
+@media(max-width:520px){.ts-prompt-builder.is-fullscreen .is-custom{grid-column:span 1}}
 `;
-    document.head.appendChild(tsStyle);
+    document.head.appendChild(sheet);
 }
 
-function tsStopPropagation(tsElement, tsEvents) {
-    tsEvents.forEach((tsEventName) => {
-        tsElement.addEventListener(tsEventName, (tsEvent) => {
-            tsEvent.stopPropagation();
-        });
-    });
+function stopEvents(element, events) {
+    for (const name of events) element.addEventListener(name, event => event.stopPropagation());
 }
 
-function tsIsTargetNode(tsNode) {
-    return tsNode?.comfyClass === TS_PROMPT_BUILDER_NODE_NAME || tsNode?.type === TS_PROMPT_BUILDER_NODE_NAME;
-}
-
-function tsHideConfigWidget(tsNode) {
-    sharedHideWidget(tsNode, TS_PROMPT_BUILDER_CONFIG_INPUT);
-}
-
-function tsMakeLabel(tsFileName) {
-    return String(tsFileName || "").replace(/\.txt$/i, "");
-}
-
-/**
- * Разобрать сохранённый в ноде `config_json`.
- *
- * @param {string} tsRaw значение виджета или зеркала в properties
- * @returns {Array<{name: string, enabled: boolean}>} набор блоков ноды
- */
-function tsParseConfig(tsRaw) {
-    if (typeof tsRaw !== "string" || !tsRaw.trim()) {
-        return [];
-    }
-    try {
-        const tsData = JSON.parse(tsRaw);
-        const tsList = Array.isArray(tsData) ? tsData : tsData?.blocks;
-        if (!Array.isArray(tsList)) {
-            return [];
-        }
-        const tsOut = [];
-        for (const tsEntry of tsList) {
-            const tsName = typeof tsEntry === "string"
-                ? tsEntry
-                : (tsEntry?.file || tsEntry?.name);
-            if (!tsName) {
-                continue;
-            }
-            tsOut.push({
-                name: String(tsName),
-                enabled: typeof tsEntry === "string" ? true : tsEntry?.enabled !== false,
-            });
-        }
-        return tsOut;
-    } catch (tsError) {
-        console.warn("[TS PromptBuilder] config_json is not readable", tsError);
-        return [];
-    }
-}
-
-/**
- * Собрать список блоков: НАБОР И ПОРЯДОК — из ноды, наличие файлов — с сервера.
- *
- * ⚠️ Раньше список строился только из ответа `/ts_prompt_builder/state`, а
- * сразу за этим `tsSyncConfig()` записывал его в `config_json`. То есть при
- * каждом открытии workflow сохранённый в графе выбор молча заменялся
- * НАСТРОЙКОЙ МАШИНЫ: открыл свой же граф на другом компьютере (или после того,
- * как в соседнем графе поменяли порядок блоков) — и получил чужой набор.
- *
- * Теперь ответ сервера отвечает только на вопрос «какие файлы существуют»:
- * порядок и включённость берутся из ноды, новые файлы дописываются в конец
- * выключенными, а исчезнувшие с диска просто выпадают.
- *
- * @param {Array} tsBlocks блоки из ответа сервера
- * @param {Array<string>} tsFiles все файлы блоков на диске
- * @param {Array<{name: string, enabled: boolean}>} [tsSaved] выбор, сохранённый в ноде
- */
-function tsBuildItems(tsBlocks, tsFiles, tsSaved) {
-    const tsAvailable = new Set();
-    if (Array.isArray(tsBlocks)) {
-        for (const tsEntry of tsBlocks) {
-            const tsName = tsEntry?.file || tsEntry?.name;
-            if (tsName) tsAvailable.add(String(tsName));
-        }
-    }
-    if (Array.isArray(tsFiles)) {
-        for (const tsName of tsFiles) {
-            if (tsName) tsAvailable.add(String(tsName));
-        }
-    }
-
-    if (Array.isArray(tsSaved) && tsSaved.length) {
-        const tsItems = [];
-        const tsSeen = new Set();
-        for (const tsEntry of tsSaved) {
-            // Файла больше нет на диске — молча выбрасываем: держать в списке
-            // блок, который нечем наполнить, значит обещать несуществующее.
-            if (!tsAvailable.has(tsEntry.name) || tsSeen.has(tsEntry.name)) {
-                continue;
-            }
-            tsSeen.add(tsEntry.name);
-            tsItems.push({
-                name: tsEntry.name,
-                label: tsMakeLabel(tsEntry.name),
-                enabled: tsEntry.enabled !== false,
-            });
-        }
-        // Появившиеся на машине файлы дописываем в конец и ВЫКЛЮЧЕННЫМИ:
-        // включить их — решение человека, а не следствие обновления пака.
-        for (const tsName of tsAvailable) {
-            if (tsSeen.has(tsName)) continue;
-            tsSeen.add(tsName);
-            tsItems.push({ name: tsName, label: tsMakeLabel(tsName), enabled: false });
-        }
-        return tsItems;
-    }
-
-    return tsBuildItemsFromServer(tsBlocks, tsFiles);
-}
-
-/** Прежнее поведение — для новой ноды, у которой своего выбора ещё нет. */
-function tsBuildItemsFromServer(tsBlocks, tsFiles) {
-    const tsItems = [];
-    const tsSeen = new Set();
-    if (Array.isArray(tsBlocks)) {
-        tsBlocks.forEach((tsEntry) => {
-            const tsName = tsEntry?.file || tsEntry?.name;
-            if (!tsName || tsSeen.has(tsName)) {
-                return;
-            }
-            tsSeen.add(tsName);
-            tsItems.push({
-                name: tsName,
-                label: tsMakeLabel(tsName),
-                enabled: tsEntry?.enabled !== false,
-            });
-        });
-    }
-    if (Array.isArray(tsFiles)) {
-        tsFiles.forEach((tsName) => {
-            if (!tsName || tsSeen.has(tsName)) {
-                return;
-            }
-            tsSeen.add(tsName);
-            tsItems.push({
-                name: tsName,
-                label: tsMakeLabel(tsName),
-                enabled: true,
-            });
-        });
-    }
-    return tsItems;
-}
-
-function tsSetupPromptBuilder(tsNode) {
-    if (!tsNode || tsNode._tsPromptBuilderInitialized) {
-        return;
-    }
-    tsNode._tsPromptBuilderInitialized = true;
-
-    if (typeof tsNode.addDOMWidget !== "function") {
-        return;
-    }
-
+function setup(node) {
+    if (node._tsPromptBuilderInitialized || typeof node.addDOMWidget !== "function") return;
+    node._tsPromptBuilderInitialized = true;
+    styles();
+    hideWidget(node, CONFIG);
     const L = pickLocaleStrings(STRINGS);
-    tsEnsureStyles();
-    tsHideConfigWidget(tsNode);
+    const state = { items: [], loading: true, removed: false, fullscreen: null, dragName: null, loadId: 0 };
+    const dragOwner = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`;
+    const shell = document.createElement("div");
+    shell.className = "ts-prompt-builder-shell";
+    const root = document.createElement("div");
+    root.className = `${TS_UI_CLASS} ts-prompt-builder`;
+    const bar = document.createElement("div"); bar.className = "ts-prompt-toolbar";
+    const body = document.createElement("div"); body.className = "ts-prompt-body";
+    const list = document.createElement("div"); list.className = "ts-prompt-list";
+    const empty = document.createElement("div"); empty.className = "ts-prompt-empty";
+    const hint = document.createElement("div"); hint.className = "ts-prompt-hint"; hint.textContent = L.hint;
+    const counter = document.createElement("span"); counter.className = "ts-prompt-counter"; counter.title = L.blocks;
+    body.append(list, empty); root.append(bar, body, hint); shell.append(root);
+    node.size = [300, 380];
+    addResizableDomWidget(node, shell, { name: "ts_prompt_builder", minWidth: 260,
+        minHeight: 240, defaultWidth: 300, defaultHeight: 380, chromeHeight: 60, minWidgetHeight: 160 });
 
-    // Seed a sensible default size on first mount; the shared helper below keeps
-    // the node resizable and clamps to the min. A saved workflow size (applied
-    // after onNodeCreated) still wins for loaded nodes.
-    tsNode.size = [TS_PROMPT_BUILDER_NODE_WIDTH, TS_PROMPT_BUILDER_NODE_HEIGHT];
+    function sync() {
+        const value = serializeItems(state.items);
+        const widget = getWidget(node, CONFIG);
+        if (widget) { widget.value = value; widget.callback?.(value); }
+        if (node.setProperty) node.setProperty(CONFIG, value);
+        else { node.properties ||= {}; node.properties[CONFIG] = value; }
+        counter.textContent = `${state.items.filter(item => item.enabled).length} / ${state.items.length}`;
+        node.setDirtyCanvas?.(true, true);
+    }
 
-    const tsContainer = document.createElement("div");
-    tsContainer.className = `${TS_UI_CLASS} ts-prompt-builder`;
-
-    // Scrollable list lives in a relative body with the list positioned
-    // absolute, so the body's min-content is zero and Nodes 2.0 Vue cannot
-    // balloon the node to fit every item (mirrors the style selector layout;
-    // CLAUDE.md §12.5.1). The hint stays in-flow at the bottom.
-    const tsBody = document.createElement("div");
-    tsBody.className = "ts-prompt-body";
-
-    const tsList = document.createElement("div");
-    tsList.className = "ts-prompt-list";
-
-    const tsEmpty = document.createElement("div");
-    tsEmpty.className = "ts-prompt-empty";
-    tsEmpty.textContent = L.loading;
-
-    const tsHint = document.createElement("div");
-    tsHint.className = "ts-prompt-hint";
-    tsHint.textContent = L.hint;
-
-    tsBody.appendChild(tsList);
-    tsBody.appendChild(tsEmpty);
-    tsContainer.appendChild(tsBody);
-    tsContainer.appendChild(tsHint);
-
-    // The container is a flex column whose .ts-prompt-list scrolls (min-height:0
-    // + overflow-y:auto), so its natural min-content stays small — no runaway
-    // downward growth in Nodes 2.0. The shared helper handles both renderers'
-    // sizing hooks and keeps the node resizable (CLAUDE.md §12.5.1, §12.5.3).
-    addResizableDomWidget(tsNode, tsContainer, {
-        name: "ts_prompt_builder",
-        minWidth: TS_PROMPT_BUILDER_NODE_WIDTH,
-        minHeight: TS_PROMPT_BUILDER_MIN_HEIGHT,
-        defaultWidth: TS_PROMPT_BUILDER_NODE_WIDTH,
-        defaultHeight: TS_PROMPT_BUILDER_NODE_HEIGHT,
-        chromeHeight: TS_PROMPT_BUILDER_CHROME_HEIGHT,
-        minWidgetHeight: TS_PROMPT_BUILDER_MIN_WIDGET_HEIGHT,
-    });
-
-    const tsConfigWidget = sharedGetWidget(tsNode, TS_PROMPT_BUILDER_CONFIG_INPUT);
-    const tsState = {
-        items: [],
-        loading: true,
-        dragIndex: null,
-    };
-
-    const tsSerializeItems = (tsItems) =>
-        JSON.stringify(
-            tsItems.map((tsItem) => ({
-                file: tsItem.name,
-                enabled: Boolean(tsItem.enabled),
-            })),
-        );
-
-    const tsSyncConfig = () => {
-        const tsJson = tsSerializeItems(tsState.items);
-        if (tsConfigWidget) {
-            tsConfigWidget.value = tsJson;
-            tsConfigWidget.callback?.(tsJson);
-        }
-        if (tsNode.setProperty) {
-            tsNode.setProperty(TS_PROMPT_BUILDER_CONFIG_INPUT, tsJson);
-        } else {
-            tsNode.properties ||= {};
-            tsNode.properties[TS_PROMPT_BUILDER_CONFIG_INPUT] = tsJson;
-        }
-        tsNode.setDirtyCanvas(true, true);
-    };
-
-    const tsPersistConfig = async () => {
-        try {
-            const tsPayload = {
-                blocks: tsState.items.map((tsItem) => ({
-                    file: tsItem.name,
-                    enabled: Boolean(tsItem.enabled),
-                })),
-            };
-            const tsResponse = await fetch(api.apiURL("/ts_prompt_builder/config"), {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(tsPayload),
-            });
-            if (!tsResponse.ok) {
-                throw new Error(`HTTP ${tsResponse.status}`);
-            }
-            const tsData = await tsResponse.json();
-            const tsBlocks = tsBuildItems(tsData.blocks, tsData.files);
-            if (tsBlocks.length) {
-                tsState.items = tsBlocks;
-                tsRenderList();
-                tsSyncConfig();
-            }
-        } catch (tsError) {
-            console.error("[TS Prompt Builder] Failed to save config:", tsError);
-        }
-    };
-
-    const tsMoveItem = (tsFromIndex, tsToIndex) => {
-        if (tsFromIndex === tsToIndex) {
-            return;
-        }
-        const tsItems = tsState.items.slice();
-        const [tsMoved] = tsItems.splice(tsFromIndex, 1);
-        tsItems.splice(tsToIndex, 0, tsMoved);
-        tsState.items = tsItems;
-        tsRenderList();
-        tsSyncConfig();
-        tsPersistConfig();
-    };
-
-    const tsToggleItem = (tsIndex) => {
-        const tsItems = tsState.items.slice();
-        const tsItem = tsItems[tsIndex];
-        if (!tsItem) {
-            return;
-        }
-        tsItem.enabled = !tsItem.enabled;
-        tsState.items = tsItems;
-        tsRenderList();
-        tsSyncConfig();
-        tsPersistConfig();
-    };
-
-    const tsRenderList = () => {
-        tsList.innerHTML = "";
-
-        if (tsState.loading) {
-            tsEmpty.textContent = L.loading;
-            tsEmpty.style.display = "block";
-            return;
-        }
-
-        if (!tsState.items.length) {
-            tsEmpty.textContent = L.noFiles;
-            tsEmpty.style.display = "block";
-            return;
-        }
-
-        tsEmpty.style.display = "none";
-
-        tsState.items.forEach((tsItem, tsIndex) => {
-            const tsRow = document.createElement("div");
-            tsRow.className = "ts-prompt-item";
-            tsRow.classList.toggle("is-disabled", !tsItem.enabled);
-            tsRow.classList.toggle("is-enabled", Boolean(tsItem.enabled));
-
-            const tsHandle = document.createElement("div");
-            tsHandle.className = "ts-prompt-handle";
-            tsHandle.textContent = "::";
-            tsHandle.setAttribute("draggable", "true");
-
-            const tsLabel = document.createElement("div");
-            tsLabel.className = "ts-prompt-label";
-            tsLabel.textContent = tsItem.label;
-
-            const tsToggle = document.createElement("div");
-            tsToggle.className = "ts-prompt-toggle";
-
-            tsRow.appendChild(tsHandle);
-            tsRow.appendChild(tsLabel);
-            tsRow.appendChild(tsToggle);
-
-            tsRow.addEventListener("click", (tsEvent) => {
-                if (tsEvent.target?.closest(".ts-prompt-handle")) {
-                    return;
+    // Shared defaults contain file choices only. HTTP responses never replace
+    // newer local edits, and rapid default writes run in order.
+    let pendingDefaults = null, saveLoop = null, lastQueued = null;
+    function persistDefaults() {
+        const payload = serializeItems(state.items, { filesOnly: true });
+        if (payload === lastQueued || state.removed) return;
+        lastQueued = payload; pendingDefaults = payload;
+        if (saveLoop) return;
+        saveLoop = (async () => {
+            while (pendingDefaults !== null && !state.removed) {
+                const next = pendingDefaults; pendingDefaults = null;
+                try {
+                    const response = await fetch(api.apiURL("/ts_prompt_builder/config"), {
+                        method: "POST", headers: { "Content-Type": "application/json" }, body: next,
+                    });
+                    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                } catch (error) {
+                    lastQueued = null;
+                    if (!state.removed) hint.textContent = L.saveFailed;
+                    console.warn("[TS Prompt Builder] Default save failed", error);
                 }
-                tsToggleItem(tsIndex);
-            });
-
-            tsHandle.addEventListener("dragstart", (tsEvent) => {
-                tsState.dragIndex = tsIndex;
-                tsEvent.dataTransfer.effectAllowed = "move";
-                tsEvent.dataTransfer.setData("text/plain", String(tsIndex));
-                tsRow.classList.add("is-dragging");
-            });
-
-            tsHandle.addEventListener("dragend", () => {
-                tsState.dragIndex = null;
-                tsRow.classList.remove("is-dragging");
-                tsList.querySelectorAll(".ts-prompt-item.is-drop-target").forEach((tsEl) => {
-                    tsEl.classList.remove("is-drop-target");
-                });
-            });
-
-            tsRow.addEventListener("dragover", (tsEvent) => {
-                tsEvent.preventDefault();
-                tsRow.classList.add("is-drop-target");
-            });
-
-            tsRow.addEventListener("dragleave", () => {
-                tsRow.classList.remove("is-drop-target");
-            });
-
-            tsRow.addEventListener("drop", (tsEvent) => {
-                tsEvent.preventDefault();
-                tsRow.classList.remove("is-drop-target");
-                const tsFromIndex = Number(tsEvent.dataTransfer.getData("text/plain"));
-                const tsResolvedFrom = Number.isFinite(tsFromIndex) ? tsFromIndex : tsState.dragIndex;
-                if (Number.isFinite(tsResolvedFrom)) {
-                    tsMoveItem(tsResolvedFrom, tsIndex);
-                }
-            });
-
-            tsStopPropagation(tsRow, [
-                "pointerdown",
-                "pointerup",
-                "mousedown",
-                "mouseup",
-                "dblclick",
-                "contextmenu",
-            ]);
-            tsStopPropagation(tsHandle, [
-                "pointerdown",
-                "mousedown",
-                "mouseup",
-                "dblclick",
-                "contextmenu",
-            ]);
-
-            tsList.appendChild(tsRow);
-        });
-    };
-
-    const tsLoadState = async () => {
-        tsState.loading = true;
-        tsRenderList();
-        try {
-            const tsResponse = await fetch(api.apiURL("/ts_prompt_builder/state"));
-            if (!tsResponse.ok) {
-                throw new Error(`HTTP ${tsResponse.status}`);
             }
-            const tsPayload = await tsResponse.json();
-            // Сохранённый в ноде выбор читается ЗДЕСЬ, а не при создании:
-            // на момент onNodeCreated виджеты ещё держат дефолты, значения из
-            // workflow приезжают позже (CLAUDE.md §12.5.12).
-            const tsRaw = sharedGetWidget(tsNode, TS_PROMPT_BUILDER_CONFIG_INPUT)?.value
-                ?? tsNode?.properties?.[TS_PROMPT_BUILDER_CONFIG_INPUT];
+        })().finally(() => { saveLoop = null; });
+    }
+
+    function edit(change, { renderList = true, persist = true } = {}) {
+        node.graph?.beforeChange?.(); change();
+        if (renderList) render();
+        sync(); node.graph?.afterChange?.();
+        if (persist) persistDefaults();
+    }
+
+    function move(from, to) {
+        const next = moveItem(state.items, from, to);
+        if (next !== state.items) {
+            const changedFiles = serializeItems(next, { filesOnly: true }) !== serializeItems(state.items, { filesOnly: true });
+            edit(() => { state.items = next; }, { persist: changedFiles });
+        }
+    }
+
+    function button(label, className = "") {
+        const result = document.createElement("button"); result.type = "button";
+        result.className = `ts-ui-btn ${className}`; result.title = label; result.setAttribute("aria-label", label);
+        result.textContent = label;
+        return result;
+    }
+
+    function render() {
+        list.replaceChildren();
+        empty.hidden = Boolean(state.items.length);
+        empty.textContent = state.loading ? L.loading : L.noFiles;
+        if (state.loading && !state.items.length) return;
+        for (const [index, item] of state.items.entries()) {
+            const row = document.createElement("div"); row.className = "ts-prompt-item";
+            row.classList.toggle("is-custom", item.type === "custom");
+            row.classList.toggle("is-disabled", !item.enabled); row.classList.toggle("is-enabled", item.enabled);
+            row.dataset.blockId = `${item.type === "custom" ? "custom" : "file"}:${item.name}`;
+            const head = document.createElement("div"); head.className = "ts-prompt-item-head";
+            // A focusable mouse drag handle is re-focused by the shared modal
+            // before dragstart, cancelling the native drag. Keep the grip
+            // non-focusable; keyboard reorder lives on the block toggle.
+            const handle = document.createElement("div"); handle.className = "ts-prompt-handle";
+            handle.title = L.move; handle.textContent = "::"; handle.draggable = true;
+            const label = document.createElement("span"); label.className = "ts-prompt-label";
+            label.textContent = item.type === "custom" ? L.customText : item.label; label.title = label.textContent;
+            const number = document.createElement("span"); number.className = "ts-prompt-number"; number.textContent = index + 1;
+            const toggle = button(item.enabled ? L.disable : L.enable, "ts-prompt-toggle");
+            toggle.textContent = "";
+            toggle.setAttribute("aria-pressed", String(item.enabled));
+            toggle.addEventListener("click", () => edit(() => { item.enabled = !item.enabled; }, { persist: item.type !== "custom" }));
+            head.append(handle, label, number, toggle); row.append(head);
+            if (item.type === "custom") {
+                const remove = button(L.remove, "ts-ui-btn--icon ts-prompt-remove"); remove.textContent = "×";
+                remove.addEventListener("click", () => edit(() => { state.items = state.items.filter(entry => entry !== item); }, { persist: false }));
+                head.append(remove);
+                const input = document.createElement("textarea"); input.className = "ts-prompt-custom";
+                input.placeholder = L.placeholder; input.setAttribute("aria-label", L.customText); input.value = item.text;
+                input.addEventListener("input", () => edit(() => { item.text = input.value; }, { renderList: false, persist: false }));
+                stopEvents(input, ["keydown", "keyup", "copy", "cut", "paste"]);
+                row.append(input);
+            }
+            row.addEventListener("click", event => {
+                if (!event.target.closest("button,textarea,.ts-prompt-handle")) edit(() => { item.enabled = !item.enabled; }, { persist: item.type !== "custom" });
+            });
+            toggle.addEventListener("keydown", event => {
+                if (!event.altKey || !["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) return;
+                event.preventDefault(); event.stopPropagation();
+                move(index, index + (["ArrowLeft", "ArrowUp"].includes(event.key) ? -1 : 1));
+                [...list.children].find(el => el.dataset.blockId === row.dataset.blockId)?.querySelector(".ts-prompt-toggle")?.focus();
+            });
+            handle.addEventListener("dragstart", event => {
+                state.dragName = row.dataset.blockId;
+                event.dataTransfer.effectAllowed = "move";
+                event.dataTransfer.setData(DRAG_TYPE, JSON.stringify({ owner: dragOwner, id: state.dragName }));
+                row.classList.add("is-dragging");
+            });
+            handle.addEventListener("dragend", () => {
+                state.dragName = null; row.classList.remove("is-dragging");
+                list.querySelectorAll(".is-drop-target").forEach(el => el.classList.remove("is-drop-target"));
+            });
+            row.addEventListener("dragover", event => {
+                if (!state.dragName || !event.dataTransfer.types.includes(DRAG_TYPE)) return;
+                event.preventDefault(); event.stopPropagation(); event.dataTransfer.dropEffect = "move";
+                row.classList.add("is-drop-target");
+            });
+            row.addEventListener("dragleave", event => {
+                if (!row.contains(event.relatedTarget)) row.classList.remove("is-drop-target");
+            });
+            row.addEventListener("drop", event => {
+                row.classList.remove("is-drop-target");
+                if (!state.dragName || !event.dataTransfer.types.includes(DRAG_TYPE)) return;
+                event.preventDefault(); event.stopPropagation();
+                try {
+                    const data = JSON.parse(event.dataTransfer.getData(DRAG_TYPE));
+                    if (data.owner !== dragOwner || data.id !== state.dragName) return;
+                    const from = [...list.children].findIndex(el => el.dataset.blockId === data.id);
+                    move(from, index);
+                } catch { /* External drags never rearrange the workflow. */ }
+                state.dragName = null;
+            });
+            list.append(row);
+        }
+    }
+
+    async function load() {
+        const loadId = ++state.loadId;
+        state.loading = true; render();
+        try {
+            const response = await fetch(api.apiURL("/ts_prompt_builder/state"));
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const tsPayload = await response.json();
+            if (state.removed || loadId !== state.loadId) return;
+            // Read after async loading, when configure/undo has restored state.
+            const value = getWidget(node, CONFIG)?.value;
+            const tsRaw = value || node.properties?.[CONFIG];
             const tsSaved = tsParseConfig(tsRaw);
-            tsState.items = tsBuildItems(tsPayload.blocks, tsPayload.files, tsSaved);
-            tsState.loading = false;
-            tsRenderList();
-            // Запись обратно нужна, чтобы дописанные новые файлы попали в граф;
-            // порядок и включённость при этом уже те, что были сохранены.
-            tsSyncConfig();
-        } catch (tsError) {
-            tsState.loading = false;
-            tsState.items = [];
-            tsRenderList();
-            tsEmpty.textContent = L.loadFailed;
-            tsEmpty.style.display = "block";
-            console.error("[TS Prompt Builder] Failed to load prompt files:", tsError);
+            state.items = tsBuildItems(tsPayload.blocks, tsPayload.files, tsSaved);
+            state.loading = false; hint.textContent = L.hint; render(); sync();
+        } catch (error) {
+            if (state.removed || loadId !== state.loadId) return;
+            state.loading = false; render(); hint.textContent = L.loadFailed;
+            console.warn("[TS Prompt Builder] File reload failed", error);
         }
+    }
+
+    const add = button(L.addCustom, "ts-prompt-add");
+    add.addEventListener("click", () => {
+        const name = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`;
+        edit(() => state.items.push({ type: "custom", name, text: "", enabled: true }), { persist: false });
+        const inputs = list.querySelectorAll("textarea"); inputs.item(inputs.length - 1)?.focus();
+    });
+    const reload = button(L.reload, "ts-prompt-reload");
+    reload.title = L.reloadTitle; reload.setAttribute("aria-label", L.reloadTitle); reload.addEventListener("click", load);
+    const open = createOpenInterfaceButton(() => {
+        if (state.fullscreen?.isOpen()) return;
+        root.classList.add("is-fullscreen");
+        state.fullscreen = openFullscreenOverlay(root, { label: L.title, closeTitle: L.close, trigger: open,
+            onClose: () => {
+                root.classList.remove("is-fullscreen"); state.fullscreen = null;
+                if (!state.removed) shell.append(root);
+                node.setDirtyCanvas?.(true, true);
+            } });
+    }, { description: L.fullscreen });
+    open.classList.add("ts-prompt-fullscreen");
+    bar.append(add, reload, counter, open);
+    stopEvents(root, ["pointerdown", "pointerup", "mousedown", "mouseup", "wheel", "dblclick", "contextmenu"]);
+    node._tsPromptBuilderSync = load;
+    const previousRemoved = node.onRemoved;
+    node.onRemoved = function (...args) {
+        state.removed = true; state.loadId++; pendingDefaults = null; state.fullscreen?.close();
+        return previousRemoved?.apply(this, args);
     };
-
-    tsStopPropagation(tsContainer, [
-        "pointerdown",
-        "pointerup",
-        "mousedown",
-        "mouseup",
-        "wheel",
-        "dblclick",
-        "contextmenu",
-    ]);
-    tsStopPropagation(tsList, ["wheel"]);
-
-    tsNode._tsPromptBuilderSync = () => {
-        tsLoadState();
-    };
-
-    tsRenderList();
-    tsLoadState();
+    render(); load();
 }
 
 app.registerExtension({
-    name: TS_PROMPT_BUILDER_EXTENSION_ID,
-    nodeCreated(tsNode) {
-        if (!tsIsTargetNode(tsNode)) {
-            return;
-        }
-        tsSetupPromptBuilder(tsNode);
-    },
-    loadedGraphNode(tsNode) {
-        if (!tsIsTargetNode(tsNode)) {
-            return;
-        }
-        if (!tsNode._tsPromptBuilderInitialized) {
-            tsSetupPromptBuilder(tsNode);
-        }
-        tsHideConfigWidget(tsNode);
-        tsNode._tsPromptBuilderSync?.();
+    name: "ts.prompt_builder",
+    nodeCreated(node) { if (node.comfyClass === NODE || node.type === NODE) setup(node); },
+    loadedGraphNode(node) {
+        if (node.comfyClass !== NODE && node.type !== NODE) return;
+        setup(node); hideWidget(node, CONFIG); node._tsPromptBuilderSync?.();
     },
 });

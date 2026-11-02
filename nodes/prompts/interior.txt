@@ -135,3 +135,277 @@ snow cabin boudoir
 christmas boudoir bedroom
 halloween gothic boudoir
 valentine red rose room
+rococo salon
+neoclassical salon
+empire bedroom
+regency drawing room
+victorian parlor
+edwardian morning room
+arts and crafts bedroom
+gothic revival library
+biedermeier sitting room
+belle epoque dressing room
+haussmann salon
+parisian mansard room
+venetian piano nobile
+florentine palazzo sala
+roman caldarium
+roman tepidarium
+milan fashion flat
+amalfi terrace room
+tuscan stone chamber
+english country bedroom
+cotswold stone bedroom
+london mews house
+bloomsbury flat
+scottish baronial bedroom
+highland lodge bedroom
+irish georgian bedroom
+normandy manor bedroom
+loire chambre
+alsace timber room
+swiss chalet bedroom
+amsterdam canal bedroom
+copenhagen townhouse
+berlin altbau room
+vienna secession flat
+prague art nouveau flat
+budapest courtyard flat
+krakow attic chamber
+saint petersburg enfilade
+helsinki jugend flat
+stockholm archipelago cabin
+greek cave suite
+santorini caldera suite
+mykonos white bedroom
+istanbul yali
+ottoman divan room
+cappadocia cave suite
+cairo mashrabiya room
+moroccan riad suite
+marrakech courtyard room
+fez medina house
+tunis courtyard house
+andalusian patio room
+seville tiled salon
+lisbon azulejo bedroom
+barcelona eixample salon
+matera sassi room
+alberobello trullo
+procida pastel room
+capri grotto suite
+positano terrace bedroom
+kyoto machiya room
+ryokan tatami suite
+onsen private bath
+hinoki ofuro room
+tokyo love hotel room
+osaka alley loft
+kanazawa teahouse
+naoshima concrete suite
+seoul hanok bedroom
+busan cliff suite
+beijing courtyard house
+shanghai shikumen room
+shanghai bund suite
+hong kong tong lau
+singapore bungalow
+penang shophouse
+hanoi colonial room
+hoi an townhouse
+chiang mai teak pavilion
+bali joglo pavilion
+ubud jungle pavilion
+uluwatu cliff villa
+fiji bure interior
+bora bora water villa
+maldives water villa
+seychelles granite suite
+zanzibar stone town room
+jaipur haveli chamber
+udaipur lake palace room
+jodhpur blue room
+kerala teak pavilion
+goa portuguese bedroom
+mumbai deco flat
+agra marble pavilion
+suzhou garden room
+moon-viewing veranda
+engawa corridor
+chashitsu tea room
+tokonoma alcove
+korean sarangbang
+brooklyn brownstone parlor
+west village flat
+soho cast-iron loft
+prewar manhattan bedroom
+chicago gold coast flat
+miami beach deco suite
+palm beach salon
+key west conch house
+new orleans creole parlor
+charleston single house
+savannah garden flat
+santa fe adobe bedroom
+taos adobe chamber
+palm springs house
+joshua tree desert house
+marfa minimal box
+malibu glass pavilion
+hollywood hills pavilion
+big sur cabin
+napa estate bedroom
+hudson valley farmhouse
+hamptons shingle bedroom
+newport cottage bedroom
+maine gray cottage
+aspen timber suite
+jackson hole log suite
+san francisco victorian
+postcard row parlor
+mexico city condesa flat
+oaxaca courtyard room
+merida colonial bedroom
+hacienda bedroom
+cartagena courtyard bedroom
+havana colonial sala
+old san juan townhouse
+buenos aires belle epoque flat
+rio deco apartment
+patagonia estancia bedroom
+reykjavik concrete flat
+glass igloo cabin
+lofoten rorbu interior
+tromso cabin
+houseboat cabin
+narrowboat cabin
+sailboat cabin
+cruise stateroom
+sleeper-train compartment
+orient express cabin
+pullman compartment
+airstream interior
+vintage camper interior
+vintage carriage interior
+lighthouse chamber
+windmill bedroom
+converted bank vault
+converted chapel loft
+water-tower apartment
+silo bedroom
+boathouse interior
+firehouse loft
+clock tower chamber
+stable loft
+observatory dome room
+orchid house
+fernery
+palm house
+orangerie
+tea pavilion
+inkstone studio
+incense chamber
+calligraphy room
+harp salon
+music salon
+billiard room
+smoking room
+morning room
+curiosity cabinet
+wunderkammer
+map room
+wheelhouse cabin
+perfume atelier
+couture fitting salon
+hat workshop
+jewelry vault
+watch atelier
+bouquet workroom
+chocolate atelier
+champagne cellar
+whiskey library
+cigar lounge
+opera dressing room
+theater green room
+backstage corridor
+photography darkroom
+textile archive
+fashion archive
+costume gallery
+lace workshop
+embroidery atelier
+shoe salon
+glove atelier
+corsetry workroom
+print studio
+ceramic studio
+gallery after hours
+sculpture hall
+tapestry hall
+gem vault
+perfume organ room
+sake cellar
+olive press room
+greenhouse potting room
+aquarium tunnel
+radio studio
+recording booth
+auction viewing room
+vitrine gallery
+coin room
+map archive
+chart room
+black marble wet room
+copper soaking room
+sunken bath atrium
+infinity-edge bath
+hammam cooling room
+laconicum
+rain room
+salt cave spa
+mud bath chamber
+cold plunge room
+hot spring grotto
+seaside bathhouse
+rooftop bath pavilion
+glass-bottom bath
+plunge pool atrium
+milk bath alcove
+clawfoot alcove
+sunken roman bath
+black tile wet room
+travertine bath hall
+duplex hotel suite
+grand suite
+verandah cabin
+pool villa interior
+daybed pavilion
+spa treatment room
+dual spa suite
+hammam steam hall
+flotarium
+grotto room
+nymphaeum
+garden loggia
+folly interior
+belvedere room
+turret bedroom
+gatehouse bedroom
+dower house bedroom
+flower room
+garden bothy
+glasshouse bedroom
+seaplane cabin
+vintage sleeper car
+first-class cabin
+flagship suite
+side palace suite
+palace antechamber
+armor gallery
+clock museum hall
+textile museum gallery
+fashion museum gallery
+perfume museum room
+jewelry museum gallery
+palm court
+coach house bedroom

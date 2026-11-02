@@ -13,7 +13,9 @@ here:
 pip install --upgrade nvidia-vfx==0.2.0.0 --no-build-isolation --index-url https://pypi.nvidia.com
 ```
 
-NVIDIA VFX 0.2 is required by the official Nvidia VFX Nodes pack. TS RTX Upscaler supports both the 0.1 and 0.2 APIs; its optional dependency no longer forces a downgrade to 0.1.0.1.
+NVIDIA VFX 0.2 is required by the official Nvidia VFX Nodes pack. The TS optional
+dependency requires `nvidia-vfx>=0.2.0.0,<0.3` too. Legacy 0.1 API handling stays
+in the adapter, but new installs use 0.2 to keep both packs compatible.
 
 **The engine is now kept alive between runs.** Measured on an RTX 3080 Ti:
 creating it costs ~730 ms, changing the output size on a live one costs 6 ms,

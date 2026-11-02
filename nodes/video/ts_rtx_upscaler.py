@@ -201,7 +201,7 @@ class TS_RTX_Upscaler(IO.ComfyNode):
         if nvvfx is None:
             raise RuntimeError(
                 "[TS RTX Upscaler] nvidia-vfx is not installed (or failed to import). "
-                "Install it with `pip install nvidia-vfx` in your ComfyUI environment."
+                f"Install it with `{TSDependencyManager.install_hint('nvvfx')}` in your ComfyUI environment."
             )
 
         if not torch.cuda.is_available():

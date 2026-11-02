@@ -99,3 +99,205 @@ steampunk art
 retrofuturism
 neon noir
 film noir
+baroque
+rococo
+neoclassicism
+romanticism
+realism
+pre-raphaelite
+symbolism
+arts and crafts
+jugendstil
+vienna secession
+fauvism
+cubism
+futurism
+dada
+constructivism
+suprematism
+de stijl
+bauhaus
+abstract expressionism
+color field painting
+hard-edge painting
+op art
+kinetic art
+conceptual art
+arte povera
+metaphysical painting
+magic realism
+social realism
+ashcan school
+hudson river school
+luminism
+tonalism
+post-impressionism
+pointillism
+divisionism
+cloisonnism
+synthetism
+ukiyo-e
+shin-hanga
+sumi-e
+nihonga
+ink wash painting
+gongbi
+persian miniature
+mughal miniature
+byzantine icon style
+gothic art
+international gothic
+high renaissance
+mannerism
+northern renaissance
+tenebrism
+dutch golden age
+flemish primitive
+biedermeier
+victorian illustration
+edwardian portrait
+belle epoque
+streamline moderne
+mid-century modern
+atomic age design
+googie
+brutalism
+memphis design
+swiss style
+psychedelic poster
+polish poster school
+pulp illustration
+pin-up illustration
+airbrush illustration
+ligne claire
+bande dessinee
+silver age comics
+risograph print
+screen print
+woodcut
+linocut
+etching
+engraving
+mezzotint
+lithograph
+letterpress
+collage
+photomontage
+mixed media
+graffiti
+wildstyle
+street art
+stencil art
+muralism
+pinstriping
+sign painting
+gold leaf
+illuminated manuscript
+art brut
+outsider art
+naive art
+folk art
+primitivism
+orphism
+vorticism
+precisionism
+regionalism
+mexican muralism
+harlem renaissance
+afrofuturism
+shan shui
+superflat
+gekiga
+manhwa
+manhua
+webtoon
+90s anime
+retro anime
+beauty photography
+glamour photography
+boudoir photography
+fine art photography
+portrait photography
+environmental portrait
+lifestyle photography
+product photography
+still life photography
+architectural photography
+landscape photography
+night photography
+astrophotography
+lomography
+direct flash
+paparazzi flash
+high-key photography
+low-key photography
+double exposure
+multiple exposure
+motion blur photography
+wet plate photography
+tintype photography
+large format photography
+medium format photography
+rangefinder photography
+digicam flash
+ccd aesthetic
+lookbook photography
+campaign still
+fragrance campaign
+beauty campaign
+catalog photography
+runway photography
+backstage photography
+hard flash fashion
+soft-focus portrait
+helmut newton style
+guy bourdin style
+richard avedon style
+irving penn style
+herb ritts style
+peter lindbergh style
+paolo roversi style
+tim walker style
+ellen von unwerth style
+david lachapelle style
+juergen teller style
+steven meisel style
+nick knight style
+sarah moon style
+cel shading
+toon shading
+vector art
+isometric illustration
+technical illustration
+blueprint drawing
+archviz
+pbr render
+path tracing
+arnold render
+corona render
+keyshot render
+zbrush sculpt
+voxel art
+matte painting
+speed painting
+impasto
+sfumato
+grisaille
+alla prima
+encaustic
+fresco
+egg tempera
+palette knife
+pen and ink
+crosshatching
+scratchboard
+silverpoint
+sanguine drawing
+marker illustration
+croquis
+gesture drawing
+haute couture
+quiet luxury
+coquette aesthetic
+dark academia
+vaporwave

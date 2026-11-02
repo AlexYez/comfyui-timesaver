@@ -5,12 +5,17 @@
 #   pip install bitsandbytes        # for TS_Qwen3_VL_V3 int4/int8
 #   pip install demucs geomloss pykeops  # for the older Demucs engine in TS_Music_Stems
 #   pip install silero silero-stress  # Russian TTS / stress marks
-#   pip install litert-lm-api==0.19.0  # for TS Super Prompt RT / TS RT Prompt Enhancer (Gemma 4 on LiteRT)
+#   python -m pip install litert-lm-api==0.19.0  # TS Super Prompt RT / TS RT Prompt Enhancer
+# LiteRT nodes use the API package only. If an UNUSED old litert-lm CLI reports
+# a conflicting API pin, remove its CLI/builder; do not downgrade the API:
+#   python -m pip uninstall litert-lm litert-lm-builder
 #
 # TS RTX Upscaler needs NVIDIA's own package index — the copy on PyPI is a
 # 2.7 KB stub that fails to build, while the real wheel (~436 MB of VFX SDK,
 # TensorRT and NPP libraries) lives only here:
 #   pip install --upgrade nvidia-vfx==0.2.0.0 --no-build-isolation --index-url https://pypi.nvidia.com
+# The rtx-upscaler extra requires >=0.2.0.0,<0.3, matching official Nvidia VFX
+# Nodes (>=0.2). Keep this optional; it is not a dependency of CPU/non-RTX nodes.
 #
 # ⚠️ litert-lm-api СОЗНАТЕЛЬНО не в списке ниже и не в extra `all`: это
 # нативный рантайм с точной версией ради двух нод, и колёс под Intel-мак у него

@@ -111,8 +111,16 @@ def ts_parse_config_data(data):
     if not isinstance(data, list):
         return []
     result = []
-    for entry in data:
+    for index, entry in enumerate(data):
         if not isinstance(entry, dict):
+            continue
+        if entry.get("type") == "custom":
+            result.append({
+                "type": "custom",
+                "id": str(entry.get("id") or f"custom-{index}"),
+                "text": str(entry.get("text") or ""),
+                "enabled": bool(entry.get("enabled", True)),
+            })
             continue
         name = str(entry.get("file") or entry.get("name") or "").strip()
         if not name:
@@ -143,6 +151,12 @@ def ts_merge_config_with_files(config_items, files):
     merged = []
     seen = set()
     for entry in config_items:
+        if entry.get("type") == "custom":
+            key = ("custom", entry["id"])
+            if key not in seen:
+                merged.append(dict(entry))
+                seen.add(key)
+            continue
         file_name = entry.get("file")
         if not file_name or file_name not in files_set or file_name in seen:
             continue
@@ -171,7 +185,8 @@ def ts_load_prompt_builder_config():
 def ts_write_prompt_builder_config(config_items):
     prompts_dir = ts_prompts_dir()
     os.makedirs(prompts_dir, exist_ok=True)
-    payload = {"blocks": config_items}
+    # Free text belongs to the workflow, never to this shared on-disk default.
+    payload = {"blocks": [item for item in config_items if item.get("type") != "custom"]}
     temp_path = None
     try:
         with tempfile.NamedTemporaryFile(
@@ -234,7 +249,7 @@ async def ts_prompt_builder_config(request):
     except Exception:
         return web.Response(status=400)
     files = ts_list_prompt_files()
-    items = ts_parse_config_data(payload)
+    items = [item for item in ts_parse_config_data(payload) if item.get("type") != "custom"]
     blocks = ts_get_config_state(files, override_items=items)
     return web.json_response({"files": files, "blocks": blocks})
 
@@ -279,13 +294,13 @@ class TS_PromptBuilder(IO.ComfyNode):
                 IO.String.Input(
                     "config_json",
                     default="",
-                    tooltip="Block config (order and enabled flags) managed by the node UI. Selects which prompt files contribute lines.",
+                    tooltip="Ordered file blocks and custom text managed by the node UI. Custom text is saved in the workflow, not in shared defaults.",
                 ),
             ],
             outputs=[
                 IO.String.Output(
                     display_name="prompt",
-                    tooltip="Assembled prompt: one random line from each enabled block, comma-joined.",
+                    tooltip="Assembled prompt: one random line from each enabled file and each enabled custom text block, in order, comma-joined.",
                 )
             ],
         )
@@ -307,14 +322,16 @@ class TS_PromptBuilder(IO.ComfyNode):
         except Exception:
             seed_value = 0
 
+        config_items = ts_parse_config(config_json)
         files = ts_list_prompt_files()
-        if not files:
+        if not files and not config_items:
             ts_logger.warning("[TS Prompt Builder] No prompt files found.")
             return IO.NodeOutput("")
 
-        config_items = ts_parse_config(config_json)
         if config_items:
-            ordered = ts_get_config_state(files, override_items=config_items)
+            # Executing a saved graph must not change defaults for other graphs.
+            # Explicit UI edits still save file defaults through the config route.
+            ordered = ts_merge_config_with_files(config_items, files)
         else:
             ordered = ts_get_config_state(files)
 
@@ -322,6 +339,11 @@ class TS_PromptBuilder(IO.ComfyNode):
         prompts_dir = ts_prompts_dir()
         for item in ordered:
             if not item.get("enabled", True):
+                continue
+            if item.get("type") == "custom":
+                text = item.get("text", "").strip()
+                if text:
+                    parts.append(text)
                 continue
             file_name = item.get("file")
             file_path = ts_safe_join(prompts_dir, file_name)

@@ -75,3 +75,157 @@
 75. 80s vintage photograph
 76. 90s disposable camera photo
 77. infrared film photo
+78. shot on Kodak Portra 160
+79. shot on Kodak Portra 160NC
+80. shot on Kodak Portra 160VC
+81. shot on Kodak Portra 400NC
+82. shot on Kodak Portra 400VC
+83. shot on Kodak Portra 400UC
+84. shot on Kodak Pro Image 100
+85. shot on Kodak Gold 100
+86. shot on Kodak Gold 400
+87. shot on Kodak Max 800
+88. shot on Kodak Royal Gold 200
+89. shot on Kodak Ektachrome E100G
+90. shot on Kodak Ektachrome E100VS
+91. shot on Kodak Ektachrome E200
+92. shot on Kodak Ektachrome 64
+93. shot on Kodak Ektachrome 160T
+94. shot on Kodachrome 25
+95. shot on Kodachrome 200
+96. shot on Kodachrome 40
+97. shot on Kodak T-Max 100
+98. shot on Kodak T-Max 3200
+99. shot on Kodak T-Max P3200
+100. shot on Kodak Plus-X 125
+101. shot on Kodak Double-X 5222
+102. shot on Kodak BW400CN
+103. shot on Kodak Verichrome Pan
+104. shot on Kodak Panatomic-X
+105. shot on Kodak High Speed Infrared
+106. shot on Kodak Aerochrome
+107. shot on Kodak Vision3 200T
+108. shot on Kodak Vision2 500T
+109. shot on Kodak Vision2 250D
+110. shot on Kodak Vision2 50D
+111. Kodak 2383 print film look
+112. Kodak 2393 print film look
+113. shot on Fuji Velvia 100
+114. shot on Fuji Velvia 100F
+115. shot on Fuji Provia 400X
+116. shot on Fuji Provia 400F
+117. shot on Fuji Astia 100
+118. shot on Fuji Superia 200
+119. shot on Fuji Superia 800
+120. shot on Fuji Superia 1600
+121. shot on Fuji Superia X-TRA 400
+122. shot on Fuji Reala 100
+123. shot on Fuji Reala 500D
+124. shot on Fuji Pro 160S
+125. shot on Fuji Pro 160C
+126. shot on Fuji NPS 160
+127. shot on Fuji NPH 400
+128. shot on Fuji NPC 160
+129. shot on Fuji Press 800
+130. shot on Fuji Superia Venus 800
+131. shot on Fuji Neopan 400
+132. shot on Fuji Neopan 1600
+133. shot on Fuji Neopan Acros 100
+134. shot on Fuji Acros 100 II
+135. shot on Fuji Eterna 250D
+136. shot on Fuji Eterna Vivid 500T
+137. shot on Fuji Fortia SP 50
+138. shot on Fuji Sensia 100
+139. shot on Fuji Industrial 400
+140. shot on Fuji Pro 800Z
+141. shot on CineStill 400D
+142. shot on CineStill BwXX
+143. shot on Ilford Delta 100
+144. shot on Ilford Delta 400
+145. shot on Ilford XP2 Super 400
+146. shot on Ilford SFX 200
+147. shot on Ilford Ortho Plus 80
+148. shot on Harman Pan 100
+149. shot on Harman Pan 400
+150. shot on Kentmere 100
+151. shot on Kentmere 400
+152. shot on Harman Phoenix 200
+153. shot on Rollei RPX 25
+154. shot on Rollei RPX 100
+155. shot on Rollei RPX 400
+156. shot on Rollei Retro 80S
+157. shot on Rollei Retro 400S
+158. shot on Rollei Infrared 400
+159. shot on Rollei Superpan 200
+160. shot on Agfa Vista 100
+161. shot on Agfa Vista 400
+162. shot on Agfa APX 100
+163. shot on Agfa APX 400
+164. shot on Agfa Precisa CT 100
+165. shot on Agfa Optima 200
+166. shot on Fomapan 100
+167. shot on Fomapan 200
+168. shot on Fomapan R100
+169. shot on ORWO UN54
+170. shot on ORWO NP20
+171. shot on ORWO N74
+172. shot on Bergger Pancro 400
+173. shot on JCH Street Pan 400
+174. shot on Ferrania P30
+175. shot on ADOX Silvermax 100
+176. shot on ADOX CHS 100 II
+177. shot on ADOX HR-50
+178. shot on Lomography Color 100
+179. shot on Lomography Color 800
+180. shot on LomoChrome Purple
+181. shot on LomoChrome Metropolis
+182. shot on LomoChrome Turquoise
+183. shot on Lomography Redscale XR
+184. shot on Lomography Earl Grey 100
+185. shot on Lomography Berlin Kino 400
+186. shot on Lomography Potsdam Kino 100
+187. shot on Lomography Fantome Kino
+188. shot on Film Washi S
+189. shot on Film Washi Z
+190. shot on CatLABS X FILM 320
+191. shot on Konica Centuria 200
+192. shot on Konica Impresa 50
+193. shot on Lucky SHD 100
+194. shot on Shanghai GP3 100
+195. Polaroid 600 film photo
+196. Polaroid i-Type photo
+197. Polaroid Type 55 peel-apart
+198. Instax Wide photo
+199. Instax Square photo
+200. Fuji FP-100C peel-apart
+201. wet plate collodion photograph
+202. tintype photograph
+203. daguerreotype photograph
+204. ambrotype photograph
+205. cyanotype print
+206. platinum palladium print
+207. albumen print
+208. salt print
+209. Ilfochrome print
+210. dye transfer print
+211. RA-4 optical print
+212. contact sheet photograph
+213. redscale film photo
+214. sprocket-hole film photo
+215. double exposure on film
+216. XPan panoramic film photo
+217. 6x7 medium format, Mamiya RZ67
+218. 6x6 medium format, Rolleiflex
+219. 6x9 medium format photograph
+220. large format 8x10 photograph
+221. half-frame 35mm photo
+222. 110 pocket film photo
+223. APS film photo
+224. standard 8mm film footage
+225. Super 16mm film footage
+226. 65mm film photograph
+227. IMAX 70mm film look
+228. VistaVision film look
+229. Techniscope film look
+230. anamorphic 35mm film look
+231. Cooke Speed Panchro lens look

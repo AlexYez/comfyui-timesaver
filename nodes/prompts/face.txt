@@ -48,3 +48,103 @@ diamond face, sharp features, smoldering brown eyes, delicate lips subtle curve,
 oval face, warm complexion, large round blue eyes, generous lips soft gloss, natural thick brows
 square face, defined jaw beauty mark, hooded green eyes, plump lips parted, bold curved brows
 heart-shaped face, ethereal pale skin, upturned gray eyes long lashes, full trembling lips, soft brows
+oval face, deep brown skin, monolid dark brown eyes, full lips natural cocoa tint, straight thick brows
+heart-shaped face, warm medium skin, double-lid amber eyes, wide lips soft satin, softly arched brows
+diamond face, rich ebony skin, close-set brown eyes, plump lips deep berry tint, bold angled brows
+round face, golden brown skin, wide-set hazel eyes, thin lips precise bow, feathered low brows
+square face, cool fair skin, downturned blue eyes, generous lips muted rose, strong straight brows
+oblong face, olive golden skin, heavy-lid green eyes, heart-shaped lips matte berry, fine arched brows
+triangular face, caramel skin, prominent-crease brown eyes, medium lips glossy nude, natural full brows
+rectangle face, light brown skin, upturned honey eyes, pouty lips brown-rose, brushed straight brows
+long face, mahogany skin, deep-crease black-brown eyes, full lips stained wine, thick straight brows
+soft square face, honey skin, rounded hazel eyes, slim lips quiet smile, soft tapered brows
+oval face, cool deep skin, narrow slate eyes, plump lips cool mauve, high thin brows
+heart-shaped face, warm beige skin, almond ice-blue eyes, full lips peach gloss, dark natural brows
+diamond face, freckled olive skin, hooded olive eyes, wide lips bare pigment, bushy straight brows
+round face, even ebony skin, large charcoal eyes, delicate lips defined edge, rounded soft brows
+square face, sun-warmed brown skin, cat-tilted amber eyes, full lips velvet cocoa, bold feathered brows
+oblong face, pale olive skin, wide gray-green eyes, pouty lips sheer plum, low arched brows
+triangular face, rich caramel skin, monolid honey eyes, generous lips soft bite mark, thick curved brows
+rectangle face, cool medium skin, deep-set wine-brown eyes, thin lips slight part, sharp tail brows
+long face, golden ebony skin, sparkling dark eyes, plump lips glass nude, soft straight brows
+soft square face, rosy fair skin, almond sea-green eyes, heart-shaped lips damp rose, feathered arched brows
+oval face, warm ochre skin, hooded espresso eyes, full lips warm brick, sparse natural brows
+heart-shaped face, deep bronze skin, upturned steel-gray eyes, medium lips satin coral, full straight brows
+diamond face, light olive skin, close-set emerald eyes, wide lips natural umber, medium arched brows
+round face, copper brown skin, wide-set cocoa eyes, slim lips soft curve, soft angled brows
+square face, porcelain freckled skin, downturned hazel eyes, plump lips berry stain, defined straight brows
+oblong face, sand gold skin, heavy-lid amber eyes, pouty lips glazed honey, thin curved brows
+triangular face, cool taupe skin, monolid black eyes, full lips cool pink, bold natural brows
+rectangle face, rich umber skin, double-lid forest eyes, delicate lips muted mauve, low straight brows
+long face, warm ivory skin, deep-set ice-gray eyes, generous lips deep rosewood, feathered thick brows
+soft square face, even medium skin, narrow gold-brown eyes, thin lips knowing part, gentle arch brows
+oval face, deep cool skin, round warm-brown eyes, heart-shaped lips sheer nude, short straight brows
+heart-shaped face, honey bronze skin, almond cool-gray eyes, full lips soft terracotta, long arched brows
+diamond face, muted olive skin, hooded blue-green eyes, medium lips glossed plum, uneven natural brows
+round face, soft brown skin, large ink-brown eyes, wide lips even pigment, soft bushy brows
+square face, golden fair skin, cat-tilted green eyes, plump lips bruised rose, precise arched brows
+oblong face, espresso skin, wide copper eyes, slim lips subtle bow, flat thick brows
+triangular face, warm sand skin, upturned slate-blue eyes, pouty lips wine gloss, tapered dark brows
+rectangle face, cool beige skin, close-set gray eyes, full lips bare brown, rounded full brows
+long face, reddish brown skin, downturned brown eyes, delicate lips flushed edge, high soft brows
+soft square face, even caramel skin, heavy-lid charcoal eyes, generous lips satin berry, straight soft brows
+oval face, deep gold skin, monolid auburn-brown eyes, thin lips quiet part, straight thick brows
+heart-shaped face, light golden skin, double-lid teal eyes, heart-shaped lips cocoa gloss, softly arched brows
+diamond face, olive brown skin, deep-set olive eyes, full lips muted clay, bold angled brows
+round face, warm deep skin, narrow blue eyes, medium lips dewy rose, feathered low brows
+square face, fair skin with moles, round jet eyes, wide lips soft umber, strong straight brows
+oblong face, medium golden skin, almond bronze eyes, plump lips clear sheen, fine arched brows
+triangular face, rich sienna skin, hooded gold eyes, slim lips defined peaks, natural full brows
+rectangle face, cool brown skin, large sea-blue eyes, pouty lips dark rosewood, brushed straight brows
+long face, sun-touched brown skin, cat-tilted brown eyes, full lips warm nude, thick straight brows
+soft square face, scattered moles on skin, wide moss eyes, delicate lips berry tint, soft tapered brows
+oval face, beauty mark on cheekbone, upturned wine eyes, generous lips cool gloss, high thin brows
+heart-shaped face, faint cheek freckles, close-set amber-green eyes, thin lips slight smile, dark natural brows
+diamond face, vitiligo patch on cheek, downturned green-gray eyes, heart-shaped lips peach stain, bushy straight brows
+round face, even tone deep skin, heavy-lid honey-brown eyes, full lips soft wine, rounded soft brows
+square face, warm sheen on skin, monolid cool-brown eyes, medium lips natural rose flush, bold feathered brows
+oblong face, matte finish brown skin, double-lid smoky eyes, wide lips muted clay, low arched brows
+triangular face, dewy finish olive skin, deep-set cobalt eyes, plump lips glazed berry, thick curved brows
+rectangle face, visible pores on skin, narrow chestnut eyes, pouty lips soft cocoa, sharp tail brows
+long face, soft sheen golden skin, round amber-brown eyes, slim lips quiet curve, soft straight brows
+soft square face, cool undertone fair skin, almond graphite eyes, delicate lips wine tint, feathered arched brows
+oval face, rich red undertone skin, hooded russet eyes, generous lips satin nude, sparse natural brows
+heart-shaped face, blue undertone deep skin, large pearl-gray eyes, full lips berry gloss, full straight brows
+diamond face, golden undertone skin, cat-tilted blue eyes, thin lips defined bow, medium arched brows
+round face, neutral beige skin, wide ink eyes, heart-shaped lips clear gloss, soft angled brows
+square face, warm bronze skin, upturned olive-brown eyes, medium lips plum stain, defined straight brows
+oblong face, light umber skin, close-set sea-glass eyes, wide lips soft rosewood, thin curved brows
+triangular face, deep sienna skin, downturned amber-brown eyes, plump lips muted peach, bold natural brows
+rectangle face, even honey skin, heavy-lid blue-gray eyes, slim lips slight smirk, low straight brows
+long face, cool ebony skin, monolid warm-black eyes, pouty lips glazed plum, feathered thick brows
+soft square face, sun-faded freckled skin, double-lid copper-brown eyes, full lips natural umber, gentle arch brows
+oval face, warm highlight on cheek, deep-set moss-green eyes, delicate lips cocoa stain, short straight brows
+heart-shaped face, soft shadow under cheek, narrow silver-gray eyes, generous lips warm gloss, long arched brows
+diamond face, high contrast deep skin, round deep-green eyes, full lips sheer berry, uneven natural brows
+round face, low contrast fair skin, almond soot eyes, medium lips satin brick, soft bushy brows
+square face, beauty mark near eye, hooded caramel eyes, wide lips cool rose, precise arched brows
+oblong face, paired cheek moles, large topaz eyes, plump lips deep nude, flat thick brows
+triangular face, nose bridge freckles, cat-tilted gray-blue eyes, thin lips soft part, tapered dark brows
+rectangle face, chin beauty mark, wide espresso eyes, heart-shaped lips berry sheen, rounded full brows
+long face, temple freckles, upturned black-brown eyes, pouty lips muted wine, high soft brows
+soft square face, jawline beauty mark, close-set ice-blue eyes, slim lips glazed nude, straight soft brows
+oval face, even warm brown skin, downturned charcoal-brown eyes, full lips peach stain, straight thick brows
+heart-shaped face, rich gold brown skin, heavy-lid forest-green eyes, delicate lips rosewood tint, softly arched brows
+diamond face, cool sand skin, monolid hazel-brown eyes, generous lips clear berry, bold angled brows
+round face, deep neutral skin, double-lid storm-gray eyes, medium lips soft brick, feathered low brows
+square face, light copper skin, deep-set honey-gold eyes, wide lips plum gloss, strong straight brows
+oblong face, muted bronze skin, narrow jade eyes, plump lips warm mauve, fine arched brows
+triangular face, pale gold skin, round steel eyes, thin lips quiet bow, natural full brows
+rectangle face, even olive skin, almond midnight eyes, heart-shaped lips satin cocoa, brushed straight brows
+long face, warm fair skin, hooded sage eyes, pouty lips glazed rose, thick straight brows
+soft square face, deep red-brown skin, large brandy eyes, slim lips berry curve, soft tapered brows
+oval face, luminous medium skin, cat-tilted copper eyes, full lips soft umber, high thin brows
+heart-shaped face, matte ebony skin, wide blue-gray eyes, delicate lips peach gloss, dark natural brows
+diamond face, soft golden skin, upturned russet eyes, generous lips muted berry, bushy straight brows
+round face, cool olive skin, close-set jet-brown eyes, medium lips wine sheen, rounded soft brows
+square face, warm ivory with freckles, downturned sea-blue eyes, wide lips natural cocoa, bold feathered brows
+oblong face, rich teak skin, heavy-lid plum-brown eyes, plump lips sheer coral, low arched brows
+triangular face, even sand skin, monolid gold-flecked eyes, thin lips defined edge, thick curved brows
+rectangle face, deep warm skin, double-lid ink-blue eyes, heart-shaped lips soft bite, sharp tail brows
+long face, light bronze skin, deep-set sand-brown eyes, pouty lips cool nude, soft straight brows
+soft square face, glowing deep skin, narrow violet-gray eyes, full lips glazed terracotta, feathered arched brows

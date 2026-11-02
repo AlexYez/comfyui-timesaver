@@ -5,3 +5,17 @@ bird's eye view, directly above
 top-down flat lay
 worm's eye view, from ground level
 dutch angle, tilted horizon
+three-quarter view, slightly off axis
+over-the-shoulder camera angle
+pure profile angle, side on
+hip-height camera angle
+chest-height camera angle
+knee-height camera angle
+ground-skimming angle, just above the floor
+overhead three-quarter angle, looking down at 45 degrees
+low hero angle, about 30 degrees up
+corner-of-the-room angle
+through-a-doorway framed angle
+reflection angle, shot via a mirror
+close canted angle, mild tilt on the face
+from-behind over-the-hip angle

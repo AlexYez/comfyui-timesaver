@@ -88,3 +88,183 @@ translucent backlight, glowing through fabric or hair
 bioluminescent glow, organic blue-green light
 holographic light, rainbow prismatic reflections
 light painting, long exposure colored trails
+beauty dish, round catchlight in the eyes
+octabox key, large soft square catchlights
+strip softbox, narrow highlight down the cheek
+grid spot, tight pool with dark falloff
+snoot, small hard circle of light
+barn doors, shaped hard theatrical beam
+fresnel spot, focused beam with a soft edge
+par can, punchy stage shaft
+ellipsoidal, sharp-edged pool on the set
+gobo break, leafy shadow across the face
+book light, ultra-soft double bounce
+v-flat bounce, broad white fill from the side
+silver reflector, crisp specular kick
+gold reflector, warm skin kick from below
+silk overhead, giant softened sun
+overhead scrim, noon cut to a soft top
+negative fill, black card deepening the shadow
+white card fill, subtle eye light
+ring light, even circular catchlight
+ring flash, flat specular fashion pop
+bare bulb, hard point and a hard shadow
+edison bulb, warm visible filament
+china ball, omni soft lantern glow
+paper lantern, wraparound soft sphere
+vanity bulbs, even old-hollywood face light
+marquee bulbs, a row of warm points
+fairy lights, many small warm pinpoints
+tea lights, low clustered warm glow
+gaslight, soft yellow-green period glow
+kerosene lantern, smoky amber practical
+hurricane lamp, shielded warm flame
+candelabra, several warm points overhead
+sconce light, wall-mounted warm pools
+banker's lamp, green glass pool on the face
+chandelier practical, sparkling warm overhead
+desk lamp pool, localized warm circle
+himalayan salt lamp, dull pink-orange glow
+lava lamp, slow colored glow
+nightlight, low warm path light
+pendant pool, an island of warm light
+HMI daylight, crisp sun-matched hard light
+Kino Flo, soft cool fluorescent panel
+Dedolight, precise small hard spot
+open-face blonde, tungsten punch from the side
+redhead, small open-face warm spot
+carbon arc, harsh blue-white theatrical
+CTO gel, daylight pulled toward tungsten
+CTB gel, tungsten pulled toward daylight
+straw gel, pale golden warmth
+bastard amber, skin-flattering pale rose
+congo blue, deep saturated night wash
+steel blue gel, cold industrial cast
+plus green, fluorescent-match tint
+minus green, magenta correction on skin
+half CTO, gentle warmth without orange
+quarter CTB, a hint of cool in the fill
+rose gel, romantic pink cast
+lavender gel, artificial twilight on the face
+chocolate gel, deep brown mood wash
+primary red gel, hard crimson key
+motivated moonlight, blue gelled backlight
+practical lamp in frame, warm pool as the key
+TV glow, cold blue light from below
+phone screen, small cool uplight on the chin
+laptop glow, blue-white under the face
+refrigerator spill, sudden cold interior light
+dashboard glow, dim amber on the face
+headlight wash, hard white from the front
+brake-light red, close crimson practical
+city spill, colored light through the glass
+signage spill, offscreen neon on the skin
+wet pavement bounce, city lights doubled below
+pool caustics, rippling patterns on the skin
+sand bounce, warm ground fill outdoors
+canyon bounce, red-rock warmth in the shadows
+alpenglow, pink light off high clouds
+crepuscular rays, late sun through cloud gaps
+sunstar, starburst from a stopped-down sun
+doorway light, a framed rectangle of sun
+clerestory band, high narrow sun on the wall
+light well, overhead shaft in a dark room
+atrium downpour, soft light from several stories
+stained-glass patches, color on floor and skin
+sliver light, thin sun between closed curtains
+blinds slash, striped sun across the body
+sheer curtain, diffused window rectangle
+open-door key, one hard patch in a dark room
+ceiling bounce, shadowless fill from above
+floor bounce, soft low fill from pale stone
+gold card, warm beauty upfill under the chin
+silver card kick, sharp catchlight in the eye
+parabolic umbrella, fashion punch with wrap
+shoot-through umbrella, broad soft key
+reflective umbrella, more specular fashion key
+gridded softbox, controlled falloff behind
+double rim, both edges outlined on black
+hair light, separate crown highlight
+kicker, side-back accent on the cheekbone
+cyc wash, even color on a seamless wall
+sky pan, broad even background light
+low fog, uplight hugging the floor
+haze shaft, spot made visible in the air
+dry-ice bank, dense white at the feet
+club strobe, frozen hard white flashes
+moving-head wash, broad colored stage light
+RGB tube, colored linear accent
+bi-color panel, tunable warm-to-cool key
+RGB panel, full-color soft light on the face
+argon tube, pale lavender glow
+neon amber, warm tube against a cool room
+neon violet, electric purple edge on the profile
+two-candle cross, small warm modeling
+ember glow, low red with no flame
+bonfire edge, one side hot and the back cold
+flashlight beam, hard modern circle in the dark
+magnesium flash, historic harsh white pop
+bulb flash, round vintage on-camera pop
+cube flash, small hard seventies pop
+bounced speedlight, ceiling turned into a soft source
+bare speedlight, hard direct pop
+off-camera flash, directional pop from the side
+gelled flash edge, colored rim in daylight
+on-camera direct, flat snapshot flash
+high-speed sync, flash matching noon sun
+dragged shutter, sharp flash and ambient trails
+rear-curtain flash, motion trail then a sharp face
+open shade plus reflector, eyes bright and open
+porch shade, dark ambient with one open side
+sun as hair light, face filled from sand
+cloud-break sun, hard patch inside open shade
+after-rain air, clean and locally contrasty
+pre-storm dim, yellow-green sunlight
+snow bank fill, cold reflected light from below
+white tent, shadowless high-key daylight
+black tent, daylight controlled like a studio
+silk in wind, moving softness on the face
+alley bounce, sun only off a far wall
+colonnade rhythm, repeating sun and shadow
+pergola slats, striped outdoor shade
+lace-curtain pattern, soft floral shadow
+mashrabiya shadow, intricate pierced sun
+jali screen, geometric spots of sun
+shoji diffusion, paper-soft rectangle
+rice-paper lamp, warm glow through fiber
+frosted-glass practical, lamp turned into a panel
+grazing light, texture raked across a wall
+axial light, flat glamour on the lens axis
+bas-relief light, extreme side rake
+feathered key, a gradient across the face
+wrapped key, light falling around the cheek
+three-point kit, key fill and a back edge
+five-light glamour, classic hollywood setup
+single practical, the rest of the room black
+twilight mix, blue sky and tungsten windows
+candle catchlights, tiny warm dots in the eyes
+Pro-Mist, restrained bloom around highlights
+black Pro-Mist, bloom without milky shadows
+star filter, cross flares on point sources
+veiling glare, contrast lost to a bright edge
+polarizer, reflections cut and color deeper
+cross polarization, glare killed on the skin
+projected caustics, artificial water light
+branch gobo, twig shadows across the face
+moon gobo, soft-edged night pool
+flicker box, fire simulated with no flame
+lightning box, storm pop in a dark studio
+window projector, fake daylight at night
+film projector, flickering cone in the dark
+gallery pinspot, tight pool on a face
+vitrine glow, cool light from a glass case
+aquarium glow, blue-green from a tank
+pool underwater light, cyan from below
+under-cabinet strip, low kitchen uplight
+recessed downlight, hard small ceiling pools
+track spot, adjustable hard light in a room
+exit-sign green, small sickly practical
+work light, ugly-bright halogen on a stand
+balloon light, giant soft outdoor moon
+passing headlight, a wash sliding through curtains
+incense in sidelight, layered smoke in a window beam

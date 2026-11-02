@@ -9,6 +9,7 @@ metadata:
 
 Каждая строка — отдельная тема; начните с нужного hook.
 
+- [runtime_dependencies](runtime_dependencies.md) — LiteRT API вместо CLI, общий SDK NVIDIA VFX и проверка бинарного ABI после смены Torch.
 - [project_api_mix](project_api_mix.md) — V3 API и module-level состояние; причина запрета записи в заблокированный класс ноды.
 - [project_builtin_updater](project_builtin_updater.md) — Отложенная идея — вкладка Updates в настройках пака с уведомлением о новой версии; разобранные варианты, риски и….
 - [project_loader](project_loader.md) — Рекурсивный loader, runtime guard и тихий старт; подробный отчёт включается TS_VERBOSE_STARTUP.

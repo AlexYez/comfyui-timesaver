@@ -34,3 +34,75 @@ dusk fading light time of day
 civil twilight time of day
 nautical twilight time of day
 astronomical twilight time of day
+five minutes after sunrise, pink rim light time of day
+twenty minutes after dawn, color just arriving time of day
+civil dawn, gray-blue lift on the horizon time of day
+nautical dawn, deep blue with no sun yet time of day
+astronomical dawn, last stars fading time of day
+breakfast hour, low warm window light time of day
+commuter dawn, sodium mixing with first sun time of day
+dew-bright early morning, sparkle on every edge time of day
+frost morning, hard clear low sun time of day
+hoarfrost sunrise, every branch lit time of day
+spring morning, pollen haze and soft sun time of day
+summer morning, already hot and high time of day
+autumn morning, crisp side light time of day
+winter morning, low sun lasting for hours time of day
+ten in the morning, open and clear time of day
+eleven o'clock, high but not yet harsh time of day
+noon under a white sky, shadowless time of day
+half past noon, hard top light time of day
+early afternoon, window light just slanting time of day
+two o'clock, warm side light time of day
+three o'clock, honey light on skin time of day
+four o'clock, long indoor patches of sun time of day
+half past four, amber edges time of day
+five o'clock, last errand gold time of day
+just before sunset, magic hour starting time of day
+sun as a disc on the horizon time of day
+sun half below the horizon time of day
+twenty minutes after sunset, pink alpenglow time of day
+alpenglow on clouds only, ground already blue time of day
+civil dusk, streetlights coming on time of day
+nautical dusk, deep teal sky time of day
+astronomical dusk, first stars appearing time of day
+cocktail hour, warm interiors against a blue window time of day
+dinner hour, low lamps and dark glass time of day
+late evening, city sodium and little sky time of day
+ten at night, quiet dark with window glow time of day
+eleven at night, practicals only time of day
+half past midnight, still air and deep shadow time of day
+two in the morning, blue-black and empty time of day
+three in the morning, deepest dark time of day
+four in the morning, pre-dawn stir time of day
+false dawn, gray lift that is not yet sunrise time of day
+wolf hour, cold blue before any warmth time of day
+moonrise during dusk, two lights at once time of day
+moonset at dawn, pale moon in a pink sky time of day
+full moon at midnight, silver on every surface time of day
+thin crescent night, almost no moon fill time of day
+lunar eclipse, copper dark on the ground time of day
+overcast dawn, no sun disc at all time of day
+bright overcast noon, soft and shadowless time of day
+heavy overcast afternoon, flat gray time of day
+broken cloud, sun patches moving time of day
+cloud-break spotlight on the ground time of day
+storm light, greenish dim afternoon time of day
+pre-storm sky, yellow-green and still time of day
+just after the storm, rinsed clear light time of day
+rainbow late afternoon, low sun and dark cloud time of day
+thunderstorm at dusk, distant flash time of day
+drizzle at noon, soft silver time of day
+heavy rain at midday, dark as evening time of day
+rainy blue hour, neon doubled in the street time of day
+snow daylight, bright and almost shadowless time of day
+snowfall at dusk, muffled glow time of day
+blizzard noon, whiteout with no shadows time of day
+fog at noon, contrast erased time of day
+coastal fog morning, sun as a pale disc time of day
+heat-haze midday, shimmer over hard light time of day
+dust-storm afternoon, sun reduced to copper time of day
+high-altitude noon, hard light and deep blue time of day
+equatorial noon, sun straight down time of day
+polar summer night, sun never fully gone time of day
+polar blue hour lasting, long twilight time of day

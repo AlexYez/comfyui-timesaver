@@ -8,3 +8,23 @@ long shot
 extreme wide shot
 full body shot
 selfie shot
+bust shot
+waist-up shot
+hip-up shot
+thigh-up shot
+head-and-shoulders shot
+choker close-up, face fills the frame
+cowboy shot, mid-thigh up
+american shot, knees up
+medium long shot
+environmental wide shot
+insert detail shot
+point-of-view shot
+over-the-shoulder framing
+tight torso crop
+full-length fashion framing
+low three-quarter framing
+high three-quarter framing
+profile full-length framing
+from-behind full-body framing
+intimate detail crop on skin

@@ -41,3 +41,89 @@ soft reflective skin
 natural skin translucency
 soft shadowed skin texture
 even toned skin texture
+vitiligo skin detail
+vitiligo patch skin texture
+symmetrical vitiligo skin detail
+scattered vitiligo skin texture
+soft edge vitiligo skin detail
+crisp edge vitiligo skin detail
+facial vitiligo skin detail
+hand vitiligo skin detail
+silver stretch marks skin detail
+blush stretch marks skin detail
+brown stretch marks skin detail
+faded stretch marks skin texture
+hip stretch marks skin detail
+thigh stretch marks skin detail
+torso stretch marks skin detail
+bikini tan line skin detail
+strap tan line skin detail
+wristwatch tan line skin detail
+neckline tan line skin detail
+sandal tan line skin detail
+sleeve tan line skin detail
+natural tan contrast skin detail
+shoulder tan skin texture
+collarbone tan skin detail
+birthmark skin detail
+faded birthmark skin detail
+blue-gray birthmark skin detail
+cafe au lait mark skin detail
+warm sun spots skin detail
+soft melasma shading skin detail
+cheek melasma skin detail
+fine capillary blush skin detail
+rosy cheek flush skin texture
+fine follicular skin texture
+natural pore skin texture
+visible t-zone pores skin detail
+peach fuzz skin detail
+soft downy skin texture
+faded scar skin texture
+fine linear scar skin detail
+healed scar skin texture
+raised scar skin detail
+post-blemish marks skin detail
+hyperpigmented marks skin detail
+constellation moles skin detail
+back beauty marks skin detail
+collarbone moles skin detail
+lip beauty mark skin detail
+rich melanin skin glow
+deep brown skin glow
+mahogany skin texture
+caramel skin glow
+honey skin glow
+copper skin glow
+olive golden skin texture
+warm olive skin glow
+cool pink undertone skin glow
+deep cool undertone skin glow
+alabaster skin texture
+ivory skin glow
+sand gold skin tone
+luminous deep skin glow
+matte deep skin texture
+satin brown skin texture
+silky skin surface
+soft expression lines skin detail
+smile lines skin detail
+fine forehead lines skin detail
+soft neck lines skin detail
+venus dimple skin detail
+soft thigh dimple skin texture
+natural oil sheen skin glow
+t-zone sheen skin detail
+salt sheen skin highlight
+sunscreen sheen skin highlight
+gold oil skin highlight
+goosebump skin texture
+heat flushed skin glow
+wind flushed skin detail
+exercise flush skin glow
+microtexture skin surface
+unretouched skin texture
+camera-real skin texture
+rich knuckle pigment skin detail
+elbow pigment skin detail
+soft subsurface glow skin

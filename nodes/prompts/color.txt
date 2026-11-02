@@ -163,3 +163,333 @@ shadow root
 rooted color
 gradient
 color block
+bronde
+mushroom brown
+mushroom blonde
+black cherry
+cherry cola
+cola
+root beer
+birchwood
+taupe
+greige
+ash taupe
+cool taupe
+warm taupe
+beige brown
+cocoa
+dark cocoa
+milk chocolate
+dark chocolate
+truffle
+ganache
+latte
+cappuccino
+macchiato
+cold brew
+ristretto
+americano
+praline
+nougat
+butterscotch
+salted caramel
+dulce de leche
+creme brulee
+brown sugar
+demerara
+molasses
+nutmeg
+clove brown
+gingerbread
+toasted almond
+toasted coconut
+maple
+pecan
+dark chestnut
+light chestnut
+rosewood
+merlot
+bordeaux
+oxblood
+garnet
+henna
+paprika
+cayenne
+rust
+terracotta
+sienna
+brick
+mahogany red
+copper brown
+auburn brown
+chocolate cherry
+cinnamon spice
+birch brown
+mink brown
+sable
+chinchilla
+beaver brown
+taupe brown
+mushroom taupe
+greige brown
+smoky brown
+ash mocha
+caramel mocha
+mocha latte
+hazelnut brown
+praline brown
+toffee blonde
+caramel blonde
+honey bronde
+caramel bronde
+mocha bronde
+espresso bronde
+chestnut bronde
+cocoa blonde
+brunette melt
+lived-in brunette
+glossy brunette
+soft brunette
+rich brunette
+cool brunette
+warm brunette
+neutral brunette
+natural brunette
+level three
+level four
+level five
+level six
+level seven
+level eight
+level nine
+level ten
+dark blonde
+medium blonde
+light blonde
+neutral blonde
+natural blonde
+flaxen
+wheat
+cornsilk
+buttermilk
+french vanilla
+porcelain blonde
+scandi blonde
+nordic blonde
+malibu blonde
+beach blonde
+surfer blonde
+lived-in blonde
+dimensional blonde
+rooted blonde
+brassy blonde
+ashy blonde
+pearl ash
+icy ash
+glass blonde
+liquid blonde
+diamond blonde
+crystal blonde
+frost
+winter blonde
+summer blonde
+old money blonde
+expensive blonde
+bottle blonde
+peroxide blonde
+bleached blonde
+banana blonde
+venetian blonde
+rose blonde
+blush blonde
+pink blonde
+peach blonde
+apricot blonde
+copper blonde
+ginger blonde
+strawberry milk
+highlighter blonde
+platinum ash
+white blonde
+extra-light blonde
+towhead
+golden honey
+butterscotch blonde
+champagne
+vanilla
+cream soda
+ivory blonde
+swedish blonde
+california blonde
+sunkissed bronde
+mushroom beige
+beige
+sand
+wheat blonde
+honey gold
+pale honey
+light honey
+champagne gold
+white gold
+liquid gold
+molten gold
+antique gold
+rose gold blonde
+bronze
+antique bronze
+rose bronze
+copper gold
+penny copper
+copper penny
+titian
+celtic copper
+venetian red
+flame
+scarlet
+crimson
+maraschino
+candy apple
+pomegranate
+raspberry
+rosewood brown
+dusty rose
+mauve
+rose wine
+claret
+cabernet
+sangria
+wine
+burgundy brown
+henna red
+henna brown
+copper red
+auburn copper
+ginger red
+dark ginger
+light ginger
+paprika red
+rust red
+burnt sienna
+clay
+brick red
+oxblood brown
+garnet red
+ruby
+deep ruby
+ruby brown
+wine brown
+merlot brown
+bordeaux brown
+black cherry brown
+cherry wood
+rosewood red
+cinnamon red
+copper spice
+fiery copper
+bright copper
+medium copper
+strawberry red
+strawberry copper
+strawberry brown
+ginger brown
+auburn rose
+rose brown
+mauve brown
+dusty mauve
+orchid
+wisteria
+amethyst
+grape
+aubergine
+byzantium
+ultraviolet
+electric purple
+neon purple
+royal purple
+iris
+hydrangea
+periwinkle
+cornflower
+cerulean
+azure
+sapphire
+indigo
+ultramarine
+ink blue
+peacock blue
+peacock
+deep teal
+dark teal
+seafoam
+sea glass
+moss
+matcha
+pistachio
+eucalyptus
+hunter green
+bottle green
+malachite
+viridian
+chartreuse
+acid green
+kelly green
+shamrock
+avocado
+olive drab
+army green
+lime
+canary
+daffodil
+sunflower
+marigold
+amber
+gold
+pewter
+gunmetal
+titanium
+chrome
+sterling
+liquid silver
+raven
+ebony
+obsidian
+onyx
+soot
+pitch black
+inky black
+violet black
+soft jet
+optical white
+root smudge
+root melt
+root tap
+smudge root
+skunk stripe
+chunky highlight
+foilayage
+hand painted
+micro highlights
+ribbon highlight
+halo highlight
+airtouch
+slice highlight
+weave highlight
+watercolor hair
+galaxy dye
+mermaid hair
+hidden color
+underlights
+panel dye
+marble dye
+spiral dye
+tip dye
+bleach and tone
+soap cap
+toner
+purple toner
+glaze
+gloss
+tortoiseshell
+ash bronde
+cool bronde
+taupe blonde

@@ -98,8 +98,13 @@ LiteRT считает на WebGPU, а не на CUDA, и менеджер пам
 python -m pip install litert-lm-api==0.19.0
 ```
 
-`litert-lm-api` — это сам рантайм; пакет `litert-lm` ставит тот же рантайм плюс
-консольную утилиту и, если уже установлен, продолжает работать.
+`litert-lm-api` содержит Python-модуль `litert_lm`, который используют ноды.
+Отдельная консольная утилита `litert-lm` и пакет `litert-lm-builder` им не нужны.
+Старый CLI может требовать старый API: CLI 0.16.1 требует API 0.16.1 и конфликтует
+с API 0.19.0. Если CLI/builder не используются в других задачах, удалите их
+командой `python -m pip uninstall litert-lm litert-lm-builder`, сохраните API
+командой выше и проверьте окружение: `python -m pip check`. Выполняйте команды
+тем Python, который запускает ComfyUI; после изменения рантайма перезапустите ComfyUI.
 
 > **Windows, macOS (Apple Silicon) и Linux.** Колёса есть под все три (Linux:
 > x86_64 и aarch64) — прежняя версия этой страницы утверждала, что под Linux их

@@ -6,6 +6,8 @@
 |---|---|---|
 | Нода не появилась | Startup error, правильный каталог custom_nodes, версия ComfyUI, `TS_VERBOSE_STARTUP=1`. Считайте реальные node_id, не файлы Python. | [Loader](../../__init__.py), [контракты](../../tests/contracts/node_contracts.json). |
 | `ModuleNotFoundError` | Установлены ли зависимости **тем Python, который запускает ComfyUI**; optional-пакет может требоваться только одной ноде. | [Установка](development.md), [dependency manager](../../ts_dependency_manager.py). |
+| LiteRT CLI требует API 0.16.1, установлен 0.19.0 | Нодам нужен `litert-lm-api`, а не CLI/builder. Если CLI не используется другими задачами, удалите только его и builder; API не понижайте. | [TS Super Prompt RT](../../js/docs/TS_SuperPromptRT/ru.md). |
+| CUDA-расширение импортируется, но при вызове `_C` выдаёт ошибку DLL | После смены Torch сверяйте CUDA, Torch, Python и платформу бинарного wheel; одного `pip check` недостаточно для проверки ABI. | [Зависимости и ABI](../../project_memory/engineering/runtime_dependencies.md). |
 | Правка на C: не видна в ComfyUI | Установленный клон отдельный: сравните содержимое нужного файла. Для Python нужен разрешённый рестарт, для JS — обновление страницы. | [Окружение](environment.md). |
 | Нет кнопки Manager | Проверьте launcher flags и состояние самого ComfyUI Manager; не приписывайте проблему паку без воспроизведения. | [Память по Manager](../../project_memory/engineering/reference_manager_visibility.md). |
 | ffmpeg не найден | Проверьте `imageio-ffmpeg` в окружении ComfyUI. Его бинарник используется первым, PATH — запасной путь. | [Резолвер](../../nodes/_ffmpeg.py). |

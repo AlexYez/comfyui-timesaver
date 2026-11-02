@@ -100,8 +100,13 @@ whole job is writing prompts. The runtime itself is not in
 python -m pip install litert-lm-api==0.19.0
 ```
 
-`litert-lm-api` is the runtime itself; the plain `litert-lm` package installs the
-same runtime plus a command-line tool, and keeps working if you already have it.
+`litert-lm-api` provides the `litert_lm` Python module used by the nodes. The
+separate `litert-lm` command-line tool and `litert-lm-builder` are not needed.
+An old CLI can pin an older API: CLI 0.16.1 requires API 0.16.1 and conflicts
+with API 0.19.0. If you do not use that CLI/builder elsewhere, remove them with
+`python -m pip uninstall litert-lm litert-lm-builder`, keep the API command above,
+and check the environment with `python -m pip check`. Run these commands with
+the Python that starts ComfyUI, then restart ComfyUI if its runtime changed.
 
 > **Windows, macOS (Apple Silicon) and Linux.** Wheels exist for all three
 > (Linux: x86_64 and aarch64) — an earlier version of this page said Linux had

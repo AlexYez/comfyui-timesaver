@@ -111,6 +111,10 @@
     {
       "file": "interior.txt",
       "enabled": true
+    },
+    {
+      "file": "dance-eros.txt",
+      "enabled": false
     }
   ]
 }
