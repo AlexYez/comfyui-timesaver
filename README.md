@@ -3,33 +3,14 @@
 
 # Timesaver Nodes for ComfyUI
 
-Nodes and frontend extensions for images, video, audio, prompts and workflow tools.
+Nodes for images, video, audio and prompts, plus tools for organizing workflows.
 
-[Русский](README.ru.md) · [Version and requirements](pyproject.toml) · [Changes](CHANGELOG.md) · [MIT](LICENSE.txt)
+[Русский](#на-русском) · [Workflow examples](example_workflows/) · [License](LICENSE.txt)
 </div>
 
-## Start here
+## Installation
 
-ComfyUI loads this pack from `custom_nodes`; there is no separate frontend build. Search for `TS` on the canvas after installation. Some ML features download weights or require optional dependencies: consult the individual node help.
-
-| Task | Read |
-|---|---|
-| Install, run or update | [Development and installation](doc/operations/development.md). |
-| Find a node and its controls | [Node reference, EN/RU](doc/nodes/README.md), [screenshots](doc/nodes/screenshots.md). |
-| Arrange a graph or recreate a node | [Frontend commands](doc/user-guide/README.md). |
-| Understand the internals | [Architecture](doc/architecture/README.md). |
-| Change the project | [AGENTS.md](AGENTS.md), then [engineering rules](doc/engineering/README.md). |
-| Validate a change | [Checks and CI limits](doc/operations/testing.md). |
-| Release | [Release procedure](doc/operations/release.md). |
-| Find configuration or logs | [Environment and data](doc/operations/environment.md). |
-| Diagnose a failure | [Troubleshooting](doc/operations/troubleshooting.md). |
-| Learn requirements and decisions | [Project memory](project_memory/MEMORY.md). |
-
-Contributor documentation is maintained in Russian, the owner's working language. Runtime node help is available in English and Russian.
-
-## Install
-
-In ComfyUI Manager, search for `Timesaver` and install it. Or, from your ComfyUI directory:
+In ComfyUI Manager, search for **Timesaver**. For a manual installation, run these commands from the ComfyUI directory:
 
 ```sh
 cd custom_nodes
@@ -38,33 +19,32 @@ cd comfyui-timesaver
 python -m pip install -r requirements.txt
 ```
 
-Use the interpreter that runs ComfyUI, then restart ComfyUI. For updates, use `git pull --ff-only`, install updated dependencies and arrange the restart with the owner. See [installation details](doc/operations/development.md).
+Use the Python interpreter that runs ComfyUI. Restart ComfyUI, then search for `TS` on the canvas. No separate frontend build is required.
 
-## Repository map
-
-```text
-__init__.py          ComfyUI V3 loader and entrypoint
-nodes/              Python nodes and shared ML/media helpers
-js/                 frontend extensions and bundled js/docs help
-locales/ru/         Russian interface translations
-example_workflows/  example graphs
-doc/                modular documentation and history
-project_memory/     owner requirements, decisions, knowledge and history
-pyproject.toml      canonical version, requirements and Registry metadata
-```
-
-## Compatibility
-
-Saved workflows depend on node IDs, input/output names and order, defaults and categories. Compare changes against the [contract snapshot](tests/contracts/node_contracts.json). The [owner's original requirements](project_memory/owner/README.md) take precedence over summaries.
-
-Documentation and memory are versioned. Credentials, model weights, outputs and the optional local test laboratory are not. [All documentation](doc/README.md).
-
-## License and support
-
-The pack's code is [MIT licensed](LICENSE.txt). Downloaded models, SDKs and external applications retain their own terms. [Credits](doc/CREDITS.md). Maintainer: [AlexYez](https://github.com/AlexYez); [issues](https://github.com/AlexYez/comfyui-timesaver/issues).
-
-This pack hosts and redistributes none of the runtime and is not affiliated with or endorsed by NVIDIA. Install only components you are authorised to use.
+To update a manual installation, run `git pull --ff-only` from the pack directory, install updated requirements with the same interpreter and restart ComfyUI.
 
 <a id="-node-reference"></a>
 <a id="image"></a><a id="video"></a><a id="hdr"></a><a id="audio"></a><a id="llm"></a><a id="text"></a><a id="ideogram"></a><a id="files"></a><a id="loaders"></a><a id="utils"></a><a id="conditioning"></a>
-The former inline reference now lives in the [node catalog](doc/nodes/README.md).
+
+## Using the nodes
+
+- **Image** — resize and alignment, masks, inpainting and restoration.
+- **Video** — loading, trimming, saving, upscaling and HDR tools.
+- **Audio and prompts** — audio editing, speech tools, prompt construction and model-assisted rewriting.
+- **Workflow tools** — sliders, switches, file downloads and graph layout commands.
+
+Open a node’s help in ComfyUI for its inputs and options. The same [English and Russian reference](js/docs/) and [example workflows](example_workflows/) are available here.
+
+Some nodes need model weights, an optional Python package or a separately installed application. Check the node's input tooltips and follow any dependency message in the ComfyUI console. If a node is missing, look for `[TS Timesaver]` in that console. Start ComfyUI with `TS_VERBOSE_STARTUP=1` for the full registration report. See [package metadata](pyproject.toml) for version and dependency details.
+
+## На русском
+
+Timesaver добавляет ноды обработки изображений, видео, звука и промптов, а также инструменты для работы с графом.
+
+Подсказки по конкретным нодам доступны в ComfyUI и в [справочнике](js/docs/). Готовые графы собраны в [примерах workflow](example_workflows/).
+
+В ComfyUI Manager найдите **Timesaver**. Для ручной установки клонируйте пак в `custom_nodes` и установите [зависимости](requirements.txt) командами выше. Используйте Python, которым запускается ComfyUI. После перезапуска найдите ноды по `TS` в поиске канваса.
+
+Для ручного обновления выполните `git pull --ff-only` в папке пака, установите обновлённые зависимости тем же Python и перезапустите ComfyUI. Для отдельных нод могут понадобиться модели, дополнительные пакеты или внешние приложения. Смотрите подсказки к входам и сообщения в консоли ComfyUI. Если нода не появилась, найдите в консоли `[TS Timesaver]`. Флаг окружения `TS_VERBOSE_STARTUP=1` включает полный отчёт регистрации при запуске.
+
+Код распространяется по лицензии [MIT](LICENSE.txt). У сторонних моделей, SDK и приложений собственные условия.

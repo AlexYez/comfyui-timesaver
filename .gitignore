@@ -19,22 +19,26 @@ pytest-cache-files-*/
 /.claude/
 /.codex_tmp/
 
-# Local test/tooling laboratory stays optional. Project documentation,
-# assistant instructions and persistent memory belong in version control
-# (owner's documentation consolidation request, 2026-11-02).
-/tests/
+# Keep internal documentation, assistant instructions and memory local.
+# User guides, built-in node help and GitHub templates are public.
+*.md
+*.mdx
+*.rst
+!/README.md
+!/README.ru.md
+!/js/docs/**/*.md
+!/runtime/visual-enhancer/README.md
+!/.github/ISSUE_TEMPLATE/*.md
+!/.github/pull_request_template.md
+/doc/
+/project_memory/
+/workflow_exports/
+# The tracked contract snapshot is consumed by CI.
+/tests/*
+!/tests/contracts/
+/tests/contracts/*
+!/tests/contracts/node_contracts.json
 /tools/
-
-# Local engineering scratch plans (canonical instructions are tracked).
-MODERNIZATION_PLAN.md
-comfyui-pack-testing-guide.md
-
-# Historical local working sheets and generators; contributor docs are tracked.
-# Author's working sheet for testing on a live install — dev-only.
-/doc/TESTING_STUDIO.md
-/doc/TS_DEPENDENCY_POLICY.md
-/doc/migration.md
-/doc/generate_readme_ru.py
 
 # Orphan path-manifest, unused at runtime (removed from the repo in 9.31).
 /.tracking
