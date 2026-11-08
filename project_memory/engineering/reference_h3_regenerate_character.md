@@ -19,7 +19,7 @@ already reduced draft image or handing the raw source to the refiner implicitly.
 New optional inputs appended without changing old widget order:
 `reference_mode` (off by default), `first_frame` IMAGE, `video_vae` VAE,
 `chunk_mode` (independent crossfade by default).
-`_regenerate.encode_first_frame` takes only the first RGB image, resizes only when
+`_regenerate.encode_keyframe` takes only the first RGB image, resizes only when
 needed (Lanczos, no crop), and encodes once with the normal H3 video VAE.
 Expected shape [1,24,1,H/16,W/16]; INT8 normal video VAE tested. Fast VAE is decode-only.
 The encoder is unloaded before latent upscaling/sampling. Denoise zero skips guidance.
@@ -125,3 +125,19 @@ No user workflow files changed. Dev tree only has the above local untracked file
 GitHub Publish to Comfy registry succeeded:
 https://github.com/AlexYez/comfyui-timesaver/actions/runs/41136802327
 Dependency Graph action was still running at the final check; no claim that all CI completed.
+
+## Конечный кадр и мягкое перекрытие, 2026-11-08
+
+По команде владельца «Давай сначала добавим последний кадр в TS H3 Regenerate и попробуем убрать рывок на стыке» добавлены необязательный вход `last_frame` в конце схемы, режим `first and last frames` и режим склейки `continue (blend overlap)`. Прежние варианты и значения по умолчанию сохранены. Опорные картинки кодируются штатным H3 VAE по одному разу на итоговой сетке. Старт использует прежнюю подгонку без обрезки, конец — обрезку по центру. Конечная опора присутствует только в финальном окне с индексом `фактическое число кадров - 1 - начало окна`.
+
+Мягкое продолжение фиксирует первую половину латентных токенов перекрытия (минимум один), пересчитывает остальные и смешивает их с прежними токенами по smoothstep. Вес нового фрагмента достигает 1 внутри перекрытия. Общее число кадров и исходный звуковой латент сохраняются. У полного клипа без окон склейка не применяется. Плавный переход — отдельный вариант, потому что при значительном расхождении между версиями перекрытия смешивание может влиять на детали.
+
+На тесте 672×384 → 1344×768 с 124 кадрами перепад яркости фона на стыке уменьшился примерно на 60%. Декодированный звук совпал с черновиком.
+
+## Full Reference на Ref2VA, 2026-11-08
+
+В `reference_mode` добавлен вариант `full reference (Ref2VA)` с прежним значением по умолчанию. В него подаётся исходное positive от штатной `MiniMaxH3ReferenceToVideo`, где уже закодированы медиаблоки и теги Qwen. Regenerate сохраняет порядок и тензоры референсов во всех временных окнах. Геометрия и длина берутся из фактических тензоров. Декодированная выходная дорожка берётся из черновика, а связанные и отдельные аудиореференсы участвуют в условиях модели. Пространственные и временные размеры референсов задаёт входной граф, поэтому они влияют на память каждого окна.
+
+`TS_H3RegenerateModel` получает чистый pruned Ref2VA напрямую из `UNETLoader`. LoRA генерации остаётся в отдельной ветке. У локальных Ref2VA и FL2VA совпали все 932 ключа, формы и dtype в заголовках весов, но SHA-256 таблиц AdaLN различается. Модель помечается как проверенный Ref2VA при побайтово совпадающей таблице с эталоном Sharp `c02a6c11…`. Полный режим проверяет эту отметку до апскейла. Режим экспериментальный, так как NVIDIA публикует объединённый адаптер с FL2VA Turbo. [Состав адаптера](https://huggingface.co/Efficient-Large-Model/Open-H3-Regenerate-2K).
+
+GPU-прогон 576×320 → 1152×640 подтвердил передачу трёх изображений, видео с его звуком и отдельного аудиореференса, 124 кадра и совпадение декодированной дорожки с черновиком.

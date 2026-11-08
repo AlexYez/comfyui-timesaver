@@ -165,6 +165,7 @@ def install_sharp(model, path, reference):
             if a.ndim != 2 or b.ndim != 2 or a.shape[1] != 8 or a.shape[0] != b.shape[1] or b.shape[0] != block.adaln_proj.linear.weight.shape[0]:
                 raise ValueError(f"Sharp branch {i} does not fit this model.")
             model.set_model_patch_replace(SharpBlock(dm, i, b @ a, own, reference), "dit", "double_block", i)
+    return torch.equal(own, reference)
 
 
 def text_conditioning(conditioning):
@@ -175,16 +176,61 @@ def text_conditioning(conditioning):
             for text, metadata in conditioning]
 
 
-def encode_first_frame(image, video_vae, width, height):
+def full_reference_conditioning(conditioning):
+    """Keep native Ref2VA ordering and token tags; validate its packed rows."""
+    conditioning = conditioning or ()
+    stripped = text_conditioning(conditioning)
+    kinds = []
+    for (_, original), (_, metadata) in zip(conditioning, stripped):
+        blocks = []
+        for block in original.get("minimax_refs") or ():
+            if not isinstance(block, dict):
+                raise ValueError("Full Reference expects native H3 media blocks.")
+            kind = block.get("kind")
+            if kind not in ("image", "video", "video_audio", "audio"):
+                raise ValueError(f"Unsupported Full Reference block: {kind!r}.")
+            ref = dict(block)
+            if kind != "audio":
+                video = ref.get("latent")
+                if (not isinstance(video, torch.Tensor) or video.ndim != 5 or video.shape[:2] != (1, 24)
+                        or min(video.shape[2:]) < 1 or (kind == "image" and video.shape[2] != 1)):
+                    raise ValueError(f"Full Reference {kind} needs a native H3 video latent.")
+                ref["latent_h"], ref["latent_w"] = video.shape[-2:]
+                if kind != "image":
+                    ref["latent_t"] = video.shape[2]
+            else:
+                ref.pop("latent", None)
+            if kind in ("audio", "video_audio"):
+                audio = ref.get("audio_latent")
+                if (not isinstance(audio, torch.Tensor) or audio.ndim != 4
+                        or audio.shape[:3] != (1, 32, 2) or audio.shape[-1] < 1):
+                    raise ValueError(f"Full Reference {kind} needs a native H3 audio latent.")
+                ref["ref_audio_t"] = audio.shape[-1]
+            else:
+                ref.pop("audio_latent", None)
+                if kind == "video":
+                    ref["ref_audio_t"] = 0
+            blocks.append(ref)
+        if blocks:
+            metadata["minimax_refs"] = blocks
+            if not kinds:
+                kinds = [block["kind"] for block in blocks]
+    if not kinds:
+        raise ValueError("Full Reference requires encoded media from MiniMax H3 Reference to Video; connect its positive output and the required VAEs.")
+    return stripped, kinds
+
+
+def encode_keyframe(image, video_vae, width, height, *, last=False):
     """Encode one RGB frame on the final canvas, never upscale its draft latent."""
     import comfy.utils
 
+    label = "Last frame" if last else "First frame"
     if not isinstance(image, torch.Tensor) or image.ndim != 4 or image.shape[0] < 1 or image.shape[-1] < 3:
-        raise ValueError("First frame must be an IMAGE batch [B,H,W,C] with at least three color channels.")
+        raise ValueError(f"{label} must be an IMAGE batch [B,H,W,C] with at least three color channels.")
     pixels = image[:1, ..., :3]
     if tuple(pixels.shape[1:3]) != (height, width):
         pixels = comfy.utils.common_upscale(pixels.movedim(-1, 1), width, height,
-                                           "lanczos", "disabled").movedim(1, -1)
+                                           "lanczos", "center" if last else "disabled").movedim(1, -1)
     pixels = pixels.contiguous().clone()
     # This matches native H3 I2V canvas preparation. A prepared workflow image
     # already has this size; resizing is only a safeguard for other workflows.
@@ -192,19 +238,31 @@ def encode_first_frame(image, video_vae, width, height):
         encoded = video_vae.encode(pixels)
     expected = (1, 24, 1, height // 16, width // 16)
     if not isinstance(encoded, torch.Tensor) or tuple(encoded.shape) != expected:
-        raise ValueError(f"First-frame encoding requires the normal H3 video VAE, producing {expected}. "
+        raise ValueError(f"{label} encoding requires the normal H3 video VAE, producing {expected}. "
                          "The fast Regenerate decoder and audio VAE cannot encode this reference.")
     return encoded.detach().to(device="cpu", dtype=torch.float32)
 
 
-def first_frame_conditioning(conditioning, reference, frame_start):
-    """Keep the original frame at global time zero in each chunk's local timeline."""
+def keyframe_conditioning(conditioning, first_reference, frame_start, last_reference=None, last_index=None):
+    """Place the guides on this chunk's timeline, retaining their original positions."""
     # Later chunks must not relabel the source pose as their new first frame.
     # Native H3 RoPE accepts signed temporal positions; this chunked extension
     # remains experimental, as does chunking itself.
-    return [[text, {**metadata, "minimax_keyframes": [
-        {"resolved_frame_index": -frame_start, "latent": reference}]}]
+    keyframes = [{"resolved_frame_index": -frame_start, "latent": first_reference}]
+    if last_reference is not None:
+        keyframes.append({"resolved_frame_index": last_index - frame_start, "latent": last_reference})
+    return [[text, {**metadata, "minimax_keyframes": [dict(guide) for guide in keyframes]}]
             for text, metadata in conditioning]
+
+
+def blend_overlap(previous, refined, locked):
+    """Keep the fixed prefix and ease into the redrawn tail before leaving the overlap."""
+    overlap = previous.shape[2]
+    count = overlap - locked
+    t = torch.arange(1, count + 1, device=refined.device, dtype=torch.float32) / count
+    weight = (t.square() * (3 - 2 * t)).to(refined.dtype).view(1, 1, count, 1, 1)
+    tail = torch.lerp(previous[:, :, locked:], refined[:, :, locked:overlap], weight)
+    return torch.cat((previous[:, :, :locked], tail, refined[:, :, overlap:]), dim=2)
 
 
 def balance_short_tail(bounds, chunk_length, temporal_overlap):

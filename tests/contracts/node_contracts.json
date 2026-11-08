@@ -2902,6 +2902,12 @@
         "name": "chunk_mode",
         "optional": true,
         "type": "Combo"
+      },
+      {
+        "index": 18,
+        "name": "last_frame",
+        "optional": true,
+        "type": "Image"
       }
     ],
     "outputs": [
