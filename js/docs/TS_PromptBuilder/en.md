@@ -22,7 +22,8 @@ non-empty line). Subfolders and semantic maps are not read. **Reload** refreshes
 the file list without restarting ComfyUI, preserving your text and existing
 choices. New files in a saved workflow are appended disabled. Files removed
 from disk disappear from the list. Explicit file toggles and ordering can also
-be used as defaults for new nodes; custom text always stays workflow-local.
+be used as defaults for new nodes in [ts-prompt-builder-config.json](https://github.com/AlexYez/comfyui-timesaver/blob/master/nodes/prompts/ts-prompt-builder-config.json).
+Custom text always stays workflow-local.
 
 `seed = 0` selects fresh random lines every run. A positive seed makes each
 file's selection reproducible; moving or editing a custom block does not change

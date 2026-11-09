@@ -2,6 +2,8 @@
 
 Two images, or two clips, behind a wipe you drag with the mouse. Both sides take `IMAGE`, so a single frame and a whole batch go in the same socket — what happens next is decided by what arrives.
 
+**Working-tree change after 12.13.9.** The wipe handle, labels and buttons appear after both images or the first video frame have loaded. The empty preview hides these controls while loading or when temporary files from an earlier result are unavailable.
+
 **A pair of stills stays PNG.** What people compare in a still is detail: sharpness, artefacts, skin after retouching. Running that through a video codec would destroy exactly what is being looked at.
 
 **A batch becomes one file with A above B.** Not two files and not two players, and that is not thrift. Two `<video>` elements drift apart by a frame or two on fast motion, and the comparison starts lying without showing it. And browser video is decoded by the same GPU ComfyUI computes on, so a second decoder pulls at exactly the place the playback guard was written to protect. Two halves of one frame cannot drift — they are one frame — and only one decoder runs.
@@ -18,4 +20,4 @@ Both sides are brought to a single frame size, because a wipe over two different
 
 ---
 
-Full node reference: [README](https://github.com/AlexYez/comfyui-timesaver#-node-reference)
+[Full node reference](https://github.com/AlexYez/comfyui-timesaver/tree/master/js/docs)

@@ -46,6 +46,16 @@ export function ensureVideoStyles() {
     font-size:var(--ts-fs-xs);font-variant-numeric:tabular-nums;pointer-events:none;
     /* Поверх кадра пользователя — подложка обязана читаться на любой картинке. */
     background:rgba(0,0,0,.55);color:#f0f0f2}
+.ts-vid__range-preview{position:absolute;inset:0;display:grid;
+    grid-template-columns:repeat(2,minmax(0,1fr));background:inherit}
+.ts-vid__range-preview[hidden],.ts-vid__range-frame[hidden]{display:none}
+.ts-vid__range-pane{position:relative;min-width:0;min-height:0;overflow:hidden}
+.ts-vid__range-pane + .ts-vid__range-pane{border-left:1px solid var(--ts-border)}
+.ts-vid__range-frame{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
+.ts-vid__range-label{max-width:calc(100% - 12px);box-sizing:border-box;white-space:nowrap;
+    overflow:hidden;text-overflow:ellipsis}
+.ts-vid__stage.has-range-preview > .ts-vid__video,
+.ts-vid__stage.has-range-preview > .ts-vid__badge{visibility:hidden}
 
 .ts-vid__transport{flex:0 0 auto;display:flex;flex-wrap:wrap;align-items:center;gap:4px;
     min-height:28px;padding:0 2px}

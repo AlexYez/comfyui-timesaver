@@ -12,6 +12,11 @@ LOG_PREFIX = "[TS Resolution Selector]"
 # VAE noise headroom; see _crop_alpha_to_bbox).
 _OPAQUE_ALPHA = 0.98
 
+# The frontend's working maximum defaults to 4 MP and is saved in node.properties.
+# A wider server range permits a user-selected maximum without adding an input
+# (which would change positional widget values in existing workflows).
+_HARD_MAX_MEGAPIXELS = 10000.0
+
 
 _ASPECT_PRESETS = [
     ("1:1", 1.0, 1.0),
@@ -50,10 +55,13 @@ class TS_ResolutionSelector(IO.ComfyNode):
                     "resolution",
                     default=1.5,
                     min=0.1,
-                    max=3.0,
+                    max=_HARD_MAX_MEGAPIXELS,
                     step=0.1,
                     display_mode=IO.NumberDisplay.slider,
-                    tooltip="Target size in megapixels; width and height are derived from it and the aspect ratio.",
+                    tooltip=(
+                        "Target size in megapixels; width and height are derived from it and the aspect ratio. "
+                        "The slider maximum defaults to 4 MP; change max_megapixels in the node's Properties panel."
+                    ),
                 ),
                 IO.String.Input(
                     "custom_ratio",

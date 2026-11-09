@@ -33,6 +33,8 @@ export function ensureCompareStyles() {
    оказывался сплющенным. Проценты от высоты, которая сама зависит от
    содержимого, браузеру решать нечем — отсюда и вся история. */
 .ts-cmp__box{position:relative;line-height:0}
+/* A saved payload can outlive its temporary files. No controls over an empty box. */
+.ts-cmp:not(.is-ready) .ts-cmp__box{visibility:hidden}
 /* Обе стороны лежат в одной коробке и вписываются в неё: пропорция у коробки
    уже правильная, а contain страхует случай, когда «до» и «после» сняты в
    разной пропорции — тогда будет поле, но не растяжение. */
@@ -171,8 +173,16 @@ export function createCompare(strings = {}) {
 
     // Размер известен только после загрузки, а область меняется вместе с окном
     // и панелями — поэтому оба повода пересчитать.
-    before.addEventListener("load", fitBox);
-    after.addEventListener("load", fitBox);
+    function syncReady() {
+        const ready = [before, after].every((image) =>
+            image.complete && image.naturalWidth > 0 && image.naturalHeight > 0);
+        element.classList.toggle("is-ready", ready);
+        fitBox();
+    }
+    for (const image of [before, after]) {
+        image.addEventListener("load", syncReady);
+        image.addEventListener("error", syncReady);
+    }
     const resizeWatch = typeof ResizeObserver === "function"
         ? new ResizeObserver(() => fitBox()) : null;
     resizeWatch?.observe(element);
@@ -229,6 +239,7 @@ export function createCompare(strings = {}) {
          */
         show(beforeUrl, afterUrl) {
             if (!beforeUrl || !afterUrl) return false;
+            element.classList.remove("is-ready");
             before.src = beforeUrl;
             after.src = afterUrl;
             split = 0.5;
@@ -237,10 +248,12 @@ export function createCompare(strings = {}) {
             // Показались — значит область наконец имеет размер: до этого
             // `clientWidth` у скрытого блока равен нулю, и считать было нечего.
             fitBox();
+            syncReady();
             return true;
         },
         hide() {
             element.classList.remove("is-active");
+            element.classList.remove("is-ready");
             before.removeAttribute("src");
             after.removeAttribute("src");
         },
@@ -260,6 +273,7 @@ export function createCompare(strings = {}) {
             if (afterLabel) tagAfter.textContent = String(afterLabel);
         },
         isActive: () => element.classList.contains("is-active"),
+        isReady: () => element.classList.contains("is-ready"),
         /**
          * Пересчитать коробку под текущую область.
          *

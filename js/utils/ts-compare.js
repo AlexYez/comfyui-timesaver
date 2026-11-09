@@ -271,7 +271,7 @@ function setupCompare(node) {
      * борьбу за видеокарту, ради которой всё сравнение и сложено в один файл.
      */
     function openFullscreen(current = clip) {
-        if (!current) return;
+        if (!current || current.isReady?.() === false) return;
         // У пары кадров пересчитывать нечего: коробку подгоняет её собственный
         // ResizeObserver. У видео — свой relayout().
         const relayout = () => current.relayout?.();

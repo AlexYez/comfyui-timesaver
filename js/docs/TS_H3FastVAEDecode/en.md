@@ -6,10 +6,14 @@ Decodes H3 video through NVIDIA StreamRender-H3's noncausal 24-layer decoder.
 Select `fast_h3_vae_noncausal_24l.safetensors` from `models/vae` or a registered external VAE folder.
 Accepts video or AV latents; audio is ignored.
 
-Connect the standard H3 **video VAE** to `fallback_vae` for clips that do not fit the fast decoder.
-Memory is estimated before weights are loaded, with a second fallback on an actual out-of-memory
-error. Other errors remain visible. Fast decoder GPU weights are released after decoding.
+Select `auto` to try the fast path first. If it does not fit, the node uses the standard H3
+**video VAE** connected to `fallback_vae`, or tries `low VRAM` when no VAE is connected.
+The `fast` and `low VRAM` options select the first decoder explicitly.
+Low VRAM keeps Q/K/V for up to two native blocks at a time. It uses the original attention
+windows and global context and preserves frame count. The report shows the path that ran.
+Memory is estimated before loading the weights. CUDA out-of-memory errors can trigger a fallback.
 
 Output dimensions and frame count come from the latent. Crop 1088/2176 and trim any padding
-after decoding, along with the soundtrack. Fast and standard decoding can differ slightly.
-This runs the PyTorch SDPA path, without SoL-Engine optimizations.
+after decoding, along with the soundtrack. The NVIDIA decoder can show brightness or color
+changes at 17-frame block boundaries. Compare it with the standard H3 video VAE on the same
+latent. This runs the PyTorch SDPA path, without SoL-Engine optimizations.

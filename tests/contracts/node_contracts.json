@@ -2754,7 +2754,8 @@
     "class_name": "TS_H3FastVAEDecode",
     "display_name": "TS H3 Fast VAE Decode",
     "effective_widget_order": [
-      "vae_name"
+      "vae_name",
+      "decode_mode"
     ],
     "inputs": [
       {
@@ -2772,6 +2773,12 @@
         "name": "fallback_vae",
         "optional": true,
         "type": "Vae"
+      },
+      {
+        "index": 3,
+        "name": "decode_mode",
+        "optional": true,
+        "type": "Combo"
       }
     ],
     "outputs": [
@@ -2786,7 +2793,12 @@
         "type": "String"
       }
     ],
-    "python_file": "nodes/video/latent_upscale/ts_h3_fast_vae.py"
+    "python_file": "nodes/video/latent_upscale/ts_h3_fast_vae.py",
+    "widgets": {
+      "decode_mode": {
+        "default": "auto"
+      }
+    }
   },
   "TS_H3Regenerate": {
     "api": "v3",
@@ -2799,7 +2811,6 @@
       "height",
       "denoise",
       "steps",
-      "seed",
       "audio_mode",
       "precision",
       "chunk_length",
@@ -2850,8 +2861,8 @@
       },
       {
         "index": 8,
-        "name": "seed",
-        "type": "Int"
+        "name": "noise",
+        "type": "Noise"
       },
       {
         "index": 9,
@@ -2953,11 +2964,6 @@
       },
       "reference_mode": {
         "default": "off"
-      },
-      "seed": {
-        "default": 0,
-        "max": 18446744073709551615,
-        "min": 0
       },
       "steps": {
         "default": 3
@@ -6099,7 +6105,7 @@
       },
       "resolution": {
         "default": 1.5,
-        "max": 3.0,
+        "max": 10000.0,
         "min": 0.1,
         "step": 0.1
       }

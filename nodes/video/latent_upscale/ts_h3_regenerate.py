@@ -15,6 +15,7 @@ LOG = logging.getLogger(__name__)
 FIRST_FRAME = "first frame (preserve character)"
 FIRST_LAST = "first and last frames"
 FULL_REFERENCE = "full reference (Ref2VA)"
+CONNECTED_FRAMES = "connected frames (auto)"
 INDEPENDENT = "independent (crossfade)"
 LOCK_OVERLAP = "continue (lock overlap)"
 BLEND_OVERLAP = "continue (blend overlap)"
@@ -80,7 +81,7 @@ class TS_H3Regenerate(IO.ComfyNode):
                 IO.Float.Input("denoise", default=1.0, min=0.0, max=1.0, step=0.01,
                                tooltip="1 = release sigma schedule; lower = less redraw, shift-6 grid from a lower starting sigma; 0 = upscale only."),
                 IO.Combo.Input("steps", options=[3, 2], default=3),
-                IO.Int.Input("seed", default=0, min=0, max=0xffffffffffffffff, control_after_generate=True),
+                IO.Noise.Input("noise", tooltip="Connect Random Noise. One noise tensor is generated for the full clip and shared by overlapping chunks."),
                 IO.Combo.Input("audio_mode", options=["keep source audio (lipsync)", "silence (reference)"], default="keep source audio (lipsync)",
                                tooltip="Source audio is held clean for lipsync. Reference mode encodes silence; mux the original soundtrack after decoding."),
                 IO.Combo.Input("precision", options=["bf16", "fp16", "fp32"], default="bf16", tooltip="Latent upscaler precision. NVIDIA reference uses bf16."),
@@ -88,8 +89,8 @@ class TS_H3Regenerate(IO.ComfyNode):
                              tooltip="0 = whole clip, release recipe. Nonzero = lower-memory chunks, in multiples of 17 frames. The stitching mode controls how chunks share context."),
                 IO.Int.Input("temporal_overlap", default=17, min=0, max=100000, step=17),
                 IO.Vae.Input("audio_vae", optional=True, tooltip="H3 audio VAE; required only for silence reference mode."),
-                IO.Combo.Input("reference_mode", options=["off", FIRST_FRAME, FIRST_LAST, FULL_REFERENCE], default="off", optional=True,
-                               tooltip="First/last uses the normal H3 video VAE and keyframe images at final size. Full Reference uses encoded media from the original Ref2VA conditioning with a clean Ref2VA Regenerate model. Reference resolution and length affect VRAM use."),
+                IO.Combo.Input("reference_mode", options=["off", FIRST_FRAME, FIRST_LAST, FULL_REFERENCE, CONNECTED_FRAMES], default="off", optional=True,
+                               tooltip="Connected frames (auto) uses whichever of first_frame and last_frame arrive. Keyframes use the normal H3 video VAE. Full Reference uses encoded media from the original Ref2VA conditioning with a clean Ref2VA Regenerate model."),
                 IO.Image.Input("first_frame", optional=True,
                                tooltip="Start image prepared directly from the source at final output size, before strong draft downscaling. Only the first image is used; it is fitted to width/height without cropping."),
                 IO.Vae.Input("video_vae", optional=True,
@@ -98,7 +99,7 @@ class TS_H3Regenerate(IO.ComfyNode):
                                default=INDEPENDENT, optional=True,
                                tooltip="Lock overlap fixes the whole overlap. Blend overlap fixes its early part and gradually transitions to the redrawn tail. Both continuation modes require nonzero overlap for multiple chunks."),
                 IO.Image.Input("last_frame", optional=True,
-                               tooltip="End image for first and last frames mode. The first image in the batch is center-cropped to the final canvas if necessary, then encoded as a guide at the clip's last frame."),
+                               tooltip="End image for connected frames (auto) or first and last frames. The first image in the batch is center-cropped to the final canvas if necessary, then encoded as a guide at the clip's last frame."),
             ],
             outputs=[IO.Latent.Output("latent"), IO.String.Output("report")],
         )
@@ -117,15 +118,14 @@ class TS_H3Regenerate(IO.ComfyNode):
         return True
 
     @classmethod
-    def execute(cls, model, conditioning, latent, upscale_model, width=1920, height=1088,
-                denoise=1.0, steps=3, seed=0, audio_mode="keep source audio (lipsync)",
+    def execute(cls, model, conditioning, latent, upscale_model, noise, width=1920, height=1088,
+                denoise=1.0, steps=3, audio_mode="keep source audio (lipsync)",
                 precision="bf16", chunk_length=0, temporal_overlap=17, audio_vae=None,
                 reference_mode="off", first_frame=None, video_vae=None,
                 chunk_mode=INDEPENDENT, last_frame=None):
         import comfy.model_management as mm
         import comfy.nested_tensor
         import comfy.samplers
-        from comfy_extras.nodes_custom_sampler import Noise_RandomNoise
 
         if any(value is None for value in (width, height, chunk_length, temporal_overlap)):
             raise ValueError("Width, height, chunk length and overlap must resolve to numbers; check the connected upstream nodes.")
@@ -133,18 +133,23 @@ class TS_H3Regenerate(IO.ComfyNode):
         if valid is not True:
             raise ValueError(valid)
         sigma_grid = regen.sigmas(steps, denoise)
-        if reference_mode not in ("off", FIRST_FRAME, FIRST_LAST, FULL_REFERENCE):
+        if reference_mode not in ("off", FIRST_FRAME, FIRST_LAST, FULL_REFERENCE, CONNECTED_FRAMES):
             raise ValueError(f"Unknown Regenerate reference mode: {reference_mode}")
-        use_reference = reference_mode in (FIRST_FRAME, FIRST_LAST) and denoise > 0
-        use_last = use_reference and reference_mode == FIRST_LAST
+        automatic = reference_mode == CONNECTED_FRAMES
+        use_first = denoise > 0 and (
+            reference_mode in (FIRST_FRAME, FIRST_LAST) or (automatic and first_frame is not None)
+        )
+        use_last = denoise > 0 and (reference_mode == FIRST_LAST or (automatic and last_frame is not None))
+        use_reference = use_first or use_last
         use_full_reference = reference_mode == FULL_REFERENCE and denoise > 0
-        if use_reference:
-            if first_frame is None or video_vae is None:
-                raise ValueError("First-frame mode requires both first_frame and the normal H3 video_vae inputs.")
-            if use_last and last_frame is None:
-                raise ValueError("First and last frames mode requires the last_frame input.")
-            if not conditioning:
-                raise ValueError("First-frame mode requires H3 text conditioning.")
+        if use_first and (first_frame is None or video_vae is None):
+            raise ValueError("First-frame mode requires both first_frame and the normal H3 video_vae inputs.")
+        if use_last and last_frame is None:
+            raise ValueError("First and last frames mode requires the last_frame input.")
+        if use_reference and video_vae is None:
+            raise ValueError("Keyframe guidance requires the normal H3 video_vae input.")
+        if use_reference and not conditioning:
+            raise ValueError("Keyframe guidance requires H3 text conditioning.")
         video, source_audio = regen.video_audio(latent["samples"])
         if width < video.shape[-1] * 16 or height < video.shape[-2] * 16:
             raise ValueError("Regenerate targets must be at least as large as the input in both dimensions.")
@@ -197,7 +202,8 @@ class TS_H3Regenerate(IO.ComfyNode):
         reference = end_reference = None
         if use_reference:
             try:
-                reference = regen.encode_keyframe(first_frame, video_vae, width, height)
+                if use_first:
+                    reference = regen.encode_keyframe(first_frame, video_vae, width, height)
                 if use_last:
                     end_reference = regen.encode_keyframe(last_frame, video_vae, width, height, last=True)
             finally:
@@ -224,7 +230,6 @@ class TS_H3Regenerate(IO.ComfyNode):
                 part, _, _ = core.upscale_latent(part, {"model_name": upscale_model, "width": w, "height": h,
                                                        "device": device, "precision": precision})
             upscaled.append(part)
-        noise = Noise_RandomNoise(seed)
         sampler = comfy.samplers.sampler_object("euler")
         full_noise = None
         acc_v = acc_a = None
@@ -250,10 +255,9 @@ class TS_H3Regenerate(IO.ComfyNode):
                     if full_noise is None:
                         full_noise = core.clip_noise(noise, v, a, video.shape[2], audio.shape[-1])
                     piece_cond = cond
-                    if reference is not None:
-                        piece_cond = regen.keyframe_conditioning(cond, reference, f0,
-                                                                end_reference if f1 == frame_count else None,
-                                                                frame_count - 1)
+                    final_guide = end_reference if f1 == frame_count else None
+                    if reference is not None or final_guide is not None:
+                        piece_cond = regen.keyframe_conditioning(cond, reference, f0, final_guide, frame_count - 1)
                     sampled = core.sample_piece(piece, piece_cond, model, noise, sampler, sigma_grid, None, 1.0,
                                                 noise_tensor=core.slice_noise(full_noise, k0, k1, a0, a0 + a.shape[-1]))
                     v = sampled.tensors[0]
@@ -278,14 +282,14 @@ class TS_H3Regenerate(IO.ComfyNode):
         report = f"{width}×{height}, {len(bounds)} chunk(s), denoise={denoise:g}, sigmas={sigma_grid.tolist()}, {audio_mode}."
         if reference is not None:
             report += f" Experimental first-frame guidance: normal H3 VAE, {width}×{height}; original global frame 0."
-            if end_reference is not None:
-                report += f" Last-frame guidance: global frame {frame_count - 1} (zero-based), final window only."
+        if end_reference is not None:
+            report += f" Last-frame guidance: global frame {frame_count - 1} (zero-based), final window only."
         elif use_full_reference:
             report += f" Full Reference blocks: {', '.join(reference_kinds)}."
         elif reference_mode == FULL_REFERENCE:
             report += " Full Reference inactive at denoise=0."
-        elif reference_mode != "off":
-            report += " First-frame guidance inactive at denoise=0."
+        elif reference_mode != "off" and denoise == 0:
+            report += " Keyframe guidance inactive at denoise=0."
         if chunk_length:
             report += " Experimental chunked mode; differs from whole-clip reference."
             report += f" Stitching: {chunk_mode}."

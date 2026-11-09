@@ -85,6 +85,8 @@ export const STRINGS_LOADER = {
         fullscreenLabel: "Video trimming",
         close: "Close (Esc)",
         trimWhole: "Trim: whole clip",
+        rangeStart: "Start",
+        rangeEnd: "End",
         trim: (from, to, length) => `Trim: ${from} → ${to} · ${length}`,
         stats: (w, h, fps) => `${w}×${h} · ${fps} fps`,
         noAudio: "no audio",
@@ -140,6 +142,8 @@ export const STRINGS_LOADER = {
         fullscreenLabel: "Подрезка видео",
         close: "Закрыть (Esc)",
         trimWhole: "Обрезка: весь ролик",
+        rangeStart: "Начало",
+        rangeEnd: "Конец",
         trim: (from, to, length) => `Обрезка: ${from} → ${to} · ${length}`,
         stats: (w, h, fps) => `${w}×${h} · ${fps} кадр/с`,
         noAudio: "без звука",
@@ -583,6 +587,8 @@ export function setupVideoLoader(node) {
     }
 
     function applySource(path) {
+        proxyToken += 1;
+        editor.setSource("");
         editor.state.path = path;
         setWidgetValue(node, INPUT_PATH, path);
         // Маркеры принадлежали прежнему ролику: оставить их — значит показать
@@ -717,10 +723,10 @@ export function setupVideoLoader(node) {
             case "f": case "F": editor.viewport.fit(); break;
             case "z": case "Z": editor.viewport.zoomToRange(left, right); break;
             case "x": case "X": editor.setRange(0, -1); break;
-            case "ArrowLeft": editor.playback.stepFrames(event.shiftKey ? -10 : -1); break;
-            case "ArrowRight": editor.playback.stepFrames(event.shiftKey ? 10 : 1); break;
-            case "Home": editor.playback.seek(left, { immediate: true }); break;
-            case "End": editor.playback.seek(right, { immediate: true }); break;
+            case "ArrowLeft": editor.stepPlayhead(event.shiftKey ? -10 : -1); break;
+            case "ArrowRight": editor.stepPlayhead(event.shiftKey ? 10 : 1); break;
+            case "Home": editor.seekPlayhead(left, { immediate: true }); break;
+            case "End": editor.seekPlayhead(right, { immediate: true }); break;
             default: return false;
         }
         return true;
@@ -842,6 +848,11 @@ export function setupVideoLoader(node) {
 
     node._tsVideoLoaderRehydrate = () => {
         const path = String(readPersisted(node, INPUT_PATH, "") || "");
+        if (path !== editor.state.path) {
+            metaToken += 1;
+            proxyToken += 1;
+            editor.setSource("");
+        }
         editor.state.cropStart = readNumber(node, INPUT_START, 0);
         editor.state.cropEnd = readNumber(node, INPUT_END, -1);
         editor.state.looping = node.properties?.[PROP_LOOP] !== false;
@@ -872,6 +883,8 @@ export function setupVideoLoader(node) {
     };
 
     node._tsVideoLoaderCleanup = () => {
+        metaToken += 1;
+        proxyToken += 1;
         teardownDrop?.();
         fullscreen?.close();
         document.removeEventListener("keydown", onKeyDown, true);

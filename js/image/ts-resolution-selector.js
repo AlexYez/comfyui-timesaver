@@ -2,6 +2,7 @@ import { app } from "/scripts/app.js";
 
 import { TS_UI_CLASS, createRatioCards, ensureThemeStyles } from "../_theme.js";
 import { addResizableDomWidget, hideWidget as sharedHideWidget, getWidget as sharedGetWidget } from "../_dom_widget.js";
+import { applyResolutionMaximum, DEFAULT_MAX_MEGAPIXELS, registerResolutionMaximum } from "./_resolution_limits.js";
 
 const EXTENSION_ID = "ts.resolutionselector";
 const NODE_NAME = "TS_ResolutionSelector";
@@ -127,7 +128,7 @@ function healWidgetValues(node) {
     const resolution = sharedGetWidget(node, "resolution");
     if (resolution) {
         const min = Number(resolution.options?.min ?? 0.1);
-        const max = Number(resolution.options?.max ?? 3.0);
+        const max = Number(resolution.options?.max ?? DEFAULT_MAX_MEGAPIXELS);
         let value = resolution.value;
         if (typeof value !== "number" || !Number.isFinite(value)) {
             const parsed = typeof value === "string" ? Number(value) : NaN;
@@ -262,11 +263,19 @@ function setupResolutionSelector(node) {
 
 app.registerExtension({
     name: EXTENSION_ID,
+    beforeRegisterNodeDef(nodeType, nodeData) {
+        if (nodeData?.name !== NODE_NAME) return;
+        // The backend accepts custom maxima; new UI nodes still start at 4 MP.
+        const options = nodeData.input?.required?.resolution?.[1];
+        if (options) options.max = DEFAULT_MAX_MEGAPIXELS;
+        registerResolutionMaximum(nodeType, (node) => sharedGetWidget(node, "resolution"));
+    },
     nodeCreated(node) {
         if (!isTargetNode(node)) {
             return;
         }
         setupResolutionSelector(node);
+        applyResolutionMaximum(node, sharedGetWidget(node, "resolution"));
     },
     loadedGraphNode(node) {
         if (!isTargetNode(node)) {
@@ -280,6 +289,7 @@ app.registerExtension({
         // После legacy-разбора (он идёт в onConfigure, раньше этого хука) —
         // и ДО синхронизации карточек: они должны показать уже исправленное.
         try {
+            applyResolutionMaximum(node, sharedGetWidget(node, "resolution"), { preserveValue: true });
             healWidgetValues(node);
         } catch (error) {
             console.warn("[TS Resolution Selector] could not repair saved values", error);

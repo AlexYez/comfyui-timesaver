@@ -62,6 +62,9 @@ export function ensureCompareVideoStyles() {
   font-size:var(--ts-fs-xs);color:var(--ts-muted);white-space:nowrap;
   font-variant-numeric:tabular-nums}
 .ts-cmpv__seek{flex:1 1 auto;min-width:0}
+/* Metadata alone is not a decoded frame; missing temp files stay empty. */
+.ts-cmpv:not(.is-ready) .ts-cmpv__stage > *,
+.ts-cmpv:not(.is-ready) .ts-cmpv__bar{visibility:hidden}
 `;
     document.head.appendChild(style);
 }
@@ -166,7 +169,7 @@ export function createVideoCompare(strings = {}) {
 
     function paint() {
         if (!ctx || !(frameW > 0 && frameH > 0)) return;
-        if (!video.videoWidth) return;
+        if (!video.videoWidth || video.readyState < 2) return;
         const w = canvas.width;
         const h = canvas.height;
         const cut = Math.round(w * split);
@@ -270,9 +273,13 @@ export function createVideoCompare(strings = {}) {
     // ⚠️ Вот здесь появляется первый кадр. До этого события рисовать нечего:
     // `drawImage` с пустого видео даёт пустоту, и человек видит чёрный экран.
     video.addEventListener("loadeddata", () => {
+        element.classList.toggle("is-ready", video.videoWidth > 0 && video.videoHeight > 1);
         layout();
         paint();
     });
+    for (const name of ["emptied", "error"]) {
+        video.addEventListener(name, () => element.classList.remove("is-ready"));
+    }
 
     const observer = typeof ResizeObserver === "function"
         ? new ResizeObserver(() => layout())
@@ -296,6 +303,9 @@ export function createVideoCompare(strings = {}) {
             tagB.textContent = labelB || strings.after || "B";
             split = 0.5;
             if (video.src !== url) {
+                element.classList.remove("is-ready");
+                frameW = 0;
+                frameH = 0;
                 video.pause();
                 video.src = url;
                 video.load();
@@ -303,6 +313,7 @@ export function createVideoCompare(strings = {}) {
         },
         /** Перерисовать по месту — например, когда ноду изменили в размере. */
         relayout: layout,
+        isReady: () => element.classList.contains("is-ready"),
         teardown() {
             unguard();
             observer?.disconnect();

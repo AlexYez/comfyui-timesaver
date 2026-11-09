@@ -3,13 +3,16 @@ from __future__ import annotations
 
 import logging
 
-import torch
 import folder_paths
+import torch
 from comfy_api.v0_0_2 import IO
 
 from . import _regenerate as regen
 
 LOG = logging.getLogger(__name__)
+AUTO = "auto"
+FULL = "fast"
+LOW_VRAM = "low VRAM"
 
 
 def _native(vae, video):
@@ -20,10 +23,11 @@ def _native(vae, video):
 
 
 def _decoder(path):
-    from safetensors.torch import load_file
     import comfy.ops
     import comfy.utils
     from comfy.ldm.minimax.vae import LATENTS_MEAN, LATENTS_STD
+    from safetensors.torch import load_file
+
     from .fast_vae.fast_vae_decoder import KEEP_24
     from .fast_vae.fast_vae_lean import LeanNonCausalViTDecoder
 
@@ -54,6 +58,22 @@ def _weight_bytes(path):
     return max(value["data_offsets"][1] for key, value in header.items() if key != "__metadata__")
 
 
+def _decode(video, path, device, output_device, frames, low_vram):
+    _, _, _, height, width = video.shape
+    out = torch.empty(frames, height * 16, width * 16, 3, device=output_device, dtype=torch.float32)
+    model = _decoder(path).to(device)
+    mean = torch.tensor((.485, .456, .406), device=device).view(1, 3, 1, 1, 1)
+    std = torch.tensor((.229, .224, .225), device=device).view(1, 3, 1, 1, 1)
+
+    def sink(start, pixels):
+        part = (pixels.float() * std + mean).clamp_(0, 1)[0].permute(1, 2, 3, 0)
+        out[start:start + part.shape[0]].copy_(part)
+
+    with torch.inference_mode(), torch.autocast(device.type, dtype=torch.bfloat16, enabled=device.type == "cuda"):
+        model(video.to(device=device, dtype=torch.float32).transpose(1, 2), sink=sink, low_vram=low_vram)
+    return out
+
+
 class TS_H3FastVAEDecode(IO.ComfyNode):
     @classmethod
     def define_schema(cls):
@@ -67,49 +87,57 @@ class TS_H3FastVAEDecode(IO.ComfyNode):
                                default=next((name for name in names if "int8_convrot" in name), names[0] if names else None)),
                 IO.Vae.Input("fallback_vae", optional=True,
                              tooltip="Standard H3 video VAE; used if fast decoding needs more VRAM than is available. Audio is ignored."),
+                IO.Combo.Input("decode_mode", options=[AUTO, FULL, LOW_VRAM], default=AUTO, optional=True,
+                               tooltip="Auto tries Fast, then uses the connected standard VAE, or Low VRAM if none is connected. Select Low VRAM to use smaller buffers with the same NVIDIA attention windows and frames."),
             ],
             outputs=[IO.Image.Output("images"), IO.String.Output("report")],
         )
 
     @classmethod
-    def execute(cls, latent, vae_name, fallback_vae=None):
+    def execute(cls, latent, vae_name, fallback_vae=None, decode_mode=AUTO):
         import comfy.model_management as mm
 
         video, _ = regen.video_audio(latent["samples"])
         device = mm.get_torch_device()
         _, _, t, h, w = video.shape
-        # Conservative upstream estimate; decide before reading the 6.5 GB file.
+        if decode_mode not in (AUTO, FULL, LOW_VRAM):
+            raise ValueError(f"Unknown Fast H3 VAE decode mode: {decode_mode}")
         path = folder_paths.get_full_path_or_raise("vae", vae_name)
-        need = _weight_bytes(path) + t * h * w * 26 * 1024 + 3 * 2**30
-        mm.free_memory(need, device)
-        if device.type == "cuda" and need > mm.get_free_memory(device):
-            report = f"Standard H3 VAE fallback: fast decode estimated {need / 2**30:.1f} GiB."
-            if fallback_vae is None:
-                raise RuntimeError(report + " Connect fallback_vae or reduce clip size.")
-            LOG.info(report)
-            return IO.NodeOutput(_native(fallback_vae, video), report)
         frames = 4 * t - 3 * ((t + 4) // 5)
-        out = torch.empty(frames, h * 16, w * 16, 3, device=mm.intermediate_device(), dtype=torch.float32)
-        model = _decoder(path)
-        try:
-            model.to(device)
-            mean = torch.tensor((.485, .456, .406), device=device).view(1, 3, 1, 1, 1)
-            std = torch.tensor((.229, .224, .225), device=device).view(1, 3, 1, 1, 1)
-
-            def sink(start, pixels):
-                part = (pixels.float() * std + mean).clamp_(0, 1)[0].permute(1, 2, 3, 0)
-                out[start:start + part.shape[0]].copy_(part)
-
-            with torch.inference_mode(), torch.autocast(device.type, dtype=torch.bfloat16, enabled=device.type == "cuda"):
-                model(video.to(device=device, dtype=torch.float32).transpose(1, 2), sink=sink)
-        except torch.OutOfMemoryError:
-            out = None
-        finally:
-            del model
-            mm.soft_empty_cache()
-        if out is None:
-            return IO.NodeOutput(_native(fallback_vae, video), "Standard H3 VAE fallback after fast decoder OOM.")
-        return IO.NodeOutput(out, f"Fast H3 VAE: {frames} frames, {w * 16}×{h * 16}, PyTorch SDPA.")
+        output_device = mm.intermediate_device()
+        baseline = _weight_bytes(path) + 3 * 2**30
+        if output_device.type == "cuda":
+            baseline += frames * h * w * 16**2 * 3 * 4
+        modes = (decode_mode,)
+        if decode_mode == AUTO:
+            modes = (FULL, LOW_VRAM) if fallback_vae is None else (FULL,)
+        failures = []
+        for mode in modes:
+            low_vram = mode == LOW_VRAM
+            # Low VRAM holds the FP32 residual, BF16 attention output and at most
+            # two native Q/K/V blocks. The reserve also covers assembling one window.
+            per_pixel = (t + min(t, 10)) * 12 * 1024 if low_vram else t * 26 * 1024
+            need = baseline + h * w * per_pixel
+            mm.free_memory(need, device)
+            if device.type == "cuda" and need > mm.get_free_memory(device):
+                failures.append(f"{mode} estimated {need / 2**30:.1f} GiB")
+                continue
+            try:
+                out = _decode(video, path, device, output_device, frames, low_vram)
+            except torch.OutOfMemoryError:
+                failures.append(f"{mode} ran out of memory")
+            else:
+                report = f"Fast H3 VAE: {frames} frames, {w * 16}×{h * 16}, PyTorch SDPA ({mode})."
+                LOG.info(report)
+                return IO.NodeOutput(out, report)
+            finally:
+                mm.soft_empty_cache()
+        reason = ", ".join(failures)
+        report = f"Standard H3 VAE fallback: {reason}."
+        if fallback_vae is None:
+            raise RuntimeError(f"{report} Connect fallback_vae or reduce clip size.")
+        LOG.info(report)
+        return IO.NodeOutput(_native(fallback_vae, video), report)
 
 
 NODE_CLASS_MAPPINGS = {"TS_H3FastVAEDecode": TS_H3FastVAEDecode}

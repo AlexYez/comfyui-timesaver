@@ -22,6 +22,7 @@ import {
 } from "../../_media/_range.js";
 import { formatTimecode, pickTickStep } from "../../_media/_ruler.js";
 import { clamp, createTimeViewport } from "../../_media/_viewport.js";
+import { createRangePreview } from "./_range_preview.js";
 
 const NEED_BASE = 1;
 const NEED_OVERLAY = 2;
@@ -61,6 +62,7 @@ export function createVideoEditor({ api, route, strings, onRangeChange, onViewpo
     const badge = document.createElement("div");
     badge.className = "ts-vid__badge";
     stage.append(video, empty, badge);
+    const rangePreview = createRangePreview(stage, L);
 
     const timeline = document.createElement("div");
     timeline.className = "ts-vid__timeline";
@@ -119,12 +121,18 @@ export function createVideoEditor({ api, route, strings, onRangeChange, onViewpo
         onReady: () => scheduleDraw(NEED_BASE),
     });
 
+    let inspectRange = true;
+    let followBoundary = null;
     const playback = createPlayback(video, {
         getRange: () => bounds(),
         isLooping: () => state.looping,
         getFps: () => state.fps,
         onTime: () => scheduleDraw(NEED_OVERLAY),
-        onState: () => scheduleDraw(NEED_OVERLAY),
+        onState: (playing) => {
+            if (playing) inspectRange = true;
+            syncRangePreview();
+            scheduleDraw(NEED_OVERLAY);
+        },
     });
 
     // ── геометрия ────────────────────────────────────────────────────────── #
@@ -136,6 +144,26 @@ export function createVideoEditor({ api, route, strings, onRangeChange, onViewpo
 
     function bounds() {
         return normaliseRange(state.cropStart, state.cropEnd, state.duration);
+    }
+
+    function syncRangePreview() {
+        const { left, right } = bounds();
+        if (inspectRange && video.paused && state.playable && right > left
+            && (left > 0 || right < state.duration)) {
+            rangePreview.show(left, right);
+        } else {
+            rangePreview.hide();
+        }
+    }
+
+    function showPlayhead() {
+        inspectRange = false;
+        rangePreview.hide();
+    }
+
+    function seekPlayhead(seconds, options) {
+        showPlayhead();
+        playback.seek(seconds, options);
     }
 
     /**
@@ -357,7 +385,7 @@ export function createVideoEditor({ api, route, strings, onRangeChange, onViewpo
             ctx.fillRect(x - 2, 6, 4, height - 12);
         }
 
-        const playX = viewport.secondsToX(video.currentTime || 0, width);
+        const playX = viewport.secondsToX(followBoundary ?? (video.currentTime || 0), width);
         if (playX >= 0 && playX <= width) {
             ctx.strokeStyle = colors.text;
             ctx.lineWidth = 1;
@@ -445,14 +473,13 @@ export function createVideoEditor({ api, route, strings, onRangeChange, onViewpo
     const drag = createRangeDrag({
         getBounds: bounds,
         setBounds: (left, right, moved) => {
+            playback.pause();
             setRange(left, right);
-            // ⚠️ Плеер идёт ЗА ручкой, которую тянут. Без этого границу
-            // выставляют вслепую: цифры меняются, а какой кадр окажется первым —
-            // видно только после того, как отпустишь и нажмёшь воспроизведение.
-            if (moved === "left") playback.seek(left, { scrub: true });
-            else if (moved === "right") playback.seek(right, { scrub: true });
+            // The separate preview follows the drag. Move the playback cursor
+            // only on release so the main player isn't decoding every seek too.
+            followBoundary = moved === "left" ? left : moved === "right" ? right : null;
         },
-        onSeek: (seconds) => playback.seek(seconds),
+        onSeek: seekPlayhead,
         getSecondsPerPixel: secondsPerPixel,
         getDuration: () => state.duration,
     });
@@ -470,7 +497,7 @@ export function createVideoEditor({ api, route, strings, onRangeChange, onViewpo
         }
         const rect = timeline.getBoundingClientRect();
         if (event.clientY - rect.top <= LANE_RULER) {
-            playback.seek(seconds);         // по шкале — скраб, не выделение
+            seekPlayhead(seconds);          // по шкале — скраб, не выделение
             panning = { scrub: true };
             return;
         }
@@ -480,7 +507,7 @@ export function createVideoEditor({ api, route, strings, onRangeChange, onViewpo
 
     timeline.addEventListener("pointermove", (event) => {
         if (panning?.scrub) {
-            playback.seek(pointerSeconds(event));
+            seekPlayhead(pointerSeconds(event));
             return;
         }
         if (panning) {
@@ -500,6 +527,10 @@ export function createVideoEditor({ api, route, strings, onRangeChange, onViewpo
         timeline.releasePointerCapture?.(event.pointerId);
         panning = null;
         if (drag.active) drag.end(pointerSeconds(event));
+        if (followBoundary !== null) {
+            playback.seek(followBoundary, { immediate: true });
+            followBoundary = null;
+        }
         scheduleDraw(NEED_OVERLAY);
     };
     timeline.addEventListener("pointerup", endGesture);
@@ -603,6 +634,8 @@ export function createVideoEditor({ api, route, strings, onRangeChange, onViewpo
         // Сентинел «до конца» сохраняется: правая ручка у самого края означает
         // именно «до конца файла», а не конкретную секунду.
         state.cropEnd = (total > 0 && right >= total - 0.01) ? -1 : right;
+        inspectRange = true;
+        syncRangePreview();
         onRangeChange?.(state.cropStart, state.cropEnd);
         scheduleDraw(NEED_OVERLAY);
     }
@@ -616,6 +649,11 @@ export function createVideoEditor({ api, route, strings, onRangeChange, onViewpo
         state,
         viewport,
         playback,
+        seekPlayhead,
+        stepPlayhead(delta) {
+            showPlayhead();
+            playback.stepFrames(delta);
+        },
         strip,
         badge,
         empty,
@@ -672,9 +710,12 @@ export function createVideoEditor({ api, route, strings, onRangeChange, onViewpo
         setPlayable(flag) {
             state.playable = flag !== false;
             video.style.visibility = state.playable ? "" : "hidden";
+            if (!state.playable) rangePreview.hide();
         },
 
         setSource(url) {
+            rangePreview.setSource(url);
+            inspectRange = true;
             if (!url) {
                 video.removeAttribute("src");
                 video.load();
@@ -682,6 +723,7 @@ export function createVideoEditor({ api, route, strings, onRangeChange, onViewpo
             }
             video.src = url;
             video.load();
+            syncRangePreview();
         },
 
         dispose() {
@@ -689,6 +731,7 @@ export function createVideoEditor({ api, route, strings, onRangeChange, onViewpo
             timeline.removeEventListener("pointerenter", bindWheel);
             timeline.removeEventListener("pointerleave", unbindWheel);
             playback.dispose();
+            rangePreview.dispose();
             strip.dispose();
             peaks.dispose();
             cancelAnimationFrame(rafId);

@@ -248,7 +248,9 @@ def keyframe_conditioning(conditioning, first_reference, frame_start, last_refer
     # Later chunks must not relabel the source pose as their new first frame.
     # Native H3 RoPE accepts signed temporal positions; this chunked extension
     # remains experimental, as does chunking itself.
-    keyframes = [{"resolved_frame_index": -frame_start, "latent": first_reference}]
+    keyframes = []
+    if first_reference is not None:
+        keyframes.append({"resolved_frame_index": -frame_start, "latent": first_reference})
     if last_reference is not None:
         keyframes.append({"resolved_frame_index": last_index - frame_start, "latent": last_reference})
     return [[text, {**metadata, "minimax_keyframes": [dict(guide) for guide in keyframes]}]
