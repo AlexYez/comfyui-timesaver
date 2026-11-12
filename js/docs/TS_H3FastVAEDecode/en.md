@@ -4,6 +4,11 @@ Supports original FP32 and native INT8 convrot checkpoints, detected from per-la
 
 Decodes H3 video through NVIDIA StreamRender-H3's noncausal 24-layer decoder.
 Select `fast_h3_vae_noncausal_24l.safetensors` from `models/vae` or a registered external VAE folder.
+V2 is also supported: `fast_h3_vae_v2_24l.safetensors` or
+`fast_h3_vae_v2_24l_int8_convrot.safetensors`. Select V2 explicitly; legacy defaults
+are preserved. These are decode-only weights and cannot encode reference images.
+Current ComfyUI also supports this 24-layer format through **Load VAE → VAE Decode**
+([native support](https://github.com/Comfy-Org/ComfyUI/pull/17411)).
 Accepts video or AV latents; audio is ignored.
 
 Select `auto` to try the fast path first. If it does not fit, the node uses the standard H3
@@ -17,3 +22,15 @@ Output dimensions and frame count come from the latent. Crop 1088/2176 and trim 
 after decoding, along with the soundtrack. The NVIDIA decoder can show brightness or color
 changes at 17-frame block boundaries. Compare it with the standard H3 video VAE on the same
 latent. This runs the PyTorch SDPA path, without SoL-Engine optimizations.
+
+## Original encoder and Fast V2 in one checkpoint
+
+The combined video VAE `minimax_h3_vae_encoder_fast_v2_int8_convrot.safetensors`
+contains the original H3 encoder and the Fast V2 INT8 ConvRot decoder.
+Place it in `models/vae` and select it in native **Load VAE**. Connect the same
+`VAE` output to **VAE Encode** for source images/video and **VAE Decode** for
+generation or Regenerate results. Current ComfyUI loads this combination natively.
+
+Load the combined checkpoint through **Load VAE**, rather than this node's
+decoder-only checkpoint selector. Its decoder is always Fast V2: using this VAE
+as `fallback_vae` does not provide a fallback to the original decoder.

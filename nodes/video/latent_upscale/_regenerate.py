@@ -15,7 +15,34 @@ import torch
 from safetensors import safe_open
 
 REFERENCE_TABLE_SHA256 = "c02a6c11888297688c1e6278185ea1f947023acfc69f9003bbcdcec9a229a8e7"
+BUNDLE_METADATA = "ts_h3_regenerate_bundle"
+BUNDLE_VERSION = "standard-v1"
+BUNDLE_TABLE = "ts_regenerate.adaln_t_table"
 SCHEDULES = {3: (0.909375, 6 / 7, 2 / 3, 0.0), 2: (0.7, 0.49411764705882355, 0.0)}
+
+
+def _bundle(handle):
+    version = (handle.metadata() or {}).get(BUNDLE_METADATA)
+    if version is not None and version != BUNDLE_VERSION:
+        raise ValueError(f"Unsupported TS Regenerate bundle version: {version}")
+    return version == BUNDLE_VERSION
+
+
+def is_bundle(path):
+    with safe_open(path, framework="pt", device="cpu") as handle:
+        return _bundle(handle)
+
+
+def _sharp_keys():
+    return {f"transformer.transformer_blocks.{i}.adaln_proj.linear.curve_{ab}.weight"
+            for i in range(50) for ab in ("A", "B")}
+
+
+def _lora_keys(handle):
+    names = sorted(k.removesuffix(".lora_A.weight") for k in handle.keys() if k.endswith(".lora_A.weight"))
+    if len(names) != 312:
+        raise ValueError("Expected the official merged Regenerate LoRA: 312 A/B pairs.")
+    return names, {n + suffix for n in names for suffix in (".lora_A.weight", ".lora_B.weight")}
 
 
 def sigmas(steps, denoise):
@@ -52,9 +79,10 @@ def read_patches(path, state_dict, dtype=torch.bfloat16):
     patches = {}
     with safe_open(path, framework="pt", device="cpu") as f:
         keys = set(f.keys())
-        names = sorted(k.removesuffix(".lora_A.weight") for k in keys if k.endswith(".lora_A.weight"))
-        expected = {n + suffix for n in names for suffix in (".lora_A.weight", ".lora_B.weight")}
-        if len(names) != 312 or keys != expected:
+        names, expected = _lora_keys(f)
+        if _bundle(f):
+            expected |= _sharp_keys() | {BUNDLE_TABLE}
+        if keys != expected:
             raise ValueError("Expected the official merged Regenerate LoRA: 312 A/B pairs.")
         for name in names:
             key, slot = lora_target(name)
@@ -155,8 +183,9 @@ def install_sharp(model, path, reference):
         raise ValueError("Expected 50 native H3 transformer blocks.")
     own = dm.adaln_t_table.detach().to(device="cpu", dtype=torch.float32).clone()
     with safe_open(path, framework="pt", device="cpu") as f:
-        expected = {f"transformer.transformer_blocks.{i}.adaln_proj.linear.curve_{ab}.weight"
-                    for i in range(50) for ab in ("A", "B")}
+        expected = _sharp_keys()
+        if _bundle(f):
+            expected |= _lora_keys(f)[1] | {BUNDLE_TABLE}
         if set(f.keys()) != expected:
             raise ValueError("Expected the official Sharp file with 50 curve A/B pairs.")
         for i, block in enumerate(dm.blocks):

@@ -2988,10 +2988,7 @@
     "class_name": "TS_H3RegenerateModel",
     "display_name": "TS H3 Regenerate Model",
     "effective_widget_order": [
-      "lora_name",
-      "sharp_name",
-      "reference_checkpoint",
-      "lora_precision"
+      "lora_name"
     ],
     "inputs": [
       {
@@ -3000,23 +2997,9 @@
         "type": "Model"
       },
       {
+        "display_name": "Regenerate",
         "index": 1,
         "name": "lora_name",
-        "type": "Combo"
-      },
-      {
-        "index": 2,
-        "name": "sharp_name",
-        "type": "Combo"
-      },
-      {
-        "index": 3,
-        "name": "reference_checkpoint",
-        "type": "Combo"
-      },
-      {
-        "index": 4,
-        "name": "lora_precision",
         "type": "Combo"
       }
     ],
@@ -3032,12 +3015,7 @@
         "type": "String"
       }
     ],
-    "python_file": "nodes/video/latent_upscale/ts_h3_regenerate.py",
-    "widgets": {
-      "lora_precision": {
-        "default": "bf16"
-      }
-    }
+    "python_file": "nodes/video/latent_upscale/ts_h3_regenerate.py"
   },
   "TS_IdeogramDesigner": {
     "api": "v3",

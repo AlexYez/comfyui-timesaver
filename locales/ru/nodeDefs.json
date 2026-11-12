@@ -3499,20 +3499,19 @@
     }
   },
   "TS_H3RegenerateModel": {
-    "description": "Загружает объединённую LoRA NVIDIA Regenerate и ветки Sharp на чистую pruned H3. Подключите модель напрямую из загрузчика. Для Full Reference используйте Ref2VA.",
+    "description": "Обычный Standard Regenerate из одного единого файла: LoRA, ветки Sharp и эталонная таблица. Подключите чистую pruned H3 до LoRA первичной генерации.",
     "inputs": {
-      "reference_checkpoint": {
-        "name": "эталонный чекпойнт",
-        "tooltip": "Читается только таблица AdaLN 32 КБ из pruned Ref2VA, без загрузки модели на GPU."
+      "model": {
+        "tooltip": "Чистая pruned H3 FL2VA или Ref2VA напрямую из загрузчика. LoRA первичной генерации остаются на отдельной ветке."
       },
-      "lora_precision": {
-        "name": "точность LoRA",
-        "tooltip": "Факторы LoRA занимают около 6,2 ГБ ОЗУ в bf16 или 12,45 ГБ в fp32."
+      "lora_name": {
+        "name": "Regenerate",
+        "tooltip": "Один complete-файл из models/loras: объединённая LoRA, все ветки Sharp и эталонная таблица. Факторы bf16; отдельные Sharp и reference checkpoint не нужны."
       }
     }
   },
   "TS_H3Regenerate": {
-    "description": "Апскейл и уточнение H3 через Open-H3-Regenerate. Два или три шага Euler, сохранение исходного звука, опорные кадры, Full Reference и варианты склейки фрагментов.",
+    "description": "Уточняет увеличенный латент H3 через обычный Standard Regenerate. Поддерживает первый/последний кадр и Full Reference; исходный звук сохраняется.",
     "inputs": {
       "width": {
         "name": "ширина"
@@ -3522,11 +3521,11 @@
       },
       "denoise": {
         "name": "denoise",
-        "tooltip": "1 — расписание NVIDIA; меньше — слабее перерисовка; 0 — только увеличение без диффузии."
+        "tooltip": "1 — расписание NVIDIA; 0 — только увеличение. Промежуточные значения уменьшают степень перерисовки с расписанием shift-6."
       },
       "audio_mode": {
         "name": "режим звука",
-        "tooltip": "Для липсинка исходный звук закреплён. Режим silence повторяет подход NVIDIA и требует audio VAE."
+        "tooltip": "При уточнении закрепляется исходный звук либо закодированная тишина. На выход возвращается исходный звуковой латент без изменений."
       },
       "chunk_length": {
         "name": "длина куска",
@@ -3536,7 +3535,8 @@
         "name": "перекрытие"
       },
       "steps": {
-        "name": "шаги"
+        "name": "шаги",
+        "tooltip": "Обычный Standard Regenerate: 2 или 3 шага уточнения."
       },
       "noise": {
         "name": "шум",
@@ -3552,7 +3552,7 @@
       },
       "video_vae": {
         "name": "video VAE для референса",
-        "tooltip": "Обычный H3 video VAE, включая совместимый INT8. Быстрый VAE умеет только декодировать и сюда не подходит."
+        "tooltip": "H3 VAE с энкодером: обычный, совместимый INT8 или объединённый классический энкодер + Fast V2. Файл только с декодером сюда не подходит."
       },
       "chunk_mode": {
         "name": "склейка кусков",
@@ -3565,8 +3565,12 @@
     }
   },
   "TS_H3FastVAEDecode": {
-    "description": "Быстрый NVIDIA StreamRender-H3 VAE noncausal 24-layer: FP32 или INT8 convrot. При нехватке памяти использует подключённый обычный video VAE.",
+    "description": "Быстрый NVIDIA StreamRender-H3 VAE noncausal 24-layer V1/V2: FP32 или INT8 convrot. При нехватке памяти использует подключённый обычный video VAE.",
     "inputs": {
+      "vae_name": {
+        "name": "быстрый VAE",
+        "tooltip": "Веса быстрого H3 VAE из папки моделей VAE."
+      },
       "decode_mode": {
         "name": "режим декодирования",
         "tooltip": "Auto пробует Fast, затем подключённый обычный VAE. Если обычный VAE не подключён, пробует Low VRAM. Выберите Low VRAM, чтобы уменьшить буферы с сохранением окон внимания и кадров NVIDIA."
@@ -3578,10 +3582,6 @@
       "latent": {
         "name": "латент",
         "tooltip": "Латент видео H3 для декодирования."
-      },
-      "vae_name": {
-        "name": "быстрый VAE",
-        "tooltip": "Веса быстрого H3 VAE из папки моделей VAE."
       }
     }
   }

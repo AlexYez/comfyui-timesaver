@@ -1,5 +1,7 @@
 # TS H3 Regenerate
 
+## Standard
+
 Upscales a denoised H3 latent and refines it with Open-H3-Regenerate-2K.
 Connect a clean H3 model through [TS H3 Regenerate Model](https://github.com/AlexYez/comfyui-timesaver/blob/master/js/docs/TS_H3RegenerateModel/en.md).
 Keep draft-generation LoRAs on a separate branch.
@@ -27,7 +29,8 @@ Connect `first_frame` and a **normal H3 video VAE** to `video_vae` (compatible I
 For a 2× upscale, resize the source directly to the target size with a separate **ImageScale** and
 connect it to `first_frame`. This preserves detail lost when preparing the smaller draft image.
 If the first image in the batch differs in size, the node fits it to the final canvas with Lanczos
-and no cropping, then encodes it once. Fast VAE is decode-only. The reference guides the model
+and no cropping, then encodes it once. The combined original-encoder/Fast-V2 VAE also works here;
+standalone Fast decoder weights are decode-only. The reference guides the model
 during generation.
 The [published first-frame experiment](https://ai-muninn.com/en/blog/open-h3-regenerate-2k-rtx5090)
 concerned small lettering. Evaluate face preservation on your clip.

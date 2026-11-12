@@ -77,14 +77,18 @@ def _decode(video, path, device, output_device, frames, low_vram):
 class TS_H3FastVAEDecode(IO.ComfyNode):
     @classmethod
     def define_schema(cls):
-        names = [p for p in folder_paths.get_filename_list("vae") if "fast_h3_vae_noncausal_24l" in p.lower()]
+        files = folder_paths.get_filename_list("vae")
+        # Keep legacy choices/default first; V2 shares the 24-layer format.
+        names = [p for p in files if "fast_h3_vae_noncausal_24l" in p.lower()]
+        names += [p for p in files if "fast_h3_vae_v2_24l" in p.lower() and p not in names]
         return IO.Schema(
             node_id="TS_H3FastVAEDecode", display_name="TS H3 Fast VAE Decode", category="TS/Video",
-            description="NVIDIA StreamRender-H3 noncausal 24-layer decoder, FP32 or native INT8 convrot weights, PyTorch SDPA path. Connect a standard H3 video VAE for automatic memory fallback.",
+            description="NVIDIA StreamRender-H3 noncausal 24-layer decoder (V1/V2), FP32 or native INT8 convrot weights, PyTorch SDPA path. Connect a standard H3 video VAE for automatic memory fallback.",
             inputs=[
                 IO.Latent.Input("latent"),
                 IO.Combo.Input("vae_name", options=names or ["(missing fast_h3_vae_noncausal_24l)"],
-                               default=next((name for name in names if "int8_convrot" in name), names[0] if names else None)),
+                               default=next((name for name in names if "int8_convrot" in name), names[0] if names else None),
+                               tooltip="Select V1 (noncausal_24l) or V2 (v2_24l), original FP32 or INT8 ConvRot. Decoder-only; keep a normal H3 video VAE for encoding reference images."),
                 IO.Vae.Input("fallback_vae", optional=True,
                              tooltip="Standard H3 video VAE; used if fast decoding needs more VRAM than is available. Audio is ignored."),
                 IO.Combo.Input("decode_mode", options=[AUTO, FULL, LOW_VRAM], default=AUTO, optional=True,
