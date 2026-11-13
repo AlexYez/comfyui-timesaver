@@ -582,7 +582,8 @@ class TS_BatchSource(IO.ComfyNode):
                     max=1000000,
                     tooltip=(
                         "Skip this many items from the front. Use it to resume a run "
-                        "that stopped halfway instead of redoing the finished part."
+                        "that stopped halfway instead of redoing the finished part. "
+                        "Counts individual jobs after repeats are expanded."
                     ),
                 ),
                 IO.Int.Input(
@@ -590,7 +591,7 @@ class TS_BatchSource(IO.ComfyNode):
                     default=0,
                     min=0,
                     max=1000000,
-                    tooltip="Stop after this many items. 0 means no limit.",
+                    tooltip="Stop after this many jobs, repeats included. 0 means no limit.",
                 ),
                 IO.Int.Input(
                     "seed",
@@ -644,6 +645,20 @@ class TS_BatchSource(IO.ComfyNode):
                         "Loader reads (wav, mp3, flac, ogg, opus, m4a, aac, aiff, wma)."
                     ),
                 ),
+                IO.Int.Input(
+                    "repeats",
+                    default=1,
+                    min=1,
+                    max=1000,
+                    optional=True,
+                    tooltip=(
+                        "How many consecutive versions to make of each item: 3 gives "
+                        "A, A, A, B, B, B. Each version has its own derived seed; wire "
+                        "the seed output into your sampler. With one_per_run, set the "
+                        "queue Batch count to items × repeats. Keep the base seed fixed "
+                        "for reproducible versions. start_at and limit count the expanded jobs."
+                    ),
+                ),
             ],
             outputs=[
                 IO.String.Output(
@@ -679,7 +694,8 @@ class TS_BatchSource(IO.ComfyNode):
 
     @classmethod
     def validate_inputs(cls, mode, path, count, start_at, limit, seed, one_per_run=False,
-                        include_subfolders=False, file_types=FILE_TYPES_ALL) -> bool | str:
+                        include_subfolders=False, file_types=FILE_TYPES_ALL,
+                        repeats=1) -> bool | str:
         # ⚠️ `mode` named here means the core does NOT check it against the
         # combo — which is what lets graphs saved with "Images in folder" run.
         # So the check is ours, and it accepts that legacy name.
@@ -689,11 +705,14 @@ class TS_BatchSource(IO.ComfyNode):
             return f"{LOG_PREFIX} Unknown file_types '{file_types}'."
         if mode != MODE_COUNT and not str(path).strip():
             return f"{LOG_PREFIX} Mode '{mode}' needs a path."
+        if repeats is not None and (not isinstance(repeats, int) or not 1 <= repeats <= 1000):
+            return f"{LOG_PREFIX} repeats must be an integer from 1 to 1000."
         return True
 
     @classmethod
     def fingerprint_inputs(cls, mode, path, count, start_at, limit, seed, one_per_run=False,
-                           include_subfolders=False, file_types=FILE_TYPES_ALL) -> str:
+                           include_subfolders=False, file_types=FILE_TYPES_ALL,
+                           repeats=1) -> str:
         """Change the folder's contents and the node must run again.
 
         Without this the cached list survives new files landing in the folder,
@@ -724,20 +743,29 @@ class TS_BatchSource(IO.ComfyNode):
             except OSError as exc:
                 stamp = f"unreadable:{exc}"
         return (f"{mode}|{path}|{count}|{start_at}|{limit}|{seed}|"
-                f"{bool(include_subfolders)}|{file_types or FILE_TYPES_ALL}|{stamp}")
+                f"{bool(include_subfolders)}|{file_types or FILE_TYPES_ALL}|"
+                f"{1 if repeats is None else repeats}|{stamp}")
 
     @classmethod
     def execute(cls, mode, path, count, start_at, limit, seed, one_per_run=False,
-                include_subfolders=False, file_types=FILE_TYPES_ALL) -> IO.NodeOutput:
+                include_subfolders=False, file_types=FILE_TYPES_ALL, repeats=1) -> IO.NodeOutput:
         # Optional inputs of a graph saved before them arrive as None.
         recursive = bool(include_subfolders)
         file_types = str(file_types or FILE_TYPES_ALL)
+        repeats = 1 if repeats is None else int(repeats)
+        if not 1 <= repeats <= 1000:
+            raise ValueError(f"{LOG_PREFIX} repeats must be an integer from 1 to 1000.")
         items = _collect(str(mode), str(path), int(count), recursive, file_types)
 
+        # Resume positions count actual generations, including versions of the
+        # same item. Slice the virtual repeated list before materialising it so
+        # a small limit does not allocate every copy of a large source folder.
         start = max(0, int(start_at))
-        items = items[start:]
+        stop = len(items) * repeats
         if int(limit) > 0:
-            items = items[: int(limit)]
+            stop = min(stop, start + int(limit))
+        indices = list(range(start, stop))
+        items = [items[index // repeats] for index in indices]
 
         if not items:
             raise ValueError(
@@ -746,13 +774,12 @@ class TS_BatchSource(IO.ComfyNode):
             )
 
         total = len(items)
-        indices = [start + offset for offset in range(total)]
         # A derived seed per item, not base+i: neighbouring seeds are a poor
         # source of variety, and the whole point of this output is variety.
         seeds = [random.Random(f"{int(seed)}:{i}").getrandbits(32) for i in indices]
 
         if one_per_run:
-            key = f"{mode}|{path}|{count}|{start_at}|{limit}|{recursive}|{file_types}"
+            key = f"{mode}|{path}|{count}|{start_at}|{limit}|{recursive}|{file_types}|{repeats}"
             position = _cursor.positions.get(key, 0)
             if position >= total:
                 # The job is done; the next queued run starts it over rather

@@ -14,7 +14,11 @@ Modes: `Files in folder` — the paths of a folder's files of any type (natural 
 
 **Why there is a seed output.** A seed *widget* on the model node holds one number for all hundred calls, so a hundred iterations of the same task come back identical. This output gives every item its own derived seed — reproducible from the base value, different from its neighbours.
 
-**Resuming.** `start_at` skips the finished part and keeps the original numbering, so TS Batch Write appends to the existing file instead of starting it over. `limit` caps the run.
+**Consecutive versions.** `repeats` controls how many consecutive versions of each item to emit in every mode. With `repeats=3`, the order is **A, A, A, B, B, B**, rather than three passes over the folder. Each version gets its own derived `seed`: wire this output into the sampler; the base seed can stay fixed. The default is `repeats=1`, preserving existing workflows.
+
+**Example: three versions of each prompt stored in images.** Select `Prompts from images in folder`, choose the folder, set `repeats=3`, and enable `one_per_run`. For 20 extracted prompts, set the queue **Batch count=60**. Each group of three is generated and saved consecutively. Images without a readable prompt do not count as jobs; the images themselves are not passed as references. `count` is unused in this mode.
+
+**Resuming.** `start_at` skips the finished part and keeps the original numbering, so TS Batch Write appends to the existing file instead of starting it over. `limit` caps the run. Both fields count jobs **after repeats**: with `repeats=3`, `start_at=4`, `limit=2`, the second and third versions of B run (indices4 and5). `total` is the remaining selected job count, including repeats.
 
 ⚠️ **It emits paths, not pictures** — deliberately. A hundred 4K frames passed along as images would sit in the output cache (roughly 10 GB) before the first caption is written. TS Batch Load Image reads them one at a time, so the peak stays at a single frame.
 

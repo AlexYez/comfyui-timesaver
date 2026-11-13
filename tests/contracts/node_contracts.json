@@ -1536,7 +1536,8 @@
       "seed",
       "one_per_run",
       "include_subfolders",
-      "file_types"
+      "file_types",
+      "repeats"
     ],
     "inputs": [
       {
@@ -1586,6 +1587,12 @@
         "name": "file_types",
         "optional": true,
         "type": "Combo"
+      },
+      {
+        "index": 9,
+        "name": "repeats",
+        "optional": true,
+        "type": "Int"
       }
     ],
     "outputs": [
@@ -1643,6 +1650,11 @@
       },
       "path": {
         "default": ""
+      },
+      "repeats": {
+        "default": 1,
+        "max": 1000,
+        "min": 1
       },
       "seed": {
         "default": 0,
