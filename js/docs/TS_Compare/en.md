@@ -1,5 +1,7 @@
 # TS Compare
 
+Scroll over the frame to zoom both sides around the mouse pointer. This works for images and video, in the node and in fullscreen. You can still drag the wipe while zoomed in. Each new result starts fitted to the preview.
+
 Two images, or two clips, behind a wipe you drag with the mouse. Both sides take `IMAGE`, so a single frame and a whole batch go in the same socket — what happens next is decided by what arrives.
 
 **Working-tree change after 12.13.9.** The wipe handle, labels and buttons appear after both images or the first video frame have loaded. The empty preview hides these controls while loading or when temporary files from an earlier result are unavailable.

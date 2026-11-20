@@ -14,6 +14,7 @@
 // перерисовывает, а перетаскивание шторки не стоит ни одного кадра пересборки.
 
 import { TS_UI_CLASS, ensureThemeStyles } from "../_theme.js";
+import { bindCompareZoom } from "./_compare_zoom.js";
 
 const STYLE_ID = "ts-studio-compare-styles";
 
@@ -33,13 +34,14 @@ export function ensureCompareStyles() {
    оказывался сплющенным. Проценты от высоты, которая сама зависит от
    содержимого, браузеру решать нечем — отсюда и вся история. */
 .ts-cmp__box{position:relative;line-height:0}
+.ts-cmp__media,.ts-cmp__after-layer{position:absolute;inset:0;overflow:hidden}
 /* A saved payload can outlive its temporary files. No controls over an empty box. */
 .ts-cmp:not(.is-ready) .ts-cmp__box{visibility:hidden}
 /* Обе стороны лежат в одной коробке и вписываются в неё: пропорция у коробки
    уже правильная, а contain страхует случай, когда «до» и «после» сняты в
    разной пропорции — тогда будет поле, но не растяжение. */
 .ts-cmp__img{position:absolute;inset:0;display:block;width:100%;height:100%;
-    object-fit:contain}
+    object-fit:contain;transform-origin:0 0;transform:var(--ts-cmp-image-transform,none)}
 /* Тонкая линия разреза (просьба владельца 15.10.2026: «потоньше, изящнее»).
    Было 2 px белого с чёрной обводкой в 1 px — линия читалась толще, чем она
    есть, и закрывала сами пиксели на стыке. Теперь 1 px и мягкая тень: на
@@ -120,12 +122,18 @@ export function createCompare(strings = {}) {
 
     const box = document.createElement("div");
     box.className = "ts-cmp__box";
+    const media = document.createElement("div");
+    media.className = "ts-cmp__media";
     const before = document.createElement("img");
     before.className = "ts-cmp__img ts-cmp__img--before";
     before.alt = "";
     const after = document.createElement("img");
     after.className = "ts-cmp__img ts-cmp__img--after";
     after.alt = "";
+    const afterLayer = document.createElement("div");
+    afterLayer.className = "ts-cmp__after-layer";
+    afterLayer.appendChild(after);
+    media.append(before, afterLayer);
     const handle = createCompareHandle();
     const tagBefore = document.createElement("div");
     tagBefore.className = "ts-cmp__tag ts-cmp__tag--before";
@@ -142,10 +150,19 @@ export function createCompare(strings = {}) {
     const tagLayerAfter = document.createElement("div");
     tagLayerAfter.className = "ts-cmp__taglayer";
     tagLayerAfter.appendChild(tagAfter);
-    box.append(before, after, handle, tagLayerBefore, tagLayerAfter);
+    box.append(media, handle, tagLayerBefore, tagLayerAfter);
     element.appendChild(box);
 
     let split = 0.5;
+    const isReady = () => element.classList.contains("is-ready");
+    const zoom = bindCompareZoom(box, box, isReady, paintZoom);
+
+    function paintZoom() {
+        const { x, y, scale } = zoom.view;
+        if (scale === 1) media.style.removeProperty("--ts-cmp-image-transform");
+        else media.style.setProperty("--ts-cmp-image-transform",
+            `translate(${-x * scale * 100}%, ${-y * scale * 100}%) scale(${scale})`);
+    }
 
     /**
      * Вписать коробку в область по пропорции результата.
@@ -190,7 +207,7 @@ export function createCompare(strings = {}) {
     function paint() {
         const pct = (split * 100).toFixed(2);
         // Правая часть — результат: обрезаем его слева по шторке.
-        after.style.clipPath = `inset(0 0 0 ${pct}%)`;
+        afterLayer.style.clipPath = `inset(0 0 0 ${pct}%)`;
         handle.style.left = `${pct}%`;
         // Подписи живут в своих половинах и режутся той же линией. Утащил
         // шторку до упора влево — «до» исчезло вместе со своей половиной, и
@@ -243,6 +260,8 @@ export function createCompare(strings = {}) {
             before.src = beforeUrl;
             after.src = afterUrl;
             split = 0.5;
+            zoom.reset();
+            paintZoom();
             paint();
             element.classList.add("is-active");
             // Показались — значит область наконец имеет размер: до этого
@@ -273,7 +292,7 @@ export function createCompare(strings = {}) {
             if (afterLabel) tagAfter.textContent = String(afterLabel);
         },
         isActive: () => element.classList.contains("is-active"),
-        isReady: () => element.classList.contains("is-ready"),
+        isReady,
         /**
          * Пересчитать коробку под текущую область.
          *
@@ -284,6 +303,7 @@ export function createCompare(strings = {}) {
          */
         relayout: () => fitBox(),
         teardown: () => {
+            zoom.teardown();
             window.removeEventListener("blur", stop);
             resizeWatch?.disconnect();
         },

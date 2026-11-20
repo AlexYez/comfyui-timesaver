@@ -13,6 +13,7 @@
 
 import { TS_UI_CLASS, ensureThemeStyles } from "../_theme.js";
 import { createCompareHandle } from "../_studio/_compare.js";
+import { bindCompareZoom } from "../_studio/_compare_zoom.js";
 import { guardPlayback } from "../_media/_playback_guard.js";
 
 const STYLE_ID = "ts-compare-video-styles";
@@ -153,6 +154,8 @@ export function createVideoCompare(strings = {}) {
     let frameW = 0;
     let frameH = 0;
     let looping = false;
+    const isReady = () => element.classList.contains("is-ready");
+    const zoom = bindCompareZoom(stage, canvas, isReady, paint);
 
     function layout() {
         if (!(frameW > 0 && frameH > 0)) return;
@@ -173,9 +176,14 @@ export function createVideoCompare(strings = {}) {
         const w = canvas.width;
         const h = canvas.height;
         const cut = Math.round(w * split);
+        const { x, y, scale } = zoom.view;
+        const sourceX = x * frameW;
+        const sourceY = y * frameH;
+        const sourceW = frameW / scale;
+        const sourceH = frameH / scale;
 
-        // Верхняя половина источника — сторона A, во всю ширину.
-        ctx.drawImage(video, 0, 0, frameW, frameH, 0, 0, w, h);
+        // The same crop in each half, with the wipe in canvas coordinates.
+        ctx.drawImage(video, sourceX, sourceY, sourceW, sourceH, 0, 0, w, h);
 
         // Нижняя половина — сторона B, только справа от шторки.
         if (cut < w) {
@@ -183,7 +191,7 @@ export function createVideoCompare(strings = {}) {
             ctx.beginPath();
             ctx.rect(cut, 0, w - cut, h);
             ctx.clip();
-            ctx.drawImage(video, 0, frameH, frameW, frameH, 0, 0, w, h);
+            ctx.drawImage(video, sourceX, frameH + sourceY, sourceW, sourceH, 0, 0, w, h);
             ctx.restore();
         }
 
@@ -303,6 +311,7 @@ export function createVideoCompare(strings = {}) {
             tagB.textContent = labelB || strings.after || "B";
             split = 0.5;
             if (video.src !== url) {
+                zoom.reset();
                 element.classList.remove("is-ready");
                 frameW = 0;
                 frameH = 0;
@@ -313,8 +322,9 @@ export function createVideoCompare(strings = {}) {
         },
         /** Перерисовать по месту — например, когда ноду изменили в размере. */
         relayout: layout,
-        isReady: () => element.classList.contains("is-ready"),
+        isReady,
         teardown() {
+            zoom.teardown();
             unguard();
             observer?.disconnect();
             try {
