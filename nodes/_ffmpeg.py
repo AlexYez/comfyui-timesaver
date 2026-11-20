@@ -84,12 +84,6 @@ def ffmpeg_executable() -> str:
     return _state.path or "ffmpeg"
 
 
-def ffmpeg_available() -> bool:
-    """True when an ffmpeg binary was actually located."""
-    ffmpeg_executable()
-    return _state.path is not None
-
-
 def require_ffmpeg() -> str:
     """The command to run, or a RuntimeError that says how to get one."""
     executable = ffmpeg_executable()

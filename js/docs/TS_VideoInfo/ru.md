@@ -4,4 +4,8 @@
 
 ---
 
+Выход **crop_data** передаёт в TS Restore From Crop положение кропа для каждого кадра, его размер и служебное дополнение у краёв. Подайте туда `video_info` от того же TS Video Loader, чьи `full_images` используются для обратной вставки. `width` и `height` относятся к выходу `images`, то есть к кропу, если он включён. У старых наборов метаданных и VHS_VIDEOINFO данных кропа нет.
+
+---
+
 Полный справочник нод: [README](https://github.com/AlexYez/comfyui-timesaver/blob/master/README.ru.md)

@@ -53,6 +53,7 @@ from .._qwen_engine import (
 from .._qwen_engine import (
     load_presets as _qwen_load_presets,
 )
+from .._qwen_generation import normalize_generation_params as _normalize_generation_params
 from ._helpers import (
     cancel_operation,
     forget_operation,
@@ -589,31 +590,6 @@ def _filter_generation_params(model, params: dict[str, Any]) -> dict[str, Any]:
 
     allowed = set(signature.parameters.keys())
     return {key: value for key, value in params.items() if key in allowed}
-
-
-_GENERATION_PARAM_ALIASES = {
-    "max_tokens": "max_new_tokens",
-    "max_completion_tokens": "max_new_tokens",
-}
-_UNSUPPORTED_GENERATION_PARAMS = {
-    "frequency_penalty",
-    "n",
-    "presence_penalty",
-    "response_format",
-    "stop",
-    "stream",
-}
-
-
-def _normalize_generation_params(params: dict[str, Any]) -> dict[str, Any]:
-    normalized = dict(params)
-    for alias, target in _GENERATION_PARAM_ALIASES.items():
-        value = normalized.pop(alias, None)
-        if value is not None and target not in normalized:
-            normalized[target] = value
-    for key in _UNSUPPORTED_GENERATION_PARAMS:
-        normalized.pop(key, None)
-    return normalized
 
 
 def _unused_model_kwargs_from_error(exc: ValueError) -> list[str]:

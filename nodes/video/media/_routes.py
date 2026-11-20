@@ -19,6 +19,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import weakref
 
 from ..._shared import make_route_registrars, resolve_prompt_server
 from ._common import (
@@ -38,7 +39,9 @@ ROUTE_BASE = "/ts_video"
 # Два одновременных декодирования: пул asyncio.to_thread общий на весь процесс
 # ComfyUI, и десяток параллельных проб заморозит чужие задачи.
 _GATE = asyncio.Semaphore(2)
-_locks: dict[str, asyncio.Lock] = {}
+# The async-with expression and waiters own strong references. Once no
+# request uses a lock, the registry entry expires with it.
+_locks: weakref.WeakValueDictionary[str, asyncio.Lock] = weakref.WeakValueDictionary()
 
 
 def _log_warning(message: str) -> None:

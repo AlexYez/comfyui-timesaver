@@ -72,8 +72,8 @@ class TSRestoreFromCrop(IO.ComfyNode):
             description="Paste a processed crop back into the original frame with feathered seams.",
             inputs=[
                 IO.Image.Input("original_images", tooltip="Full-size source frames to paste the processed crop back into."),
-                IO.Image.Input("cropped_images", tooltip="Processed crop to paste back, from TS Crop To Mask."),
-                _CropData.Input("crop_data", tooltip="Crop geometry from TS Crop To Mask that tells the node where to paste."),
+                IO.Image.Input("cropped_images", tooltip="Processed crop from TS Crop To Mask or TS Video Loader. For video, preserve frame count and order."),
+                _CropData.Input("crop_data", tooltip="Crop geometry from TS Crop To Mask or the crop_data output of TS Video Info. For video, connect full_images from the same loader to original_images."),
                 IO.Int.Input("blur", default=64, min=0, max=256, step=1, tooltip="Feather width in pixels for blending the pasted crop edges into the original. 0 = hard edge."),
                 IO.Combo.Input("blur_type", options=["Gaussian", "Box"], default="Gaussian", tooltip="Edge-blend kernel: Gaussian is smoother, Box is faster and harder."),
                 IO.Boolean.Input("force_gpu", default=True, tooltip="Run the paste on GPU when CUDA is available; otherwise falls back to CPU."),
@@ -89,6 +89,15 @@ class TSRestoreFromCrop(IO.ComfyNode):
         # said — the widget promised a thing it could not do.
         target_device = (comfy.model_management.get_torch_device() if force_gpu
                          else torch.device("cpu"))
+        if isinstance(crop_data, dict) and crop_data.get("kind") == "ts_video_crop":
+            from ..video.media._spatial_crop import restore_video_crop
+
+            blur_mask = _gaussian_blur_mask if blur_type == "Gaussian" else _box_blur_mask
+            return IO.NodeOutput(restore_video_crop(
+                original_images, cropped_images, crop_data, blur, target_device, blur_mask,
+            ))
+        if crop_data is None:
+            raise ValueError("No crop geometry. Connect crop_data from TS Crop To Mask or TS Video Info.")
         logger.info("%s Using device %s", LOG_PREFIX, target_device)
         original_images, cropped_images = original_images.to(target_device), cropped_images.to(target_device)
         restored_images = []

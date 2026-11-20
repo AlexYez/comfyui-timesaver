@@ -14,13 +14,15 @@ RTX 3080 Ti, 300 кадров 4K → 1024×540: software+граф 0.89 с, ``hwa
 from __future__ import annotations
 
 import logging
-import math
 import os
 import pathlib
+import queue
 import tempfile
+import threading
+import weakref
 from dataclasses import dataclass, field
 from fractions import Fraction
-from typing import Callable, Iterator
+from typing import Iterator
 
 from ._common import LOG_PREFIX, safe_log_path
 from ._probe import MediaInfo, estimate_bytes, human_bytes, probe_cached
@@ -95,6 +97,7 @@ class DecodeResult:
     end_time: float = 0.0
     truncated: bool = False
     media: MediaInfo = field(default_factory=MediaInfo)
+    frame_times: list[float] = field(default_factory=list)  # source PTS per emitted frame
 
 
 class FrameSampler:
@@ -303,6 +306,9 @@ def _max_bytes() -> int:
 # Куда кладём кадры, когда их не удержать в ОЗУ. Файл живёт в temp-папке
 # ComfyUI: она чистится при старте, так что забытый кусок не копится вечно.
 _DISK_PREFIX = "ts_video_frames_"
+_released_frame_files: queue.SimpleQueue[pathlib.Path] = queue.SimpleQueue()
+_frame_cleanup_lock = threading.Lock()
+_scanned_frame_dirs: set[pathlib.Path] = set()
 
 
 def _disk_dir() -> pathlib.Path:
@@ -317,16 +323,46 @@ def _disk_dir() -> pathlib.Path:
 
 
 def _sweep_disk_frames(directory: pathlib.Path) -> None:
-    """Убрать куски от прошлых прогонов.
-
-    ⚠️ Файл, который ещё отображён в память, Windows удалить не даст — и это
-    правильно: значит, тензор из него кто-то держит. Такой просто пропускаем.
-    """
+    """Remove backing files owned by exited processes only."""
+    try:
+        import psutil
+    except ImportError:
+        return
     for stale in directory.glob(f"{_DISK_PREFIX}*.bin"):
         try:
-            stale.unlink()
-        except OSError:
+            pid = int(stale.stem.rsplit("_", 1)[-1])
+            if pid > 0 and not psutil.pid_exists(pid):
+                stale.unlink()
+        except (ValueError, OSError):
             continue
+
+
+def _release_frame_file(path: pathlib.Path) -> None:
+    try:
+        path.unlink(missing_ok=True)
+    except OSError:
+        # Windows can keep the mapping open until the storage destructor
+        # returns. Retry on the next allocation, outside that destructor.
+        _released_frame_files.put(path)
+
+
+def _reclaim_frame_files(directory: pathlib.Path) -> None:
+    with _frame_cleanup_lock:
+        if directory not in _scanned_frame_dirs:
+            _sweep_disk_frames(directory)
+            _scanned_frame_dirs.add(directory)
+        retry = []
+        while True:
+            try:
+                path = _released_frame_files.get_nowait()
+            except queue.Empty:
+                break
+            try:
+                path.unlink(missing_ok=True)
+            except OSError:
+                retry.append(path)
+        for path in retry:
+            _released_frame_files.put(path)
 
 
 def _allocate_frames(shape: tuple[int, ...], on_disk: bool, tag: str):
@@ -345,9 +381,20 @@ def _allocate_frames(shape: tuple[int, ...], on_disk: bool, tag: str):
     if not on_disk:
         return torch.empty(shape, dtype=torch.float32)
     directory = _disk_dir()
-    _sweep_disk_frames(directory)
-    path = directory / f"{_DISK_PREFIX}{tag}_{os.getpid()}.bin"
-    flat = torch.from_file(str(path), shared=True, size=numel, dtype=torch.float32)
+    _reclaim_frame_files(directory)
+    fd, filename = tempfile.mkstemp(prefix=f"{_DISK_PREFIX}{tag}_",
+                                    suffix=f"_{os.getpid()}.bin", dir=directory)
+    os.close(fd)
+    path = pathlib.Path(filename)
+    try:
+        flat = torch.from_file(filename, shared=True, size=numel, dtype=torch.float32)
+    except BaseException:
+        _release_frame_file(path)
+        raise
+    # All tensor views and NumPy aliases keep this storage alive, even
+    # after the originating tensor has been released.
+    cleanup = weakref.finalize(flat.untyped_storage(), _release_frame_file, path)
+    cleanup.atexit = False
     return flat.view(shape)
 
 
@@ -475,6 +522,7 @@ def decode(req: DecodeRequest, *, progress: bool = True) -> DecodeResult:
             interrupt = None
 
     written = 0
+    frame_times = []
     truncated = False
     audio_payload = None
 
@@ -603,6 +651,7 @@ def decode(req: DecodeRequest, *, progress: bool = True) -> DecodeResult:
                         if alpha is not None and array.shape[2] == 4:
                             alpha[written].copy_(torch.from_numpy(
                                 np.ascontiguousarray(array[:, :, 3])))
+                        frame_times.append(when)
                         written += 1
                         if pbar is not None:
                             pbar.update(1)
@@ -649,6 +698,7 @@ def decode(req: DecodeRequest, *, progress: bool = True) -> DecodeResult:
         end_time=end,
         truncated=truncated,
         media=media,
+        frame_times=frame_times,
     )
 
 
@@ -824,7 +874,7 @@ def iter_frames(
     size: tuple[int, int] | None = None,
     resize_filter: str = "bicubic",
     limit: int = 0,
-) -> Iterator["object"]:
+) -> Iterator[object]:
     """Кадры по одному, без накопления тензора.
 
     Нужен там, где весь ролик в память класть незачем: пересохранение файл→файл
@@ -950,10 +1000,3 @@ def iter_thumbnails(path: str, *, start: float, step: float, count: int, height:
                 break
 
     return frames
-
-
-def resolve_progress_callback(callback: Callable[[int, int], None] | None):
-    """Небольшой переходник: наш прогресс наружу без завязки на ComfyUI."""
-    if callback is None:
-        return lambda _done, _total: None
-    return callback

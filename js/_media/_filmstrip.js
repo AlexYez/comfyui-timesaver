@@ -115,6 +115,10 @@ export function createStripSource({ api, route, getPath, getHeight, onReady }) {
         inFlight.set(id, controller);
         try {
             const entry = await fetchSprite(step, index, height, controller.signal);
+            if (controller.signal.aborted || inFlight.get(id) !== controller) {
+                entry.bitmap.close?.();
+                return;
+            }
             entry.bytes = bitmapBytes(entry.bitmap);
             cache.set(id, entry);
             cacheBytes += entry.bytes;
@@ -127,7 +131,7 @@ export function createStripSource({ api, route, getPath, getHeight, onReady }) {
                 console.warn("[TS Video] filmstrip tile failed", error);
             }
         } finally {
-            inFlight.delete(id);
+            if (inFlight.get(id) === controller) inFlight.delete(id);
         }
     }
 

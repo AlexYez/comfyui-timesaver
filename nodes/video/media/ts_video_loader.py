@@ -210,11 +210,17 @@ class TS_VideoLoader(IO.ComfyNode):
                         "max_frames and resizing still apply."
                     ),
                 ),
+                IO.String.Input(
+                    "spatial_crop", default="{}", optional=True, socketless=True,
+                    tooltip=("Spatial crop and position keyframes, edited in the fullscreen "
+                             "video editor. Disabled by default. Cropping is ignored for a "
+                             "file supplied through the path socket, like the timeline trim."),
+                ),
             ],
             outputs=[
                 IO.Image.Output(
                     display_name="images",
-                    tooltip="Decoded frames [B,H,W,C], float32 in 0..1.",
+                    tooltip="Decoded frames, or the selected spatial crop when enabled. Float32 [B,H,W,C] in 0..1.",
                 ),
                 IO.Audio.Output(
                     display_name="audio",
@@ -234,6 +240,12 @@ class TS_VideoLoader(IO.ComfyNode):
                         "The trimmed source file itself, without resizing or frame-rate "
                         "change. A cheap reference for nodes that take VIDEO."
                     ),
+                ),
+                IO.Image.Output(
+                    display_name="full_images",
+                    tooltip=("Full decoded frames before the spatial crop, with the same "
+                             "trim, frame rate and global resize as images. Connect to "
+                             "TS Restore From Crop original_images. No extra decode."),
                 ),
             ],
         )
@@ -305,14 +317,18 @@ class TS_VideoLoader(IO.ComfyNode):
         resize_filter: str = "area",
         when_too_large: str = "stop",
         path: str | None = "",
+        spatial_crop: str = "{}",
     ) -> IO.NodeOutput:
         from ._decode import DecodeRequest, decode
+        from ._spatial_crop import crop_frames, parse_crop
 
         wired = str(path or "").strip()
         if wired:
             # Подрезка с таймлайна выставлялась на ДРУГОМ файле: применять её к
             # каждому ролику батча значило бы молча резать их все по чужим меткам.
             source_path, start_seconds, end_seconds = wired, 0.0, -1.0
+            spatial_crop = "{}"
+        crop_config = parse_crop(spatial_crop)
         path = resolve_media_path(source_path)
         if not path or not os.path.isfile(path):
             if wired:
@@ -334,6 +350,12 @@ class TS_VideoLoader(IO.ComfyNode):
             allow_disk=(when_too_large or "stop") == "use disk",
         ))
 
+        full_images = result.images
+        images, crop_data = crop_frames(
+            full_images, crop_config, getattr(result, "frame_times", []),
+            start_time=result.start_time, fps=result.fps,
+            allow_disk=(when_too_large or "stop") == "use disk",
+        )
         media = result.media
         info = build_video_info(
             producer="TS_VideoLoader",
@@ -359,8 +381,10 @@ class TS_VideoLoader(IO.ComfyNode):
                 "fps": result.fps,
                 "frame_count": result.frame_count,
                 "duration": (result.frame_count / result.fps) if result.fps > 0 else 0.0,
-                "width": result.width,
-                "height": result.height,
+                "width": images.shape[2],
+                "height": images.shape[1],
+                "full_width": result.width,
+                "full_height": result.height,
                 "start_time": result.start_time,
                 "end_time": result.end_time,
                 "frame_step": int(frame_step),
@@ -373,6 +397,7 @@ class TS_VideoLoader(IO.ComfyNode):
             filename=media.filename,
             annotated=str(source_path),
         )
+        info["crop"] = crop_data
 
         if result.truncated:
             logger.info("%s stopped at max_frames=%d for %s",
@@ -381,8 +406,9 @@ class TS_VideoLoader(IO.ComfyNode):
             logger.info("%s from the wire: %s (%d frames)",
                         LOG_PREFIX, safe_log_path(path), result.frame_count)
 
-        return IO.NodeOutput(result.images, result.audio, info,
+        return IO.NodeOutput(images, result.audio, info,
                              cls._as_video(path, result.start_time, result.end_time),
+                             full_images,
                              # Нода показывает, какой файл пришёл по проводу.
                              ui={"ts_wired_path": [os.path.basename(path)]} if wired else None)
 

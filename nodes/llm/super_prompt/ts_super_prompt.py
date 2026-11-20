@@ -40,7 +40,6 @@ from comfy_api.v0_0_2 import IO
 
 from ._helpers import (
     cancel_operation,
-    forget_operation,
     resolve_prompt_model,
     ACTIVE_MODEL,
     AI_ROUTE_BASE,

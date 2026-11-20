@@ -26,6 +26,18 @@ Footage arrives by **drag and drop** — from the file manager, from the Artius 
 
 **Use when:** any workflow that starts from footage rather than from a still.
 
+**Spatial crop for local video processing.** Open fullscreen, then enable **Crop** in the panel below the preview. The compact node has no crop buttons. Draw a rectangle; hold Shift for a square. Drag any of its four edges or four corners to resize while keeping the opposite edge anchored. Dimensions snap to the selected multiple. Resizing applies to the entire clip and preserves motion keys, clamping their positions to the frame bounds. Drag inside the box to move it. **New region** redraws it and clears its motion keys.
+
+**More space for the preview.** In fullscreen the timeline defaults to 96 pixels: ruler, filmstrip and waveform when enabled and audio is present. Drag the horizontal separator above the transport to resize the timeline; double-click resets the compact height. Tab to the separator to adjust with Up/Down or reset with Home. Its height is saved with the workflow. The compact node keeps its existing layout.
+
+The size stays fixed throughout the clip. **Multiple** (default 32) rounds the selected pixel width and height up without rescaling the picture. The expanded region shifts inward near a frame edge. If the full frame is smaller than the multiple, edge pixels pad the missing area; restoration removes this padding. Options are 1,8,16,32,64,128,256; choose the multiple your model requires.
+
+**Animate position:** click **+ Keyframe**, seek to another time and drag the region. Once a key exists, dragging creates or updates a key at the playhead. Choose **Smooth** for eased motion or **Linear** for constant velocity between keys. Position holds outside the keys; size never animates. Timecode buttons seek to keys; **Delete keyframe** removes the current key. Ctrl/Cmd+Z and redo work inside fullscreen. Keys are saved with the workflow in source-video time, so trimming and FPS changes do not renumber them. Choosing another file resets the region.
+
+**Wiring:** `images` → processing model → TS Restore From Crop `cropped_images`; `full_images` → its `original_images`; `video_info` → TS Video Info `crop_data` → its `crop_data`. Send the restored frames to TS Video Saver, with loader `audio` and Video Info `fps`.
+
+`full_images` contains the same loaded frames **after global resizing**, before spatial cropping; it needs no second decode. Leave both side limits 0 and global `divisible_by=1` to retain source resolution. The `video` output remains the trimmed source file without spatial cropping. With cropping off, `images` and `full_images` are the same frames. Keep frame count and order through the model. Restoration supports resized processed crops, but rejects a different frame count. A file supplied through `path` ignores spatial cropping, just as it ignores a trim set on another file.
+
 ---
 
 Full node reference: [README](https://github.com/AlexYez/comfyui-timesaver#-node-reference)

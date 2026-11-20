@@ -91,15 +91,6 @@ class Trailer:
         return trailer
 
 
-def is_locked(path: str) -> bool:
-    """Заперт ли файл — по магии в первых восьми байтах."""
-    try:
-        with open(path, "rb") as handle:
-            return handle.read(8) == MAGIC_HEAD
-    except OSError:
-        return False
-
-
 def _open_trailer(handle) -> Trailer:
     handle.seek(0)
     if handle.read(8) != MAGIC_HEAD:

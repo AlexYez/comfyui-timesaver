@@ -23,6 +23,7 @@ import {
 import { formatTimecode, pickTickStep } from "../../_media/_ruler.js";
 import { clamp, createTimeViewport } from "../../_media/_viewport.js";
 import { createRangePreview } from "./_range_preview.js";
+import { createVideoSplitter } from "./_video_splitter.js";
 
 const NEED_BASE = 1;
 const NEED_OVERLAY = 2;
@@ -39,7 +40,7 @@ const LANE_WAVE = 40;
 const CUT_TAB = 4;
 const CUT_HIT_PX = 7;
 
-export function createVideoEditor({ api, route, strings, onRangeChange, onViewportChange }) {
+export function createVideoEditor({ api, route, strings, onRangeChange, onViewportChange, onTimelineResize }) {
     const L = strings;
 
     // ── разметка ─────────────────────────────────────────────────────────── #
@@ -74,6 +75,8 @@ export function createVideoEditor({ api, route, strings, onRangeChange, onViewpo
     const overlay = document.createElement("canvas");
     overlay.className = "ts-vid__canvas ts-vid__canvas--overlay";
     timeline.append(base, overlay);
+    const splitter = createVideoSplitter({ root, stage, timeline, onChange: onTimelineResize,
+        onResize: () => scheduleDraw(NEED_ALL) });
 
     const scroll = document.createElement("div");
     scroll.className = "ts-vid__scroll";
@@ -122,6 +125,7 @@ export function createVideoEditor({ api, route, strings, onRangeChange, onViewpo
     });
 
     let inspectRange = true;
+    let spatialEditing = false;
     let followBoundary = null;
     const playback = createPlayback(video, {
         getRange: () => bounds(),
@@ -148,7 +152,7 @@ export function createVideoEditor({ api, route, strings, onRangeChange, onViewpo
 
     function syncRangePreview() {
         const { left, right } = bounds();
-        if (inspectRange && video.paused && state.playable && right > left
+        if (!spatialEditing && inspectRange && video.paused && state.playable && right > left
             && (left > 0 || right < state.duration)) {
             rangePreview.show(left, right);
         } else {
@@ -660,6 +664,13 @@ export function createVideoEditor({ api, route, strings, onRangeChange, onViewpo
         scheduleDraw,
         bounds,
         setRange,
+        setSpatialEditing(flag) {
+            spatialEditing = Boolean(flag);
+            syncRangePreview();
+        },
+        setFullscreen: splitter.setFullscreen,
+        setTimelineHeight: splitter.setHeight,
+        onLayoutKey: splitter.onKey,
         setCuts(list) {
             const cleaned = (Array.isArray(list) ? list : [])
                 .map(Number)
@@ -678,7 +689,7 @@ export function createVideoEditor({ api, route, strings, onRangeChange, onViewpo
         NEED_ALL,
 
         mount(bar, transport, status) {
-            root.append(bar, stage, transport, timeline, scroll, status);
+            root.append(bar, stage, splitter.element, transport, timeline, scroll, status);
         },
 
         applyMetadata(meta) {
@@ -727,6 +738,7 @@ export function createVideoEditor({ api, route, strings, onRangeChange, onViewpo
         },
 
         dispose() {
+            splitter.dispose();
             unbindWheel();
             timeline.removeEventListener("pointerenter", bindWheel);
             timeline.removeEventListener("pointerleave", unbindWheel);

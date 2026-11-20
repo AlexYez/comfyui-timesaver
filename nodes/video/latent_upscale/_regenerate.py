@@ -178,7 +178,7 @@ class SharpBlock:
 def install_sharp(model, path, reference):
     dm = model.get_model_object("diffusion_model")
     if not getattr(dm, "use_adaln_curves", False) or tuple(dm.adaln_t_table.shape) != (1025, 8):
-        raise ValueError("TS Regenerate currently requires a pruned H3 model with 1025×8 AdaLN curves.")
+        raise ValueError("TS Regenerate currently requires a pruned H3 model with 1025x8 AdaLN curves.")
     if len(dm.blocks) != 50:
         raise ValueError("Expected 50 native H3 transformer blocks.")
     own = dm.adaln_t_table.detach().to(device="cpu", dtype=torch.float32).clone()

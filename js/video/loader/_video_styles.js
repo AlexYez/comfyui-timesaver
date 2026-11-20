@@ -18,7 +18,7 @@ export function ensureVideoStyles() {
     const style = document.createElement("style");
     style.id = STYLE_ID;
     style.textContent = `
-.ts-vid{display:flex;flex-direction:column;gap:4px;height:100%;box-sizing:border-box;
+.ts-vid{display:flex;flex-direction:column;gap:4px;width:100%;height:100%;min-width:0;box-sizing:border-box;
     padding:2px;overflow:hidden;font-size:var(--ts-fs-sm)}
 /* Перенос обязателен: в ноде минимальной ширины десяток кнопок в одну строку
    не влезает, и часть из них оказывается за краем — нажать их нечем. */
@@ -84,6 +84,15 @@ export function ensureVideoStyles() {
 .ts-vid__timeline{position:relative;flex:1 1 auto;min-height:96px;max-height:260px;
     border-radius:var(--ts-radius-sm);overflow:hidden;background:var(--ts-sunken);
     touch-action:none}
+.ts-vid__splitter{flex:0 0 10px;position:relative;cursor:row-resize;touch-action:none;
+    border-radius:var(--ts-radius-sm);outline-offset:-1px}
+.ts-vid__splitter[hidden]{display:none!important}
+.ts-vid__splitter::after{content:"";position:absolute;left:calc(50% - 28px);right:calc(50% - 28px);
+    top:4px;height:2px;border-radius:2px;background:var(--ts-border-strong)}
+.ts-vid__splitter:hover,.ts-vid__splitter:focus-visible{background:var(--ts-surface-hover)}
+.ts-vid__splitter:focus-visible{outline:1px solid var(--ts-accent)}
+.ts-vid--fullscreen .ts-vid__stage{flex:1 1 0;min-height:80px}
+.ts-vid--fullscreen .ts-vid__timeline{flex:0 0 var(--ts-video-timeline-height,96px);min-height:96px;max-height:none}
 .ts-vid__canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
 .ts-vid__canvas--overlay{pointer-events:none}
 
@@ -124,6 +133,15 @@ export function ensureVideoStyles() {
     border:1px solid var(--ts-border);border-radius:8px;box-sizing:border-box}
 .ts-vid__transport .ts-vid__volume{flex:0 0 72px;width:72px;height:16px;
     border:1px solid var(--ts-border);border-radius:8px;box-sizing:border-box}
+.ts-vid__crop-canvas{position:absolute;inset:0;width:100%;height:100%;z-index:4;touch-action:none}
+.ts-vid__crop-panel{flex:0 0 auto;display:flex;flex-direction:column;gap:4px;padding:4px}
+.ts-vid__crop-panel[hidden],.ts-vid__crop-canvas[hidden]{display:none!important}
+.ts-vid__crop-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.ts-vid__crop-select{width:auto;max-width:190px;min-height:26px}
+.ts-vid__crop-stats{margin-left:auto;color:var(--ts-text);font-variant-numeric:tabular-nums}
+.ts-vid__crop-hint{color:var(--ts-muted);font-size:var(--ts-fs-xs)}
+.ts-vid__crop-keys{display:flex;gap:4px;overflow-x:auto;max-height:38px}
+.ts-vid__crop-keys .ts-ui-btn{flex:0 0 auto;font-variant-numeric:tabular-nums}
 `;
     document.head.appendChild(style);
 }

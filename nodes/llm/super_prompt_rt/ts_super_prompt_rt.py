@@ -25,7 +25,6 @@ node_id: TS_SuperPromptRT
 
 from __future__ import annotations
 
-import json
 import uuid
 from pathlib import Path
 from typing import Any
@@ -496,7 +495,9 @@ async def _cancel_route(_request):
 
 @_register_post("/ts_super_prompt_rt/unload")
 async def _unload_route(_request):
-    return _json({"freed": unload_engine()})
+    import asyncio
+
+    return _json({"freed": await asyncio.to_thread(unload_engine)})
 
 
 @_register_post("/ts_super_prompt_rt/enhance")

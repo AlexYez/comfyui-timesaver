@@ -102,12 +102,6 @@ def list_input_images(folder_paths) -> list[str]:
     return list(listing)
 
 
-def forget_cached_listing() -> None:
-    """Забыть последний обход — для тестов и для явного обновления."""
-    global _listing_cache
-    _listing_cache = None
-
-
 def _build_input_types(original, folder_paths):
     """Wrap core's INPUT_TYPES so the image list covers subfolders."""
 

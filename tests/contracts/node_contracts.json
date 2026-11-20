@@ -7390,6 +7390,12 @@
         "index": 12,
         "name": "summary",
         "type": "String"
+      },
+      {
+        "display_name": "crop_data",
+        "index": 13,
+        "name": "crop_data",
+        "type": "_CropData"
       }
     ],
     "python_file": "nodes/video/media/ts_video_info.py"
@@ -7410,7 +7416,8 @@
       "divisible_by",
       "frame_step",
       "resize_filter",
-      "when_too_large"
+      "when_too_large",
+      "spatial_crop"
     ],
     "inputs": [
       {
@@ -7484,6 +7491,13 @@
         "name": "path",
         "optional": true,
         "type": "String"
+      },
+      {
+        "index": 12,
+        "name": "spatial_crop",
+        "optional": true,
+        "socketless": true,
+        "type": "String"
       }
     ],
     "outputs": [
@@ -7510,6 +7524,12 @@
         "index": 3,
         "name": "video",
         "type": "Video"
+      },
+      {
+        "display_name": "full_images",
+        "index": 4,
+        "name": "full_images",
+        "type": "Image"
       }
     ],
     "python_file": "nodes/video/media/ts_video_loader.py",
@@ -7561,6 +7581,9 @@
       },
       "source_path": {
         "default": ""
+      },
+      "spatial_crop": {
+        "default": "{}"
       },
       "start_seconds": {
         "default": 0.0,

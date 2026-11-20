@@ -139,10 +139,23 @@ class _EngineState:
     def __init__(self) -> None:
         self.engine: Any = None
         self.model_key: str | None = None
+        self.requested_backend: str | None = None
         self.backend: str | None = None
         self.mtp: bool | None = None
         self.loaded_at: float = 0.0
         self.lock = threading.RLock()
+        self.publish_status()
+
+    def publish_status(self) -> None:
+        # Replace the entire snapshot while holding the engine lock. Readers
+        # can copy it without waiting for inference or seeing a partial update.
+        self.status = {
+            "loaded": self.engine is not None,
+            "model": self.model_key,
+            "backend": self.backend,
+            "mtp": self.mtp,
+            "loaded_at": self.loaded_at,
+        }
 
 
 _state = _EngineState()
@@ -326,7 +339,7 @@ def load_engine(
         if (
             _state.engine is not None
             and _state.model_key == model_key
-            and _state.backend == backend
+            and backend in (_state.requested_backend, _state.backend)
             and _state.mtp == bool(mtp)
         ):
             return _state.engine
@@ -368,9 +381,11 @@ def load_engine(
 
             _state.engine = engine
             _state.model_key = model_key
+            _state.requested_backend = backend
             _state.backend = candidate
             _state.mtp = bool(mtp)
             _state.loaded_at = time.time()
+            _state.publish_status()
             logger.info(
                 "%s Loaded %s on %s in %.1f s",
                 LOG_PREFIX, model_key, candidate, time.perf_counter() - started,
@@ -387,8 +402,10 @@ def unload_engine() -> bool:
     with _state.lock:
         engine, _state.engine = _state.engine, None
         _state.model_key = None
+        _state.requested_backend = None
         _state.backend = None
         _state.mtp = None
+        _state.publish_status()
         if engine is None:
             return False
         try:
@@ -414,14 +431,7 @@ register_memory_release("gemma", _release_memory)
 
 
 def engine_status() -> dict[str, Any]:
-    with _state.lock:
-        return {
-            "loaded": _state.engine is not None,
-            "model": _state.model_key,
-            "backend": _state.backend,
-            "mtp": _state.mtp,
-            "loaded_at": _state.loaded_at,
-        }
+    return _state.status.copy()
 
 
 # --------------------------------------------------------------------------

@@ -34,7 +34,6 @@ import re
 import subprocess
 import threading
 import time
-import urllib.parse
 import wave
 from dataclasses import dataclass
 from pathlib import Path
@@ -648,7 +647,7 @@ def _build_generated_audio_preview_payload(audio: dict[str, Any], prefix: str, f
 
 @_register_get("/ts_audio_loader/metadata")
 async def ts_audio_loader_metadata(request: web.Request) -> web.StreamResponse:
-    filepath = _normalize_selected_path(urllib.parse.unquote(request.query.get("filepath", "")))
+    filepath = _normalize_selected_path(request.query.get("filepath", ""))
     if not filepath or not os.path.isfile(filepath):
         return web.json_response({"error": "File not found."}, status=404)
     if not _is_inside_allowed_root(Path(filepath)):
@@ -663,7 +662,7 @@ async def ts_audio_loader_metadata(request: web.Request) -> web.StreamResponse:
 
 @_register_get("/ts_audio_loader/view")
 async def ts_audio_loader_view(request: web.Request) -> web.StreamResponse:
-    filepath = _normalize_selected_path(urllib.parse.unquote(request.query.get("filepath", "")))
+    filepath = _normalize_selected_path(request.query.get("filepath", ""))
     if not filepath or not os.path.isfile(filepath):
         return web.Response(status=404)
     if not _is_inside_allowed_root(Path(filepath)):

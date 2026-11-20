@@ -75,12 +75,14 @@ def _command(ffmpeg: str, source: str, target: str) -> list[str]:
 
     ⚠️ Масштаб выражением, а не числами: материал приходит и альбомный, и
     портретный, и «ширина 1280» на вертикальном ролике значит совсем не то же
-    самое. Ограничивается именно ДЛИННАЯ сторона, а короткая считается сама
-    (``-2`` — ближайшее чётное, кодировщику нужны чётные стороны).
+    самое. Длинная сторона ограничивается и округляется вниз до чётной.
+    Короткая пересчитывается пропорционально и приводится к ближайшему чётному.
     """
     long_side = str(MAX_LONG_SIDE)
-    scale = (f"scale='if(gte(iw,ih),min({long_side},iw),-2)'"
-             f":'if(gte(iw,ih),-2,min({long_side},ih))'")
+    wide = f"max(2,2*trunc(min({long_side},iw)/2))"
+    tall = f"max(2,2*trunc(min({long_side},ih)/2))"
+    scale = (f"scale='if(gte(iw,ih),{wide},max(2,2*round(({tall})*iw/ih/2)))'"
+             f":'if(gte(iw,ih),max(2,2*round(({wide})*ih/iw/2)),{tall})'")
     return [
         ffmpeg, "-y", "-nostdin",
         "-i", source,

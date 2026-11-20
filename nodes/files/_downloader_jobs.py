@@ -57,6 +57,17 @@ def _job_snapshot() -> list[dict[str, Any]]:
                 for job in _JOBS.values()]
 
 
+def _finish_job(job: dict[str, Any], status: str) -> None:
+    job["status"] = status
+    _emit(job)
+    # Keep the public receipt for existing clients without retaining the
+    # original URL or any private input and progress bookkeeping.
+    with _JOBS_GUARD:
+        job_id = job["job_id"]
+        if _JOBS.get(job_id) is job:
+            _JOBS[job_id] = {k: v for k, v in job.items() if not k.startswith("_")}
+
+
 def _run_job_blocking(job: dict[str, Any]) -> None:
     from .ts_downloader import TS_DownloadFilesNode as Node
 
@@ -123,21 +134,19 @@ def _run_job_blocking(job: dict[str, Any]) -> None:
 async def _job_worker(job: dict[str, Any]) -> None:
     async with _CONCURRENCY:
         if job.get("_cancel"):
-            job["status"] = "cancelled"
-            _emit(job)
+            _finish_job(job, "cancelled")
             return
         job["status"] = "running"
         _emit(job)
         try:
             await asyncio.to_thread(_run_job_blocking, job)
-            job["status"] = "done"
+            status = "done"
         except InterruptedError:
-            job["status"] = "cancelled"
+            status = "cancelled"
         except Exception as exc:
-            job["status"] = "error"
+            status = "error"
             job["error"] = str(exc)
-        job["_last_emit"] = 0.0
-        _emit(job)
+        _finish_job(job, status)
 
 
 @_register_post("/ts_downloader/fetch")
@@ -216,9 +225,10 @@ async def cancel_route(request):
     job_id = str(data.get("job_id") or "")
     with _JOBS_GUARD:
         job = _JOBS.get(job_id)
+        if job is not None and "_cancel" in job:
+            job["_cancel"] = True
     if job is None:
         return web.json_response({"error": "unknown job_id"}, status=404)
-    job["_cancel"] = True
     return web.json_response({"ok": True})
 
 

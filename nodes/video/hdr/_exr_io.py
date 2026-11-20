@@ -30,7 +30,6 @@
 from __future__ import annotations
 
 import logging
-import math
 import os
 from pathlib import Path
 from typing import Any
@@ -338,16 +337,3 @@ def write_exr(path: str | os.PathLike[str], frame: torch.Tensor, *, half: bool =
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_bytes(blob)
     return len(blob)
-
-
-def describe_range(tensor: torch.Tensor) -> str:
-    """Короткая строка про диапазон — для логов и сообщений об ошибках."""
-    finite = tensor[torch.isfinite(tensor)]
-    if not finite.numel():
-        return "no finite samples"
-    low, high = float(finite.min().item()), float(finite.max().item())
-    over = int((tensor > 1.0).sum().item())
-    share = 100.0 * over / max(1, tensor.numel())
-    if math.isnan(share):
-        share = 0.0
-    return f"min {low:.4g}, max {high:.4g}, {share:.2f}% above 1.0"

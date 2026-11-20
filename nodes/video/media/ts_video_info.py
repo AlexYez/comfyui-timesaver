@@ -21,6 +21,8 @@ from ._common import (
     info_get,
 )
 
+_CropData = IO.Custom("CROP_DATA")
+
 
 class TS_VideoInfo(IO.ComfyNode):
     @classmethod
@@ -70,6 +72,12 @@ class TS_VideoInfo(IO.ComfyNode):
                                   tooltip="Whether the file carries transparency."),
                 IO.String.Output(display_name="summary",
                                  tooltip="One line describing the clip, for notes and debugging."),
+                _CropData.Output(
+                    display_name="crop_data",
+                    tooltip=("Per-frame spatial crop geometry from TS Video Loader. "
+                             "Connect to TS Restore From Crop together with full_images "
+                             "and the processed crop. Missing for older or VHS bundles."),
+                ),
             ],
         )
 
@@ -92,6 +100,7 @@ class TS_VideoInfo(IO.ComfyNode):
             bool(info_get(info, "source.has_audio", False)),
             bool(info_get(info, "source.has_alpha", False)),
             format_summary(info),
+            info.get("crop"),
         )
 
 

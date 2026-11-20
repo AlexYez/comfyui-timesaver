@@ -621,27 +621,6 @@ def _scan_timeline(path: str) -> tuple[int, float]:
     return packets, max(0.0, (last - first) * time_base)
 
 
-def frame_count_exact(path: str) -> int:
-    """Пересчитать кадры честным декодированием.
-
-    Дорого — это полный проход по файлу, — поэтому вызывается только по явной
-    просьбе: у mkv и webm ``stream.frames`` часто ноль, а оценка по длительности
-    на переменной частоте врёт. Кадры именно ДЕКОДИРУЮТСЯ: считать пакеты
-    нельзя, один пакет не равен одному кадру.
-    """
-    av = _av()
-    total = 0
-    with av.open(path) as container:
-        stream = container.streams.video[0]
-        stream.thread_type = "AUTO"
-        for packet in container.demux(stream):
-            try:
-                total += len(packet.decode())
-            except av.error.InvalidDataError:
-                continue
-    return total
-
-
 def estimate_bytes(frames: int, width: int, height: int, channels: int = 3) -> int:
     """Сколько памяти займёт тензор кадров."""
     return int(max(0, frames) * max(0, width) * max(0, height) * channels * 4)

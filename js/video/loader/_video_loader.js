@@ -21,6 +21,8 @@ import { icon, setIcon } from "../../_media/_icons.js";
 import { formatTimecode } from "../../_media/_ruler.js";
 import { watchWiredSource } from "../../_wired_source.js";
 import { createVideoEditor } from "./_video_editor.js";
+import { createSpatialCropEditor } from "./_spatial_crop_editor.js";
+import { processingSize } from "./_spatial_crop_model.js";
 import { ensureVideoStyles } from "./_video_styles.js";
 
 export const NODE_TYPE = "TS_VideoLoader";
@@ -30,6 +32,7 @@ const ROUTE = "/ts_video";
 const INPUT_PATH = "source_path";
 const INPUT_START = "start_seconds";
 const INPUT_END = "end_seconds";
+const INPUT_CROP = "spatial_crop";
 
 const PROP_ZOOM = "ts_video_zoom";
 const PROP_VIEW = "ts_video_view_start";
@@ -37,6 +40,7 @@ const PROP_LOOP = "ts_video_loop";
 const PROP_MUTED = "ts_video_muted";
 const PROP_WAVE = "ts_video_wave";
 const PROP_META = "ts_video_meta";
+const PROP_TIMELINE_HEIGHT = "ts_video_timeline_height";
 
 // ⚠️ Должен совпадать с VIDEO_EXTENSIONS в nodes/video/media/_common.py: то, что
 // принимает кнопка выбора файла, обязано совпадать с тем, что отдают маршруты.
@@ -212,6 +216,10 @@ export function setupVideoLoader(node) {
             node.properties ||= {};
             node.properties[PROP_ZOOM] = view.zoom;
             node.properties[PROP_VIEW] = view.viewStart;
+        },
+        onTimelineResize: (height) => {
+            node.properties ||= {};
+            node.properties[PROP_TIMELINE_HEIGHT] = height;
         },
     });
 
@@ -429,6 +437,15 @@ export function setupVideoLoader(node) {
     status.append(statusLeft, statusRight);
 
     editor.mount(bar, transport, status);
+    const spatial = createSpatialCropEditor({
+        editor,
+        isAvailable: () => !wired.linked && Boolean(getWidget(node, INPUT_CROP)),
+        getSize: () => processingSize(editor.state.width, editor.state.height,
+            Number(getWidget(node, "longer_side")?.value) || 0,
+            Number(getWidget(node, "shorter_side")?.value) || 0,
+            Number(getWidget(node, "divisible_by")?.value) || 1),
+        onChange: (value) => setWidgetValue(node, INPUT_CROP, value),
+    });
     editor.element.classList.add(TS_UI_CLASS);
 
     // ── состояние и обновления ───────────────────────────────────────────── #
@@ -474,6 +491,7 @@ export function setupVideoLoader(node) {
     });
 
     function updateStatus(message = "", isError = false) {
+        spatial.refresh();
         const { left, right } = editor.bounds();
         const fps = editor.state.fps;
         const whole = editor.state.cropEnd < 0 && left <= 0.001;
@@ -549,6 +567,7 @@ export function setupVideoLoader(node) {
             const meta = await response.json();
             if (token !== metaToken) return;
             editor.applyMetadata(meta);
+            spatial.refresh();
             node.properties ||= {};
             // В свойства кладём ТОЛЬКО скаляры: массив пиков в каждом
             // сохранённом workflow — это десятки килобайт мусора на ноду.
@@ -591,6 +610,7 @@ export function setupVideoLoader(node) {
         editor.setSource("");
         editor.state.path = path;
         setWidgetValue(node, INPUT_PATH, path);
+        spatial.reset();
         // Маркеры принадлежали прежнему ролику: оставить их — значит показать
         // склейки не того файла на тех же секундах.
         editor.setCuts([]);
@@ -758,19 +778,21 @@ export function setupVideoLoader(node) {
             // и гасим, иначе document выполнит её второй раз: Space и L/M
             // переключались туда-обратно, стрелки шагали на два кадра.
             onKey: (event, { typing = false } = {}) => {
-                if (typing || !dispatchKey(event)) return;
+                if (typing || !(editor.onLayoutKey(event) || spatial.onKey(event) || dispatchKey(event))) return;
                 event.preventDefault();
                 event.stopPropagation();
             },
             onOpen: () => {
-                editor.timeline.style.height = "200px";
+                spatial.setFullscreen(true);
+                editor.setFullscreen(true);
                 editor.scheduleDraw(editor.NEED_ALL);
             },
             onClose: () => {
+                spatial.setFullscreen(false);
+                editor.setFullscreen(false);
                 // Оверлей только ОТЦЕПЛЯЕТ содержимое — возвращаем его на место.
                 // Тот же самый элемент, поэтому видео не перезагружается и
                 // продолжает играть с той же секунды.
-                editor.timeline.style.height = "";
                 host?.appendChild(editor.element);
                 editor.scheduleDraw(editor.NEED_ALL);
                 fullscreen = null;
@@ -806,6 +828,7 @@ export function setupVideoLoader(node) {
     hideWidget(node, INPUT_PATH);
     hideWidget(node, INPUT_START);
     hideWidget(node, INPUT_END);
+    hideWidget(node, INPUT_CROP);
 
     const observer = new ResizeObserver(() => editor.scheduleDraw(editor.NEED_ALL));
     observer.observe(editor.element);
@@ -835,18 +858,21 @@ export function setupVideoLoader(node) {
      */
     // Обычные виджеты ноды меняются мимо нас — подписываемся на их изменение,
     // чтобы число кадров в строке состояния не отставало от настроек.
-    for (const name of ["frame_rate", "frame_step", "max_frames"]) {
+    for (const name of ["frame_rate", "frame_step", "max_frames", "longer_side", "shorter_side", "divisible_by"]) {
         const widget = getWidget(node, name);
         if (!widget) continue;
         const previous = widget.callback;
         widget.callback = function tsVideoWidgetChanged(...args) {
             const result = previous?.apply(this, args);
             updateStatus();
+            spatial.refresh();
             return result;
         };
     }
 
     node._tsVideoLoaderRehydrate = () => {
+        editor.setTimelineHeight(node.properties?.[PROP_TIMELINE_HEIGHT]);
+        spatial.setValue(readPersisted(node, INPUT_CROP, "{}"));
         const path = String(readPersisted(node, INPUT_PATH, "") || "");
         if (path !== editor.state.path) {
             metaToken += 1;
@@ -890,6 +916,7 @@ export function setupVideoLoader(node) {
         document.removeEventListener("keydown", onKeyDown, true);
         observer.disconnect();
         unguard();
+        spatial.dispose();
         editor.dispose();
     };
 
