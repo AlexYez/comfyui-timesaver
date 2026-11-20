@@ -22,8 +22,9 @@ node_id: TS_SmartBatch
 import logging
 from typing import Any, Optional
 
-import comfy.utils
 import torch
+
+from ._alpha import resize_with_alpha, to_channels
 from comfy_api.v0_0_2 import IO
 
 logger = logging.getLogger("comfyui_timesaver.ts_smart_batch")
@@ -134,6 +135,9 @@ class TS_SmartBatch(IO.ComfyNode):
         """
         if first.shape[-1] == second.shape[-1]:
             return first, second
+        if {first.shape[-1], second.shape[-1]} <= {1, 3, 4}:
+            channels = max(first.shape[-1], second.shape[-1])
+            return to_channels(first, channels), to_channels(second, channels)
         if first.shape[-1] > second.shape[-1]:
             second = torch.nn.functional.pad(second, (0, 1), mode="constant", value=1.0)
         else:
@@ -181,10 +185,7 @@ class TS_SmartBatch(IO.ComfyNode):
                 cls._log(
                     f"resizing {tuple(nxt.shape[1:3])} -> {tuple(batch.shape[1:3])}"
                 )
-                nxt = comfy.utils.common_upscale(
-                    nxt.movedim(-1, 1), batch.shape[2], batch.shape[1],
-                    "bilinear", "center",
-                ).movedim(1, -1)
+                nxt = resize_with_alpha(nxt, batch.shape[2], batch.shape[1], "bilinear", "center")
             batch = torch.cat(
                 (batch, nxt.to(dtype=batch.dtype, device=batch.device)), dim=0)
 

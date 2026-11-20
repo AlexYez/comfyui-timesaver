@@ -8,6 +8,8 @@ import math
 import numpy as np
 import torch
 from comfy_api.v0_0_2 import IO
+
+from ._alpha import premultiply, unpremultiply
 from PIL import Image
 
 try:
@@ -164,7 +166,11 @@ class TS_ImageResize(IO.ComfyNode):
             interp_kwargs = {"mode": method}
             if TORCHVISION_AVAILABLE and method in ["bilinear", "bicubic"]:
                 interp_kwargs["antialias"] = True
-            return torch.nn.functional.interpolate(image_tensor_nchw, size=(target_h, target_w), **interp_kwargs)
+            if method in ("nearest", "nearest-exact"):
+                return torch.nn.functional.interpolate(image_tensor_nchw, size=(target_h, target_w), **interp_kwargs)
+            resized = torch.nn.functional.interpolate(premultiply(image_tensor_nchw, 1),
+                                                       size=(target_h, target_w), **interp_kwargs)
+            return unpremultiply(resized, 1)
 
     @classmethod
     def execute(cls, pixels, target_width, target_height, smaller_side, larger_side, scale_factor, keep_proportion, upscale_method, divisible_by, megapixels, dont_enlarge, mask=None) -> IO.NodeOutput:

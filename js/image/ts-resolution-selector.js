@@ -7,6 +7,7 @@ import { applyResolutionMaximum, DEFAULT_MAX_MEGAPIXELS, registerResolutionMaxim
 const EXTENSION_ID = "ts.resolutionselector";
 const NODE_NAME = "TS_ResolutionSelector";
 const INPUT_RATIO = "aspect_ratio";
+const INPUT_PRESERVE_ALPHA = "preserve_alpha";
 const STYLE_ID = "ts-resolution-selector-styles";
 const DEFAULT_NODE_WIDTH = 250;
 const DEFAULT_NODE_HEIGHT = 340;
@@ -188,6 +189,20 @@ function setupResolutionSelector(node) {
     ensureStyles();
 
     const ratioWidget = hideRatioWidget(node);
+
+    const previousConfigure = node.onConfigure;
+    node.onConfigure = function (info) {
+        const result = previousConfigure?.apply(this, arguments);
+        const alpha = sharedGetWidget(this, INPUT_PRESERVE_ALPHA);
+        const values = info?.widgets_values;
+        if (alpha && Array.isArray(values)) {
+            // Before the ratio widget was detached, the saved array started
+            // with the aspect-ratio string. Its last boolean is original_aspect.
+            const at = this.widgets.indexOf(alpha);
+            alpha.value = typeof values[0] === "number" && values[at] === true;
+        }
+        return result;
+    };
 
     const container = document.createElement("div");
     container.className = `${TS_UI_CLASS} ts-reso-selector`;

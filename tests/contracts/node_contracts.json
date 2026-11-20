@@ -6044,7 +6044,8 @@
       "aspect_ratio",
       "resolution",
       "custom_ratio",
-      "original_aspect"
+      "original_aspect",
+      "preserve_alpha"
     ],
     "inputs": [
       {
@@ -6072,6 +6073,12 @@
         "name": "image",
         "optional": true,
         "type": "Image"
+      },
+      {
+        "index": 5,
+        "name": "preserve_alpha",
+        "optional": true,
+        "type": "Boolean"
       }
     ],
     "outputs": [
@@ -6091,6 +6098,9 @@
         "default": "0:0"
       },
       "original_aspect": {
+        "default": false
+      },
+      "preserve_alpha": {
         "default": false
       },
       "resolution": {

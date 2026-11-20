@@ -10,6 +10,8 @@ import torch
 import torch.nn.functional as F
 from comfy_api.v0_0_2 import IO
 
+from ._alpha import mix_rgba, resize_with_alpha, to_channels
+
 logger = logging.getLogger("comfyui_timesaver.ts_restore_from_crop")
 LOG_PREFIX = "[TS Restore From Crop]"
 
@@ -108,13 +110,15 @@ class TSRestoreFromCrop(IO.ComfyNode):
             orig_img = original_images[i].clone()
             c_img, data = cropped_images[i], crop_data[i]
 
-            # Harmonize channels with the paste target: an RGBA crop pasted
-            # into an RGB original used to crash with a shape mismatch.
+            if c_img.shape[-1] == 4:
+                orig_img = to_channels(orig_img, 4)
             orig_c = orig_img.shape[-1]
+            c_img = to_channels(c_img, min(3, orig_c))
+            reuse_alpha = orig_c == 4 and c_img.shape[-1] == 3
             if c_img.shape[-1] != orig_c:
                 if c_img.shape[-1] > orig_c:
                     c_img = c_img[..., :orig_c]
-                else:
+                elif not reuse_alpha:
                     pad = torch.ones(
                         (*c_img.shape[:2], orig_c - c_img.shape[-1]),
                         device=c_img.device, dtype=c_img.dtype,
@@ -122,7 +126,8 @@ class TSRestoreFromCrop(IO.ComfyNode):
                     c_img = torch.cat([c_img, pad], dim=-1)
 
             if c_img.shape[0] != data["initial_crop_height"] or c_img.shape[1] != data["initial_crop_width"]:
-                c_img = F.interpolate(c_img.permute(2, 0, 1).unsqueeze(0), size=(data["initial_crop_height"], data["initial_crop_width"]), mode='bilinear', align_corners=False).squeeze(0).permute(1, 2, 0)
+                c_img = resize_with_alpha(c_img[None], data["initial_crop_width"],
+                                           data["initial_crop_height"], "bilinear")[0]
 
             p_x, p_y = data["original_x"], data["original_y"]
             p_w, p_h = data["original_width"], data["original_height"]
@@ -149,6 +154,9 @@ class TSRestoreFromCrop(IO.ComfyNode):
                 local_y_s, local_y_e = y_start_orig - p_y, y_end_orig - p_y
                 local_x_s, local_x_e = x_start_orig - p_x, x_end_orig - p_x
                 final_paste_region = region_to_paste[local_y_s:local_y_e, local_x_s:local_x_e, :]
+                original_part = orig_img[y_start_orig:y_end_orig, x_start_orig:x_end_orig, :]
+                if reuse_alpha:
+                    final_paste_region = torch.cat((final_paste_region, original_part[..., 3:4]), dim=-1)
 
                 if blur > 0:
                     left_edge = 0 if p_x <= blur else blur
@@ -170,11 +178,12 @@ class TSRestoreFromCrop(IO.ComfyNode):
                         blurred_mask = _box_blur_mask(shrunk_mask_canvas.unsqueeze(0), blur, target_device).squeeze(0)
 
                     sliced_mask = blurred_mask[local_y_s:local_y_e, local_x_s:local_x_e].unsqueeze(-1)
-                    original_part = orig_img[y_start_orig:y_end_orig, x_start_orig:x_end_orig, :]
-
-                    orig_img[y_start_orig:y_end_orig, x_start_orig:x_end_orig, :] = (final_paste_region * sliced_mask) + (original_part * (1.0 - sliced_mask))
+                    if orig_c == 4:
+                        original_part.copy_(mix_rgba(original_part, final_paste_region, sliced_mask))
+                    else:
+                        original_part.copy_(final_paste_region * sliced_mask + original_part * (1.0 - sliced_mask))
                 else:
-                    orig_img[y_start_orig:y_end_orig, x_start_orig:x_end_orig, :] = final_paste_region
+                    original_part.copy_(final_paste_region)
 
             restored_images.append(orig_img)
 

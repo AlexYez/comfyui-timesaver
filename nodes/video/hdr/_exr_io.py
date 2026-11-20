@@ -290,7 +290,7 @@ def load_exr(
 # ─────────────────────────────── запись ────────────────────────────────
 
 def encode_exr_frame(frame: torch.Tensor, *, half: bool = False) -> bytes:
-    """Закодировать один кадр ``[H, W, 3]`` в байты EXR.
+    """Закодировать один кадр RGB или RGBA в байты EXR.
 
     Через PyAV, тем же кодеком, которым пишет встроенная Save Image (Advanced).
     Проверено побитовым круговым прогоном: ``65000.0`` и отрицательные значения
@@ -300,7 +300,7 @@ def encode_exr_frame(frame: torch.Tensor, *, half: bool = False) -> bytes:
     свет в примариях Rec.709**: именно так договорено читать EXR по умолчанию.
 
     Args:
-        frame: кадр ``[H, W, 3]``.
+        frame: кадр ``[H, W, 3]`` или ``[H, W, 4]``.
         half: писать 16-битными числами. Файл примерно вдвое легче, диапазон
             сохраняется (замерено: 100.0 остаётся 100.0, шаг квантования в
             районе сотни — около 0.06). Сжатия кодировщик ffmpeg не предлагает
@@ -312,18 +312,19 @@ def encode_exr_frame(frame: torch.Tensor, *, half: bool = False) -> bytes:
     except Exception as error:                           # noqa: BLE001
         raise ExrError(f"{LOG_PREFIX} PyAV is required to write EXR: {error}") from error
 
-    if frame.ndim != 3 or frame.shape[-1] != 3:
-        raise ExrError(f"{LOG_PREFIX} EXR frame must be [H, W, 3], got {tuple(frame.shape)}.")
+    if frame.ndim != 3 or frame.shape[-1] not in (3, 4):
+        raise ExrError(f"{LOG_PREFIX} EXR frame must be RGB or RGBA, got {tuple(frame.shape)}.")
 
     array = np.ascontiguousarray(frame.detach().to(torch.float32).cpu().numpy())
     height, width = int(array.shape[0]), int(array.shape[1])
 
     codec = av.CodecContext.create("exr", "w")
     codec.width, codec.height = width, height
-    codec.pix_fmt = "gbrpf32le"
+    pixel_format = "gbrapf32le" if frame.shape[-1] == 4 else "gbrpf32le"
+    codec.pix_fmt = pixel_format
     if half:
         codec.options = {"format": "half"}
-    video_frame = av.VideoFrame.from_ndarray(array, format="gbrpf32le")
+    video_frame = av.VideoFrame.from_ndarray(array, format=pixel_format)
     packets = list(codec.encode(video_frame)) + list(codec.encode(None))
     if not packets:
         raise ExrError(f"{LOG_PREFIX} The EXR encoder produced no data for {width}x{height}.")

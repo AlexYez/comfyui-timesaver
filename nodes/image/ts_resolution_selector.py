@@ -2,8 +2,9 @@ import logging
 import math
 
 import torch
-import torch.nn.functional as F
 from comfy_api.v0_0_2 import IO
+
+from ._alpha import resize_with_alpha
 
 logger = logging.getLogger("comfyui_timesaver.ts_resolution_selector")
 LOG_PREFIX = "[TS Resolution Selector]"
@@ -78,6 +79,13 @@ class TS_ResolutionSelector(IO.ComfyNode):
                     optional=True,
                     tooltip="Optional image fitted onto the computed canvas (letterboxed).",
                 ),
+                IO.Boolean.Input(
+                    "preserve_alpha",
+                    optional=True,
+                    default=False,
+                    tooltip=("Keep RGBA images transparent, including padding. Off uses the existing "
+                             "white-canvas preparation for model references."),
+                ),
             ],
             outputs=[
                 IO.Image.Output(
@@ -88,7 +96,8 @@ class TS_ResolutionSelector(IO.ComfyNode):
         )
 
     @classmethod
-    def fingerprint_inputs(cls, aspect_ratio, resolution, custom_ratio, original_aspect=False, image=None):
+    def fingerprint_inputs(cls, aspect_ratio, resolution, custom_ratio, original_aspect=False, image=None,
+                           preserve_alpha=False):
         if cls._is_valid_image(image):
             return float("nan")
         res_value = 0.0 if resolution is None else float(resolution)
@@ -222,13 +231,14 @@ class TS_ResolutionSelector(IO.ComfyNode):
         return crop_rgb * crop_alpha + (1.0 - crop_alpha)
 
     @classmethod
-    def _fit_image_to_canvas(cls, image, target_w, target_h):
+    def _fit_image_to_canvas(cls, image, target_w, target_h, preserve_alpha=False):
         if image is None or not isinstance(image, torch.Tensor):
             return None
         if image.ndim != 4:
             return None
 
-        if image.shape[3] >= 4:
+        transparent = bool(preserve_alpha) and image.shape[-1] == 4
+        if image.shape[3] >= 4 and not transparent:
             image = cls._crop_alpha_to_bbox(image, pad_px=10)
             if image is None:
                 return None
@@ -243,11 +253,8 @@ class TS_ResolutionSelector(IO.ComfyNode):
         new_w = min(target_w, new_w)
         new_h = min(target_h, new_h)
 
-        image_nchw = image.permute(0, 3, 1, 2)
-        resized_nchw = F.interpolate(image_nchw, size=(new_h, new_w), mode="bicubic", align_corners=False)
-        resized = resized_nchw.permute(0, 2, 3, 1)
-
-        canvas = torch.ones((batch, target_h, target_w, channels), dtype=image.dtype, device=image.device)
+        resized = image if (src_w, src_h) == (new_w, new_h) else resize_with_alpha(image, new_w, new_h, "bicubic")
+        canvas = image.new_full((batch, target_h, target_w, channels), 0.0 if transparent else 1.0)
         top = max(0, (target_h - new_h) // 2)
         left = max(0, (target_w - new_w) // 2)
         canvas[:, top : top + new_h, left : left + new_w, :] = resized
@@ -265,7 +272,8 @@ class TS_ResolutionSelector(IO.ComfyNode):
         return float(src_w) / float(src_h)
 
     @classmethod
-    def execute(cls, aspect_ratio, resolution, custom_ratio, original_aspect=False, image=None) -> IO.NodeOutput:
+    def execute(cls, aspect_ratio, resolution, custom_ratio, original_aspect=False, image=None,
+                preserve_alpha=False) -> IO.NodeOutput:
         if not cls._is_valid_image(image):
             if image is not None:
                 cls._log("input image is missing or invalid; treating input as disconnected")
@@ -301,7 +309,7 @@ class TS_ResolutionSelector(IO.ComfyNode):
         if image is not None:
             image = image.float()
             cls._log_tensor_shape("input", image)
-            fitted = cls._fit_image_to_canvas(image, width, height)
+            fitted = cls._fit_image_to_canvas(image, width, height, preserve_alpha)
             if fitted is not None:
                 img = fitted
             else:

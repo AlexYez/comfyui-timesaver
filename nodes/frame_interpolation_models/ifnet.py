@@ -159,7 +159,7 @@ class IFNet(nn.Module):
 
     def extract_features(self, img: torch.Tensor) -> torch.Tensor:
         """Extract reusable encoder features for a single frame."""
-        return self.encode(img)
+        return self.encode(img[:, :3])
 
     def forward(
         self,
@@ -178,6 +178,8 @@ class IFNet(nn.Module):
 
         self._build_warp_grids(img0.shape[2], img0.shape[3], img0.device)
 
+        alpha0, alpha1 = img0[:, 3:4], img1[:, 3:4]
+        img0, img1 = img0[:, :3], img1[:, :3]
         batch = img0.shape[0]
         feat0 = cache["img0"].expand(batch, -1, -1, -1) if cache and "img0" in cache else self.encode(img0)
         feat1 = cache["img1"].expand(batch, -1, -1, -1) if cache and "img1" in cache else self.encode(img1)
@@ -216,7 +218,12 @@ class IFNet(nn.Module):
             warped_img0 = self.warp(img0, flow[:, :2])
             warped_img1 = self.warp(img1, flow[:, 2:4])
 
-        return torch.lerp(warped_img1, warped_img0, torch.sigmoid(mask))
+        weight = torch.sigmoid(mask)
+        rgb = torch.lerp(warped_img1, warped_img0, weight)
+        if alpha0.shape[1] == 0:
+            return rgb
+        alpha = torch.lerp(self.warp(alpha1, flow[:, 2:4]), self.warp(alpha0, flow[:, :2]), weight)
+        return torch.cat((rgb, alpha), dim=1)
 
 
 def detect_rife_config(state_dict: dict[str, torch.Tensor]) -> tuple[int, tuple[int, int, int, int, int]]:

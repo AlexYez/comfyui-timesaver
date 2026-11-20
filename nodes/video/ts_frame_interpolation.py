@@ -17,6 +17,7 @@ from comfy_api.v0_0_2 import IO
 
 from .._shared import raise_if_interrupted
 from ..frame_interpolation_models import FILMNet, IFNet, detect_rife_config
+from ..image._alpha import premultiply, unpremultiply
 
 logger = logging.getLogger(__name__)
 
@@ -365,6 +366,7 @@ def _prepare_frame(
 ) -> torch.Tensor:
     """Convert a BHWC image frame into a padded BCHW tensor for inference."""
     frame = images[frame_index:frame_index + 1].movedim(-1, 1).to(device=device, dtype=dtype)
+    frame = premultiply(frame, 1)
     target_height = max(frame.shape[2], minimum_size)
     target_width = max(frame.shape[3], minimum_size)
     if align > 1:
@@ -418,7 +420,8 @@ def _run_tiled_batch(
     batch = len(timestep_values)
     padded_height = img0_single.shape[2]
     padded_width = img0_single.shape[3]
-    accum = torch.zeros((batch, 3, padded_height, padded_width), dtype=torch.float32, device=output_device)
+    accum = torch.zeros((batch, img0_single.shape[1], padded_height, padded_width),
+                        dtype=torch.float32, device=output_device)
     weights = torch.zeros((1, 1, padded_height, padded_width), dtype=torch.float32, device=output_device)
 
     overlap = min(tile_overlap, max(1, tile_size // 4))
@@ -676,16 +679,10 @@ class TS_Frame_Interpolation(IO.ComfyNode):
         if not schedule and output_count == images.shape[0] and all(exact_frames.get(i) == i for i in range(output_count)):
             return IO.NodeOutput(images)
 
-        # RIFE/FILM are 3-channel models and the output buffer below is [N,3,H,W].
-        # An RGBA batch (e.g. TS_BGRM_BiRefNet with background="Alpha") would raise
-        # on the exact-frame copy, so drop the alpha here instead.
-        if images.shape[-1] > 3:
-            logger.warning(
-                "[TS Frame Interpolation] Input has %d channels; interpolating RGB only "
-                "and dropping the extra channel(s).",
-                int(images.shape[-1]),
-            )
-            images = images[..., :3]
+        # The RGB networks stay three-channel. For RGBA their motion also
+        # warps alpha, and tile overlaps are blended before unpremultiplying.
+        if images.shape[-1] > 4:
+            images = images[..., :4]
         elif images.shape[-1] < 3:
             # Gray frames: the models' first conv wants three channels.
             images = images[..., :1].expand(*images.shape[:-1], 3)
@@ -694,7 +691,8 @@ class TS_Frame_Interpolation(IO.ComfyNode):
         width = int(images.shape[2])
         output_device = torch.device("cpu")
         output_dtype = model_management.intermediate_dtype()
-        result = torch.empty((output_count, 3, height, width), dtype=output_dtype, device=output_device)
+        result = torch.empty((output_count, images.shape[-1], height, width),
+                             dtype=output_dtype, device=output_device)
 
         for output_index, source_index in exact_frames.items():
             result[output_index] = images[source_index].movedim(-1, 0).to(device=output_device, dtype=output_dtype)
@@ -781,6 +779,8 @@ class TS_Frame_Interpolation(IO.ComfyNode):
                                     next_right_features = None
                                     full_frame_cache = None
 
+                            if interpolated.shape[1] == 4:
+                                interpolated = unpremultiply(interpolated.float(), 1)
                             result_dtype_batch = interpolated.to(dtype=output_dtype)
                             for local_index, (output_index, _fraction) in enumerate(current_requests):
                                 result[output_index] = result_dtype_batch[local_index]

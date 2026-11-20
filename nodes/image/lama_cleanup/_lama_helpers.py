@@ -349,7 +349,7 @@ def _working_file_signature(filepath: str) -> str:
 
 
 def _load_image_tensor(filepath: str) -> torch.Tensor:
-    """Load an image file as a ComfyUI IMAGE tensor [1, H, W, 3] float32 in [0, 1]."""
+    """Load an RGB or RGBA ComfyUI IMAGE tensor in [0, 1]."""
     if Image is None:
         raise RuntimeError("Pillow is required to load images.")
     if not filepath:
@@ -363,7 +363,7 @@ def _load_image_tensor(filepath: str) -> torch.Tensor:
             "may have been deleted — re-open the editor and save again."
         )
     with Image.open(filepath) as handle:
-        image = handle.convert("RGB")
+        image = handle.convert(_working_image_mode(handle))
         array = np.asarray(image, dtype=np.float32) / 255.0
     if array.ndim != 3:
         raise RuntimeError(f"{LOG_PREFIX} Unsupported image data in {filepath}.")
@@ -787,14 +787,18 @@ def _process_inpaint(
     return result
 
 
-def _read_image_rgb(filepath: str) -> np.ndarray:
-    """Load an image file as HxWx3 uint8 RGB array."""
+def _working_image_mode(image: Image.Image) -> str:
+    return "RGBA" if "A" in image.getbands() or "transparency" in image.info else "RGB"
+
+
+def _read_working_image(filepath: str) -> np.ndarray:
+    """Load the working image without discarding file transparency."""
     if Image is None:
         raise RuntimeError("Pillow is required to read images.")
     if not filepath or not os.path.isfile(filepath):
         raise FileNotFoundError(f"Image not found: {filepath}")
     with Image.open(filepath) as handle:
-        return np.asarray(handle.convert("RGB"), dtype=np.uint8)
+        return np.asarray(handle.convert(_working_image_mode(handle)), dtype=np.uint8)
 
 
 # -----------------------------------------------------------------------------
@@ -911,7 +915,8 @@ def _run_inpaint_job(
     mask_padding: int,
     feather: int,
 ) -> dict[str, Any]:
-    image_rgb = _read_image_rgb(current_path)
+    image = _read_working_image(current_path)
+    image_rgb = np.ascontiguousarray(image[..., :3])
     mask = _decode_mask_data_url(mask_data_url)
     if mask.shape[:2] != image_rgb.shape[:2]:
         mask = _resize_with_pil(mask, (image_rgb.shape[1], image_rgb.shape[0]), Image.NEAREST)
@@ -922,7 +927,9 @@ def _run_inpaint_job(
         mask_padding=mask_padding,
         feather=feather,
     )
-    output_image = Image.fromarray(output_array, mode="RGB")
+    output_image = Image.fromarray(output_array)
+    if image.shape[-1] == 4:
+        output_image.putalpha(Image.fromarray(image[..., 3]))
     working_path = _versioned_working_path(session_id, "edit")
     _save_image_atomic(output_image, working_path)
     return {
@@ -1061,5 +1068,4 @@ def _seed_working_copy(source_path: str, working_path: Path) -> None:
         raise RuntimeError("Pillow is required to seed working file.")
     working_path.parent.mkdir(parents=True, exist_ok=True)
     with Image.open(source_path) as handle:
-        rgb = handle.convert("RGB")
-        _save_image_atomic(rgb, working_path)
+        _save_image_atomic(handle.convert(_working_image_mode(handle)), working_path)

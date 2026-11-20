@@ -147,7 +147,8 @@ def restore_video_crop(original, processed, data, blur, device, blur_mask):
     import torch.nn.functional as F
     from comfy.model_management import throw_exception_if_processing_interrupted
 
-    from ...image._inpaint_crop import linear_to_srgb, srgb_to_linear
+    from ...image._alpha import resize_with_alpha, to_channels
+    from ...image._inpaint_crop import blend_pixels
 
     n, h, w, channels = original.shape
     if data.get("version") != 1 or data.get("frame_count") != n or len(data.get("frames", [])) != n:
@@ -159,7 +160,9 @@ def restore_video_crop(original, processed, data, blur, device, blur_mask):
             f"Video crop restore: expected {n} processed frames, got {len(processed)}. "
             "The model must preserve frame count and order."
         )
-    output = _allocate(tuple(original.shape), bool(data.get("allow_disk")),
+    if processed.shape[-1] == 4 and channels in (1, 3):
+        channels = 4
+    output = _allocate((n, h, w, channels), bool(data.get("allow_disk")),
                        original.numel() * original.element_size() + processed.numel() * processed.element_size(),
                        "restore")
     masks = {}
@@ -170,15 +173,18 @@ def restore_video_crop(original, processed, data, blur, device, blur_mask):
         if (min(x, y) < 0 or min(rw, rh, cw, ch) < 1 or x + rw > w or y + rh > h
                 or rw > cw or rh > ch):
             raise ValueError("Video crop restore: invalid crop bounds.")
-        piece = processed[i].to(device)
+        source = to_channels(original[i], channels)
+        base = source[y:y + rh, x:x + rw].to(device)
+        piece = to_channels(processed[i].to(device), 3 if channels == 4 else channels)
         if piece.shape[-1] > channels:
             piece = piece[..., :channels]
-        elif piece.shape[-1] < channels:
+        elif piece.shape[-1] < channels and channels != 4:
             piece = torch.cat((piece, piece.new_ones((*piece.shape[:2], channels - piece.shape[-1]))), -1)
         if tuple(piece.shape[:2]) != (ch, cw):
-            piece = F.interpolate(piece.permute(2, 0, 1)[None], (ch, cw),
-                                  mode="bilinear", align_corners=False)[0].permute(1, 2, 0)
+            piece = resize_with_alpha(piece[None], cw, ch, "bilinear")[0]
         piece = piece[:rh, :rw]
+        if channels == 4 and piece.shape[-1] == 3:
+            piece = torch.cat((piece, base[..., 3:4]), dim=-1)
         # Edge blur stays inside the patch, and does not fade at frame borders.
         feather = min(max(0, int(blur)), max(0, (min(rw, rh) - 1) // 4))
         edges = (x > 0, y > 0, x + rw < w, y + rh < h)
@@ -198,13 +204,9 @@ def restore_video_crop(original, processed, data, blur, device, blur_mask):
                 mask = blur_mask(padded, feather, device)[0, feather:-feather, feather:-feather]
             masks[key] = mask[..., None]
         alpha = masks[key]
-        base = original[i, y:y + rh, x:x + rw].to(device)
-        rgb = linear_to_srgb(srgb_to_linear(piece[..., :3]) * alpha
-                             + srgb_to_linear(base[..., :3]) * (1. - alpha))
-        if channels > 3:
-            rgb = torch.cat((rgb, piece[..., 3:] * alpha + base[..., 3:] * (1. - alpha)), -1)
-        blended = torch.where(alpha >= 1, piece, torch.where(alpha <= 0, base, rgb))
+        mixed = blend_pixels(base, piece, alpha)
+        blended = torch.where(alpha >= 1, piece, torch.where(alpha <= 0, base, mixed))
         blended = torch.where(piece == base, base, blended)
-        output[i].copy_(original[i])
+        output[i].copy_(source)
         output[i, y:y + rh, x:x + rw].copy_(blended.to(device="cpu", dtype=output.dtype))
     return output

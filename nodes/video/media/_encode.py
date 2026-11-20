@@ -540,19 +540,16 @@ def downscale_frames(frames: Iterable, max_width: int = 1280) -> Iterator:
 # `video/media` импортирует из `video/hdr`, обратно никогда.
 
 def _linear_frames(images) -> Iterator:
-    """Тензор ``[B,H,W,C]`` → кадры torch ``[H,W,3]`` float32, без зажима.
+    """Тензор ``[B,H,W,C]`` → кадры torch RGB или RGBA float32, без зажима.
 
     Генератором: ролик 129×1920×1088 в float32 весит 3 ГиБ, и второй его копии
     в памяти быть не должно.
 
-    Запись EXR в паке трёхканальная, поэтому альфа отбрасывается, а серый
-    размножается в RGB — раньше RGBA на этом входе ронял запись на первом же
-    кадре.
+    Серый размножается в RGB, альфа сохраняется отдельно от цвета.
     """
     import numpy as np
     import torch
 
-    warned = False
     for index in range(int(images.shape[0])):
         frame = images[index]
         if hasattr(frame, "detach"):
@@ -562,16 +559,11 @@ def _linear_frames(images) -> Iterator:
         if frame.ndim == 2:
             frame = frame.unsqueeze(-1)
         channels = int(frame.shape[-1]) if frame.ndim == 3 else 0
-        if channels in (2, 4) and not warned:
-            logger.info("%s The EXR sequence is written as RGB; the alpha channel "
-                        "is dropped.", LOG_PREFIX)
-            warned = True
         if channels in (1, 2):
             # repeat — копия одного кадра, а не представление: вход не трогаем.
-            frame = frame[..., :1].repeat(1, 1, 3)
-        elif channels == 4:
-            frame = frame[..., :3]
-        elif channels != 3:
+            gray = frame[..., :1].repeat(1, 1, 3)
+            frame = torch.cat((gray, frame[..., 1:2]), dim=-1) if channels == 2 else gray
+        elif channels not in (3, 4):
             raise RuntimeError(
                 f"{LOG_PREFIX} Unsupported frame shape {tuple(frame.shape)} for EXR: "
                 "expected [H, W, C] with C from 1 to 4.")
@@ -618,6 +610,7 @@ def exr_sequence_pass(
     """
     import numpy as np
 
+    from ...image._alpha import checker_preview
     from ...video.hdr._exr_io import write_exr
     from ...video.hdr._tonemap import make_sdr_preview
 
@@ -636,10 +629,7 @@ def exr_sequence_pass(
     # дописал.
     try:
         for array in frames:
-            # EXR пишется трёхканальным: кадр из файла приводится к RGB (для
-            # обычного RGB это тот же массив, без копии).
-            frame = (_uint8_to_linear(_fit_channels(array, False))
-                     if isinstance(array, np.ndarray) else array)
+            frame = _uint8_to_linear(array) if isinstance(array, np.ndarray) else array
             if height == 0:
                 height, width = int(frame.shape[0]), int(frame.shape[1])
             written += 1
@@ -648,10 +638,13 @@ def exr_sequence_pass(
                 created.append(target)
             total_bytes += write_exr(target, frame, half=half)
 
-            preview = make_sdr_preview(frame.unsqueeze(0), exposure_ev=exposure_ev,
+            preview = make_sdr_preview(frame[..., :3].unsqueeze(0), exposure_ev=exposure_ev,
                                        operator=tonemap, output_dtype=frame.dtype)
-            yield np.ascontiguousarray(
-                (np.clip(preview[0].cpu().numpy(), 0.0, 1.0) * 255.0 + 0.5).astype(np.uint8))
+            rgb = preview[0].cpu().numpy()
+            if frame.shape[-1] == 4:
+                rgb = np.concatenate((rgb, frame[..., 3:4].cpu().numpy()), axis=-1)
+            array = np.ascontiguousarray((np.clip(rgb, 0.0, 1.0) * 255.0 + 0.5).astype(np.uint8))
+            yield checker_preview(array)
 
             if on_frame is not None:
                 on_frame(written)

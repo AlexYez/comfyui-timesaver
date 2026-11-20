@@ -10,6 +10,8 @@ import comfy.utils
 import torch
 from comfy_api.v0_0_2 import IO
 
+from ._alpha import to_channels
+
 logger = logging.getLogger("comfyui_timesaver.ts_image_list_to_batch")
 LOG_PREFIX = "[TS Image List to Image Batch]"
 
@@ -88,12 +90,9 @@ class TS_ImageListToImageBatch(IO.ComfyNode):
             norm = cls._ensure_bhwc(img)
             normalized.append(norm)
 
-        # ⚠️ A gray image in a colour list is widened to RGB, not the other way
-        # round: the old `min` trimmed EVERY image to its red channel and the
-        # whole batch came out silently gray. A 3/4 mix still drops alpha.
-        if max(img.shape[3] for img in normalized) >= 3:
-            normalized = [img.expand(*img.shape[:3], 3) if img.shape[3] == 1 else img
-                          for img in normalized]
+        # RGBA wins over RGB and gray; opaque inputs get alpha=1.
+        widest = max(img.shape[-1] for img in normalized)
+        normalized = [to_channels(img, widest) for img in normalized]
         base = normalized[0]
         target_h, target_w = base.shape[1], base.shape[2]
         target_c = min(img.shape[3] for img in normalized)

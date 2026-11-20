@@ -9,6 +9,8 @@ from typing import Any, Optional
 import torch
 from comfy_api.v0_0_2 import IO
 
+from ._alpha import premultiply, unpremultiply
+
 logger = logging.getLogger("comfyui_timesaver.ts_image_tile_merger")
 LOG_PREFIX = "[TS Image Tile Merger]"
 
@@ -158,6 +160,7 @@ class TS_ImageTileMerger(IO.ComfyNode):
                 continue
 
             tile_h, tile_w, _ = tile.shape
+            tile = premultiply(tile.to(dtype))
 
             if tile_h != tile_height or tile_w != tile_width:
                 tile_bchw = tile.permute(2, 0, 1).unsqueeze(0)
@@ -188,11 +191,11 @@ class TS_ImageTileMerger(IO.ComfyNode):
                 dtype,
             )
 
-            output[b_idx, y : y + tile_h, x : x + tile_w, :] += tile.to(dtype) * weight_mask
+            output[b_idx, y : y + tile_h, x : x + tile_w, :] += tile * weight_mask
             weights[b_idx, y : y + tile_h, x : x + tile_w, :] += weight_mask
 
         weights[weights == 0] = 1.0
-        output = output / weights
+        output = unpremultiply(output / weights)
 
         cls._log_tensor("Output", output)
         return IO.NodeOutput(output)

@@ -1,5 +1,7 @@
 # TS Edit Align
 
+RGBA on the `image` input stays RGBA. Colour and alpha get the same geometric transform, and hidden pixels do not bleed into semi-transparent edges.
+
 Aligns an edited image with its source canvas. Use it for restoration, object removal
 or any edit you want to overlay or compare with a wipe.
 

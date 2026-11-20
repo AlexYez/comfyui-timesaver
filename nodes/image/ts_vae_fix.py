@@ -206,12 +206,14 @@ def remove_grid(
     if not detected and skip_when_clean:
         stats["skipped"] = True
         gray = torch.full_like(image, 0.5)
+        gray[..., color_c:] = image[..., color_c:]
         return image, _frame_preview(gray, preview_view), stats
 
     # Pass 2: apply. The correction is recomputed rather than kept from pass 1,
     # which would hold a full-batch float32 copy for the whole run.
     cleaned = image.clone()
     removed = torch.full_like(image, 0.5)
+    removed[..., color_c:] = image[..., color_c:]
     clipped_total = 0.0
     for i in range(batch):
         frame = _frame_chw(image, i, color_c)

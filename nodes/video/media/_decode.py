@@ -80,6 +80,7 @@ class DecodeRequest:
     want_audio: bool = True
     want_alpha: bool = False
     allow_disk: bool = False                # кадры не влезли в ОЗУ — держать на диске
+    alpha_in_images: bool = False          # вернуть RGBA без отдельного буфера альфы
 
 
 @dataclass
@@ -458,7 +459,8 @@ def decode(req: DecodeRequest, *, progress: bool = True) -> DecodeResult:
     media = probe_cached(req.path, want_peaks=False)
     start, end = _window(media, req)
     size = target_size(media, req.longer_side, req.shorter_side, req.divisible_by)
-    plan_fmt, channels = _pixel_plan(media, req.want_alpha)
+    plan_fmt, channels = _pixel_plan(media, req.want_alpha or req.alpha_in_images)
+    image_channels = channels if req.alpha_in_images else 3
     estimated = _estimate_frames(media, req, start, end)
 
     needed = estimate_bytes(estimated, size[0], size[1], channels)
@@ -492,9 +494,9 @@ def decode(req: DecodeRequest, *, progress: bool = True) -> DecodeResult:
         )
 
     try:
-        images = _allocate_frames((estimated, size[1], size[0], 3), on_disk, "rgb")
+        images = _allocate_frames((estimated, size[1], size[0], image_channels), on_disk, "rgb")
         alpha = (_allocate_frames((estimated, size[1], size[0]), on_disk, "alpha")
-                 if channels == 4 else None)
+                 if channels == 4 and image_channels == 3 else None)
     except (MemoryError, RuntimeError, OSError) as exc:
         # ⚠️ Настоящий отказ выделения обязан читаться так же, как и наш
         # предварительный: иначе пользователь получает голое MemoryError без
@@ -647,7 +649,7 @@ def decode(req: DecodeRequest, *, progress: bool = True) -> DecodeResult:
                             estimated = images.shape[0]
 
                         images[written].copy_(torch.from_numpy(
-                            np.ascontiguousarray(array[:, :, :3])))
+                            np.ascontiguousarray(array[:, :, :image_channels])))
                         if alpha is not None and array.shape[2] == 4:
                             alpha[written].copy_(torch.from_numpy(
                                 np.ascontiguousarray(array[:, :, 3])))
@@ -874,6 +876,7 @@ def iter_frames(
     size: tuple[int, int] | None = None,
     resize_filter: str = "bicubic",
     limit: int = 0,
+    want_alpha: bool = False,
 ) -> Iterator[object]:
     """Кадры по одному, без накопления тензора.
 
@@ -881,12 +884,13 @@ def iter_frames(
     в сейвере, спрайты миниатюр и прокси для плеера.
 
     Yields:
-        ``numpy.ndarray`` формы ``[H,W,3]``, uint8.
+        ``numpy.ndarray`` RGB или RGBA, uint8.
     """
     import numpy as np
 
     av = _av()
     media = probe_cached(path, want_peaks=False)
+    pixel_format = "rgba" if want_alpha and media.has_alpha else "rgb24"
     request = DecodeRequest(path=path, start_time=start, end_time=end, frame_rate=fps)
     window_start, window_end = _window(media, request)
     out_size = size or (media.display_width or media.width, media.display_height or media.height)
@@ -923,7 +927,7 @@ def iter_frames(
 
                 if graph is None:
                     graph, source, sink = _build_graph(
-                        stream, "rgb24", out_size, media.rotation,
+                        stream, pixel_format, out_size, media.rotation,
                         _RESIZE_FLAGS.get(resize_filter, "bicubic"))
                 source.push(frame)
                 while True:
@@ -931,7 +935,7 @@ def iter_frames(
                         out_frame = sink.pull()
                     except (av.error.BlockingIOError, av.error.EOFError):
                         break
-                    array = np.ascontiguousarray(out_frame.to_ndarray(format="rgb24"))
+                    array = np.ascontiguousarray(out_frame.to_ndarray(format=pixel_format))
                     for _ in range(repeats):
                         yield array
                         produced += 1

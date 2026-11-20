@@ -36,6 +36,8 @@ import torch
 import torch.nn.functional as F
 from comfy_api.v0_0_2 import IO, UI
 
+from ._alpha import premultiply, unpremultiply
+
 logger = logging.getLogger("comfyui_timesaver.ts_model_resize")
 LOG_PREFIX = "[TS Model Resize]"
 
@@ -113,7 +115,9 @@ def _resize(frame: torch.Tensor, size: tuple[int, int]) -> torch.Tensor:
     w, h = size
     if frame.shape[-2:] == (h, w):
         return frame
-    out = F.interpolate(frame, size=(h, w), mode="bicubic", align_corners=False, antialias=True)
+    out = F.interpolate(premultiply(frame, 1), size=(h, w), mode="bicubic",
+                        align_corners=False, antialias=True)
+    out = unpremultiply(out, 1)
     return out.clamp(0.0, 1.0)
 
 

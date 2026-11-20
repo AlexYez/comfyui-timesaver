@@ -86,8 +86,8 @@ class TS_BatchLoadImage(IO.ComfyNode):
             # EXIF orientation first: a phone photo is stored sideways, and a
             # caption written from the sideways version describes the wrong thing.
             image = ImageOps.exif_transpose(opened)
-            has_alpha = "A" in image.getbands()
-            alpha = np.array(image.getchannel("A")).astype(np.float32) / 255.0 if has_alpha else None
+            has_alpha = "A" in image.getbands() or "transparency" in image.info
+            alpha = np.array(image.convert("RGBA").getchannel("A"), dtype=np.float32) / 255.0 if has_alpha else None
             rgb = image.convert("RGB")
             tensor = pil2tensor(rgb)
 

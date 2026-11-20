@@ -456,7 +456,7 @@ class TS_VideoSaver(IO.ComfyNode):
                             source_fps = 0.0
                         if source_fps > 0:
                             count = int(round(count * fps / source_fps))
-                return iter_frames(source, start=start, end=end, fps=fps), count
+                return iter_frames(source, start=start, end=end, fps=fps, want_alpha=True), count
 
             # ⚠️ VIDEO бывает НЕ файловым, и это не редкость: ядровая
             # `VideoFromComponents` (её отдаёт, например, Create Video) держит
@@ -607,6 +607,7 @@ class TS_VideoSaver(IO.ComfyNode):
         """
         from ._decode import iter_frames
         from ._encode import downscale_frames, write_proxy
+        from ...image._alpha import checker_preview
 
         try:
             import folder_paths
@@ -615,7 +616,8 @@ class TS_VideoSaver(IO.ComfyNode):
             temp.mkdir(parents=True, exist_ok=True)
             name = f"ts_video_preview_{os.getpid()}_{target.stem}.mp4"
             proxy_path = temp / name
-            frames = downscale_frames(iter_frames(str(target)), _PROXY_MAX_WIDTH)
+            frames = downscale_frames(iter_frames(str(target), want_alpha=True), _PROXY_MAX_WIDTH)
+            frames = (checker_preview(frame) for frame in frames)
             info = write_proxy(frames, path=proxy_path, fps=fps, audio=audio,
                                frame_count=frame_count, on_frame=progress)
             return {

@@ -34,7 +34,8 @@ export function ensureCompareStyles() {
    оказывался сплющенным. Проценты от высоты, которая сама зависит от
    содержимого, браузеру решать нечем — отсюда и вся история. */
 .ts-cmp__box{position:relative;line-height:0}
-.ts-cmp__media,.ts-cmp__after-layer{position:absolute;inset:0;overflow:hidden}
+.ts-cmp__media,.ts-cmp__image-layer{position:absolute;inset:0;overflow:hidden}
+.ts-cmp__media{background:var(--ts-checker)}
 /* A saved payload can outlive its temporary files. No controls over an empty box. */
 .ts-cmp:not(.is-ready) .ts-cmp__box{visibility:hidden}
 /* Обе стороны лежат в одной коробке и вписываются в неё: пропорция у коробки
@@ -130,10 +131,13 @@ export function createCompare(strings = {}) {
     const after = document.createElement("img");
     after.className = "ts-cmp__img ts-cmp__img--after";
     after.alt = "";
+    const beforeLayer = document.createElement("div");
+    beforeLayer.className = "ts-cmp__image-layer";
+    beforeLayer.appendChild(before);
     const afterLayer = document.createElement("div");
-    afterLayer.className = "ts-cmp__after-layer";
+    afterLayer.className = "ts-cmp__image-layer";
     afterLayer.appendChild(after);
-    media.append(before, afterLayer);
+    media.append(beforeLayer, afterLayer);
     const handle = createCompareHandle();
     const tagBefore = document.createElement("div");
     tagBefore.className = "ts-cmp__tag ts-cmp__tag--before";
@@ -206,13 +210,15 @@ export function createCompare(strings = {}) {
 
     function paint() {
         const pct = (split * 100).toFixed(2);
-        // Правая часть — результат: обрезаем его слева по шторке.
+        const rest = (100 - split * 100).toFixed(2);
+        // Clip both sides, so transparent B cannot reveal image A underneath.
+        beforeLayer.style.clipPath = `inset(0 ${rest}% 0 0)`;
         afterLayer.style.clipPath = `inset(0 0 0 ${pct}%)`;
         handle.style.left = `${pct}%`;
         // Подписи живут в своих половинах и режутся той же линией. Утащил
         // шторку до упора влево — «до» исчезло вместе со своей половиной, и
         // сразу видно, что на экране только результат.
-        tagLayerBefore.style.clipPath = `inset(0 ${(100 - split * 100).toFixed(2)}% 0 0)`;
+        tagLayerBefore.style.clipPath = `inset(0 ${rest}% 0 0)`;
         tagLayerAfter.style.clipPath = `inset(0 0 0 ${pct}%)`;
     }
 

@@ -181,10 +181,12 @@ class TS_Animation_Preview(IO.ComfyNode):
         elif channels < 3:
             raise ValueError("Frame must have at least 3 channels.")
 
-        frame = frame[..., :3]
+        from ..image._alpha import checker_preview
+
+        frame = frame[..., :4]
         frame = torch.clamp(frame, 0.0, 1.0)
         frame = (frame * 255.0).to(torch.uint8).cpu().numpy()
-        return frame
+        return checker_preview(frame)
 
     @classmethod
     def _normalize_audio_input(cls, audio):

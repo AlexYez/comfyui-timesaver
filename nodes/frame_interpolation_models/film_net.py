@@ -340,7 +340,7 @@ class FILMNet(nn.Module):
         return _warp_core(image, flow, grid_x, grid_y)
 
     def extract_features(self, img: torch.Tensor) -> tuple[list[torch.Tensor], list[torch.Tensor]]:
-        image_pyramid = build_image_pyramid(img, self.pyramid_levels)
+        image_pyramid = build_image_pyramid(img[:, :3], self.pyramid_levels)
         feature_pyramid = self.extract(image_pyramid)
         return image_pyramid, feature_pyramid
 
@@ -388,7 +388,13 @@ class FILMNet(nn.Module):
                 torch.cat([fw, bw, bf, ff], dim=1)
                 for fw, bw, bf, ff in zip(fwd_warped, bwd_warped, bwd_scaled, fwd_scaled)
             ]
-            del fwd_warped, bwd_warped, bwd_scaled, fwd_scaled
-            results.append(self.fuse(aligned))
+            del fwd_warped, bwd_warped
+            rgb = self.fuse(aligned)
+            if img0.shape[1] == 4:
+                alpha0 = self.warp(img0[:, 3:4], bwd_scaled[0])
+                alpha1 = self.warp(img1[:, 3:4], fwd_scaled[0])
+                rgb = torch.cat((rgb, torch.lerp(alpha0, alpha1, batch_dt)), dim=1)
+            results.append(rgb)
+            del bwd_scaled, fwd_scaled
             del aligned
         return torch.cat(results, dim=0)

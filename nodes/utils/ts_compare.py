@@ -33,6 +33,7 @@ import time
 from comfy_api.v0_0_2 import IO
 
 from .._shared import raise_if_interrupted
+from ..image._alpha import checker_preview
 # ⚠️ Зависимость от media НАМЕРЕННАЯ и односторонняя: сборка кадров в файл живёт
 # там, второй копии кодировщика в паке быть не должно. Обратной зависимости
 # (media -> utils) нет и заводить её нельзя.
@@ -95,7 +96,7 @@ class TS_Compare(IO.ComfyNode):
     # ------------------------------------------------------------------ кадры
     @classmethod
     def _frame_uint8(cls, images, index: int):
-        """Один кадр IMAGE -> ``[H,W,3]`` uint8, не трогая вход.
+        """Один кадр IMAGE -> RGB/RGBA uint8, не трогая вход.
 
         ⚠️ Строго ПО КАДРУ, не всей пачкой. Раньше зажим, умножение и
         округление шли по всему тензору в полном разрешении — три копии
@@ -111,7 +112,7 @@ class TS_Compare(IO.ComfyNode):
 
         # ⚠️ .float(): кадр bfloat16 numpy не понимает вовсе, а float16 считал
         # бы округление в половинной точности. У float32 это та же память.
-        frame = images[index].detach().to("cpu").float().numpy()[..., :3]
+        frame = images[index].detach().to("cpu").float().numpy()[..., :4]
         if frame.shape[-1] == 1:
             frame = np.repeat(frame, 3, axis=-1)  # gray: PIL has no H×W×1 mode
         # Первая операция создаёт новый массив, дальше — на месте: вход
@@ -275,7 +276,7 @@ class TS_Compare(IO.ComfyNode):
                     wanted = cls._held_index(index, length)
                     if held[0] != wanted:
                         held[0] = wanted
-                        held[1] = cls._side_frame(images, wanted, view_w, view_h)
+                        held[1] = checker_preview(cls._side_frame(images, wanted, view_w, view_h))
                     return held[1]
                 return frame_at
 

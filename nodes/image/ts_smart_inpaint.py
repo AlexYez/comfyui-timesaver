@@ -91,6 +91,8 @@ import node_helpers
 import torch
 from comfy_api.v0_0_2 import IO
 
+from ._alpha import resize_with_alpha
+
 # The geometry of this node — crop by mask, normalise to a megapixel budget,
 # feather back in linear light — is not specific to the sampler below it, so it
 # lives in _inpaint_crop.py and is shared with the studio's LanPaint backends.
@@ -103,15 +105,14 @@ from ._inpaint_crop import (  # noqa: E402  (kept next to the constants it repla
     FEATHER_FLOOR_PX as _FEATHER_FLOOR_PX,
     MAX_LINEAR as _MAX_LINEAR,
     RESIZE_METHODS as _FINE_UPSCALE_RESIZE_METHODS,
+    blend_pixels,
     color_correct_patch as _color_correct_patch,
     downscale_to_megapixels as _downscale_pixels_to_megapixels,
     fine_upscale_factor as _fine_upscale_factor_px,
     gaussian_blur_2d as _gaussian_blur_2d,
-    linear_to_srgb as _linear_to_srgb,
     mask_bbox as _mask_bbox_latent,
     pct_to_px as _pct_to_px,
     resize_spatial as _resize_latent,
-    srgb_to_linear as _srgb_to_linear,
 )
 
 _COLOR_CORRECT = True   # always neutralise Flux's colour shift (see color_correct_patch)
@@ -429,15 +430,7 @@ def _refine_with_fine_upscaling(
     refined_pixel_up = _vae_decode(vae, refined_latent_up)  # (B, target_h_p, target_w_p, C)
 
     # ----- Downscale refined patch back to original bbox pixel size -----
-    refined_pixel_up_chw = refined_pixel_up.movedim(-1, 1)
-    refined_pixel_chw = comfy.utils.common_upscale(
-        refined_pixel_up_chw, bbox_w_p, bbox_h_p, resize_method, "disabled",
-    )
-    refined_pixel = refined_pixel_chw.movedim(1, -1)  # (B, bbox_h_p, bbox_w_p, C)
-    # ⚠️ The VAE decides the channel count, not the canvas: the Qwen Image 2.1
-    # VAE decodes RGBA, Flux / Wan decode RGB. An RGBA canvas refined with an
-    # RGB VAE (or the reverse) failed to broadcast in the composite below.
-    refined_pixel = _match_channels(refined_pixel, int(cached_pixels.shape[-1]))
+    refined_pixel = resize_with_alpha(refined_pixel_up, bbox_w_p, bbox_h_p, resize_method)
 
     # ----- Composite refined patch into the cached pixel image -----
     # Build a pixel-space alpha by resizing the latent feathered mask to
@@ -453,21 +446,23 @@ def _refine_with_fine_upscaling(
 
     new_pixels = cached_pixels.clone()
     pixel_orig_crop = cached_pixels[:, y0_p:y1_p, x0_p:x1_p, :]
+    if pixel_orig_crop.shape[-1] == 4 and refined_pixel.shape[-1] == 3:
+        # An RGB VAE can replace colour, but cannot predict opacity.
+        refined_pixel = torch.cat((refined_pixel, pixel_orig_crop[..., 3:4]), dim=-1)
+    else:
+        refined_pixel = _match_channels(refined_pixel, int(pixel_orig_crop.shape[-1]))
     # Neutralise Flux's per-channel colour shift (the mild reddening) on the
     # decoded patch BEFORE compositing. The estimate comes from the preserved
     # ring (alpha≈0), where refined and original are the SAME content — so it
     # measures only Flux's shift and never drifts with the generated content's
     # colours. No-op when color_correct is off or the ring is too small.
     if color_correct:
-        refined_pixel = _color_correct_patch(refined_pixel, pixel_orig_crop, pixel_alpha_crop)
-    # Composite in LINEAR light: alpha-blending in gamma (sRGB) space darkens the
-    # cross-fade and leaves a dark line along the feather. Linearise both sides,
-    # blend, re-encode. At alpha 0/1 this round-trips to the input, so only the
-    # soft feather band is affected.
-    composited = _linear_to_srgb(
-        _srgb_to_linear(refined_pixel) * pixel_alpha_crop
-        + _srgb_to_linear(pixel_orig_crop) * (1.0 - pixel_alpha_crop)
-    )
+        if refined_pixel.shape[-1] == 4:
+            rgb = _color_correct_patch(refined_pixel[..., :3], pixel_orig_crop[..., :3], pixel_alpha_crop)
+            refined_pixel = torch.cat((rgb, refined_pixel[..., 3:4]), dim=-1)
+        else:
+            refined_pixel = _color_correct_patch(refined_pixel, pixel_orig_crop, pixel_alpha_crop)
+    composited = blend_pixels(pixel_orig_crop, refined_pixel, pixel_alpha_crop)
     new_pixels[:, y0_p:y1_p, x0_p:x1_p, :] = composited
 
     # The feathered pixel composite above IS this node's output. Upstream Angelo

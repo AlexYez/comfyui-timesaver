@@ -1,5 +1,7 @@
 # TS VAE Fix
 
+RGBA frames keep their alpha values exactly. Grid removal acts on RGB. The `removed_grid` diagnostic uses the same alpha with the framing selected in `preview_view`.
+
 Removes the faint **2-pixel grid** — a checkerboard and fine stripes at 1–5/255 — that some VAEs leave on every decoded image. It is easy to miss at 100% zoom and shows worst in flat, dark areas, but any sharpening or upscaling afterwards amplifies it, and a restorer such as SeedVR2 takes it for detail worth rebuilding.
 
 **Put it right after `VAE Decode`**, before any resize, sharpening or upscaler. After a resize the grid is already scrambled and there is nothing left to remove.

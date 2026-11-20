@@ -1,5 +1,7 @@
 # TS Frame Interpolation
 
+For RGBA, RIFE and FILM carry alpha with the motion fields used to interpolate colour. The output keeps all four channels.
+
 Smooth frame interpolation using RIFE / FILM models. Boost a 12 fps animation to 24/48/60 fps, or smooth jittery video.
 
 **Use when:** the model output is choppy and you want cinema-smooth motion.

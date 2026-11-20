@@ -346,6 +346,7 @@ class TS_VideoLoader(IO.ComfyNode):
             divisible_by=int(divisible_by),
             frame_step=int(frame_step),
             resize_filter=str(resize_filter),
+            alpha_in_images=True,
             # Необязательный вход из старого графа приходит None, а не пропуском.
             allow_disk=(when_too_large or "stop") == "use disk",
         ))

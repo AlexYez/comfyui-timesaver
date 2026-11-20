@@ -1,5 +1,7 @@
 # TS Video Loader
 
+Files with decoded alpha, such as ProRes 4444, output RGBA through `images` and `full_images`. Spatial crops keep alpha.
+
 Reads a video into frames, audio and a compact `video_info` bundle — and lets you pick the piece **visually**. Drag the timeline handles to set the start and end, zoom in for finer control (Ctrl/Cmd + wheel), and play the selection on a loop.
 
 Resizing, rotation and color conversion run in the decoder's filter graph. For a trim, decoding seeks to the selected region and stops at its end. In a benchmark recorded on 2026-08-11, a selected 4K segment took 0.43 s. Full-resolution decoding followed by resizing took 5.9 s and 6.4 GB of memory.

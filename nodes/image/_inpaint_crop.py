@@ -36,6 +36,8 @@ from dataclasses import dataclass
 import comfy.utils
 import torch
 
+from ._alpha import mix_rgba
+
 RESIZE_METHODS = ["nearest-exact", "bilinear", "area", "bicubic", "bislerp", "lanczos"]
 
 # Цветокоррекция снимает сдвиг с СОХРАНЁННОГО кольца вокруг маски. Чтобы кольцо
@@ -340,6 +342,17 @@ def linear_to_srgb(c: torch.Tensor) -> torch.Tensor:
     возвращает вход без изменений, поэтому меняется только мягкая полоса."""
     c = c.float().clamp(0.0, 1.0)
     return torch.where(c <= 0.0031308, c * 12.92, 1.055 * c ** (1.0 / 2.4) - 0.055)
+
+
+def blend_pixels(base: torch.Tensor, patch: torch.Tensor, weight: torch.Tensor) -> torch.Tensor:
+    """Feather in linear light with alpha interpreted as coverage, not colour."""
+    if base.shape[-1] != 4:
+        return linear_to_srgb(srgb_to_linear(patch) * weight + srgb_to_linear(base) * (1.0 - weight))
+    base_linear = torch.cat((srgb_to_linear(base[..., :3]), base[..., 3:4]), dim=-1)
+    patch_linear = torch.cat((srgb_to_linear(patch[..., :3]), patch[..., 3:4]), dim=-1)
+    mixed = mix_rgba(base_linear, patch_linear, weight)
+    out = torch.cat((linear_to_srgb(mixed[..., :3]), mixed[..., 3:4]), dim=-1)
+    return torch.where(weight >= 1, patch, torch.where(weight <= 0, base, out))
 
 
 def color_correct_patch(

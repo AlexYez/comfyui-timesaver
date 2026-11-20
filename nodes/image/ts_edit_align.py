@@ -41,6 +41,8 @@ import torch
 import torch.nn.functional as F
 from comfy_api.v0_0_2 import IO, UI
 
+from ._alpha import premultiply, unpremultiply
+
 logger = logging.getLogger("comfyui_timesaver.ts_edit_align")
 LOG_PREFIX = "[TS Edit Align]"
 
@@ -54,12 +56,15 @@ _PASSES = 2
 
 
 def _luma(image: torch.Tensor) -> torch.Tensor:
-    """[1, H, W, C] -> [1, 1, H, W] luma (Rec.709 on the first three channels)."""
+    """Luma of visible content; hidden RGB cannot drive registration."""
     rgb = image[..., :3]
     weights = torch.tensor([0.2126, 0.7152, 0.0722], dtype=rgb.dtype, device=rgb.device)
     if rgb.shape[-1] < 3:
         return rgb.mean(-1)[:, None]
-    return (rgb * weights).sum(-1)[:, None]
+    luma = (rgb * weights).sum(-1)
+    if image.shape[-1] == 4:
+        luma = luma * image[..., 3]
+    return luma[:, None]
 
 
 def _resize(x: torch.Tensor, h: int, w: int) -> torch.Tensor:
@@ -149,7 +154,9 @@ def _warp(image: torch.Tensor, sx: float, tx: float, sy: float, ty: float) -> to
     src_x = gx + sx * (gx - w / 2) + tx
     src_y = gy + sy * (gy - h / 2) + ty
     grid = torch.stack([src_x / w * 2 - 1, src_y / h * 2 - 1], dim=-1)[None]
-    out = F.grid_sample(image.float(), grid, mode="bicubic", padding_mode="border", align_corners=False)
+    out = F.grid_sample(premultiply(image.float(), 1), grid, mode="bicubic",
+                        padding_mode="border", align_corners=False)
+    out = unpremultiply(out, 1)
     return out.clamp(0.0, 1.0).to(image.dtype)
 
 
@@ -165,7 +172,10 @@ def align_frame(edit: torch.Tensor, source: torch.Tensor, max_shift: float, outp
         h, w = int(edit.shape[1]), int(edit.shape[2])
     else:
         h, w = int(source.shape[1]), int(source.shape[2])
-    pic = _resize(edit.permute(0, 3, 1, 2).float(), h, w).clamp(0.0, 1.0)
+    pic = edit.permute(0, 3, 1, 2).float()
+    if pic.shape[-2:] != (h, w):
+        pic = unpremultiply(_resize(premultiply(pic, 1), h, w), 1)
+    pic = pic.clamp(0.0, 1.0)
 
     scale = min(1.0, _WORK_SIDE / max(h, w))
     wh, ww = max(1, round(h * scale)), max(1, round(w * scale))
