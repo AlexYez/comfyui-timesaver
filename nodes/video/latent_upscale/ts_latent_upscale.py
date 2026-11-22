@@ -18,8 +18,8 @@ What the node does, per chunk of the clip:
 2. upscale that chunk's video latent with the H3 3D upscaler (audio untouched);
 3. re-anchor the conditioning in time and pin frame 0 to the previous chunk's
    re-sampled frame, so the seam does not drift;
-4. sample the chunk;
-5. stitch it back with a cross-fade over the overlap.
+4. preserve the early overlap from the previous result as context and sample the rest;
+5. stitch it back with a smooth fade over the part of the overlap that was redrawn.
 
 Peak VRAM is therefore one chunk, not one clip — and the diffusion model is
 offloaded while the upscaler works, since the two are never needed at once.
@@ -35,6 +35,7 @@ import math
 from comfy_api.v0_0_2 import IO
 
 from . import _h3_core as core
+from ._regenerate import encode_keyframe
 
 logger = logging.getLogger("comfyui_timesaver.ts_latent_upscale")
 LOG_PREFIX = "[TS Latent Upscale]"
@@ -188,6 +189,12 @@ class TS_LatentUpscale(IO.ComfyNode):
                     tooltip=("Redraw strength: multiplies the connected sigma schedule, keeping its step count. "
                              "1 preserves the schedule; 0 only upscales, with no diffusion sampling."),
                 ),
+                IO.Image.Input("first_frame", optional=True,
+                               tooltip="Optional start image. Use the source prepared at final output size before draft downscaling."),
+                IO.Image.Input("last_frame", optional=True,
+                               tooltip="Optional end image. Encoded at final output size and sent to the last chunk."),
+                IO.Vae.Input("video_vae", optional=True,
+                             tooltip="H3 video VAE with an encoder, needed for connected first/last frames when denoise is above zero."),
             ],
             outputs=[
                 IO.Latent.Output("latent", tooltip="Upscaled, re-sampled and stitched H3 audio+video latent."),
@@ -221,7 +228,8 @@ class TS_LatentUpscale(IO.ComfyNode):
                 upscale_model="", width=1280, height=704,
                 chunk_length=136, temporal_overlap=17, anchor_strength=0.999,
                 precision="fp16", device="cuda",
-                negative=None, cfg=1.0, denoise=1.0) -> IO.NodeOutput:
+                negative=None, cfg=1.0, denoise=1.0,
+                first_frame=None, last_frame=None, video_vae=None) -> IO.NodeOutput:
         import comfy.model_management
         import comfy.nested_tensor
         import torch
@@ -257,9 +265,27 @@ class TS_LatentUpscale(IO.ComfyNode):
 
         total_tokens = video.shape[2]
         audio_tokens = audio.shape[-1]
-        bounds, _frame_count = core.compute_segments(
+        bounds, frame_count = core.compute_segments(
             total_tokens, int(chunk_length), int(temporal_overlap),
         )
+        if denoise > 0 and temporal_overlap > 0:
+            bounds = core.balance_short_tail(bounds, int(chunk_length), int(temporal_overlap))
+
+        first_reference = last_reference = None
+        if denoise > 0 and (first_frame is not None or last_frame is not None):
+            if video_vae is None:
+                raise ValueError("Connect an H3 video VAE with an encoder to use first_frame or last_frame.")
+            try:
+                width, height = upscale_param["width"], upscale_param["height"]
+                if first_frame is not None:
+                    first_reference = encode_keyframe(first_frame, video_vae, width, height)
+                if last_frame is not None:
+                    last_reference = encode_keyframe(last_frame, video_vae, width, height, last=True)
+            finally:
+                if getattr(video_vae, "patcher", None) is not None:
+                    comfy.model_management.unload_model_and_clones(video_vae.patcher, unload_additional_models=False)
+                comfy.model_management.soft_empty_cache()
+        use_references = first_reference is not None or last_reference is not None
 
         # Цена нарезки, посчитанная заранее: за перекрытие платят лишним счётом,
         # и человеку полезно видеть, сколько именно он платит. У автора это
@@ -270,7 +296,8 @@ class TS_LatentUpscale(IO.ComfyNode):
             LOG_PREFIX, len(bounds), int(chunk_length), int(temporal_overlap), redundancy,
         )
 
-        acc_v = acc_a = None
+        acc_v = None
+        written = 0
         segments = []
         # ⚠️ Шум берётся ОДИН на весь клип и нарезается теми же окнами, что и
         # латент. Иначе каждый кусок получает шум, отсчитанный от СВОЕГО начала,
@@ -305,37 +332,63 @@ class TS_LatentUpscale(IO.ComfyNode):
                 # Пока считает апскейлер, диффузионная модель не нужна — убираем
                 # её с карты, чтобы они не лежали там вдвоём. Следующий семпл
                 # вернёт её сам.
-                if device == "cuda" and hasattr(model, "clone_base_uuid"):
+                if device == "cuda" and "model_name" in upscale_param and hasattr(model, "clone_base_uuid"):
                     comfy.model_management.unload_model_and_clones(
                         model, unload_additional_models=False,
                     )
                     comfy.model_management.soft_empty_cache()
-                for offset in range(index, min(index + group, len(bounds))):
-                    b0, _bf0, b1, _bf1 = bounds[offset]
-                    part = video[:, :, b0:b1].contiguous()
-                    upscaled_cache[offset], _, _ = core.upscale_latent(part, upscale_param)
-                # ⚠️ Keyframes get the same upscaler as the video, once, while the
-                # diffusion model is off the card. Stretched bilinearly (as
-                # reanchor_conditioning did), these frozen rows decoded into
-                # 16-px tiles on the first frames of every upscale.
-                if index == 0:
-                    conditioning = core.upscale_keyframes(conditioning, upscale_param)
+                with core.upscale_group(upscale_param) as group_param:
+                    for offset in range(index, min(index + group, len(bounds))):
+                        b0, _bf0, b1, _bf1 = bounds[offset]
+                        part = video[:, :, b0:b1].contiguous()
+                        upscaled_cache[offset], _, _ = core.upscale_latent(part, group_param)
+                    # Draft keyframes use the same upscaler to avoid visible
+                    # tiles. Explicit guides are already at the final size.
+                    if index == 0:
+                        conditioning = core.upscale_keyframes(conditioning, group_param)
+                        if use_references and negative is not None:
+                            negative = core.upscale_keyframes(core.normalize_minimax_refs(negative), group_param)
 
             chunk_v = upscaled_cache.pop(index)
 
             cond_i = core.reanchor_conditioning(
                 conditioning, f0, f1, (chunk_v.shape[3], chunk_v.shape[4]),
             )
-            if index > 0 and acc_v is not None and denoise > 0 and int(temporal_overlap) > 0:
-                cond_i = core.anchor_conditioning(cond_i, acc_v, f0, float(anchor_strength))
+            video_mask = torch.ones_like(chunk_v)
+            locked = None
+            overlap = min(written - k0, chunk_v.shape[2])
+            if denoise > 0 and overlap > 1:
+                previous = acc_v[:, :, :written]
+                cond_i = core.anchor_conditioning(cond_i, previous, f0, float(anchor_strength))
+                # A clean prefix gives the diffusion model real temporal
+                # context from the preceding result instead of redrawing both
+                # sides of the seam. A soft blend handles the remaining overlap.
+                locked = overlap // 2
+                chunk_v = chunk_v.clone()
+                chunk_v[:, :, :locked].copy_(acc_v[:, :, k0:k0 + locked])
+                video_mask[:, :, :locked] = 0
+
+            negative_i = negative
+            if use_references:
+                guides = {}
+                if first_reference is not None:
+                    guides[-f0] = first_reference
+                if last_reference is not None and f1 == frame_count:
+                    guides[f1 - f0 - 1] = last_reference
+                cond_i = core.merge_frame_guides(cond_i, guides)
+                if negative is not None:
+                    negative_i = core.reanchor_conditioning(negative, f0, f1, chunk_v.shape[-2:])
+                    if locked is not None:
+                        negative_i = core.anchor_conditioning(negative_i, previous, f0, float(anchor_strength))
+                    negative_i = core.merge_frame_guides(negative_i, guides)
 
             # ⚠️ Аудио на пересэмплинге ЗАКРЕПЛЯЕТСЯ (маска: видео 1, аудио 0).
             #
             # Иначе модель денойзит и звук тоже, то есть на каждом шаге видит его
             # зашумлённым — и видео нечему следовать. Для обычного ролика это
             # просто лишняя работа: результат по звуку всё равно выбрасывается
-            # (ниже берётся только `out.tensors[0]`, а в `acc_a` копится исходный
-            # `chunk_a`). А для липсинка это прямая потеря синхронизации: губы
+            # (ниже берётся только `out.tensors[0]`, исходное аудио возвращается
+            # напрямую). А для липсинка это прямая потеря синхронизации: губы
             # уезжают от дорожки ровно на апскейле.
             #
             # Тот же приём, что в ноде TS H3 Audio Inject; удержание делает
@@ -343,7 +396,7 @@ class TS_LatentUpscale(IO.ComfyNode):
             piece = {
                 "samples": comfy.nested_tensor.NestedTensor((chunk_v, chunk_a)),
                 "noise_mask": comfy.nested_tensor.NestedTensor((
-                    torch.ones_like(chunk_v),
+                    video_mask,
                     torch.zeros_like(chunk_a),
                 )),
             }
@@ -352,7 +405,7 @@ class TS_LatentUpscale(IO.ComfyNode):
                     noise, chunk_v, chunk_a, total_tokens, audio_tokens,
                 )
             out = core.sample_piece(
-                piece, cond_i, model, noise, sampler, sigmas, negative, cfg,
+                piece, cond_i, model, noise, sampler, sigmas, negative_i, cfg,
                 noise_tensor=core.slice_noise(
                     clip_noise, k0, k0 + chunk_v.shape[2],
                     a0, a0 + chunk_a.shape[-1],
@@ -360,9 +413,13 @@ class TS_LatentUpscale(IO.ComfyNode):
             ) if denoise > 0 else piece["samples"]
             chunk_out_v = out.tensors[0]
 
-            acc_v, acc_a = core.temporal_append(
-                acc_v, acc_a, chunk_out_v, chunk_a, index, k0, f0,
-            )
+            if len(bounds) == 1:
+                acc_v = chunk_out_v
+            else:
+                if acc_v is None:
+                    b, c, _, h, w = chunk_out_v.shape
+                    acc_v = chunk_out_v.new_empty((b, c, total_tokens, h, w))
+                written = core.write_video_chunk(acc_v, written, chunk_out_v, k0, locked_prefix=locked)
 
             segments.append({
                 "chunk": index,
@@ -389,7 +446,7 @@ class TS_LatentUpscale(IO.ComfyNode):
             comfy.model_management.unload_model_and_clones(model, unload_additional_models=False)
             comfy.model_management.soft_empty_cache()
 
-        result = {"samples": comfy.nested_tensor.NestedTensor((acc_v, acc_a))}
+        result = {"samples": comfy.nested_tensor.NestedTensor((acc_v, audio))}
         return IO.NodeOutput(result, segments)
 
 

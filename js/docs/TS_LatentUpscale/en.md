@@ -1,5 +1,9 @@
 # TS Latent Upscale
 
+When resampling with `temporal_overlap`, the next chunk reuses the early part of the overlap as clean context. The rest blends into the new prediction smoothly to reduce brightness flicker and detail changes at the seam. A tail with fewer than 17 new frames is redistributed when the chunk length and overlap allow it, preserving the clip duration.
+
+**Optional reference frames.** Connect `first_frame`, `last_frame`, or both, plus an H3 `video_vae` with an encoder. Prepare each reference directly from the source at output resolution. Each reference is encoded once, and the last image is used in the final chunk. Existing workflows can keep their original conditioning. At `denoise=0`, the reference inputs are ignored.
+
 `denoise=1` preserves the connected sigma schedule. Lower values multiply its sigmas while keeping the step count; `0` only upscales without sampling. With no temporal overlap, no previous-chunk anchor is used.
 
 Re-samples an already-denoised **MiniMax H3** audio+video latent at a larger
@@ -43,7 +47,8 @@ checkpoint at all — quicker and lighter, though they invent no detail.
 and cannot share the card, so the diffusion model is offloaded between them.
 Doing that per chunk meant reloading a multi-gigabyte model once per chunk;
 since upscaling does not depend on order, chunks are now upscaled in batches
-sized from free RAM — one offload per batch instead of one per chunk.
+sized from free RAM. The 3D upscaler stays on the device throughout its group.
+Resampled chunks are written into one video buffer, and the source audio latent is returned directly.
 
 `chunk_length` and `temporal_overlap` must be multiples of **17** — the model's
 keyframe grid — and that is checked before the run rather than half an hour into

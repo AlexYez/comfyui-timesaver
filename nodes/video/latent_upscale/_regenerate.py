@@ -14,6 +14,9 @@ import re
 import torch
 from safetensors import safe_open
 
+from ._h3_core import balance_short_tail as balance_short_tail
+from ._h3_core import blend_overlap as blend_overlap
+
 REFERENCE_TABLE_SHA256 = "c02a6c11888297688c1e6278185ea1f947023acfc69f9003bbcdcec9a229a8e7"
 BUNDLE_METADATA = "ts_h3_regenerate_bundle"
 BUNDLE_VERSION = "standard-v1"
@@ -284,47 +287,6 @@ def keyframe_conditioning(conditioning, first_reference, frame_start, last_refer
         keyframes.append({"resolved_frame_index": last_index - frame_start, "latent": last_reference})
     return [[text, {**metadata, "minimax_keyframes": [dict(guide) for guide in keyframes]}]
             for text, metadata in conditioning]
-
-
-def blend_overlap(previous, refined, locked):
-    """Keep the fixed prefix and ease into the redrawn tail before leaving the overlap."""
-    overlap = previous.shape[2]
-    count = overlap - locked
-    t = torch.arange(1, count + 1, device=refined.device, dtype=torch.float32) / count
-    weight = (t.square() * (3 - 2 * t)).to(refined.dtype).view(1, 1, count, 1, 1)
-    tail = torch.lerp(previous[:, :, locked:], refined[:, :, locked:overlap], weight)
-    return torch.cat((previous[:, :, :locked], tail, refined[:, :, overlap:]), dim=2)
-
-
-def balance_short_tail(bounds, chunk_length, temporal_overlap):
-    """Redistribute a sub-17-frame continuation tail without exceeding the cap.
-
-    Native boundaries are on the 17-frame / 5-token grid. A 226-frame clip
-    split at 85/17 otherwise ends with 17 locked frames and only 5 new ones.
-    Balancing the existing four windows yields 68,68,68,73 instead of
-    85,85,85,22, preserving the overlap, total work and exact final duration.
-    """
-    count = len(bounds)
-    if count < 2 or bounds[-1][3] - bounds[-2][3] >= 17:
-        return bounds
-    frame_count = bounds[-1][3]
-    groups = frame_count // 17 - temporal_overlap // 17
-    hop, extra = divmod(groups, count)
-    # Larger hops go first: the last window also contains the off-grid tail.
-    hops = [hop + (index < extra) for index in range(count)]
-    if any(value <= 0 for value in hops[:-1]):
-        return bounds  # No better split exists on the native phase grid.
-    starts = [0]
-    for value in hops[:-1]:
-        starts.append(starts[-1] + value * 17)
-    result = []
-    for index, start in enumerate(starts):
-        end = starts[index + 1] + temporal_overlap if index + 1 < count else frame_count
-        k1 = end // 17 * 5 if index + 1 < count else bounds[-1][2]
-        result.append((start // 17 * 5, start, k1, end))
-    if any(end - start > chunk_length for _, start, _, end in result):
-        return bounds
-    return result
 
 
 def video_audio(samples):

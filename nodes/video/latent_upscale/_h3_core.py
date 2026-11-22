@@ -44,6 +44,7 @@ import logging
 import math
 import os
 import re
+from contextlib import contextmanager
 from enum import Enum
 
 import torch
@@ -307,6 +308,24 @@ def anchor_conditioning(cond, prev_video, f0, strength):
             nd["minimax_keyframes"] = [anchor_kf]
         nd["minimax_visual_cond_noise_aug"] = aug
         out.append([tensor, nd])
+    return out
+
+
+def merge_frame_guides(cond, guides):
+    """Replace the visual guides at the supplied positions, retaining audio and other references."""
+    if not guides:
+        return cond
+    out = []
+    for text, metadata in cond:
+        keyframes = []
+        for entry in metadata.get("minimax_keyframes", ()) or ():
+            if entry["resolved_frame_index"] not in guides or entry.get("latent") is None:
+                keyframes.append(entry)
+            elif entry.get("audio_latent") is not None:
+                keyframes.append({key: value for key, value in entry.items() if key != "latent"})
+        keyframes.extend({"resolved_frame_index": index, "latent": latent} for index, latent in guides.items())
+        keyframes.sort(key=lambda entry: entry["resolved_frame_index"])
+        out.append([text, {**metadata, "minimax_keyframes": keyframes}])
     return out
 
 
@@ -836,6 +855,20 @@ def _compute_upscale_target(width, height, h_in, w_in):
     return h_out, w_out, eff
 
 
+@contextmanager
+def upscale_group(param):
+    """Keep one 3D upscaler resident until this group finishes or is cancelled."""
+    if "model_name" not in param:
+        yield param
+        return
+    resident = {}
+    try:
+        yield {**param, "_resident": resident}
+    finally:
+        if "key" in resident:
+            unload_upscale_model(*resident["key"])
+
+
 def upscale_video(video, param):
     """Upscale one chunk's video latent with the H3 3D upscaler. Audio untouched.
 
@@ -869,18 +902,28 @@ def upscale_video(video, param):
     # `copy=True` тут было лишним: смена устройства и типа и так делает новый
     # тензор, а на куске 4K это ещё один переезд в сотни мегабайт.
     s = video.to(device=dev, dtype=compute_dtype)
-    model = load_upscale_model(model_name, dev, precision)
-    norm_mean, norm_std = _make_norm_tensors(dev, compute_dtype)
+    resident = param.get("_resident")
+    key = (model_name, dev, precision)
+    try:
+        if resident is not None and "model" in resident:
+            model = resident["model"]
+        else:
+            if resident is not None:
+                resident["key"] = key
+            model = load_upscale_model(*key)
+            if resident is not None:
+                resident["model"] = model
+        norm_mean, norm_std = _make_norm_tensors(dev, compute_dtype)
 
-    with torch.inference_mode():
-        s = s.sub(norm_mean).div(norm_std)
-        out = model(s, scale=eff, target_size=(t, h_out, w_out))
-        del s
-        out = out.mul(norm_std).add(norm_mean)
-
-    out = out.to(device="cpu", dtype=orig_dtype)
-    unload_upscale_model(model_name, dev, precision)
-    return out, h_out, w_out
+        with torch.inference_mode():
+            s = s.sub(norm_mean).div(norm_std)
+            out = model(s, scale=eff, target_size=(t, h_out, w_out))
+            del s
+            out = out.mul(norm_std).add(norm_mean)
+        return out.to(device="cpu", dtype=orig_dtype), h_out, w_out
+    finally:
+        if resident is None:
+            unload_upscale_model(*key)
 
 
 def upscale_video_interp(video, param):
@@ -1008,7 +1051,64 @@ def sample_piece(piece, cond, model, noise, sampler, sigmas, negative, cfg, nois
 # stitching helpers
 # ---------------------------------------------------------------------------
 
-def temporal_append(acc_v, acc_a, chunk_v, chunk_a, index, k0, f0):
+def blend_overlap(previous, refined, locked):
+    """Keep the fixed prefix and ease into the redrawn tail before leaving the overlap."""
+    overlap = previous.shape[2]
+    count = overlap - locked
+    t = torch.arange(1, count + 1, device=refined.device, dtype=torch.float32) / count
+    weight = (t.square() * (3 - 2 * t)).to(refined.dtype).view(1, 1, count, 1, 1)
+    tail = torch.lerp(previous[:, :, locked:], refined[:, :, locked:overlap], weight)
+    return torch.cat((previous[:, :, :locked], tail, refined[:, :, overlap:]), dim=2)
+
+
+def balance_short_tail(bounds, chunk_length, temporal_overlap):
+    """Redistribute a sub-17-frame continuation tail without exceeding the cap.
+
+    Native boundaries are on the 17-frame / 5-token grid. A 226-frame clip
+    split at 85/17 otherwise ends with 17 locked frames and only 5 new ones.
+    Balancing the existing four windows yields 68,68,68,73 instead of
+    85,85,85,22, preserving the overlap, total work and exact final duration.
+    """
+    count = len(bounds)
+    if count < 2 or bounds[-1][3] - bounds[-2][3] >= 17:
+        return bounds
+    frame_count = bounds[-1][3]
+    groups = frame_count // 17 - temporal_overlap // 17
+    hop, extra = divmod(groups, count)
+    # Larger hops go first: the last window also contains the off-grid tail.
+    hops = [hop + (index < extra) for index in range(count)]
+    if any(value <= 0 for value in hops[:-1]):
+        return bounds  # No better split exists on the native phase grid.
+    starts = [0]
+    for value in hops[:-1]:
+        starts.append(starts[-1] + value * 17)
+    result = []
+    for index, start in enumerate(starts):
+        end = starts[index + 1] + temporal_overlap if index + 1 < count else frame_count
+        k1 = end // 17 * 5 if index + 1 < count else bounds[-1][2]
+        result.append((start // 17 * 5, start, k1, end))
+    if any(end - start > chunk_length for _, start, _, end in result):
+        return bounds
+    return result
+
+
+def write_video_chunk(result, written, chunk, start, *, locked_prefix=None):
+    """Write a chunk into a preallocated video, leaving the old prefix in place."""
+    count = chunk.shape[2]
+    overlap = min(written - start, count)
+    if overlap > 0:
+        tail = result[:, :, start:start + overlap]
+        head = chunk[:, :, :overlap]
+        if locked_prefix is None:
+            tail.copy_(_crossfade(tail, head, dim=2))
+        elif locked_prefix < overlap:
+            tail.copy_(blend_overlap(tail, head, locked_prefix))
+    overlap = max(0, overlap)
+    result[:, :, start + overlap:start + count].copy_(chunk[:, :, overlap:])
+    return max(written, start + count)
+
+
+def temporal_append(acc_v, acc_a, chunk_v, chunk_a, index, k0, f0, *, locked_prefix=None):
     """Stitch one re-sampled chunk into the accumulated latent (cross-fade).
     Mirrors 'Append MiniMax H3 Latents'. Returns (result_v, result_a)."""
     if acc_v is None:
@@ -1029,8 +1129,13 @@ def temporal_append(acc_v, acc_a, chunk_v, chunk_a, index, k0, f0):
     ov = (acc_v.shape[2] - gi) if index > 0 else 0
     if ov > 0:
         ov = min(ov, v.shape[2])
-        tail = result_v[:, :, gi:gi + ov].clone()
-        result_v[:, :, gi:gi + ov] = _crossfade(tail, v[:, :, :ov], dim=2)
+        tail = acc_v[:, :, gi:gi + ov]
+        if locked_prefix is None:
+            result_v[:, :, gi:gi + ov] = _crossfade(tail, v[:, :, :ov], dim=2)
+        else:
+            # Keep the locked frames exact and only ease between the two
+            # predictions on the remaining part of the overlap.
+            result_v[:, :, gi:gi + ov] = blend_overlap(tail, v[:, :, :ov], locked_prefix)
         v = v[:, :, ov:]
     write_v = gi + max(ov, 0)
     if v.shape[2] > 0:

@@ -4663,6 +4663,24 @@
         "name": "denoise",
         "optional": true,
         "type": "Float"
+      },
+      {
+        "index": 17,
+        "name": "first_frame",
+        "optional": true,
+        "type": "Image"
+      },
+      {
+        "index": 18,
+        "name": "last_frame",
+        "optional": true,
+        "type": "Image"
+      },
+      {
+        "index": 19,
+        "name": "video_vae",
+        "optional": true,
+        "type": "Vae"
       }
     ],
     "outputs": [
