@@ -869,12 +869,13 @@ def upscale_group(param):
             unload_upscale_model(*resident["key"])
 
 
-def upscale_video(video, param):
+def upscale_video(video, param, *, check_memory=False):
     """Upscale one chunk's video latent with the H3 3D upscaler. Audio untouched.
 
     Returns (upscaled_video, new_h, new_w). The target is computed in pixel
     space (explicit width/height, snapped to the VAE 16x grid), then the
-    H3 network resizes to it. scale 1.0 (or an equivalent target) is a no-op."""
+    H3 network resizes to it. An equivalent target is a no-op. With
+    check_memory, the video result is None if the estimated workspace is too large."""
     model_name = param["model_name"]
     width = int(param["width"])
     height = int(param["height"])
@@ -888,7 +889,7 @@ def upscale_video(video, param):
     precision = resolve_precision(precision, dev)
     compute_dtype = {"fp32": torch.float32, "fp16": torch.float16, "bf16": torch.bfloat16}[precision]
 
-    _, c, t, h_in, w_in = video.shape
+    batch, _, t, h_in, w_in = video.shape
     h_out, w_out, eff = _compute_upscale_target(width, height, h_in, w_in)
 
     if eff < 1.0 and (w_out < w_in or h_out < h_in):
@@ -899,9 +900,6 @@ def upscale_video(video, param):
     if str(model_name).startswith('('):
         raise ValueError("Please place H3 upscale model files into the latent_upscale_models directory")
 
-    # `copy=True` тут было лишним: смена устройства и типа и так делает новый
-    # тензор, а на куске 4K это ещё один переезд в сотни мегабайт.
-    s = video.to(device=dev, dtype=compute_dtype)
     resident = param.get("_resident")
     key = (model_name, dev, precision)
     try:
@@ -913,6 +911,15 @@ def upscale_video(video, param):
             model = load_upscale_model(*key)
             if resident is not None:
                 resident["model"] = model
+        if check_memory:
+            features = batch * t * max(h_in * w_in, h_out * w_out) * model.conv_in.out_channels
+            feature_bytes = features * torch.finfo(compute_dtype).bits // 8
+            # The 3D model is already resident. Budget for the live feature
+            # tensors and convolution workspace, with room for allocator slack.
+            working_bytes = 12 * feature_bytes + 512 * 2**20
+            if working_bytes > comfy.model_management.get_free_memory(dev):
+                return None, h_out, w_out
+        s = video.to(device=dev, dtype=compute_dtype)
         norm_mean, norm_std = _make_norm_tensors(dev, compute_dtype)
 
         with torch.inference_mode():
@@ -951,6 +958,48 @@ def upscale_latent(video, param):
     if "model_name" in param:
         return upscale_video(video, param)
     return upscale_video_interp(video, param)
+
+
+def try_upscale_whole_video(video, param):
+    """Prefer one 3D pass. Return None when the caller needs to window the clip."""
+    try:
+        result, _, _ = upscale_video(video, param, check_memory=True)
+    except Exception as exc:
+        cpu_allocation_error = (
+            isinstance(exc, RuntimeError)
+            and "DefaultCPUAllocator" in str(exc) and "can't allocate memory" in str(exc)
+        )
+        if not isinstance(exc, MemoryError) and not cpu_allocation_error:
+            comfy.model_management.raise_non_oom(exc)
+    else:
+        if result is not None:
+            logger.info("%s 3D upscale finished in one pass for %d frames.", LOG_PREFIX, frames_for_tokens(video.shape[2]))
+            return result
+        logger.info("%s Using 3D upscale windows to stay within available memory.", LOG_PREFIX)
+        return None
+    comfy.model_management.soft_empty_cache()
+    logger.warning("%s Whole-clip 3D upscale ran out of memory; falling back to windows.", LOG_PREFIX)
+    return None
+
+
+def upscale_video_window(video, start, end, param):
+    """Give the 3D resizer real neighbours beyond each internal window edge."""
+    if "model_name" in param:
+        # Move the zero-padded edge one 17-frame phase away from the seam
+        # and give GroupNorm more shared temporal context between windows.
+        context = len(FRAME_PER_TOKEN)
+        left = max(0, start - context)
+        right = min(video.shape[2], end + context)
+        if left < start or right > end:
+            try:
+                upscale, h, w = upscale_latent(video[:, :, left:right].contiguous(), param)
+            except Exception as exc:
+                comfy.model_management.raise_non_oom(exc)
+            else:
+                return upscale[:, :, start - left:end - left].contiguous(), h, w
+            comfy.model_management.soft_empty_cache()
+            logger.warning("%s Not enough memory for temporal upscale context; using the original window.", LOG_PREFIX)
+    return upscale_latent(video[:, :, start:end].contiguous(), param)
 
 
 # ---------------------------------------------------------------------------

@@ -12,17 +12,15 @@ into tiles and stitches them back. It was dropped on purpose along with its
 input: the seams need their own fade and blend settings, and a clip that needs
 tiling is better served by shorter chunks.
 
-What the node does, per chunk of the clip:
+What the node does:
 
-1. cut the latent into overlapping chunks along time;
-2. upscale that chunk's video latent with the H3 3D upscaler (audio untouched);
-3. re-anchor the conditioning in time and pin frame 0 to the previous chunk's
-   re-sampled frame, so the seam does not drift;
-4. preserve the early overlap from the previous result as context and sample the rest;
-5. stitch it back with a smooth fade over the part of the overlap that was redrawn.
+1. upscale the whole video latent in one pass if memory allows;
+2. make overlapping time windows for diffusion;
+3. fuse native context predictions at every step or sample sequentially
+   with positioned anchors and a short locked overlap.
 
-Peak VRAM is therefore one chunk, not one clip — and the diffusion model is
-offloaded while the upscaler works, since the two are never needed at once.
+If the 3D pass exceeds available memory, it uses windows too. The source
+audio stays fixed in both sampling paths.
 
 node_id: TS_LatentUpscale
 """
@@ -82,10 +80,10 @@ class TS_LatentUpscale(IO.ComfyNode):
             category="TS/Video",
             description=(
                 "Re-sample an already-denoised MiniMax H3 audio+video latent at a larger "
-                "size: the clip is cut into overlapping chunks along time, each chunk is "
-                "upscaled by the H3 3D latent upscaler and re-sampled, then stitched back "
-                "with the seam pinned to the previous chunk. Peak VRAM is one chunk rather "
-                "than the whole clip. Upscale models are read from models/latent_upscale_models, "
+                "size. The H3 3D upscaler processes the whole clip when memory allows. "
+                "Diffusion uses overlapping windows with shared context or an anchor on "
+                "the previous chunk. "
+                "Upscale models are read from models/latent_upscale_models, "
                 "including subfolders."
             ),
             search_aliases=[
@@ -113,7 +111,7 @@ class TS_LatentUpscale(IO.ComfyNode):
                     "upscale_model",
                     options=_upscale_options(),
                     tooltip=(
-                        "How to enlarge each chunk. The H3 latent upscale checkpoints come from "
+                        "How to enlarge the video latent. The H3 latent upscale checkpoints come from "
                         "models/latent_upscale_models, subfolders included and listed as "
                         "'subfolder/file.safetensors' — these are the minimax_h3_latent_upscaler_3d "
                         "weights, and an upscaler for another model family will not load here. "
@@ -138,7 +136,7 @@ class TS_LatentUpscale(IO.ComfyNode):
                 IO.Int.Input(
                     "chunk_length", default=136, min=17, max=100000, step=17,
                     tooltip=(
-                        "Pixel frames per chunk at 24 fps, and a multiple of 17 — one keyframe "
+                        "Pixel frames per diffusion window at 24 fps, and a multiple of 17 — one keyframe "
                         "grid step. 136 ≈ 5.7 s, 153 ≈ 6.4 s. Aim for the longest chunk that "
                         "keeps peak VRAM just under capacity: the original author's starting "
                         "points are 34–68 frames on 8 GB, 51–102 on 12 GB, 102–153 on 16 GB and "
@@ -271,10 +269,44 @@ class TS_LatentUpscale(IO.ComfyNode):
         if denoise > 0 and temporal_overlap > 0:
             bounds = core.balance_short_tail(bounds, int(chunk_length), int(temporal_overlap))
 
+        has_reference_images = first_frame is not None or last_frame is not None
+        if denoise > 0 and has_reference_images and video_vae is None:
+            raise ValueError("Connect an H3 video VAE with an encoder to use first_frame or last_frame.")
+
+        upscaled_clip = None
+        if len(bounds) > 1 and "model_name" in upscale_param:
+            cls._offload_before_3d(model, upscale_param)
+            upscaled_clip = core.try_upscale_whole_video(video, upscale_param)
+        if upscaled_clip is not None and denoise == 0:
+            return cls._shared_result(upscaled_clip, audio, bounds)
+
+        # The sequential path aligns each explicit or custom anchor with the
+        # previous sampled output. Native windows share one live clip instead.
+        if (
+            denoise > 0 and temporal_overlap > 0 and len(bounds) > 1
+            and math.isclose(float(anchor_strength), 0.999)
+            and not has_reference_images
+            and not any(metadata.get("minimax_keyframes")
+                        for side in (conditioning, negative) for _, metadata in (side or ()))
+        ):
+            context_model = cls._context_model(model, bounds, int(chunk_length), int(temporal_overlap))
+            if context_model is not None:
+                try:
+                    result = cls._sample_context_windows(
+                        context_model, conditioning, negative, video, audio, bounds,
+                        upscale_param, noise, sampler, sigmas, cfg, upscaled_clip,
+                    )
+                except Exception as exc:
+                    comfy.model_management.raise_non_oom(exc)
+                    logger.warning("%s Not enough memory for shared context; using sequential chunks.", LOG_PREFIX)
+                else:
+                    return result
+                finally:
+                    comfy.model_management.unload_model_and_clones(context_model, unload_additional_models=False)
+                    comfy.model_management.soft_empty_cache()
+
         first_reference = last_reference = None
-        if denoise > 0 and (first_frame is not None or last_frame is not None):
-            if video_vae is None:
-                raise ValueError("Connect an H3 video VAE with an encoder to use first_frame or last_frame.")
+        if denoise > 0 and has_reference_images:
             try:
                 width, height = upscale_param["width"], upscale_param["height"]
                 if first_frame is not None:
@@ -318,7 +350,7 @@ class TS_LatentUpscale(IO.ComfyNode):
         # кусок якорится за результат предыдущего), поэтому куски апскейлятся
         # пачками: одна выгрузка на пачку вместо одной на кусок. Размер пачки —
         # по свободной оперативной памяти, потому что готовые куски ждут там же.
-        group = cls._upscale_group_size(video, bounds, upscale_param)
+        group = cls._upscale_group_size(video, bounds, upscale_param) if upscaled_clip is None else 1
         if group > 1:
             logger.info("%s Upscaling in groups of %d chunk(s).", LOG_PREFIX, group)
 
@@ -328,20 +360,15 @@ class TS_LatentUpscale(IO.ComfyNode):
             a0, a1 = core.audio_range(f0, f1)
             chunk_a = audio[:, :, :, a0:min(a1, audio_tokens)].contiguous()
 
-            if index not in upscaled_cache:
-                # Пока считает апскейлер, диффузионная модель не нужна — убираем
-                # её с карты, чтобы они не лежали там вдвоём. Следующий семпл
-                # вернёт её сам.
-                if device == "cuda" and "model_name" in upscale_param and hasattr(model, "clone_base_uuid"):
-                    comfy.model_management.unload_model_and_clones(
-                        model, unload_additional_models=False,
-                    )
-                    comfy.model_management.soft_empty_cache()
+            if index == 0 or (upscaled_clip is None and index not in upscaled_cache):
+                if upscaled_clip is None:
+                    cls._offload_before_3d(model, upscale_param)
                 with core.upscale_group(upscale_param) as group_param:
-                    for offset in range(index, min(index + group, len(bounds))):
-                        b0, _bf0, b1, _bf1 = bounds[offset]
-                        part = video[:, :, b0:b1].contiguous()
-                        upscaled_cache[offset], _, _ = core.upscale_latent(part, group_param)
+                    if upscaled_clip is None:
+                        for offset in range(index, min(index + group, len(bounds))):
+                            b0, _bf0, b1, _bf1 = bounds[offset]
+                            part = video[:, :, b0:b1].contiguous()
+                            upscaled_cache[offset], _, _ = core.upscale_latent(part, group_param)
                     # Draft keyframes use the same upscaler to avoid visible
                     # tiles. Explicit guides are already at the final size.
                     if index == 0:
@@ -349,7 +376,8 @@ class TS_LatentUpscale(IO.ComfyNode):
                         if use_references and negative is not None:
                             negative = core.upscale_keyframes(core.normalize_minimax_refs(negative), group_param)
 
-            chunk_v = upscaled_cache.pop(index)
+            chunk_v = (upscaled_clip[:, :, k0:k1].contiguous()
+                       if upscaled_clip is not None else upscaled_cache.pop(index))
 
             cond_i = core.reanchor_conditioning(
                 conditioning, f0, f1, (chunk_v.shape[3], chunk_v.shape[4]),
@@ -421,15 +449,7 @@ class TS_LatentUpscale(IO.ComfyNode):
                     acc_v = chunk_out_v.new_empty((b, c, total_tokens, h, w))
                 written = core.write_video_chunk(acc_v, written, chunk_out_v, k0, locked_prefix=locked)
 
-            segments.append({
-                "chunk": index,
-                "frame_start": f0,
-                "frame_count": f1 - f0,
-                "video_tokens": [k0, k1],
-                "audio_tokens": list(core.audio_range(f0, f1)),
-                "spatial_h": chunk_v.shape[3],
-                "spatial_w": chunk_v.shape[4],
-            })
+            segments.append(cls._describe_segment(index, (k0, f0, k1, f1), *chunk_v.shape[-2:]))
             logger.info(
                 "%s chunk %d/%d: frames %d..%d at %dx%d",
                 LOG_PREFIX, index + 1, len(bounds), f0, f1,
@@ -448,6 +468,92 @@ class TS_LatentUpscale(IO.ComfyNode):
 
         result = {"samples": comfy.nested_tensor.NestedTensor((acc_v, audio))}
         return IO.NodeOutput(result, segments)
+
+    @staticmethod
+    def _offload_before_3d(model, upscale_param):
+        import comfy.model_management
+
+        if (upscale_param.get("device") == "cuda" and "model_name" in upscale_param
+                and hasattr(model, "clone_base_uuid")):
+            comfy.model_management.unload_model_and_clones(model, unload_additional_models=False)
+            comfy.model_management.soft_empty_cache()
+
+    @staticmethod
+    def _context_model(model, bounds, chunk_length, overlap):
+        if getattr(model, "model", None) is None or model.model_options.get("context_handler") is not None:
+            return None
+        try:
+            from comfy.context_windows import ContextSchedule
+            from comfy.model_base import MiniMaxH3
+            from comfy_extras.nodes_context_windows import MiniMaxH3ContextWindowsNode
+        except ImportError:
+            return None
+        if not isinstance(model.model, MiniMaxH3):
+            return None
+        window_model, = MiniMaxH3ContextWindowsNode.execute(
+            model, context_length=chunk_length + 5, context_overlap=overlap + 5,
+            fuse_method="overlap-linear", freenoise=False,
+        ).args
+        # Respect the node's phase-aligned ranges. A short final window must
+        # not be shifted off H3's audio/video grid.
+        ranges = [(start, end) for start, _, end, _ in bounds]
+        handler = window_model.model_options["context_handler"]
+        sizes = [end - start for start, end in ranges]
+        handler.context_length = max(sizes)
+        # ComfyUI maps the overlap to audio by the clip-wide token ratio.
+        # A phase-aligned short window may cover less audio than that ratio
+        # predicts, so leave one video token of headroom for the linear ramp.
+        handler.context_overlap = min(handler.context_overlap, min(sizes) - 1)
+        handler.context_schedule = ContextSchedule(
+            "timesaver_h3", lambda *_: [list(range(start, end)) for start, end in ranges],
+        )
+        return window_model
+
+    @classmethod
+    def _sample_context_windows(cls, model, conditioning, negative, video, audio, bounds,
+                                upscale_param, noise, sampler, sigmas, cfg, continuous):
+        import comfy.nested_tensor
+        import torch
+
+        if continuous is None:
+            cls._offload_before_3d(model, upscale_param)
+            written = 0
+            with core.upscale_group(upscale_param) as group_param:
+                for start, _, end, _ in bounds:
+                    part, height, width = core.upscale_video_window(video, start, end, group_param)
+                    if continuous is None:
+                        continuous = part.new_empty((*part.shape[:2], video.shape[2], height, width))
+                    written = core.write_video_chunk(continuous, written, part, start)
+        logger.info("%s Sampling with %d shared H3 context windows.", LOG_PREFIX, len(bounds))
+        piece = {
+            "samples": comfy.nested_tensor.NestedTensor((continuous, audio)),
+            "noise_mask": comfy.nested_tensor.NestedTensor((torch.ones_like(continuous), torch.zeros_like(audio))),
+        }
+        sampled = core.sample_piece(piece, conditioning, model, noise, sampler, sigmas, negative, cfg)
+        return cls._shared_result(sampled.tensors[0], audio, bounds)
+
+    @classmethod
+    def _shared_result(cls, video, audio, bounds):
+        import comfy.nested_tensor
+
+        result = {"samples": comfy.nested_tensor.NestedTensor((video, audio))}
+        height, width = video.shape[-2:]
+        return IO.NodeOutput(result, [
+            cls._describe_segment(index, bound, height, width) for index, bound in enumerate(bounds)
+        ])
+
+    @staticmethod
+    def _describe_segment(index, bound, height, width):
+        k0, f0, k1, f1 = bound
+        return {
+            "chunk": index,
+            "frame_start": f0,
+            "frame_count": f1 - f0,
+            "video_tokens": [k0, k1],
+            "audio_tokens": list(core.audio_range(f0, f1)),
+            "spatial_h": height,
+            "spatial_w": width,
+        }
 
 
     @staticmethod

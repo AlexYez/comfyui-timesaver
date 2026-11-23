@@ -2218,6 +2218,66 @@
       }
     }
   },
+  "TS_Deflicker": {
+    "api": "v3",
+    "category": "TS/Video",
+    "class_name": "TS_Deflicker",
+    "display_name": "TS Deflicker",
+    "effective_widget_order": [
+      "strength",
+      "radius"
+    ],
+    "inputs": [
+      {
+        "index": 0,
+        "name": "images",
+        "type": "Image"
+      },
+      {
+        "index": 1,
+        "name": "strength",
+        "type": "Float"
+      },
+      {
+        "index": 2,
+        "name": "radius",
+        "type": "Int"
+      },
+      {
+        "index": 3,
+        "name": "segments_info",
+        "optional": true,
+        "type": ""
+      },
+      {
+        "index": 4,
+        "name": "reference",
+        "optional": true,
+        "type": "Image"
+      }
+    ],
+    "outputs": [
+      {
+        "index": 0,
+        "name": "images",
+        "type": "Image"
+      }
+    ],
+    "python_file": "nodes/video/ts_deflicker.py",
+    "widgets": {
+      "radius": {
+        "default": 5,
+        "max": 30,
+        "min": 1
+      },
+      "strength": {
+        "default": 1.0,
+        "max": 1.0,
+        "min": 0.0,
+        "step": 0.05
+      }
+    }
+  },
   "TS_EditAlign": {
     "api": "v3",
     "category": "TS/Image/Retouch",

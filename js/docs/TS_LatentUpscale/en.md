@@ -1,6 +1,18 @@
 # TS Latent Upscale
 
-When resampling with `temporal_overlap`, the next chunk reuses the early part of the overlap as clean context. The rest blends into the new prediction smoothly to reduce brightness flicker and detail changes at the seam. A tail with fewer than 17 new frames is redistributed when the chunk length and overlap allow it, preserving the clip duration.
+The 3D upscaler processes the whole video latent in one pass when free memory
+allows. `chunk_length` and `temporal_overlap` set diffusion windows.
+When memory is tight, the 3D upscaler also processes the clip in windows.
+
+When resampling with overlap, the node uses native MiniMax H3 context windows
+if ComfyUI supports them and the workflow uses no positioned keyframes or
+custom `anchor_strength`. If 3D upscaling is windowed, this path uses neighboring
+frames as extra context. ComfyUI fuses overlapping predictions at each diffusion step.
+
+Sequential sampling handles positioned keyframes, custom `anchor_strength`,
+older ComfyUI versions, and low-memory fallback. It preserves the early overlap
+and blends the remaining part into the new prediction. Both paths redistribute
+short tails where possible and preserve clip length and source audio.
 
 **Optional reference frames.** Connect `first_frame`, `last_frame`, or both, plus an H3 `video_vae` with an encoder. Prepare each reference directly from the source at output resolution. Each reference is encoded once, and the last image is used in the final chunk. Existing workflows can keep their original conditioning. At `denoise=0`, the reference inputs are ignored.
 
@@ -13,12 +25,9 @@ size. Three nodes from
 and the temporal split settings are simply inputs here, because nobody ever
 wanted one without the others.
 
-Per chunk of the clip: cut along time with an overlap → upscale that chunk's
-video latent with the H3 3D upscaler (audio untouched) → re-anchor the
-conditioning and pin frame 0 to the previous chunk's result → sample → stitch
-back over the overlap. **Peak VRAM is one chunk, not one clip**, and the
-diffusion model is offloaded while the upscaler works, since the two are never
-needed at once.
+The diffusion model is offloaded while the 3D upscaler runs on the GPU.
+Sequential sampling pins each window's first frame to the previous result and
+stitches the windows across the overlap.
 
 **Subfolders in `models/latent_upscale_models` are finally visible.** The
 original scanned the folder root only and returned bare filenames — on this
@@ -43,7 +52,7 @@ and none exceed it.
 entries resize the latent (bilinear / bicubic / area / nearest) with no
 checkpoint at all — quicker and lighter, though they invent no detail.
 
-**Chunks are upscaled in groups.** Upscaling and sampling need different models
+**Windowed 3D upscaling runs in groups.** Upscaling and sampling need different models
 and cannot share the card, so the diffusion model is offloaded between them.
 Doing that per chunk meant reloading a multi-gigabyte model once per chunk;
 since upscaling does not depend on order, chunks are now upscaled in batches
