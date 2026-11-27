@@ -18,6 +18,7 @@ from __future__ import annotations
 import logging
 import os
 from pathlib import Path
+from uuid import uuid4
 
 from comfy_api.v0_0_2 import IO
 
@@ -33,6 +34,14 @@ PREVIEW_UI_KEY = "ts_video_saver"
 # браузер не проигрывает (ProRes). Ширина ограничена — превью не должно стоить
 # дороже самой записи.
 _PROXY_MAX_WIDTH = 1280
+
+
+def _preview_path() -> Path:
+    import folder_paths
+
+    temp = Path(folder_paths.get_temp_directory())
+    temp.mkdir(parents=True, exist_ok=True)
+    return temp / f"ts_video_preview_{uuid4().hex}.mp4"
 
 
 class TS_VideoSaver(IO.ComfyNode):
@@ -339,15 +348,11 @@ class TS_VideoSaver(IO.ComfyNode):
         proxy = None
         if wants_proxy:
             try:
-                import folder_paths
-
-                temp = Path(folder_paths.get_temp_directory())
-                temp.mkdir(parents=True, exist_ok=True)
-                name = f"ts_video_preview_{os.getpid()}_{stem}.mp4"
+                proxy_path = _preview_path()
                 info = write_proxy(downscale_frames(preview_frames, _PROXY_MAX_WIDTH),
-                                   path=temp / name, fps=fps, audio=audio,
+                                   path=proxy_path, fps=fps, audio=audio,
                                    frame_count=frame_count, on_frame=progress)
-                proxy = {"filename": name, "subfolder": "", "type": "temp",
+                proxy = {"filename": proxy_path.name, "subfolder": "", "type": "temp",
                          "format": "video/mp4",
                          "width": info["width"], "height": info["height"]}
             except Exception as error:      # noqa: BLE001 - превью не стоит прогона
@@ -610,18 +615,13 @@ class TS_VideoSaver(IO.ComfyNode):
         from ...image._alpha import checker_preview
 
         try:
-            import folder_paths
-
-            temp = Path(folder_paths.get_temp_directory())
-            temp.mkdir(parents=True, exist_ok=True)
-            name = f"ts_video_preview_{os.getpid()}_{target.stem}.mp4"
-            proxy_path = temp / name
+            proxy_path = _preview_path()
             frames = downscale_frames(iter_frames(str(target), want_alpha=True), _PROXY_MAX_WIDTH)
             frames = (checker_preview(frame) for frame in frames)
             info = write_proxy(frames, path=proxy_path, fps=fps, audio=audio,
                                frame_count=frame_count, on_frame=progress)
             return {
-                "filename": name,
+                "filename": proxy_path.name,
                 "subfolder": "",
                 "type": "temp",
                 "format": "video/mp4",

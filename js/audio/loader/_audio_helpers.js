@@ -6,15 +6,17 @@
 import { app } from "/scripts/app.js";
 import { api } from "/scripts/api.js";
 
-import { TS_UI_CLASS, ensureThemeStyles, getThemeColors, pickLocaleStrings } from "../../_theme.js";
+import { TS_UI_CLASS, ensureThemeStyles, getThemeColors, getUiLanguage, pickLocaleStrings } from "../../_theme.js";
 import { hideWidget as sharedHideWidget } from "../../_dom_widget.js";
 import { guardPlayback } from "../../_media/_playback_guard.js";
 import { drawPeakBars } from "../../_media/_wave.js";
 import { watchWiredSource } from "../../_wired_source.js";
 import { openFullscreenOverlay } from "../../_fullscreen.js";
 import { icon } from "../../_media/_icons.js";
+import { addAudioExportSettings } from "./_audio_export_settings.js";
 
 export const LOADER_NODE_NAME = "TS_AudioLoader";
+export const SAVER_NODE_NAME = "TS_AudioSaver";
 export const PREVIEW_NODE_NAME = "TS_AudioPreview";
 const ROUTE_BASE = "/ts_audio_loader";
 const STYLE_ID = "ts-audio-loader-styles";
@@ -33,6 +35,8 @@ const MIN_NODE_WIDTH = 440;
 // minimum would either clip the loader or make the preview needlessly tall.
 const MIN_NODE_HEIGHT_PREVIEW = 320;
 const MIN_NODE_HEIGHT_LOADER = 420;
+const MIN_NODE_HEIGHT_SAVER = 174;
+const MIN_PANE_HEIGHT_SAVER = 104;
 // Chrome allowance, used ONLY to turn the per-node minimum node height into the
 // pane's minimum (getMinHeight). It is deliberately NOT used for the ceiling:
 // a single estimate cannot fit both nodes (the renderer's real chrome is ~110
@@ -67,6 +71,11 @@ const STRINGS = {
         startRecord: "Start Record",
         stopRecord: "Stop Record",
         resetCrop: "Reset Crop",
+        waveformColor: "Waveform colour",
+        exportSettings: "Export settings",
+        fileFormat: "Format",
+        mp3Bitrate: "MP3 bitrate (kbps)",
+        customColor: "Custom colour",
         fullscreen: "Full screen",
         closeFullscreen: "Close (Esc)",
         zoomOutTitle: "Zoom out (Ctrl/Cmd + wheel down)",
@@ -114,6 +123,11 @@ const STRINGS = {
         startRecord: "Записать",
         stopRecord: "Остановить запись",
         resetCrop: "Сбросить обрезку",
+        waveformColor: "Цвет звуковой волны",
+        exportSettings: "Настройки экспорта",
+        fileFormat: "Формат",
+        mp3Bitrate: "Битрейт MP3 (кбит/с)",
+        customColor: "Свой цвет",
         fullscreen: "На весь экран",
         closeFullscreen: "Закрыть (Esc)",
         zoomOutTitle: "Отдалить (Ctrl/Cmd + колесо вниз)",
@@ -197,6 +211,17 @@ function ensureStyles() {
    overflow), а не вниз. Тот же инвариант держит канвас волны ниже. */
 .ts-audio-loader__topbar{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:nowrap;min-width:0;overflow:hidden}
 .ts-audio-loader__actions{display:flex;gap:6px;flex-wrap:nowrap;min-width:0}
+.ts-audio-loader__swatch{appearance:none;box-sizing:border-box;width:22px;height:22px;min-width:22px;padding:0;flex:none;border:1px solid var(--ts-border-strong);border-radius:50%;background:var(--swatch);cursor:pointer}
+.ts-audio-loader__swatch[aria-pressed=true]{outline:2px solid var(--ts-text);outline-offset:1px}
+.ts-audio-loader__palette{position:fixed;inset:auto;margin:0;padding:10px;border:1px solid var(--ts-border);border-radius:10px;background:var(--ts-surface);color:var(--ts-text)}
+.ts-audio-loader__palette:popover-open{display:grid;grid-template-columns:repeat(4,22px);gap:8px}
+.ts-audio-saver__settings:popover-open{grid-template-columns:1fr;min-width:180px}
+.ts-audio-saver__settings-button{font-size:16px;line-height:1}
+.ts-audio-saver__settings label:not([hidden]){display:flex;align-items:center;justify-content:space-between;gap:12px}
+.ts-audio-saver__settings select{color:var(--ts-text);background:var(--ts-surface);border:1px solid var(--ts-border);border-radius:4px;padding:2px 4px}
+.ts-audio-loader__custom{grid-column:1/-1;position:relative;text-align:center;cursor:pointer}
+.ts-audio-loader__custom input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer}
+.ts-audio-loader__custom:focus-within{outline:2px solid var(--ts-text)}
 .ts-audio-loader__fullscreen{flex:0 0 auto}
 .ts-audio-loader--fullscreen{flex:1;min-height:0;height:100%}
 .ts-audio-loader__button{border:1px solid var(--ts-border);background:var(--ts-surface);color:var(--ts-text);border-radius:8px;padding:6px 12px;font-size:var(--ts-fs-sm);cursor:pointer}
@@ -236,7 +261,21 @@ function ensureStyles() {
 .ts-audio-loader__scrollbar{display:none;height:14px;flex:0 0 14px;background:var(--ts-sunken);border:1px solid var(--ts-border-soft);border-radius:6px;overflow:hidden;position:relative;user-select:none;touch-action:none}
 .ts-audio-loader__scrollbar.is-active{display:block}
 .ts-audio-loader__scrollbar-thumb{position:absolute;top:0;bottom:0;background:var(--ts-border-soft);border:1px solid var(--ts-border);border-radius:5px;min-width:32px;cursor:grab;box-sizing:border-box}
-.ts-audio-loader__scrollbar-thumb:active{cursor:grabbing;background:var(--ts-border)}`;
+.ts-audio-loader__scrollbar-thumb:active{cursor:grabbing;background:var(--ts-border)}
+.ts-audio-saver:not(.ts-audio-loader--fullscreen){
+    display:grid;grid-template-columns:auto minmax(0,1fr) auto;grid-template-rows:minmax(26px,1fr) auto auto;
+    align-items:center;gap:2px 6px;padding:4px 6px;
+    & .ts-audio-loader__wave-wrap{grid-area:1/1/2/-1;align-self:stretch;min-height:0;border-radius:6px}
+    & .ts-audio-loader__scrollbar{grid-area:2/1/3/-1;height:10px}
+    & .ts-audio-loader__bottom{grid-area:3/1;display:block}
+    & .ts-audio-loader__play{width:26px;height:26px}
+    & .ts-audio-loader__meta{grid-area:3/2;display:block;min-width:0}
+    & .ts-audio-loader__status,& .ts-audio-loader__stats,& .ts-audio-loader__actions,& .ts-audio-loader__crop{display:none}
+    & .ts-audio-loader__meta[data-alert] .ts-audio-loader__file{display:none}
+    & .ts-audio-loader__meta[data-alert] .ts-audio-loader__status{display:block;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+    & .ts-audio-loader__topbar{grid-area:3/3;gap:6px}
+    & .ts-audio-loader__empty{padding:4px}
+}`;
     document.head.appendChild(style);
 }
 
@@ -290,6 +329,26 @@ const SOURCE_ANNOTATION_PATTERN = /\s+\[(input|output|temp)\]$/;
 function normalizeSourcePathValue(value) {
     return String(value ?? "").replace(/\\/g, "/");
 }
+
+// ComfyUI resolves %Node.widget% by reading the live widget value when queued.
+// Expose a derived name without storing a second copy of the selected path.
+function addFileStemWidget(node) {
+    if (getWidget(node, "file_stem")) return;
+    const widget = node.addWidget("text", "file_stem", "", null, { serialize: false });
+    widget.hidden = true;
+    Object.defineProperty(widget, "value", {
+        configurable: true,
+        get() {
+            const path = normalizeSourcePathValue(getWidgetValue(node, INPUT_SOURCE_PATH, ""));
+            const name = path.replace(SOURCE_ANNOTATION_PATTERN, "").split("/").pop();
+            const dot = name.lastIndexOf(".");
+            const stem = dot > 0 ? name.slice(0, dot) : name;
+            return stem.replace(/[. ]+$/, "");
+        },
+        // Workflow restoration may assign even to a non-serialized widget.
+        set() {},
+    });
+}
 /**
  * Показать значение в списке опций виджета, если его там ещё нет.
  *
@@ -340,8 +399,10 @@ export function setupAudioLoader(node) {
     if (!node || typeof node.addDOMWidget !== "function") return;
     const L = pickLocaleStrings(STRINGS);
     const nodeName = node.type || node.comfyClass || "";
-    const isPreviewNode = nodeName === PREVIEW_NODE_NAME;
-    const nodeMinHeight = isPreviewNode ? MIN_NODE_HEIGHT_PREVIEW : MIN_NODE_HEIGHT_LOADER;
+    const isSaver = nodeName === SAVER_NODE_NAME;
+    const isPreviewNode = isSaver || nodeName === PREVIEW_NODE_NAME;
+    const paneMinHeight = isPreviewNode ? MIN_NODE_HEIGHT_PREVIEW : MIN_NODE_HEIGHT_LOADER;
+    const nodeMinHeight = isSaver ? MIN_NODE_HEIGHT_SAVER : paneMinHeight;
     if (typeof node._tsAudioLoaderCleanup === "function") node._tsAudioLoaderCleanup();
     removeDomWidget(node);
     ensureStyles();
@@ -355,7 +416,7 @@ export function setupAudioLoader(node) {
     node.resizable = true;
     node.size = [
         Math.max(Number(node.size?.[0]) || DEFAULT_NODE_SIZE[0], MIN_NODE_WIDTH),
-        Math.max(Number(node.size?.[1]) || nodeMinHeight, nodeMinHeight),
+        isSaver ? nodeMinHeight : Math.max(Number(node.size?.[1]) || nodeMinHeight, nodeMinHeight),
     ];
     node.min_size = [MIN_NODE_WIDTH, nodeMinHeight];
 
@@ -411,6 +472,7 @@ export function setupAudioLoader(node) {
 
     const container = document.createElement("div");
     container.className = `${TS_UI_CLASS} ts-audio-loader`;
+    if (isSaver) container.classList.add("ts-audio-saver");
     const topbar = document.createElement("div");
     topbar.className = "ts-audio-loader__topbar";
     const actions = document.createElement("div");
@@ -484,6 +546,72 @@ export function setupAudioLoader(node) {
             },
         });
     });
+    let colorPicker;
+    let refreshSwatch;
+    if (isSaver) {
+        const presets = [
+            ["#52b8e8", "Sky", "Небо"], ["#81c7b2", "Mint", "Мята"],
+            ["#a8c68c", "Sage", "Шалфей"], ["#e7c67d", "Honey", "Мёд"],
+            ["#e7a086", "Peach", "Персик"], ["#d88fa7", "Rose", "Роза"],
+            ["#b29bd8", "Lilac", "Сирень"], ["#869ed8", "Periwinkle", "Барвинок"],
+        ];
+        const trigger = document.createElement("button");
+        trigger.type = "button";
+        trigger.className = "ts-audio-loader__swatch";
+        trigger.title = L.waveformColor;
+        trigger.setAttribute("aria-label", L.waveformColor);
+        const palette = document.createElement("div");
+        palette.className = "ts-audio-loader__palette";
+        palette.popover = "auto";
+        trigger.popoverTargetElement = palette;
+        palette.addEventListener("beforetoggle", (event) => {
+            if (event.newState !== "open") return;
+            const rect = trigger.getBoundingClientRect();
+            palette.style.left = Math.max(4, Math.min(rect.left, window.innerWidth - 144)) + "px";
+            palette.style.top = (rect.bottom + 116 <= window.innerHeight ? rect.bottom + 4 : Math.max(4, rect.top - 112)) + "px";
+        });
+        colorPicker = document.createElement("input");
+        colorPicker.type = "color";
+        colorPicker.title = L.waveformColor;
+        colorPicker.setAttribute("aria-label", L.waveformColor);
+        const commit = () => {
+            node.properties.waveform_color = colorPicker.value;
+            refreshSwatch();
+            drawWaveform();
+            node.graph?.change?.();
+        };
+        for (const [value, en, ru] of presets) {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = trigger.className;
+            button.dataset.color = value;
+            button.style.setProperty("--swatch", value);
+            button.title = getUiLanguage() === "ru" ? ru : en;
+            button.setAttribute("aria-label", button.title);
+            button.addEventListener("click", () => {
+                colorPicker.value = value;
+                commit();
+                palette.hidePopover();
+                trigger.focus();
+            });
+            palette.append(button);
+        }
+        const custom = document.createElement("label");
+        custom.className = "ts-audio-loader__custom";
+        custom.append(L.customColor, colorPicker);
+        colorPicker.addEventListener("input", commit);
+        palette.append(custom);
+        refreshSwatch = () => {
+            colorPicker.value = node.properties?.waveform_color || presets[0][0];
+            trigger.style.setProperty("--swatch", colorPicker.value);
+            for (const button of palette.querySelectorAll("[data-color]")) {
+                button.setAttribute("aria-pressed", String(button.dataset.color === colorPicker.value));
+            }
+        };
+        refreshSwatch();
+        topbar.append(trigger, palette);
+        addAudioExportSettings(node, topbar, L);
+    }
     topbar.append(actions, fullscreenButton);
 
     const meta = document.createElement("div");
@@ -573,7 +701,7 @@ export function setupAudioLoader(node) {
         // its own min-content: the waveform canvas is positioned absolute (see
         // .ts-audio-loader__canvas) and every in-flow row is nowrap. Otherwise
         // the layout would grow the node to fit content with nothing to stop it.
-        widgetOptions.getMinHeight = () => nodeMinHeight - HEADER_FOOTER_HEIGHT;
+        widgetOptions.getMinHeight = () => isSaver ? MIN_PANE_HEIGHT_SAVER : paneMinHeight - HEADER_FOOTER_HEIGHT;
         widgetOptions.getMaxHeight = () => MAX_PANE_HEIGHT;
         widgetOptions.afterResize = () => { syncDomSize(); updateScrollbar(); drawWaveform(); };
     }
@@ -741,6 +869,11 @@ export function setupAudioLoader(node) {
     function updateText() {
         fileLabel.textContent = state.filename || L.noFile;
         statusLabel.textContent = state.status;
+        if (isSaver) {
+            fileLabel.title = state.filename;
+            statusLabel.title = state.status;
+            meta.toggleAttribute("data-alert", state.status === L.autoplayBlocked || state.status === L.codecUnavailable);
+        }
         // Файл с провода (TS Batch Source) главнее выбранного в ноде.
         if (wired.linked) {
             fileLabel.textContent = L.wiredName(wired.file);
@@ -794,7 +927,7 @@ export function setupAudioLoader(node) {
         state.recordingObjectUrl = null;
     }
     function applyMediaPayload(payload, options = {}) {
-        const mediaPath = String(payload?.preview_path || payload?.filepath || "");
+        const mediaPath = String(payload?.saved_audio?.filename || payload?.preview_path || payload?.filepath || "");
         clearRecordingObjectUrl();
         state.duration = Number(payload?.duration_seconds || 0);
         state.sampleRate = Number(payload?.sample_rate || 0);
@@ -813,7 +946,9 @@ export function setupAudioLoader(node) {
             drawWaveform();
             return;
         }
-        const mediaUrl = api.apiURL(`${ROUTE_BASE}/view?filepath=${encodeURIComponent(mediaPath)}`);
+        const mediaUrl = payload.saved_audio
+            ? api.apiURL(`/view?${new URLSearchParams(payload.saved_audio)}`)
+            : api.apiURL(`${ROUTE_BASE}/view?filepath=${encodeURIComponent(mediaPath)}`);
         if (state.mediaType === "video") {
             videoEl.src = mediaUrl;
             videoEl.load();
@@ -913,7 +1048,8 @@ export function setupAudioLoader(node) {
         drawPeakBars(ctx, {
             peaks: state.peaks, duration: state.duration,
             x: 0, y: 0, width: drawWidth, height: drawHeight,
-            viewStart, viewEnd, selection: bounds, colors, baseline: false,
+            viewStart, viewEnd, selection: bounds,
+            colors: colorPicker ? { ...colors, accent: colorPicker.value } : colors, baseline: false,
         });
 
         const selectionWidth = Math.max(0, dimEndX - dimStartX);
@@ -1337,7 +1473,7 @@ export function setupAudioLoader(node) {
         // system's own screen zoom, so a Ctrl-only check left this control
         // unreachable there — and every other surface in the pack already
         // treats the two as one modifier.
-        if (!event.ctrlKey && !event.metaKey) return;
+        if (event.target !== canvas || (!event.ctrlKey && !event.metaKey)) return;
         if (state.duration <= 0) return;
         event.preventDefault();
         event.stopPropagation();
@@ -1399,7 +1535,12 @@ export function setupAudioLoader(node) {
         setViewStart((targetThumbLeft / maxThumbLeft) * maxStart);
     }
 
-    canvas.addEventListener("wheel", onCanvasWheel, { passive: false });
+    // Vue forwards wheel events to the graph before they reach the waveform.
+    // Capture only while the pointer is over this track.
+    const bindWaveWheel = () => document.addEventListener("wheel", onCanvasWheel, { capture: true, passive: false });
+    const unbindWaveWheel = () => document.removeEventListener("wheel", onCanvasWheel, true);
+    canvas.addEventListener("pointerenter", bindWaveWheel);
+    canvas.addEventListener("pointerleave", unbindWaveWheel);
     canvas.addEventListener("pointerdown", onCanvasPointerDown);
     canvas.addEventListener("pointermove", onCanvasPointerMove);
     canvas.addEventListener("pointerup", onCanvasPointerUp);
@@ -1540,6 +1681,7 @@ export function setupAudioLoader(node) {
 
     node._tsAudioLoaderCleanup = () => {
         disposed = true;
+        unbindWaveWheel();
         fullscreen?.close();
         ++metadataRequest;
         resizeObserver.disconnect();
@@ -1571,6 +1713,7 @@ export function setupAudioLoader(node) {
         applyMediaPayload(payload, { persist });
     };
     node._tsAudioLoaderRehydrate = () => {
+        refreshSwatch?.();
         if (!isPreviewNode) {
             const restoredMode = String(getWidgetValue(node, INPUT_MODE, state.mode) || state.mode || "load");
             const restoredSource = normalizeSourcePathValue(getWidgetValue(node, INPUT_SOURCE_PATH, state.sourcePath));
@@ -1615,6 +1758,7 @@ export function setupAudioLoader(node) {
             drawWaveform();
         }
     };
+    if (!isPreviewNode) addFileStemWidget(node);
     requestAnimationFrame(() => {
         // Свеже брошенная нода (без загрузки графа) не получает rehydrate —
         // снимаем флаг здесь, к первому кадру миграция и configure уже позади.

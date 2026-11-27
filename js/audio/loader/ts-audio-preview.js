@@ -7,6 +7,7 @@ import {
     DOM_WIDGET_NAME,
     PREVIEW_NODE_NAME,
     PREVIEW_UI_KEY,
+    SAVER_NODE_NAME,
     getWidget,
     setupAudioLoader,
 } from "./_audio_helpers.js";
@@ -16,10 +17,17 @@ const EXTENSION_ID = "ts.audioPreview";
 app.registerExtension({
     name: EXTENSION_ID,
     async beforeRegisterNodeDef(nodeType, nodeData) {
-        if (nodeData.name !== PREVIEW_NODE_NAME) return;
+        if (![PREVIEW_NODE_NAME, SAVER_NODE_NAME].includes(nodeData.name)) return;
         const onNodeCreated = nodeType.prototype.onNodeCreated;
         nodeType.prototype.onNodeCreated = function onNodeCreatedWrapper() {
             const result = onNodeCreated ? onNodeCreated.apply(this, arguments) : undefined;
+            if (nodeData.name === SAVER_NODE_NAME) {
+                const prefix = getWidget(this, "filename_prefix");
+                if (prefix) prefix.serializeValue = () =>
+                    typeof prefix.value === "string"
+                        ? window.comfyAPI.utils.applyTextReplacements(app, prefix.value)
+                        : prefix.value;
+            }
             if (!getWidget(this, DOM_WIDGET_NAME)) {
                 setupAudioLoader(this);
             }
@@ -35,7 +43,7 @@ app.registerExtension({
         };
     },
     loadedGraphNode(node) {
-        if (node?.type !== PREVIEW_NODE_NAME && node?.comfyClass !== PREVIEW_NODE_NAME) return;
+        if (![PREVIEW_NODE_NAME, SAVER_NODE_NAME].includes(node?.comfyClass || node?.type)) return;
         if (!getWidget(node, DOM_WIDGET_NAME)) {
             setupAudioLoader(node);
             return;

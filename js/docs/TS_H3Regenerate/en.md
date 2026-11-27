@@ -2,6 +2,8 @@
 
 ## Standard
 
+**Keyframe strength** controls the start and end images, including connected frames mode. At 1 the node uses its original H3 guidance. At 0 it skips encoding the guides. Intermediate values weaken the images through native H3 visual condition noise in the same sampling pass. For lip-sync, hold denoise fixed and compare mouth movements against the draft. Full Reference uses its own conditioning.
+
 Upscales a denoised H3 latent and refines it with Open-H3-Regenerate-2K.
 Connect a clean H3 model through [TS H3 Regenerate Model](https://github.com/AlexYez/comfyui-timesaver/blob/master/js/docs/TS_H3RegenerateModel/en.md).
 Keep draft-generation LoRAs on a separate branch.

@@ -492,14 +492,14 @@ def write_proxy(
 ) -> dict:
     """Маленький H.264 для плеера в ноде.
 
-    Нужен, когда сохранённый формат браузер не проигрывает (ProRes). Дешёвый по
-    определению: ``veryfast`` и ширина не больше 1280.
+    Использует профиль good, чтобы мелкие движущиеся детали не терялись
+    при повторном сжатии так сильно, как с черновым профилем.
     """
     return write_video(
         frames,
         path=path,
         format_key="H.264 / MP4",
-        quality_key="draft",
+        quality_key="good",
         fps=fps,
         audio=audio,
         frame_count=frame_count,

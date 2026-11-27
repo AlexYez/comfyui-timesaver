@@ -266,8 +266,11 @@ export function setupVideoSaver(node) {
         });
         video.muted = state.muted;
         video.volume = state.volume;
-        video.src = api.apiURL(`/view?${params}`);
-        video.load();
+        const src = api.apiURL(`/view?${params}`);
+        if (video.getAttribute("src") !== src || video.error) {
+            video.src = src;
+            video.load();
+        }
         empty.style.display = "none";
 
         // ⚠️ Строка результата и кнопка скачивания говорят о НАСТОЯЩЕМ файле, а

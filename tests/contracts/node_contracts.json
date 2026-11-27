@@ -1071,6 +1071,53 @@
       }
     }
   },
+  "TS_AudioSaver": {
+    "api": "v3",
+    "category": "TS/Audio",
+    "class_name": "TS_AudioSaver",
+    "display_name": "TS Audio Saver",
+    "effective_widget_order": [
+      "filename_prefix",
+      "format",
+      "mp3_bitrate"
+    ],
+    "inputs": [
+      {
+        "index": 0,
+        "name": "audio",
+        "type": "Audio"
+      },
+      {
+        "index": 1,
+        "name": "filename_prefix",
+        "type": "String"
+      },
+      {
+        "index": 2,
+        "name": "format",
+        "type": "Combo"
+      },
+      {
+        "display_name": "MP3 bitrate (kbps)",
+        "index": 3,
+        "name": "mp3_bitrate",
+        "optional": true,
+        "type": "Combo"
+      }
+    ],
+    "python_file": "nodes/audio/loader/ts_audio_saver.py",
+    "widgets": {
+      "filename_prefix": {
+        "default": "audio/TS"
+      },
+      "format": {
+        "default": "WAV"
+      },
+      "mp3_bitrate": {
+        "default": "320"
+      }
+    }
+  },
   "TS_AudioVisualizer": {
     "api": "v3",
     "category": "TS/Audio",
@@ -2888,7 +2935,8 @@
       "chunk_length",
       "temporal_overlap",
       "reference_mode",
-      "chunk_mode"
+      "chunk_mode",
+      "keyframe_strength"
     ],
     "inputs": [
       {
@@ -2991,6 +3039,12 @@
         "name": "last_frame",
         "optional": true,
         "type": "Image"
+      },
+      {
+        "index": 19,
+        "name": "keyframe_strength",
+        "optional": true,
+        "type": "Float"
       }
     ],
     "outputs": [
@@ -3030,6 +3084,12 @@
         "max": 4096,
         "min": 64,
         "step": 32
+      },
+      "keyframe_strength": {
+        "default": 1.0,
+        "max": 1.0,
+        "min": 0.0,
+        "step": 0.05
       },
       "precision": {
         "default": "bf16"
@@ -7791,5 +7851,37 @@
         "default": true
       }
     }
+  },
+  "TS_VideoSeamRepair": {
+    "api": "v3",
+    "category": "TS/Video",
+    "class_name": "TS_VideoSeamRepair",
+    "display_name": "TS Video Seam Repair",
+    "inputs": [
+      {
+        "index": 0,
+        "name": "images",
+        "type": "Image"
+      },
+      {
+        "index": 1,
+        "name": "reference",
+        "type": "Image"
+      },
+      {
+        "index": 2,
+        "name": "vae",
+        "optional": true,
+        "type": "Vae"
+      }
+    ],
+    "outputs": [
+      {
+        "index": 0,
+        "name": "images",
+        "type": "Image"
+      }
+    ],
+    "python_file": "nodes/video/ts_video_seam_repair.py"
   }
 }

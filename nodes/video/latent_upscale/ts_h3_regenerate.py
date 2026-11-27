@@ -130,14 +130,18 @@ class TS_H3Regenerate(IO.ComfyNode):
                                tooltip="Lock overlap fixes the whole overlap. Blend overlap fixes its early part and gradually transitions to the redrawn tail. Both continuation modes require nonzero overlap for multiple chunks."),
                 IO.Image.Input("last_frame", optional=True,
                                tooltip="End image for connected frames (auto) or first and last frames. The first image in the batch is center-cropped to the final canvas if necessary, then encoded as a guide at the clip's last frame."),
+                IO.Float.Input("keyframe_strength", default=1.0, min=0.0, max=1.0, step=0.05, optional=True,
+                               tooltip="Strength of connected start/end images. 1 uses the original H3 guidance, 0 omits these images. Intermediate values add native condition noise to the image guides. Full Reference is independent."),
             ],
             outputs=[IO.Latent.Output("latent"), IO.String.Output("report")],
         )
 
     @classmethod
-    def validate_inputs(cls, width=1920, height=1088, chunk_length=0, temporal_overlap=17, **kwargs):
+    def validate_inputs(cls, width=1920, height=1088, chunk_length=0, temporal_overlap=17, keyframe_strength=1.0, **kwargs):
         # Linked values are unknown (None) during ComfyUI prompt validation.
         # execute calls this again with the actual upstream results.
+        if keyframe_strength is not None and not 0 <= keyframe_strength <= 1:
+            return "Keyframe strength must be between 0 and 1."
         if any(value is not None and value % 32 for value in (width, height)):
             return "Width and height must be multiples of 32; use 1088 for 1080p and crop after decoding."
         if any(value is not None and (value < 0 or value % 17)
@@ -152,7 +156,8 @@ class TS_H3Regenerate(IO.ComfyNode):
                 denoise=1.0, steps=3, audio_mode="keep source audio (lipsync)",
                 precision="bf16", chunk_length=0, temporal_overlap=17, audio_vae=None,
                 reference_mode="off", first_frame=None, video_vae=None,
-                chunk_mode=INDEPENDENT, last_frame=None, ic_clip=None, draft_images=None, ic_caption=""):
+                chunk_mode=INDEPENDENT, last_frame=None, ic_clip=None, draft_images=None, ic_caption="",
+                keyframe_strength=1.0):
         """Standard UI; IC kwargs remain only for direct experimental Python calls."""
         import comfy.model_management as mm
         import comfy.nested_tensor
@@ -160,7 +165,7 @@ class TS_H3Regenerate(IO.ComfyNode):
 
         if any(value is None for value in (width, height, chunk_length, temporal_overlap)):
             raise ValueError("Width, height, chunk length and overlap must resolve to numbers; check the connected upstream nodes.")
-        valid = cls.validate_inputs(width, height, chunk_length, temporal_overlap)
+        valid = cls.validate_inputs(width, height, chunk_length, temporal_overlap, keyframe_strength)
         if valid is not True:
             raise ValueError(valid)
         ic_metadata = model.model_options.get("ts_h3_regenerate_ic")
@@ -171,10 +176,11 @@ class TS_H3Regenerate(IO.ComfyNode):
         if reference_mode not in ("off", FIRST_FRAME, FIRST_LAST, FULL_REFERENCE, CONNECTED_FRAMES):
             raise ValueError(f"Unknown Regenerate reference mode: {reference_mode}")
         automatic = reference_mode == CONNECTED_FRAMES
-        use_first = denoise > 0 and (
+        guide_enabled = denoise > 0 and keyframe_strength > 0
+        use_first = guide_enabled and (
             reference_mode in (FIRST_FRAME, FIRST_LAST) or (automatic and first_frame is not None)
         )
-        use_last = denoise > 0 and (reference_mode == FIRST_LAST or (automatic and last_frame is not None))
+        use_last = guide_enabled and (reference_mode == FIRST_LAST or (automatic and last_frame is not None))
         use_reference = use_first or use_last
         use_full_reference = reference_mode == FULL_REFERENCE and denoise > 0
         if use_first and (first_frame is None or video_vae is None):
@@ -314,6 +320,10 @@ class TS_H3Regenerate(IO.ComfyNode):
                     final_guide = end_reference if f1 == frame_count else None
                     if reference is not None or final_guide is not None:
                         piece_cond = regen.keyframe_conditioning(cond, reference, f0, final_guide, frame_count - 1)
+                        if keyframe_strength < 1.0:
+                            from comfy.ldm.minimax.model import VISUAL_COND_TIMESTEP
+                            for _, metadata in piece_cond:
+                                metadata["minimax_visual_cond_noise_aug"] = VISUAL_COND_TIMESTEP * keyframe_strength
                     sampled = core.sample_piece(piece, piece_cond, model, noise, sampler, sigma_grid, None, 1.0,
                                                 noise_tensor=core.slice_noise(full_noise, k0, k1, a0, a0 + a.shape[-1]))
                     v = sampled.tensors[0]
@@ -352,6 +362,8 @@ class TS_H3Regenerate(IO.ComfyNode):
             report += " Full Reference inactive at denoise=0."
         elif reference_mode != "off" and denoise == 0:
             report += " Keyframe guidance inactive at denoise=0."
+        if reference_mode in (FIRST_FRAME, FIRST_LAST, CONNECTED_FRAMES):
+            report += f" Keyframe strength: {keyframe_strength:g}."
         if chunk_length:
             report += " Experimental chunked mode; differs from whole-clip reference."
             report += f" Stitching: {chunk_mode}."
